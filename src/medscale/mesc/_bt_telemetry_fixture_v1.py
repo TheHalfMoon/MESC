@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from typing import Final
 
 GPU_MODEL_H100: Final = "NVIDIA H100 80GB HBM3"
+CLOCK_SOURCE_MONOTONIC_NS: Final = "monotonic_ns"
 MAX_SAMPLE_INTERVAL_MS: Final = 100
 _MIB: Final = 1024 * 1024
 
@@ -62,6 +63,7 @@ class FixtureTelemetryQualification:
 
     gpu_uuid: str
     gpu_model: str
+    clock_source: str
     sampling_interval_ms: int
     controlled_root_pid: int
     monitor_start_ns: int
@@ -92,6 +94,10 @@ def qualify_fixture_telemetry(
     _validate_ascii_identity(qualification.gpu_uuid, field="gpu_uuid")
     if qualification.gpu_model != GPU_MODEL_H100:
         raise FixtureTelemetryBlockedError(f"gpu_model must be exactly {GPU_MODEL_H100!r}")
+    if qualification.clock_source != CLOCK_SOURCE_MONOTONIC_NS:
+        raise FixtureTelemetryBlockedError(
+            f"clock_source must be exactly {CLOCK_SOURCE_MONOTONIC_NS!r}"
+        )
     _require_exact_positive_int(qualification.sampling_interval_ms, field="sampling_interval_ms")
     if qualification.sampling_interval_ms > MAX_SAMPLE_INTERVAL_MS:
         raise FixtureTelemetryBlockedError("sampling_interval_ms must be no greater than 100")
@@ -105,11 +111,11 @@ def qualify_fixture_telemetry(
     ):
         _require_exact_nonnegative_int(value, field=field)
 
-    if qualification.monitor_start_ns > qualification.model_load_or_probe_start_ns:
+    if qualification.monitor_start_ns >= qualification.model_load_or_probe_start_ns:
         raise FixtureTelemetryBlockedError("monitoring must start before model/probe start")
-    if qualification.final_terminal_ns > qualification.device_sync_completed_ns:
+    if qualification.final_terminal_ns >= qualification.device_sync_completed_ns:
         raise FixtureTelemetryBlockedError(
-            "device synchronization must not precede terminal completion"
+            "terminal completion must precede device synchronization"
         )
     if qualification.device_sync_completed_ns > qualification.monitor_stop_ns:
         raise FixtureTelemetryBlockedError(
@@ -184,7 +190,7 @@ def qualify_fixture_telemetry(
         raise FixtureTelemetryBlockedError(
             "first telemetry frame must be at or before model/probe start"
         )
-    if last_frame_ns < qualification.device_sync_completed_ns:
+    if last_frame_ns <= qualification.device_sync_completed_ns:
         raise FixtureTelemetryBlockedError(
             "terminal telemetry capture must occur after device synchronization"
         )
@@ -194,6 +200,7 @@ def qualify_fixture_telemetry(
         raise FixtureTelemetryBlockedError("peak_vram_mb must be finite and non-negative")
 
     document = {
+        "clock_source": qualification.clock_source,
         "controlled_process_peak_bytes": peak_bytes,
         "controlled_root_pid": qualification.controlled_root_pid,
         "device_sync_completed_ns": qualification.device_sync_completed_ns,
