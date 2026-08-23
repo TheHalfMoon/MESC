@@ -2,7 +2,7 @@
 
 Status: **DRAFT / FIXTURE-ONLY / NO EXECUTION AUTHORITY**
 
-This slice has been merge-forwarded onto the current canonical base:
+This clean replacement slice is based directly on the current canonical base:
 
 ```text
 BASE_MAIN_SHA = 3f22d2e71d39c85775c6f9db7c70b69693cb9ce5
@@ -61,15 +61,15 @@ the future activation-bound runtime verifier. The final implementation must
 still consume live telemetry from the exact activation-bound H100 and bind the
 result into the complete execution artifact manifest.
 
-PRs #140, #141, and #142 are now canonical predecessors. This slice is
-merge-forwarded onto their canonical main state but remains independently
-bounded to the three files in this PR.
+PRs #140, #141, and #142 are canonical predecessors. This replacement is based
+directly on their canonical main state and remains independently bounded to the
+three files in this PR.
 
 ## Qualification
 
-Historical pre-repair fixture qualification is superseded by the current-head
-repair. Only fresh exact-head GitHub CI, CodeQL, scope reconciliation, and the
-permitted exact-head review may qualify this revision.
+Historical qualification from superseded PR #143 and any earlier #145 head is
+superseded. Only fresh exact-head GitHub CI, CodeQL, scope reconciliation, and
+the permitted exact-head review may qualify this revision.
 
 ## Hard boundary
 
