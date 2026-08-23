@@ -102,49 +102,30 @@ def _revalidate_manifest(manifest: PhiRemoteCodeManifest) -> None:
 
 def _validate_manifest_object_types(manifest: PhiRemoteCodeManifest) -> None:
     if type(manifest.entries) is not tuple:
-        raise PhiSecurityReviewManifestError(
-            "manifest object contains non-exact field types"
-        )
+        raise PhiSecurityReviewManifestError("manifest object contains non-exact field types")
     if type(manifest.sha256) is not str or type(manifest.byte_length) is not int:
-        raise PhiSecurityReviewManifestError(
-            "manifest object contains non-exact field types"
-        )
+        raise PhiSecurityReviewManifestError("manifest object contains non-exact field types")
 
     for entry in manifest.entries:
         if type(entry) is not PhiRemoteCodeManifestEntry:
-            raise PhiSecurityReviewManifestError(
-                "manifest object contains non-exact field types"
-            )
+            raise PhiSecurityReviewManifestError("manifest object contains non-exact field types")
         if type(entry.byte_length) is not int:
-            raise PhiSecurityReviewManifestError(
-                "manifest object contains non-exact field types"
-            )
+            raise PhiSecurityReviewManifestError("manifest object contains non-exact field types")
         if (
             type(entry.git_blob_sha) is not str
             or type(entry.path) is not str
             or type(entry.sha256) is not str
         ):
-            raise PhiSecurityReviewManifestError(
-                "manifest object contains non-exact field types"
-            )
+            raise PhiSecurityReviewManifestError("manifest object contains non-exact field types")
 
 
 def _validate_evidence_shape(evidence: PhiRemoteCodeSecurityReviewEvidence) -> None:
     if type(evidence) is not PhiRemoteCodeSecurityReviewEvidence:
-        raise PhiSecurityReviewEvidenceError(
-            "security-review evidence has invalid type"
-        )
+        raise PhiSecurityReviewEvidenceError("security-review evidence has invalid type")
     if type(evidence.manifest_sha256) is not str:
-        raise PhiSecurityReviewEvidenceError(
-            "manifest SHA-256 binding must be an exact string"
-        )
-    if (
-        type(evidence.independent_review) is not bool
-        or evidence.independent_review is not True
-    ):
-        raise PhiSecurityReviewEvidenceError(
-            "independent security review is not proven"
-        )
+        raise PhiSecurityReviewEvidenceError("manifest SHA-256 binding must be an exact string")
+    if type(evidence.independent_review) is not bool or evidence.independent_review is not True:
+        raise PhiSecurityReviewEvidenceError("independent security review is not proven")
 
     dispositions = evidence.file_dispositions
     if type(dispositions) is not tuple:
@@ -153,17 +134,13 @@ def _validate_evidence_shape(evidence: PhiRemoteCodeSecurityReviewEvidence) -> N
         if type(item) is not PhiRemoteCodeFileSecurityDisposition:
             raise PhiSecurityReviewEvidenceError("file disposition has invalid type")
         if type(item.path) is not str or type(item.disposition) is not str:
-            raise PhiSecurityReviewEvidenceError(
-                "file disposition fields must be exact strings"
-            )
+            raise PhiSecurityReviewEvidenceError("file disposition fields must be exact strings")
 
     if (
         type(evidence.complete_reachable_import_graph_reviewed) is not bool
         or evidence.complete_reachable_import_graph_reviewed is not True
     ):
-        raise PhiSecurityReviewEvidenceError(
-            "complete reachable import graph review is not proven"
-        )
+        raise PhiSecurityReviewEvidenceError("complete reachable import graph review is not proven")
     if type(evidence.complete_reachable_import_graph_disposition) is not str:
         raise PhiSecurityReviewEvidenceError(
             "complete import-graph disposition must be an exact string"
