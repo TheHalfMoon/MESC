@@ -23,8 +23,9 @@ _R2_PROVENANCE_AUDIT_SHA256 = (
 _CORPUS_CONFORMANCE_AUDIT_SHA256 = (
     "842f2e0dbeaea59087223ddd94c8a95844c8f14822a16e1549e67c0c850c67f2"
 )
+_AXES = ("A", "B", "C", "D", "E", "F")
 _ITEM_IDS = tuple(
-    f"BT-{axis}-{index:03d}" for axis in "ABCDEF" for index in range(1, 41)
+    f"BT-{axis}-{index:03d}" for axis in _AXES for index in range(1, 41)
 )
 _THREAD_SYNC_TIMEOUT_SECONDS = 30.0
 
