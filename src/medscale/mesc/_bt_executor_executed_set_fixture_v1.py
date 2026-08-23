@@ -48,56 +48,92 @@ def verify_executor_executed_set_evidence(
     observation: ExecutorHarnessExecutionObservation,
 ) -> None:
     """Verify a complete injected path-set observation against the allowlist."""
-    _revalidate_allowlist(allowlist)
-    _validate_observation_shape(observation)
+    expected_paths = _validated_allowlist_paths(allowlist)
+    observed_paths = _validated_observation_paths(observation)
 
-    expected_paths = tuple(entry.path for entry in allowlist.entries)
-    if observation.executed_or_imported_paths != expected_paths:
+    if observed_paths != expected_paths:
         raise ExecutorExecutedSetObservationError(
             "observed executor/harness path set does not equal the canonical allowlist"
         )
 
 
-def _revalidate_allowlist(allowlist: ExecutorAllowlist) -> None:
+def _validated_allowlist_paths(allowlist: ExecutorAllowlist) -> tuple[str, ...]:
     if type(allowlist) is not ExecutorAllowlist:
         raise ExecutorExecutedSetAllowlistError("allowlist is not parser-validated")
-    _validate_allowlist_object_types(allowlist)
+
+    entries = allowlist.entries
+    sha256 = allowlist.sha256
+    byte_length = allowlist.byte_length
+
+    if type(entries) is not tuple:
+        raise ExecutorExecutedSetAllowlistError("allowlist object contains non-exact field types")
+    if type(sha256) is not str or type(byte_length) is not int:
+        raise ExecutorExecutedSetAllowlistError("allowlist object contains non-exact field types")
+
+    snapshot_entries: list[ExecutorAllowlistEntry] = []
+    for entry in entries:
+        if type(entry) is not ExecutorAllowlistEntry:
+            raise ExecutorExecutedSetAllowlistError(
+                "allowlist object contains non-exact field types"
+            )
+
+        git_blob_sha = entry.git_blob_sha
+        path = entry.path
+        if type(git_blob_sha) is not str or type(path) is not str:
+            raise ExecutorExecutedSetAllowlistError(
+                "allowlist object contains non-exact field types"
+            )
+        snapshot_entries.append(
+            ExecutorAllowlistEntry(
+                git_blob_sha=git_blob_sha,
+                path=path,
+            )
+        )
+
+    snapshot = ExecutorAllowlist(
+        entries=tuple(snapshot_entries),
+        sha256=sha256,
+        byte_length=byte_length,
+    )
 
     try:
-        canonical = canonical_executor_allowlist_bytes(allowlist.entries)
+        canonical = canonical_executor_allowlist_bytes(snapshot.entries)
         reparsed = parse_executor_allowlist(canonical)
     except Exception as error:
         raise ExecutorExecutedSetAllowlistError(
             "allowlist object does not contain valid canonical allowlist content"
         ) from error
 
-    if reparsed != allowlist:
+    if reparsed != snapshot:
         raise ExecutorExecutedSetAllowlistError(
             "allowlist object identity does not match its canonical bytes"
         )
 
-
-def _validate_allowlist_object_types(allowlist: ExecutorAllowlist) -> None:
-    if type(allowlist.entries) is not tuple:
-        raise ExecutorExecutedSetAllowlistError("allowlist object contains non-exact field types")
-    if type(allowlist.sha256) is not str or type(allowlist.byte_length) is not int:
-        raise ExecutorExecutedSetAllowlistError("allowlist object contains non-exact field types")
-
-    for entry in allowlist.entries:
-        if type(entry) is not ExecutorAllowlistEntry:
-            raise ExecutorExecutedSetAllowlistError(
-                "allowlist object contains non-exact field types"
-            )
-        if type(entry.git_blob_sha) is not str or type(entry.path) is not str:
-            raise ExecutorExecutedSetAllowlistError(
-                "allowlist object contains non-exact field types"
-            )
+    return tuple(entry.path for entry in reparsed.entries)
 
 
-def _validate_observation_shape(observation: ExecutorHarnessExecutionObservation) -> None:
+def _validated_observation_paths(
+    observation: ExecutorHarnessExecutionObservation,
+) -> tuple[str, ...]:
     if type(observation) is not ExecutorHarnessExecutionObservation:
         raise ExecutorExecutedSetObservationError("execution observation has invalid type")
 
+    snapshot = ExecutorHarnessExecutionObservation(
+        executed_or_imported_paths=observation.executed_or_imported_paths,
+        observation_complete=observation.observation_complete,
+        observation_started_before_first_execution_or_import=(
+            observation.observation_started_before_first_execution_or_import
+        ),
+        observation_ended_after_last_execution_or_import=(
+            observation.observation_ended_after_last_execution_or_import
+        ),
+        unattributed_execution_or_import_events=observation.unattributed_execution_or_import_events,
+    )
+    _validate_observation_snapshot(snapshot)
+    return snapshot.executed_or_imported_paths
+
+
+def _validate_observation_snapshot(observation: ExecutorHarnessExecutionObservation) -> None:
     paths = observation.executed_or_imported_paths
     if type(paths) is not tuple:
         raise ExecutorExecutedSetObservationError("executed/imported paths must be an exact tuple")
