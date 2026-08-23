@@ -74,6 +74,9 @@ The verifier:
 - requires the exact resolve-flag set
   `RESOLVE_BENEATH | RESOLVE_NO_SYMLINKS | RESOLVE_NO_MAGICLINKS`;
 - requires the exact open-flag set `O_RDONLY | O_CLOEXEC | O_NOFOLLOW`;
+- requires both flag containers to be exact `frozenset` objects and every flag
+  member to have exact type `str`, preventing hash/equality-compatible objects
+  from spoofing required flag names;
 - requires exact-boolean evidence that resolution was descriptor-relative, the
   input root was approved and read-only, and `fstat` reported a regular file;
 - rejects Python bool/int confusion for device, inode, and byte-length identity
