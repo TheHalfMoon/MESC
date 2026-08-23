@@ -17,8 +17,9 @@ The source and test blobs are byte-identical to the final source and test blobs 
 ## Scope
 
 This implementation covers only pure, deterministic validation of the Section I/J
-`RUNTIME_BINDING` and `identity_preimage` serialization contracts using synthetic
-in-memory bytes and injected independently-recomputed fixture values.
+`RUNTIME_BINDING` and `identity_preimage` serialization and fixture-level binding
+contracts using synthetic in-memory bytes and injected independently-recomputed
+fixture values.
 
 The verifier:
 
@@ -31,13 +32,14 @@ The verifier:
 - validates non-empty runtime identity strings using the authorization's printable
   ASCII restrictions;
 - requires unique, byte-sorted acceleration runtime identities;
-- validates exact OCI digest, dependency-lock digest, checkout SHA/tree, numeric
-  descriptor identities, and canonical checkout-root path grammar;
+- validates OCI-digest, dependency-lock-digest, checkout-SHA/tree, numeric
+  descriptor, and canonical checkout-root-path forms;
 - recomputes `runtime_binding_sha256` over the accepted exact bytes;
 - requires the exact closed `identity_preimage` scalar schema;
 - validates the fixed activation decision and receipt-version identifiers;
-- compares every externally bound activation value against an injected
-  `IndependentActivationBindings` fixture object;
+- compares every externally bound `identity_preimage` value represented by
+  `IndependentActivationBindings` against the injected independently recomputed
+  fixture fact;
 - requires the runtime checkout SHA/tree to equal independently supplied fixture
   values;
 - derives `ACTIVATION_ID` as lowercase SHA-256 over the exact canonical
@@ -51,10 +53,18 @@ This is not the activation executor and does not authenticate or retrieve any
 GitHub commit, tree, Founder comment, gated-access attestation, telemetry
 qualification, Phi manifest, sandbox qualification, or executor allowlist.
 
-`IndependentActivationBindings` represents values that a future activation
-verifier must independently recompute through separately reviewed mechanisms.
-This fixture primitive only proves that canonical activation bytes bind exactly
-to those injected values.
+`IndependentActivationBindings` represents the external `identity_preimage`
+bindings and checkout Git identities exercised by this fixture. The primitive
+proves that the canonical activation bytes bind exactly to those injected facts.
+
+It does **not** independently observe or recompute the variable Section E
+runtime/hardware values or the filesystem descriptor triples carried in
+`RUNTIME_BINDING`. In this fixture those are synthetic input fields whose schema,
+canonical serialization, fixed invariants, and value forms are validated. The
+future production activation verifier must independently observe/recompute those
+runtime facts, prove the Section I.1 descriptor/bootstrap predicates, require all
+Section E runtime/hardware values to equal the corresponding `RUNTIME_BINDING`
+fields, and only then finalize and hash the binding.
 
 This slice does not:
 
@@ -75,7 +85,9 @@ independently reviewed work.
 
 ## Qualification
 
-Historical CI, CodeQL, and review evidence from PR #144 is superseded for merge qualification. Only fresh evidence bound to the current replacement head may qualify this slice.
+Historical CI, CodeQL, and review evidence from PR #144, and all earlier heads of
+this replacement, are superseded for merge qualification. Only fresh evidence
+bound to the current replacement head may qualify this slice.
 
 ## Hard boundary
 
