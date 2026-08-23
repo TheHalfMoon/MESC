@@ -21,6 +21,7 @@ from medscale.mesc._bt_executor_executed_set_fixture_v1 import (
 
 _PATHS = ("src/medscale/mesc/a.py", "src/medscale/mesc/b.py")
 _EXTRA_PATH = "src/medscale/mesc/extra.py"
+_THREAD_SYNC_TIMEOUT_SECONDS = 30.0
 
 
 class _StringSubclass(str):
@@ -248,6 +249,7 @@ def test_allowlist_post_snapshot_mutation_cannot_create_false_success(
 
     observation_snapshotted = Event()
     allowlist_mutated = Event()
+    mutator_failures: list[str] = []
     original_observation_paths = executed_set_module._validated_observation_paths
 
     def synchronized_observation_paths(
@@ -255,7 +257,8 @@ def test_allowlist_post_snapshot_mutation_cannot_create_false_success(
     ) -> tuple[str, ...]:
         paths = original_observation_paths(value)
         observation_snapshotted.set()
-        assert allowlist_mutated.wait(timeout=2.0)
+        if not allowlist_mutated.wait(timeout=_THREAD_SYNC_TIMEOUT_SECONDS):
+            raise AssertionError("timed out waiting for allowlist mutation")
         return paths
 
     monkeypatch.setattr(
@@ -265,17 +268,18 @@ def test_allowlist_post_snapshot_mutation_cannot_create_false_success(
     )
 
     def mutate_allowlist() -> None:
-        if not observation_snapshotted.wait(timeout=2.0):
-            return
-        object.__setattr__(
-            allowlist,
-            "entries",
-            (
-                *allowlist.entries,
-                ExecutorAllowlistEntry(git_blob_sha="c" * 40, path=_EXTRA_PATH),
-            ),
-        )
-        allowlist_mutated.set()
+        if not observation_snapshotted.wait(timeout=_THREAD_SYNC_TIMEOUT_SECONDS):
+            mutator_failures.append("timed out waiting for observation snapshot")
+        else:
+            object.__setattr__(
+                allowlist,
+                "entries",
+                (
+                    *allowlist.entries,
+                    ExecutorAllowlistEntry(git_blob_sha="c" * 40, path=_EXTRA_PATH),
+                ),
+            )
+            allowlist_mutated.set()
 
     mutator = Thread(target=mutate_allowlist)
     mutator.start()
@@ -283,8 +287,9 @@ def test_allowlist_post_snapshot_mutation_cannot_create_false_success(
         with pytest.raises(ExecutorExecutedSetObservationError):
             verify_executor_executed_set_evidence(allowlist, observation)
     finally:
-        mutator.join(timeout=2.0)
+        mutator.join(timeout=_THREAD_SYNC_TIMEOUT_SECONDS)
 
+    assert not mutator_failures
     assert allowlist_mutated.is_set()
     assert not mutator.is_alive()
 
@@ -302,6 +307,7 @@ def test_observation_post_snapshot_mutation_cannot_create_false_success(
 
     observation_snapshotted = Event()
     observation_mutated = Event()
+    mutator_failures: list[str] = []
     original_observation_paths = executed_set_module._validated_observation_paths
 
     def synchronized_observation_paths(
@@ -309,7 +315,8 @@ def test_observation_post_snapshot_mutation_cannot_create_false_success(
     ) -> tuple[str, ...]:
         paths = original_observation_paths(value)
         observation_snapshotted.set()
-        assert observation_mutated.wait(timeout=2.0)
+        if not observation_mutated.wait(timeout=_THREAD_SYNC_TIMEOUT_SECONDS):
+            raise AssertionError("timed out waiting for observation mutation")
         return paths
 
     monkeypatch.setattr(
@@ -319,10 +326,11 @@ def test_observation_post_snapshot_mutation_cannot_create_false_success(
     )
 
     def mutate_observation() -> None:
-        if not observation_snapshotted.wait(timeout=2.0):
-            return
-        object.__setattr__(observation, "executed_or_imported_paths", _PATHS)
-        observation_mutated.set()
+        if not observation_snapshotted.wait(timeout=_THREAD_SYNC_TIMEOUT_SECONDS):
+            mutator_failures.append("timed out waiting for observation snapshot")
+        else:
+            object.__setattr__(observation, "executed_or_imported_paths", _PATHS)
+            observation_mutated.set()
 
     mutator = Thread(target=mutate_observation)
     mutator.start()
@@ -330,7 +338,8 @@ def test_observation_post_snapshot_mutation_cannot_create_false_success(
         with pytest.raises(ExecutorExecutedSetObservationError):
             verify_executor_executed_set_evidence(allowlist, observation)
     finally:
-        mutator.join(timeout=2.0)
+        mutator.join(timeout=_THREAD_SYNC_TIMEOUT_SECONDS)
 
+    assert not mutator_failures
     assert observation_mutated.is_set()
     assert not mutator.is_alive()
