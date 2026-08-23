@@ -55,6 +55,10 @@ The pure verifier:
   insignificant whitespace, and no trailing newline;
 - requires byte-for-byte equality with the supplied manifest before hashing;
 - returns the exact manifest byte length and SHA-256;
+- revalidates a supplied `PhiRemoteCodeManifest` object against its own
+  canonical bytes, SHA-256, byte length, schema, and ordering before any
+  resolver call, preventing direct dataclass construction from bypassing the
+  parser;
 - verifies injected pinned-revision object facts require a regular-file Git
   blob with mode exactly `100644` or `100755`;
 - fail-closes malformed injected resolver metadata rather than leaking raw type
