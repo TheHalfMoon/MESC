@@ -15,6 +15,7 @@ from dataclasses import dataclass
 
 from medscale.mesc._bt_phi_remote_code_fixture_v1 import (
     PhiRemoteCodeManifest,
+    PhiRemoteCodeManifestEntry,
     canonical_phi_remote_code_manifest_bytes,
     parse_phi_remote_code_manifest,
 )
@@ -62,6 +63,7 @@ def verify_phi_executed_set_evidence(
 def _revalidate_manifest(manifest: PhiRemoteCodeManifest) -> None:
     if type(manifest) is not PhiRemoteCodeManifest:
         raise PhiExecutedSetManifestError("manifest is not parser-validated")
+    _validate_manifest_object_types(manifest)
 
     try:
         canonical = canonical_phi_remote_code_manifest_bytes(manifest.entries)
@@ -75,6 +77,25 @@ def _revalidate_manifest(manifest: PhiRemoteCodeManifest) -> None:
         raise PhiExecutedSetManifestError(
             "manifest object identity does not match its canonical bytes"
         )
+
+
+def _validate_manifest_object_types(manifest: PhiRemoteCodeManifest) -> None:
+    if type(manifest.entries) is not tuple:
+        raise PhiExecutedSetManifestError("manifest object contains non-exact field types")
+    if type(manifest.sha256) is not str or type(manifest.byte_length) is not int:
+        raise PhiExecutedSetManifestError("manifest object contains non-exact field types")
+
+    for entry in manifest.entries:
+        if type(entry) is not PhiRemoteCodeManifestEntry:
+            raise PhiExecutedSetManifestError("manifest object contains non-exact field types")
+        if type(entry.byte_length) is not int:
+            raise PhiExecutedSetManifestError("manifest object contains non-exact field types")
+        if (
+            type(entry.git_blob_sha) is not str
+            or type(entry.path) is not str
+            or type(entry.sha256) is not str
+        ):
+            raise PhiExecutedSetManifestError("manifest object contains non-exact field types")
 
 
 def _validate_observation_shape(observation: PhiRemoteCodeExecutionObservation) -> None:
