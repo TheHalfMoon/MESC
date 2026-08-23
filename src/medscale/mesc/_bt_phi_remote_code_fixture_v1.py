@@ -20,9 +20,7 @@ _PATH_RE: Final = re.compile(r"^[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)*$")
 _GIT_BLOB_RE: Final = re.compile(r"^[0-9a-f]{40}$")
 _SHA256_RE: Final = re.compile(r"^[0-9a-f]{64}$")
 _ALLOWED_REGULAR_FILE_MODES: Final = frozenset({"100644", "100755"})
-_REQUIRED_ENTRY_KEYS: Final = frozenset(
-    {"byte_length", "git_blob_sha", "path", "sha256"}
-)
+_REQUIRED_ENTRY_KEYS: Final = frozenset({"byte_length", "git_blob_sha", "path", "sha256"})
 _UTF8_BOM: Final = b"\xef\xbb\xbf"
 
 
@@ -182,9 +180,7 @@ def _validate_entry(
     index: int,
 ) -> PhiRemoteCodeManifestEntry:
     if not isinstance(raw_entry, dict):
-        raise PhiRemoteCodeManifestSchemaError(
-            f"manifest entry {index} must be a JSON object"
-        )
+        raise PhiRemoteCodeManifestSchemaError(f"manifest entry {index} must be a JSON object")
     entry = cast(dict[str, object], raw_entry)
 
     if frozenset(entry) != _REQUIRED_ENTRY_KEYS:
@@ -201,11 +197,7 @@ def _validate_entry(
         raise PhiRemoteCodeManifestSchemaError(
             f"manifest entry {index} byte_length must be a JSON integer >= 0"
         )
-    if (
-        type(raw_blob) is not str
-        or type(raw_path) is not str
-        or type(raw_sha256) is not str
-    ):
+    if type(raw_blob) is not str or type(raw_path) is not str or type(raw_sha256) is not str:
         raise PhiRemoteCodeManifestSchemaError(
             f"manifest entry {index} identity values must be JSON strings"
         )
@@ -220,21 +212,15 @@ def _validate_entry(
         ) from error
 
     if _PATH_RE.fullmatch(raw_path) is None:
-        raise PhiRemoteCodeManifestSchemaError(
-            f"manifest entry {index} has invalid path grammar"
-        )
+        raise PhiRemoteCodeManifestSchemaError(f"manifest entry {index} has invalid path grammar")
     if any(component in {".", ".."} for component in raw_path.split("/")):
         raise PhiRemoteCodeManifestSchemaError(
             f"manifest entry {index} contains a dot path component"
         )
     if _GIT_BLOB_RE.fullmatch(raw_blob) is None:
-        raise PhiRemoteCodeManifestSchemaError(
-            f"manifest entry {index} has invalid Git blob SHA"
-        )
+        raise PhiRemoteCodeManifestSchemaError(f"manifest entry {index} has invalid Git blob SHA")
     if _SHA256_RE.fullmatch(raw_sha256) is None:
-        raise PhiRemoteCodeManifestSchemaError(
-            f"manifest entry {index} has invalid SHA-256"
-        )
+        raise PhiRemoteCodeManifestSchemaError(f"manifest entry {index} has invalid SHA-256")
 
     return PhiRemoteCodeManifestEntry(
         byte_length=raw_byte_length,
@@ -332,14 +318,10 @@ def _object_from_unique_pairs(
     document: dict[str, object] = {}
     for key, value in pairs:
         if key in document:
-            raise PhiRemoteCodeManifestDuplicateMemberError(
-                f"duplicate JSON member: {key!r}"
-            )
+            raise PhiRemoteCodeManifestDuplicateMemberError(f"duplicate JSON member: {key!r}")
         document[key] = value
     return document
 
 
 def _reject_json_constant(value: str) -> Never:
-    raise PhiRemoteCodeManifestJsonError(
-        f"non-standard JSON constant is prohibited: {value}"
-    )
+    raise PhiRemoteCodeManifestJsonError(f"non-standard JSON constant is prohibited: {value}")
