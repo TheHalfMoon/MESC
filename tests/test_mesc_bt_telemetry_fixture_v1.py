@@ -282,6 +282,28 @@ def test_monitor_start_equal_probe_start_blocks() -> None:
         )
 
 
+def test_probe_start_after_terminal_blocks() -> None:
+    qualification = _qualification()
+    with pytest.raises(FixtureTelemetryBlockedError, match="after terminal completion"):
+        qualify_fixture_telemetry(
+            replace(
+                qualification,
+                model_load_or_probe_start_ns=qualification.final_terminal_ns + 1,
+            )
+        )
+
+
+def test_probe_start_equal_terminal_is_allowed() -> None:
+    qualification = _qualification()
+    result = qualify_fixture_telemetry(
+        replace(
+            qualification,
+            model_load_or_probe_start_ns=qualification.final_terminal_ns,
+        )
+    )
+    assert result.frame_count == 3
+
+
 def test_sync_before_terminal_blocks() -> None:
     with pytest.raises(FixtureTelemetryBlockedError, match="synchronization"):
         qualify_fixture_telemetry(replace(_qualification(), device_sync_completed_ns=149_999_999))
