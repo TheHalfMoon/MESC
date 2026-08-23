@@ -125,10 +125,10 @@ def test_forged_manifest_object_is_rejected_before_resolver_call() -> None:
 
 
 def test_manifest_must_be_exact_validated_type() -> None:
-    manifest = _manifest()
+    resolver = cast(RuntimePhiObjectResolver, lambda _: None)
 
     with pytest.raises(PhiRuntimeIdentityManifestError, match="parser-validated"):
-        verify_phi_runtime_identity_evidence(cast(PhiRemoteCodeManifest, object()), lambda _: None)
+        verify_phi_runtime_identity_evidence(cast(PhiRemoteCodeManifest, object()), resolver)
 
 
 def test_resolver_exception_is_wrapped() -> None:
@@ -205,7 +205,7 @@ def test_numeric_identity_rejects_bool_negative_and_zero_inode() -> None:
     manifest = _manifest()
     valid = _observation(manifest.entries[0], inode=101)
     invalid_observations = (
-        replace(valid, verification_device=cast(int, True)),
+        replace(valid, verification_device=True),
         replace(valid, verification_device=-1),
         replace(valid, verification_inode=0),
         replace(valid, handoff_inode=-1),
