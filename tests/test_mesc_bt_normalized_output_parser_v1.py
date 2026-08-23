@@ -18,9 +18,7 @@ def _assert_parse_failure(raw_output: bytes, expected_kind: str) -> None:
 
 
 def test_valid_object_is_normalized_to_compact_sorted_key_utf8() -> None:
-    result = parse_normalized_output_fixture(
-        '{"z":2,"a":"é","nested":{"b":1,"a":true}}'.encode()
-    )
+    result = parse_normalized_output_fixture('{"z":2,"a":"é","nested":{"b":1,"a":true}}'.encode())
 
     expected = '{"a":"é","nested":{"a":true,"b":1},"z":2}'.encode()
     assert result.value == {"z": 2, "a": "é", "nested": {"b": 1, "a": True}}
