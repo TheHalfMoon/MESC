@@ -28,8 +28,8 @@ The pure in-memory verifier:
 - requires the exact fixture clock source `monotonic_ns` and records it in the
   deterministic evidence bytes;
 - requires configured sampling interval `<= 100 ms`;
-- validates raw frame timestamps as monotonic and rejects gaps greater than
-  100 ms;
+- validates raw frame timestamps as strictly monotonic and rejects any frame
+  gap greater than the declared configured sampling interval;
 - validates deterministic process-tree attribution from one controlled root
   process;
 - rejects duplicate PIDs, missing parents, parent cycles, ambiguous root
