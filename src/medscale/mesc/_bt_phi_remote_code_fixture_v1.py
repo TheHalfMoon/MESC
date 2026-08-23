@@ -95,6 +95,8 @@ def parse_phi_remote_code_manifest(payload: bytes) -> PhiRemoteCodeManifest:
         raise PhiRemoteCodeManifestSchemaError("top level must be a JSON array")
 
     raw_entries = cast(list[object], parsed)
+    if not raw_entries:
+        raise PhiRemoteCodeManifestSchemaError("manifest must contain at least one entry")
     entries = _validate_entries(raw_entries)
     canonical = canonical_phi_remote_code_manifest_bytes(entries)
     if payload != canonical:
@@ -264,6 +266,14 @@ def _verify_resolved_entry(
     entry: PhiRemoteCodeManifestEntry,
     resolved: ResolvedPhiRemoteCodeObject,
 ) -> None:
+    if type(resolved.object_type) is not str or type(resolved.mode) is not str:
+        raise PhiRemoteCodeManifestResolutionError(
+            f"resolver returned invalid object metadata for {entry.path!r}"
+        )
+    if type(resolved.git_blob_sha) is not str or type(resolved.sha256) is not str:
+        raise PhiRemoteCodeManifestResolutionError(
+            f"resolver returned invalid identity metadata for {entry.path!r}"
+        )
     if resolved.object_type != "blob":
         raise PhiRemoteCodeManifestResolutionError(
             f"Phi remote-code path {entry.path!r} must resolve to a blob"
