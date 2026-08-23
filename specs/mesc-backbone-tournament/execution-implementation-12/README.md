@@ -80,7 +80,8 @@ The production verifier introduced by this slice accepts:
 - one injected `RuntimeExecutorObjectObservation` per allowlisted path.
 
 `execution_code_sha` and `execution_code_tree` must be exact built-in strings
-matching lowercase 40-hex Git identities.
+matching lowercase 40-hex Git identities. They are expected identities only;
+this slice does not resolve the commit to its tree.
 
 ## Allowlist revalidation
 
@@ -153,6 +154,11 @@ values fail closed.
 This slice does **not**:
 
 - establish the future `EXECUTION_CODE_SHA` or `EXECUTION_CODE_TREE` values;
+- mechanically verify that `EXECUTION_CODE_SHA` resolves to
+  `EXECUTION_CODE_TREE`; that Section D Git commit/tree-resolution predicate
+  remains independent;
+- treat activation-identity binding of those values as proof of the Git
+  commit/tree-resolution predicate;
 - create or hash a new artifact format;
 - prove a real repository checkout, mount, inode, or file identity;
 - prove a real Git blob recomputation occurred;
@@ -171,6 +177,12 @@ This slice does **not**:
 Execution Implementation 1 remains the canonical parser/Git-tree allowlist
 primitive. Implementation 12 consumes its validated allowlist object but does
 not replace or weaken it.
+
+The existing activation-identity fixture binds independently supplied
+`execution_code_sha`, `execution_code_tree`, `repository_checkout_sha`, and
+`repository_checkout_tree` values into activation identity. That binding does
+not itself prove the Section D requirement that the execution commit resolve to
+the exact execution tree, and Implementation 12 does not add such a claim.
 
 The Section D requirement that the independently reviewed executable/imported
 executor-and-harness path set equal the allowlist exactly is deliberately not
