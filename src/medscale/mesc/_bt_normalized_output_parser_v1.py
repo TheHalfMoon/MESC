@@ -164,7 +164,7 @@ def _canonical_json_text(value: object) -> str:
     if type(value) is str:
         return json.dumps(value, ensure_ascii=False)
     if type(value) is ExactJsonNumber:
-        return cast(ExactJsonNumber, value).lexeme
+        return value.lexeme
     if type(value) is list:
         items = cast(list[object], value)
         return "[" + ",".join(_canonical_json_text(item) for item in items) + "]"
