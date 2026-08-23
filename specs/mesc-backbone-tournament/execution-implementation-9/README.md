@@ -44,7 +44,7 @@ The verifier accepts:
 1. a parser-validated canonical `PhiRemoteCodeManifest` from Execution
    Implementation 6; and
 2. one caller-supplied `PhiRemoteCodeExecutionObservation` representing a
-   separately produced full-lifecycle observation.
+   separately produced full-model-process-lifecycle observation.
 
 Before any observation value can be accepted, the verifier reserializes and
 reparses the manifest under the canonical manifest rules and requires the full
@@ -56,7 +56,7 @@ The observation must have exact type
 ```text
 executed_remote_code_paths
 observation_complete
-observation_started_before_first_remote_code_import
+observation_started_before_model_process_start
 observation_ended_after_model_process_exit
 dynamic_remote_fetch_attempts
 unattributed_remote_code_execution_events
@@ -73,7 +73,7 @@ The supplied observation must additionally prove with exact booleans that:
 
 ```text
 observation_complete = true
-observation_started_before_first_remote_code_import = true
+observation_started_before_model_process_start = true
 observation_ended_after_model_process_exit = true
 ```
 
@@ -88,9 +88,28 @@ Using `type(value) is bool` and `type(value) is int` prevents Python bool/int
 substitution at these boundaries.
 
 A positive or negative nonzero counter, a boolean counter, an incomplete
-observation, an observation that begins after the first remote-code import, an
+observation, an observation that begins after model-process start, an
 observation that ends before model-process exit, or any unattributed remote-code
 execution event is `BLOCKED` under this fixture contract.
+
+Starting observation before model-process start is intentionally stricter than
+starting only before the first remote-code import. Section C.3 prohibits remote
+fetch during the model-process lifecycle, so beginning later would leave an
+unobserved interval in which a fetch could occur before the first import.
+
+## Qualification history
+
+The initial PR head failed only mypy strict because one local loop-variable name
+was reused across boolean and integer tuple loops. That typing-only issue was
+repaired without changing the evidence contract.
+
+A subsequent internal review identified a semantic evidence-window gap in the
+original field `observation_started_before_first_remote_code_import`: it did not
+cover the interval from model-process start to the first remote-code import. The
+contract was therefore tightened to
+`observation_started_before_model_process_start`, and the dedicated tests were
+updated to require that exact full-lifecycle predicate. All evidence produced
+for superseded heads is historical only and does not qualify the current head.
 
 ## Deliberate non-claims
 
@@ -101,10 +120,10 @@ access a provider, or access credentials.
 
 The observation fields are injected evidence produced by a future separately
 reviewed instrumentation/sandbox layer. Requiring
-`observation_complete = true` does not make an untrusted producer complete;
-this fixture only validates the closed shape and consistency of supplied
-evidence. Production acceptance still requires independent trust in the
-producer and its provenance.
+`observation_complete = true` and lifecycle-boundary booleans does not make an
+untrusted producer complete or trustworthy; this fixture only validates the
+closed shape and consistency of supplied evidence. Production acceptance still
+requires independent trust in the producer and its provenance.
 
 This slice does not:
 
