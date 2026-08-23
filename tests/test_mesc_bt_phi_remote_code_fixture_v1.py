@@ -7,8 +7,10 @@ import hashlib
 import pytest
 
 from medscale.mesc._bt_phi_remote_code_fixture_v1 import (
+    PhiRemoteCodeManifest,
     PhiRemoteCodeManifestCanonicalizationError,
     PhiRemoteCodeManifestDuplicateMemberError,
+    PhiRemoteCodeManifestEntry,
     PhiRemoteCodeManifestJsonError,
     PhiRemoteCodeManifestResolutionError,
     PhiRemoteCodeManifestSchemaError,
@@ -254,6 +256,52 @@ def test_noncanonical_serialization_is_rejected(payload: bytes) -> None:
 def test_nonstandard_json_constant_is_rejected() -> None:
     with pytest.raises(PhiRemoteCodeManifestJsonError, match="constant"):
         parse_phi_remote_code_manifest(b"[NaN]")
+
+
+def test_forged_manifest_digest_is_rejected_before_resolution() -> None:
+    parsed = parse_phi_remote_code_manifest(_single_entry_payload())
+    forged = PhiRemoteCodeManifest(
+        entries=parsed.entries,
+        sha256="0" * 64,
+        byte_length=parsed.byte_length,
+    )
+    resolver_called = False
+
+    def resolve(_: str) -> ResolvedPhiRemoteCodeObject:
+        nonlocal resolver_called
+        resolver_called = True
+        return ResolvedPhiRemoteCodeObject("blob", "100644", _BLOB_A, 12, _DIGEST_A)
+
+    with pytest.raises(PhiRemoteCodeManifestResolutionError, match="identity"):
+        verify_phi_remote_code_git_objects(forged, resolve)
+
+    assert resolver_called is False
+
+
+def test_forged_manifest_content_is_rejected_before_resolution() -> None:
+    forged = PhiRemoteCodeManifest(
+        entries=(
+            PhiRemoteCodeManifestEntry(
+                byte_length=12,
+                git_blob_sha=_BLOB_A,
+                path="../modeling_phi4mm.py",
+                sha256=_DIGEST_A,
+            ),
+        ),
+        sha256="0" * 64,
+        byte_length=1,
+    )
+    resolver_called = False
+
+    def resolve(_: str) -> ResolvedPhiRemoteCodeObject:
+        nonlocal resolver_called
+        resolver_called = True
+        return ResolvedPhiRemoteCodeObject("blob", "100644", _BLOB_A, 12, _DIGEST_A)
+
+    with pytest.raises(PhiRemoteCodeManifestResolutionError, match="valid canonical"):
+        verify_phi_remote_code_git_objects(forged, resolve)
+
+    assert resolver_called is False
 
 
 def test_regular_file_blob_resolution_passes() -> None:
