@@ -58,8 +58,10 @@ whose identity is mechanically proven to be the same verified inode and bytes
 on an immutable read-only mount immediately before import.
 
 This slice implements only a pure verifier for injected evidence representing
-those facts. It intentionally validates the exact `openat2` branch of the
-contract; it does not attempt to qualify a separately reviewed equivalent.
+those facts. It intentionally validates the exact `openat2` branch and the
+same-inode/same-bytes immutable-read-only-handoff branch of the contract; it
+does not attempt to qualify a separately reviewed equivalent or a same-open-file
+descriptor handoff.
 
 ## Implemented fixture contract
 
@@ -81,8 +83,8 @@ The verifier:
   canonical manifest entry;
 - requires handoff device, inode, byte length, and SHA-256 to equal the exact
   verified runtime object;
-- requires the handoff mount to be read-only and the identity check to be
-  recorded as immediately before import;
+- requires the handoff mount to be both read-only and immutable;
+- requires the identity check to be recorded as immediately before import;
 - wraps resolver failures and malformed evidence in a typed fail-closed error
   surface.
 
@@ -97,6 +99,10 @@ file, mount a filesystem, inspect a real inode, or acquire any Phi object.
 Therefore it does not prove that a future runtime actually used the claimed
 syscalls or flags; it proves only that supplied evidence satisfies this closed
 fixture contract.
+
+The boolean `handoff_mount_immutable` field is evidence supplied by a future
+trusted acquisition/handoff layer. This fixture validates that the evidence is
+present and exact; it does not establish mount immutability by itself.
 
 It does not:
 
