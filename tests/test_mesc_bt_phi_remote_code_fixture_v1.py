@@ -258,6 +258,20 @@ def test_nonstandard_json_constant_is_rejected() -> None:
         parse_phi_remote_code_manifest(b"[NaN]")
 
 
+def test_oversized_integer_json_failure_is_fail_closed() -> None:
+    payload = b"[" + b"9" * 5000 + b"]"
+
+    with pytest.raises(PhiRemoteCodeManifestJsonError, match="valid JSON"):
+        parse_phi_remote_code_manifest(payload)
+
+
+def test_deep_json_nesting_is_fail_closed() -> None:
+    payload = b"[" * 20000 + b"]" * 20000
+
+    with pytest.raises(PhiRemoteCodeManifestJsonError, match="valid JSON"):
+        parse_phi_remote_code_manifest(payload)
+
+
 def test_forged_manifest_digest_is_rejected_before_resolution() -> None:
     parsed = parse_phi_remote_code_manifest(_single_entry_payload())
     forged = PhiRemoteCodeManifest(
