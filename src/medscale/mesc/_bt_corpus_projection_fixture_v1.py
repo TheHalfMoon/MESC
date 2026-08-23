@@ -132,7 +132,9 @@ def _validate_identity_snapshot(identity: CorpusProjectionIdentityEvidence) -> N
             raise CorpusProjectionIdentityError(f"identity field {name} must be an exact string")
 
     if type(identity.materialized_corpus_item_count) is not int:
-        raise CorpusProjectionIdentityError("materialized corpus item count must be an exact integer")
+        raise CorpusProjectionIdentityError(
+            "materialized corpus item count must be an exact integer"
+        )
 
     required = (
         ("corpus_spec_sha256", identity.corpus_spec_sha256, _FROZEN_CORPUS_SPEC_SHA256),
@@ -164,10 +166,14 @@ def _validate_identity_snapshot(identity: CorpusProjectionIdentityEvidence) -> N
     )
     for name, value, expected in required:
         if value != expected:
-            raise CorpusProjectionIdentityError(f"identity field {name} does not match frozen value")
+            raise CorpusProjectionIdentityError(
+                f"identity field {name} does not match frozen value"
+            )
 
     if identity.materialized_corpus_item_count != _FROZEN_MATERIALIZED_CORPUS_ITEM_COUNT:
-        raise CorpusProjectionIdentityError("materialized corpus item count does not match frozen value")
+        raise CorpusProjectionIdentityError(
+            "materialized corpus item count does not match frozen value"
+        )
     if identity.r2_provenance_audit_result != "PASS":
         raise CorpusProjectionIdentityError("R2 provenance audit is not PASS")
     if identity.corpus_conformance_audit_result != "PASS":
