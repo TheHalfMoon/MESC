@@ -195,9 +195,7 @@ def _validate_policy_values(document: dict[str, object]) -> None:
 
 def _require_exact_json_value(actual: object, expected: object, *, path: str) -> None:
     if type(actual) is not type(expected):
-        raise ProtocolPolicySchemaError(
-            f"{path} has wrong JSON scalar/container type"
-        )
+        raise ProtocolPolicySchemaError(f"{path} has wrong JSON scalar/container type")
 
     if type(expected) is dict:
         actual_map = cast(dict[str, object], actual)
@@ -205,11 +203,7 @@ def _require_exact_json_value(actual: object, expected: object, *, path: str) ->
         if frozenset(actual_map) != frozenset(expected_map):
             raise ProtocolPolicySchemaError(f"{path} has wrong member set")
         for key, nested_expected in expected_map.items():
-            _require_exact_json_value(
-                actual_map[key],
-                nested_expected,
-                path=f"{path}.{key}",
-            )
+            _require_exact_json_value(actual_map[key], nested_expected, path=f"{path}.{key}")
         return
 
     if type(expected) is list:
@@ -218,11 +212,7 @@ def _require_exact_json_value(actual: object, expected: object, *, path: str) ->
         if len(actual_list) != len(expected_list):
             raise ProtocolPolicySchemaError(f"{path} has wrong list length")
         for index, nested_expected in enumerate(expected_list):
-            _require_exact_json_value(
-                actual_list[index],
-                nested_expected,
-                path=f"{path}[{index}]",
-            )
+            _require_exact_json_value(actual_list[index], nested_expected, path=f"{path}[{index}]")
         return
 
     if actual != expected:
@@ -304,14 +294,10 @@ def _object_from_unique_pairs(
     document: dict[str, object] = {}
     for key, value in pairs:
         if key in document:
-            raise ProtocolPolicyDuplicateMemberError(
-                f"duplicate JSON member: {key!r}"
-            )
+            raise ProtocolPolicyDuplicateMemberError(f"duplicate JSON member: {key!r}")
         document[key] = value
     return document
 
 
 def _reject_json_constant(value: str) -> Never:
-    raise ProtocolPolicyJsonError(
-        f"non-standard JSON constant is prohibited: {value}"
-    )
+    raise ProtocolPolicyJsonError(f"non-standard JSON constant is prohibited: {value}")
