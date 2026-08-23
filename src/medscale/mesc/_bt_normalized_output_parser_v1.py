@@ -78,7 +78,10 @@ def parse_normalized_output_fixture(raw_output: bytes) -> NormalizedOutputParseR
     try:
         text = raw_output.decode("utf-8", errors="strict")
     except UnicodeDecodeError as error:
-        raise NormalizedOutputParseError("invalid_utf8", "raw output is not valid UTF-8") from error
+        raise NormalizedOutputParseError(
+            "invalid_utf8",
+            "raw output is not valid UTF-8",
+        ) from error
 
     start_index = _skip_ascii_whitespace(text, 0)
     candidate = text[start_index:]
@@ -99,7 +102,12 @@ def parse_normalized_output_fixture(raw_output: bytes) -> NormalizedOutputParseR
         raise NormalizedOutputParseError("duplicate_key", str(error)) from error
     except _NonStandardJsonConstantError as error:
         raise NormalizedOutputParseError("invalid_json", str(error)) from error
-    except (json.JSONDecodeError, RecursionError, ValueError, OverflowError) as error:
+    except (
+        json.JSONDecodeError,
+        RecursionError,
+        ValueError,
+        OverflowError,
+    ) as error:
         raise NormalizedOutputParseError(
             "invalid_json",
             "raw output is not one valid JSON value",
@@ -129,7 +137,13 @@ def parse_normalized_output_fixture(raw_output: bytes) -> NormalizedOutputParseR
             sort_keys=True,
         )
         normalized_bytes = normalized_text.encode("utf-8", errors="strict")
-    except (TypeError, ValueError, UnicodeEncodeError, OverflowError, RecursionError) as error:
+    except (
+        TypeError,
+        ValueError,
+        UnicodeEncodeError,
+        OverflowError,
+        RecursionError,
+    ) as error:
         raise NormalizedOutputParseError(
             "invalid_json",
             "parsed JSON cannot be normalized as canonical UTF-8 JSON",
