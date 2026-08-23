@@ -65,6 +65,7 @@ class RuntimePhiObjectObservation:
     handoff_byte_length: int
     handoff_sha256: str
     handoff_mount_read_only: bool
+    handoff_mount_immutable: bool
     identity_checked_immediately_before_import: bool
 
 
@@ -169,6 +170,7 @@ def _verify_boolean_controls(
         ("input_root_read_only", observation.input_root_read_only),
         ("fstat_regular_file", observation.fstat_regular_file),
         ("handoff_mount_read_only", observation.handoff_mount_read_only),
+        ("handoff_mount_immutable", observation.handoff_mount_immutable),
         (
             "identity_checked_immediately_before_import",
             observation.identity_checked_immediately_before_import,
