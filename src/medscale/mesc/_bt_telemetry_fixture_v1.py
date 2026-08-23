@@ -127,7 +127,7 @@ def qualify_fixture_telemetry(
     if not frames:
         raise FixtureTelemetryBlockedError("at least one telemetry frame is required")
 
-    max_gap_ns = MAX_SAMPLE_INTERVAL_MS * 1_000_000
+    max_gap_ns = qualification.sampling_interval_ms * 1_000_000
     previous_ts: int | None = None
     peak_bytes = 0
     frame_documents: list[dict[str, object]] = []
@@ -148,7 +148,9 @@ def qualify_fixture_telemetry(
                     "telemetry frame timestamps must be strictly increasing"
                 )
             if frame.monotonic_ns - previous_ts > max_gap_ns:
-                raise FixtureTelemetryBlockedError("telemetry frame gap exceeds 100 ms")
+                raise FixtureTelemetryBlockedError(
+                    "telemetry frame gap exceeds configured sampling interval"
+                )
         previous_ts = frame.monotonic_ns
 
         owned_pids = _controlled_process_tree(frame.processes, qualification.controlled_root_pid)
