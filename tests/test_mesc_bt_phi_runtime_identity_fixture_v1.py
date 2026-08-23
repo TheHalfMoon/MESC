@@ -83,6 +83,7 @@ def _observation(
         handoff_byte_length=entry.byte_length,
         handoff_sha256=entry.sha256,
         handoff_mount_read_only=True,
+        handoff_mount_immutable=True,
         identity_checked_immediately_before_import=True,
     )
 
@@ -192,6 +193,7 @@ def test_runtime_control_booleans_all_must_be_exact_true() -> None:
         replace(valid, input_root_read_only=False),
         replace(valid, fstat_regular_file=False),
         replace(valid, handoff_mount_read_only=False),
+        replace(valid, handoff_mount_immutable=False),
         replace(valid, identity_checked_immediately_before_import=False),
         replace(valid, descriptor_relative=cast(bool, 1)),
     )
