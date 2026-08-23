@@ -236,9 +236,7 @@ def test_frame_gap_over_declared_interval_blocks() -> None:
         _frame(176_000_000, root, child, system),
     )
     with pytest.raises(FixtureTelemetryBlockedError, match="configured sampling interval"):
-        qualify_fixture_telemetry(
-            replace(qualification, sampling_interval_ms=50, frames=frames)
-        )
+        qualify_fixture_telemetry(replace(qualification, sampling_interval_ms=50, frames=frames))
 
 
 def test_frame_gap_equal_declared_interval_is_allowed() -> None:
