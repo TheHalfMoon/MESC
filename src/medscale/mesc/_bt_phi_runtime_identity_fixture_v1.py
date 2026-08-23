@@ -146,6 +146,10 @@ def _verify_path_and_open_contract(
         raise PhiRuntimeIdentityResolutionError(
             f"runtime resolve flags are malformed for {entry.path!r}"
         )
+    if any(type(flag) is not str for flag in observation.resolve_flags):
+        raise PhiRuntimeIdentityResolutionError(
+            f"runtime resolve flags must contain exact strings for {entry.path!r}"
+        )
     if observation.resolve_flags != _REQUIRED_RESOLVE_FLAGS:
         raise PhiRuntimeIdentityResolutionError(
             f"runtime resolve flags do not match the required set for {entry.path!r}"
@@ -153,6 +157,10 @@ def _verify_path_and_open_contract(
     if type(observation.open_flags) is not frozenset:
         raise PhiRuntimeIdentityResolutionError(
             f"runtime open flags are malformed for {entry.path!r}"
+        )
+    if any(type(flag) is not str for flag in observation.open_flags):
+        raise PhiRuntimeIdentityResolutionError(
+            f"runtime open flags must contain exact strings for {entry.path!r}"
         )
     if observation.open_flags != _REQUIRED_OPEN_FLAGS:
         raise PhiRuntimeIdentityResolutionError(
