@@ -2,12 +2,15 @@
 
 Status: **DRAFT / FIXTURE-ONLY / NO EXECUTION AUTHORITY**
 
-This slice is based directly on canonical `main`:
+This slice has been merge-forwarded onto the current canonical base:
 
 ```text
-BASE_MAIN_SHA = ab4d64f8708f649d33e494a4bed0272a2a526d9c
-BASE_MAIN_TREE = 8fb0ccb9377a97b024e674b99f4d5ff89e34099e
+BASE_MAIN_SHA = 3f22d2e71d39c85775c6f9db7c70b69693cb9ce5
+BASE_MAIN_TREE = bc5253fb0abc142abcace81eb0a9f628250172bb
 FD-MESC-BT-EXEC-1 = CONDITIONAL_AUTHORIZATION_CANONICAL
+PR_140 = CLOSED_CANONICAL
+PR_141 = CLOSED_CANONICAL
+PR_142 = CLOSED_CANONICAL
 EXECUTION_ACTIVATION = REQUIRED
 ```
 
@@ -22,6 +25,8 @@ The pure in-memory verifier:
 
 - requires the exact `NVIDIA H100 80GB HBM3` model identity and a non-empty
   printable-ASCII GPU UUID;
+- requires the exact fixture clock source `monotonic_ns` and records it in the
+  deterministic evidence bytes;
 - requires configured sampling interval `<= 100 ms`;
 - validates raw frame timestamps as monotonic and rejects gaps greater than
   100 ms;
@@ -31,10 +36,10 @@ The pure in-memory verifier:
   identity, and unexpected GPU compute processes;
 - aggregates GPU memory over the complete controlled process tree for each
   frame and derives deterministic peak VRAM in MiB;
-- requires monitoring to begin before the model/probe start marker;
-- requires terminal completion before device synchronization, monitoring to
-  continue through synchronization, and terminal telemetry capture after
-  synchronization;
+- requires monitoring to begin strictly before the model/probe start marker;
+- requires terminal completion strictly before device synchronization,
+  monitoring to continue through synchronization, and terminal telemetry
+  capture strictly after synchronization;
 - validates a synthetic high-resolution monotonic latency probe by exact
   timestamp recomputation;
 - emits deterministic canonical JSON evidence bytes and a SHA-256 over those
@@ -56,17 +61,15 @@ the future activation-bound runtime verifier. The final implementation must
 still consume live telemetry from the exact activation-bound H100 and bind the
 result into the complete execution artifact manifest.
 
-This PR is independent of draft PRs #140, #141, and #142 and must not be
-treated as depending on their unmerged code.
+PRs #140, #141, and #142 are now canonical predecessors. This slice is
+merge-forwarded onto their canonical main state but remains independently
+bounded to the three files in this PR.
 
-## Local fixture qualification before push
+## Qualification
 
-```text
-py_compile = PASS
-fixture tests = 23 passed
-```
-
-Only synthetic in-memory telemetry observations were used.
+Historical pre-repair fixture qualification is superseded by the current-head
+repair. Only fresh exact-head GitHub CI, CodeQL, scope reconciliation, and the
+permitted exact-head review may qualify this revision.
 
 ## Hard boundary
 
@@ -84,6 +87,6 @@ BACKBONE_TOURNAMENT_EXECUTION = NOT_AUTHORIZED
 TRAINING = NOT_AUTHORIZED
 ```
 
-Keep this work Draft until exact-head CI, CodeQL, scope reconciliation, and an
-independently permitted review are all proven. A head mutation burns prior
+Keep this work Draft until exact-head CI, CodeQL, scope reconciliation, and the
+permitted exact-head review are all proven. A head mutation burns prior
 head-specific evidence.
