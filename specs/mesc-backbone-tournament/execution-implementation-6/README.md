@@ -40,7 +40,7 @@ sandbox, or execution-result path is changed.
 The pure verifier:
 
 - requires duplicate-member-safe UTF-8 JSON with no BOM;
-- requires a top-level JSON array;
+- requires a non-empty top-level JSON array;
 - requires each entry to contain exactly `byte_length`, `git_blob_sha`, `path`,
   and `sha256`;
 - requires `byte_length` to be an exact JSON integer `>= 0`;
@@ -57,6 +57,8 @@ The pure verifier:
 - returns the exact manifest byte length and SHA-256;
 - verifies injected pinned-revision object facts require a regular-file Git
   blob with mode exactly `100644` or `100755`;
+- fail-closes malformed injected resolver metadata rather than leaking raw type
+  errors;
 - verifies the injected Git blob SHA, exact byte length, and SHA-256 equal the
   canonical manifest entry.
 
@@ -89,11 +91,12 @@ It does not prove:
 
 Those remain separately reviewed fail-closed prerequisites before activation.
 
-An empty canonical manifest array is schema-valid at this parser layer because
-the normative entry grammar does not itself define a minimum array length.
-This slice explicitly does **not** treat an empty array as proof of remote-code
-set completeness; later complete-set/security-review qualification must fail
-closed unless the actual executable/import graph is independently established.
+The parser additionally rejects an empty manifest. Phi is authorized only under
+`trust_remote_code=true`; treating an empty manifest as qualified would create
+an avoidable completeness ambiguity. This stricter fail-closed rule does not
+claim the manifest is complete: later complete-set and security-review
+qualification must still independently establish the actual executable/import
+graph.
 
 ## Hard boundary
 
