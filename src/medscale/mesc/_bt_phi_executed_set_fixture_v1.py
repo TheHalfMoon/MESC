@@ -113,8 +113,8 @@ def _validate_observation_shape(observation: PhiRemoteCodeExecutionObservation) 
             observation.unattributed_remote_code_execution_events,
         ),
     )
-    for name, value in counters:
-        if type(value) is not int or value != 0:
+    for name, counter_value in counters:
+        if type(counter_value) is not int or counter_value != 0:
             raise PhiExecutedSetObservationError(
                 f"execution observation counter {name} must be exact integer zero"
             )
