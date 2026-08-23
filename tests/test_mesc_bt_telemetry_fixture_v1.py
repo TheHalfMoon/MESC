@@ -219,8 +219,44 @@ def test_frame_gap_over_100_ms_blocks() -> None:
     qualification = _qualification()
     frames = list(qualification.frames)
     frames[1] = replace(frames[1], monotonic_ns=100_000_001)
-    with pytest.raises(FixtureTelemetryBlockedError, match="gap exceeds 100 ms"):
+    with pytest.raises(FixtureTelemetryBlockedError, match="configured sampling interval"):
         qualify_fixture_telemetry(replace(qualification, frames=tuple(frames)))
+
+
+def test_frame_gap_over_declared_interval_blocks() -> None:
+    qualification = _qualification()
+    root = _process(100, None, 1000)
+    child = _process(101, 100, 250)
+    system = _process(900, None, 0, compute=False)
+    frames = (
+        _frame(0, root, system),
+        _frame(50_000_001, root, child, system),
+        _frame(100_000_001, root, child, system),
+        _frame(150_000_001, root, child, system),
+        _frame(176_000_000, root, child, system),
+    )
+    with pytest.raises(FixtureTelemetryBlockedError, match="configured sampling interval"):
+        qualify_fixture_telemetry(
+            replace(qualification, sampling_interval_ms=50, frames=frames)
+        )
+
+
+def test_frame_gap_equal_declared_interval_is_allowed() -> None:
+    qualification = _qualification()
+    root = _process(100, None, 1000)
+    child = _process(101, 100, 250)
+    system = _process(900, None, 0, compute=False)
+    frames = (
+        _frame(0, root, system),
+        _frame(50_000_000, root, child, system),
+        _frame(100_000_000, root, child, system),
+        _frame(150_000_000, root, child, system),
+        _frame(176_000_000, root, child, system),
+    )
+    result = qualify_fixture_telemetry(
+        replace(qualification, sampling_interval_ms=50, frames=frames)
+    )
+    assert result.frame_count == 5
 
 
 def test_first_frame_after_probe_start_blocks() -> None:
