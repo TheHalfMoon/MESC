@@ -34,6 +34,19 @@ _REQUIRED_RESOLVE_FLAGS = frozenset(
 _REQUIRED_OPEN_FLAGS = frozenset({"O_CLOEXEC", "O_NOFOLLOW", "O_RDONLY"})
 
 
+class _FlagSpoof:
+    """Hash/equality-compatible non-string used to regression-test flag identity."""
+
+    def __init__(self, value: str) -> None:
+        self.value = value
+
+    def __hash__(self) -> int:
+        return hash(self.value)
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, str) and other == self.value
+
+
 def _entry(
     byte_length: int,
     blob_sha: str,
@@ -95,6 +108,15 @@ def _constant_resolver(
         return observation
 
     return resolve
+
+
+def _spoofed_flag_set(required: frozenset[str], spoof_value: str) -> frozenset[str]:
+    values: set[object] = set(required)
+    values.remove(spoof_value)
+    values.add(_FlagSpoof(spoof_value))
+    spoofed = frozenset(values)
+    assert spoofed == required
+    return cast(frozenset[str], spoofed)
 
 
 def test_valid_runtime_identity_evidence_covers_every_manifest_entry() -> None:
@@ -187,6 +209,18 @@ def test_resolve_flags_must_be_exact_openat2_set() -> None:
         verify_phi_runtime_identity_evidence(manifest, _constant_resolver(invalid))
 
 
+def test_resolve_flags_reject_non_string_equality_spoof() -> None:
+    manifest = _manifest()
+    valid = _observation(manifest.entries[0], inode=101)
+    spoofed = _spoofed_flag_set(_REQUIRED_RESOLVE_FLAGS, "RESOLVE_BENEATH")
+
+    with pytest.raises(PhiRuntimeIdentityResolutionError, match="exact strings"):
+        verify_phi_runtime_identity_evidence(
+            manifest,
+            _constant_resolver(replace(valid, resolve_flags=spoofed)),
+        )
+
+
 def test_open_flags_must_be_exact_required_set() -> None:
     manifest = _manifest()
     valid = _observation(manifest.entries[0], inode=101)
@@ -194,6 +228,18 @@ def test_open_flags_must_be_exact_required_set() -> None:
     invalid = replace(valid, open_flags=frozenset({"O_CLOEXEC", "O_RDONLY"}))
     with pytest.raises(PhiRuntimeIdentityResolutionError, match="open flags"):
         verify_phi_runtime_identity_evidence(manifest, _constant_resolver(invalid))
+
+
+def test_open_flags_reject_non_string_equality_spoof() -> None:
+    manifest = _manifest()
+    valid = _observation(manifest.entries[0], inode=101)
+    spoofed = _spoofed_flag_set(_REQUIRED_OPEN_FLAGS, "O_RDONLY")
+
+    with pytest.raises(PhiRuntimeIdentityResolutionError, match="exact strings"):
+        verify_phi_runtime_identity_evidence(
+            manifest,
+            _constant_resolver(replace(valid, open_flags=spoofed)),
+        )
 
 
 def test_runtime_control_booleans_all_must_be_exact_true() -> None:
