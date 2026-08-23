@@ -38,7 +38,7 @@ class PhiRemoteCodeExecutionObservation:
 
     executed_remote_code_paths: tuple[str, ...]
     observation_complete: bool
-    observation_started_before_first_remote_code_import: bool
+    observation_started_before_model_process_start: bool
     observation_ended_after_model_process_exit: bool
     dynamic_remote_fetch_attempts: int
     unattributed_remote_code_execution_events: int
@@ -92,8 +92,8 @@ def _validate_observation_shape(observation: PhiRemoteCodeExecutionObservation) 
     controls = (
         ("observation_complete", observation.observation_complete),
         (
-            "observation_started_before_first_remote_code_import",
-            observation.observation_started_before_first_remote_code_import,
+            "observation_started_before_model_process_start",
+            observation.observation_started_before_model_process_start,
         ),
         (
             "observation_ended_after_model_process_exit",
