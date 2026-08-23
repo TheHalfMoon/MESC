@@ -38,7 +38,7 @@ def test_valid_object_is_normalized_to_compact_sorted_key_utf8() -> None:
 
 
 def test_leading_and_trailing_ascii_whitespace_are_allowed() -> None:
-    result = parse_normalized_output_fixture(b" \t\r\n{\"b\":2,\"a\":1}\n\r\t ")
+    result = parse_normalized_output_fixture(b' \t\r\n{"b":2,"a":1}\n\r\t ')
     assert result.normalized_bytes == b'{"a":1,"b":2}'
 
 
@@ -71,8 +71,8 @@ def test_invalid_utf8_fails_closed() -> None:
 @pytest.mark.parametrize(
     "raw_output",
     [
-        b"```json\n{\"a\":1}\n```",
-        b"```\n{\"a\":1}\n```",
+        b'```json\n{"a":1}\n```',
+        b'```\n{"a":1}\n```',
         b'{"a":1}```',
     ],
 )
