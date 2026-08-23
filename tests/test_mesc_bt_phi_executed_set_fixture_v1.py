@@ -15,6 +15,7 @@ from medscale.mesc._bt_phi_executed_set_fixture_v1 import (
 )
 from medscale.mesc._bt_phi_remote_code_fixture_v1 import (
     PhiRemoteCodeManifest,
+    PhiRemoteCodeManifestEntry,
     parse_phi_remote_code_manifest,
 )
 
@@ -32,6 +33,14 @@ class _PathSpoof:
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, str) and other == self.value
+
+
+class _StringSubclass(str):
+    """String subclass that compares equal to the canonical plain string."""
+
+
+class _IntSubclass(int):
+    """Integer subclass that compares equal to the canonical plain integer."""
 
 
 def _entry(byte_length: int, blob_sha: str, path: str, sha256: str) -> str:
@@ -83,6 +92,39 @@ def test_forged_manifest_is_rejected_before_observation_validation() -> None:
 
     with pytest.raises(PhiExecutedSetManifestError, match="canonical bytes"):
         verify_phi_executed_set_evidence(forged, malformed_observation)
+
+
+def test_manifest_revalidation_rejects_nested_string_subclass_spoof() -> None:
+    manifest = _manifest()
+    first, second = manifest.entries
+    forged_first = PhiRemoteCodeManifestEntry(
+        byte_length=first.byte_length,
+        git_blob_sha=first.git_blob_sha,
+        path=_StringSubclass(first.path),
+        sha256=first.sha256,
+    )
+    forged = PhiRemoteCodeManifest(
+        entries=(forged_first, second),
+        sha256=manifest.sha256,
+        byte_length=manifest.byte_length,
+    )
+    assert forged == manifest
+
+    with pytest.raises(PhiExecutedSetManifestError, match="non-exact field types"):
+        verify_phi_executed_set_evidence(forged, _observation(manifest))
+
+
+def test_manifest_revalidation_rejects_outer_integer_subclass_spoof() -> None:
+    manifest = _manifest()
+    forged = PhiRemoteCodeManifest(
+        entries=manifest.entries,
+        sha256=manifest.sha256,
+        byte_length=_IntSubclass(manifest.byte_length),
+    )
+    assert forged == manifest
+
+    with pytest.raises(PhiExecutedSetManifestError, match="non-exact field types"):
+        verify_phi_executed_set_evidence(forged, _observation(manifest))
 
 
 def test_manifest_requires_exact_validated_type() -> None:
