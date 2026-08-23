@@ -234,8 +234,8 @@ def _validate_observation_snapshot(observation: CorpusProjectionObservation) -> 
         ("unattributed_projection_events", observation.unattributed_projection_events),
         ("prompt_serialization_events", observation.prompt_serialization_events),
     )
-    for name, value in counters:
-        if type(value) is not int or value != 0:
+    for name, counter_value in counters:
+        if type(counter_value) is not int or counter_value != 0:
             raise CorpusProjectionObservationError(
                 f"projection counter {name} must be exact integer zero"
             )
