@@ -67,11 +67,9 @@ def test_valid_canonical_manifest_binds_exact_bytes_and_digest() -> None:
     assert not payload.endswith(b"\n")
 
 
-def test_empty_canonical_array_is_schema_valid_but_claims_no_completeness() -> None:
-    manifest = parse_phi_remote_code_manifest(b"[]")
-
-    assert manifest.entries == ()
-    assert manifest.sha256 == hashlib.sha256(b"[]").hexdigest()
+def test_empty_manifest_is_rejected() -> None:
+    with pytest.raises(PhiRemoteCodeManifestSchemaError, match="at least one"):
+        parse_phi_remote_code_manifest(b"[]")
 
 
 def test_utf8_bom_is_rejected() -> None:
@@ -369,6 +367,51 @@ def test_exact_object_identity_mismatches_are_blocked(
         return resolved
 
     with pytest.raises(PhiRemoteCodeManifestResolutionError, match=field):
+        verify_phi_remote_code_git_objects(manifest, resolve)
+
+
+@pytest.mark.parametrize(
+    "resolved",
+    [
+        ResolvedPhiRemoteCodeObject(
+            1,  # type: ignore[arg-type]
+            "100644",
+            _BLOB_A,
+            12,
+            _DIGEST_A,
+        ),
+        ResolvedPhiRemoteCodeObject(
+            "blob",
+            100644,  # type: ignore[arg-type]
+            _BLOB_A,
+            12,
+            _DIGEST_A,
+        ),
+        ResolvedPhiRemoteCodeObject(
+            "blob",
+            "100644",
+            1,  # type: ignore[arg-type]
+            12,
+            _DIGEST_A,
+        ),
+        ResolvedPhiRemoteCodeObject(
+            "blob",
+            "100644",
+            _BLOB_A,
+            12,
+            1,  # type: ignore[arg-type]
+        ),
+    ],
+)
+def test_invalid_resolved_metadata_types_are_fail_closed(
+    resolved: ResolvedPhiRemoteCodeObject,
+) -> None:
+    manifest = parse_phi_remote_code_manifest(_single_entry_payload())
+
+    def resolve(_: str) -> ResolvedPhiRemoteCodeObject:
+        return resolved
+
+    with pytest.raises(PhiRemoteCodeManifestResolutionError, match="metadata"):
         verify_phi_remote_code_git_objects(manifest, resolve)
 
 
