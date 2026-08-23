@@ -131,10 +131,11 @@ def _snapshot_and_validate_observation(
 ) -> OutputPipelineObservation:
     if type(observation) is not OutputPipelineObservation:
         raise OutputPipelineObservationError("output-pipeline observation has invalid type")
-    if type(observation.processing_order) is not tuple:
+
+    processing_order = observation.processing_order
+    if type(processing_order) is not tuple:
         raise OutputPipelineObservationError("processing_order must be an exact tuple")
 
-    processing_order = tuple(observation.processing_order)
     snapshot = OutputPipelineObservation(
         processing_order=processing_order,
         contract_identities_verified_before_processing=(
