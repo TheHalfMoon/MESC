@@ -4,7 +4,7 @@ Status: **DRAFT CANONICAL-ADOPTION REPAIR — NO EXECUTION AUTHORITY**
 
 Date: 2026-08-23
 
-This document reconciles canonical truth after PR #146 was merged before its required independent external exact-head review had reached a terminal disposition.
+This document reconciles canonical truth after PR #146 merged without durable, independently retrievable evidence proving that its required independent external exact-head review had completed before merge.
 
 This is a documentation and governance reconciliation only. It authorizes nothing. It does not rewrite Git history, does not pretend that the historical pre-merge ordering gate passed, and does not grant execution activation.
 
@@ -35,7 +35,7 @@ No force-push, rebase, destructive history rewriting, rollback, or replacement m
 
 ## 2. Exact-head evidence that existed before merge
 
-The following evidence was complete on exact implementation head `334982f2c7d222fc8501b2327a16652a60cda3ab` before PR #146 merged:
+The following exact-head technical evidence was complete on implementation head `334982f2c7d222fc8501b2327a16652a60cda3ab` before PR #146 merged:
 
 ```text
 CI_RUN_ID = 32612678792
@@ -60,20 +60,22 @@ INTERNAL_BLOCKING_FINDINGS = 0
 UNRESOLVED_REVIEW_THREADS_AT_LAST_PREMERGE_CHECK = 0
 ```
 
+These facts do not substitute for an independent external exact-head review.
+
 The implementation fixture remained non-executing. Its source/test behavior was confined to pure in-memory validation and deterministic derivation. It did not perform filesystem traversal, provider access, GPU allocation, model access, credential work, prompt serialization, inference, generation, ranking, winner selection, or training.
 
-## 3. Pre-merge ordering defect
+## 3. Durable external-review chronology
 
-The required independent external exact-head review had **not** completed before merge.
+The original pre-merge independent-external-review gate cannot be proven satisfied from durable, independently retrievable evidence currently available on GitHub.
 
-The relevant chronology is mechanically distinguishable:
+The durable chronology is:
 
 ```text
-QODO_PREMERGE_STATUS_COMMENT_ID = 5383810489
-QODO_PREMERGE_STATUS_CREATED_AT = 2026-08-23T02:31:22Z
-QODO_PREMERGE_STATUS = "Qodo is busy working"
-
 IMPLEMENTATION_MERGED_AT = 2026-08-23T02:31:31Z
+
+QODO_SUMMARY_COMMENT_ID = 5383812973
+QODO_SUMMARY_CREATED_AT = 2026-08-23T02:32:04Z
+QODO_SUMMARY_KIND = PR_SUMMARY
 
 QODO_FINAL_REVIEW_COMMENT_ID = 5383825420
 QODO_FINAL_REVIEW_CREATED_AT = 2026-08-23T02:35:38Z
@@ -84,7 +86,7 @@ QODO_REQUIREMENT_GAPS = 0
 QODO_DISPOSITION = NO_MATERIAL_ISSUES
 ```
 
-Therefore the final Qodo review completed after the merge. It cannot be reclassified as a pre-merge review.
+Both durable Qodo comments above are post-merge. The final Qodo review therefore cannot be reclassified as a pre-merge review.
 
 A separate exact-head CodeRabbit run selected the correct base, head, and three-file scope:
 
@@ -98,20 +100,22 @@ CODERABBIT_TERMINAL_DISPOSITION = REVIEW_FAILED_PR_CLOSED
 
 CodeRabbit terminated because PR #146 had already closed. It is not counted as a completed independent review.
 
-The historical merge therefore did not satisfy the required ordering predicate:
+No durable completed independent external exact-head review evidence has been identified on the accessible PR #146 record with a completion timestamp before `2026-08-23T02:31:31Z`. Therefore the historical pre-merge review predicate is not proven satisfied:
 
 ```text
-INDEPENDENT_EXTERNAL_EXACT_HEAD_REVIEW_COMPLETED_BEFORE_MERGE = false
-ORIGINAL_PREMERGE_GOVERNANCE_GATE = FAILED_ORDERING
+INDEPENDENT_EXTERNAL_EXACT_HEAD_REVIEW_COMPLETED_BEFORE_MERGE = NOT_PROVEN
+ORIGINAL_PREMERGE_GOVERNANCE_GATE = NONCONFORMING_NOT_PROVEN
 ```
 
-This record preserves that fact. It does not retroactively change `false` to `true`.
+This classification is deliberately narrower than asserting a transient reviewer state that cannot be independently retrieved. This record does not retroactively convert `NOT_PROVEN` to `PASS`.
 
 ## 4. Post-merge content review result
 
-The later Qodo result is nevertheless exact-head evidence about the bytes that became the second parent of the merge:
+The later Qodo final result is exact-head evidence about the bytes that became the second parent of the merge:
 
 ```text
+QODO_FINAL_REVIEW_COMMENT_ID = 5383825420
+QODO_FINAL_REVIEW_CREATED_AT = 2026-08-23T02:35:38Z
 QODO_EXACT_HEAD_BINDING = 334982f2c7d222fc8501b2327a16652a60cda3ab
 QODO_BUGS = 0
 QODO_RULE_VIOLATIONS = 0
@@ -119,18 +123,18 @@ QODO_REQUIREMENT_GAPS = 0
 QODO_TEXT_DISPOSITION = "Great, no issues found!"
 ```
 
-This supports the conclusion that no material content defect was reported by that independent reviewer. It does **not** repair the historical pre-merge ordering by itself.
+This supports the conclusion that no material content defect was reported by that independent reviewer on the exact implementation head. It does **not** repair or satisfy the historical pre-merge ordering predicate by itself.
 
 ## 5. Repair rule
 
-PR #146 must not be described as having satisfied its original pre-merge external-review gate.
+PR #146 must not be described as having proven satisfaction of its original pre-merge independent-external-review gate.
 
 Until this repair package itself is independently reviewed on its exact head and canonically adopted through a separate guarded merge, the implementation-5 adoption state is:
 
 ```text
 PR_146 = MERGED
 IMPLEMENTATION_5_CONTENT_EXTERNAL_REVIEW = POST_MERGE_CLEAN
-IMPLEMENTATION_5_ORIGINAL_PREMERGE_ORDERING = NONCONFORMING
+IMPLEMENTATION_5_ORIGINAL_PREMERGE_ORDERING = NONCONFORMING_NOT_PROVEN
 IMPLEMENTATION_5_CANONICAL_QUALIFICATION = PENDING_ADOPTION_ORDERING_REPAIR
 ```
 
@@ -138,10 +142,10 @@ If, and only if, this repair package receives fresh exact-head CI/CodeQL as appl
 
 ```text
 IMPLEMENTATION_5_CANONICAL_QUALIFICATION = REPAIRED_BY_POST_MERGE_ADOPTION_RECORD
-ORIGINAL_PREMERGE_ORDERING = HISTORICAL_DEFECT_PRESERVED
+ORIGINAL_PREMERGE_ORDERING = HISTORICAL_DEFECT_PRESERVED_AS_NOT_PROVEN
 ```
 
-That repaired status means only that canonical governance now contains an independently reviewed record of the defect, the exact adopted bytes, and the later clean exact-head review. It does not mean the historical ordering requirement was met.
+That repaired status means only that canonical governance contains an independently reviewed record of the historical evidence gap, the exact adopted bytes, and the later clean exact-head content review. It does not mean the historical ordering requirement was met.
 
 ## 6. Scope and non-claims
 
@@ -189,4 +193,4 @@ Canonical adoption of this record, if it occurs, is governance reconciliation on
 
 ## 8. Commit identity of this repair
 
-The commit that introduces this record is identified outside this document in the PR qualification record and independent review request. Its SHA is intentionally not embedded inside the content it would have to identify.
+The commit that introduces or repairs this record is identified outside this document in the PR qualification record and independent review request. Its SHA is intentionally not embedded inside the content it would have to identify.
