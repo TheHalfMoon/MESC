@@ -11,7 +11,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass
-from typing import Final, Literal, NoReturn, cast
+from typing import Final, Literal, Never, cast
 
 ParseFailureKind = Literal[
     "invalid_utf8",
@@ -102,12 +102,7 @@ def parse_normalized_output_fixture(raw_output: bytes) -> NormalizedOutputParseR
         raise NormalizedOutputParseError("duplicate_key", str(error)) from error
     except _NonStandardJsonConstantError as error:
         raise NormalizedOutputParseError("invalid_json", str(error)) from error
-    except (
-        json.JSONDecodeError,
-        RecursionError,
-        ValueError,
-        OverflowError,
-    ) as error:
+    except (ValueError, RecursionError, OverflowError) as error:
         raise NormalizedOutputParseError(
             "invalid_json",
             "raw output is not one valid JSON value",
@@ -120,7 +115,7 @@ def parse_normalized_output_fixture(raw_output: bytes) -> NormalizedOutputParseR
             "only ASCII whitespace may follow the single JSON object",
         )
 
-    if not isinstance(decoded, dict) or type(decoded) is not dict:
+    if type(decoded) is not dict:
         raise NormalizedOutputParseError(
             "invalid_json",
             "top-level output must be exactly one JSON object",
@@ -133,17 +128,10 @@ def parse_normalized_output_fixture(raw_output: bytes) -> NormalizedOutputParseR
             ensure_ascii=False,
             allow_nan=False,
             separators=(",", ":"),
-            indent=None,
             sort_keys=True,
         )
         normalized_bytes = normalized_text.encode("utf-8", errors="strict")
-    except (
-        TypeError,
-        ValueError,
-        UnicodeEncodeError,
-        OverflowError,
-        RecursionError,
-    ) as error:
+    except (TypeError, ValueError, OverflowError, RecursionError) as error:
         raise NormalizedOutputParseError(
             "invalid_json",
             "parsed JSON cannot be normalized as canonical UTF-8 JSON",
@@ -163,7 +151,9 @@ def _skip_ascii_whitespace(text: str, start: int) -> int:
     return index
 
 
-def _reject_duplicate_object_keys(pairs: list[tuple[str, object]]) -> dict[str, object]:
+def _reject_duplicate_object_keys(
+    pairs: list[tuple[str, object]],
+) -> dict[str, object]:
     result: dict[str, object] = {}
     for key, value in pairs:
         if key in result:
@@ -172,5 +162,5 @@ def _reject_duplicate_object_keys(pairs: list[tuple[str, object]]) -> dict[str, 
     return result
 
 
-def _reject_nonstandard_constant(value: str) -> NoReturn:
+def _reject_nonstandard_constant(value: str) -> Never:
     raise _NonStandardJsonConstantError(f"non-standard JSON constant is prohibited: {value}")
