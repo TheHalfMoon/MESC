@@ -142,12 +142,29 @@ def verify_phi_remote_code_git_objects(
     resolve: PhiRemoteCodeObjectResolver,
 ) -> None:
     """Verify manifest entries against injected pinned-revision Git/file facts."""
-    if not isinstance(manifest, PhiRemoteCodeManifest):
+    if type(manifest) is not PhiRemoteCodeManifest:
         raise PhiRemoteCodeManifestResolutionError("manifest is not validated")
+    _revalidate_manifest_object(manifest)
 
     for entry in manifest.entries:
         resolved = _resolve_entry(entry, resolve)
         _verify_resolved_entry(entry, resolved)
+
+
+def _revalidate_manifest_object(manifest: PhiRemoteCodeManifest) -> None:
+    """Reject forged dataclass instances that bypass the canonical parser."""
+    try:
+        canonical = canonical_phi_remote_code_manifest_bytes(manifest.entries)
+        reparsed = parse_phi_remote_code_manifest(canonical)
+    except Exception as error:
+        raise PhiRemoteCodeManifestResolutionError(
+            "manifest object does not contain valid canonical manifest content"
+        ) from error
+
+    if reparsed != manifest:
+        raise PhiRemoteCodeManifestResolutionError(
+            "manifest object identity does not match its canonical bytes"
+        )
 
 
 def _validate_entries(
