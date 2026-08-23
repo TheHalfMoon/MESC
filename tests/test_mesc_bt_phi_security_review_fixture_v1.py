@@ -294,5 +294,5 @@ def test_complete_import_graph_requires_exact_pass_disposition() -> None:
     )
 
     for invalid in invalid_evidence:
-        with pytest.raises(PhiSecurityReviewEvidenceError, match="import-graph disposition|PASS"):
+        with pytest.raises(PhiSecurityReviewEvidenceError, match=r"import-graph disposition|PASS"):
             verify_phi_security_review_evidence(manifest, invalid)
