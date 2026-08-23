@@ -79,13 +79,9 @@ def _revalidate_allowlist(allowlist: ExecutorAllowlist) -> None:
 
 def _validate_allowlist_object_types(allowlist: ExecutorAllowlist) -> None:
     if type(allowlist.entries) is not tuple:
-        raise ExecutorExecutedSetAllowlistError(
-            "allowlist object contains non-exact field types"
-        )
+        raise ExecutorExecutedSetAllowlistError("allowlist object contains non-exact field types")
     if type(allowlist.sha256) is not str or type(allowlist.byte_length) is not int:
-        raise ExecutorExecutedSetAllowlistError(
-            "allowlist object contains non-exact field types"
-        )
+        raise ExecutorExecutedSetAllowlistError("allowlist object contains non-exact field types")
 
     for entry in allowlist.entries:
         if type(entry) is not ExecutorAllowlistEntry:
@@ -98,19 +94,13 @@ def _validate_allowlist_object_types(allowlist: ExecutorAllowlist) -> None:
             )
 
 
-def _validate_observation_shape(
-    observation: ExecutorHarnessExecutionObservation,
-) -> None:
+def _validate_observation_shape(observation: ExecutorHarnessExecutionObservation) -> None:
     if type(observation) is not ExecutorHarnessExecutionObservation:
-        raise ExecutorExecutedSetObservationError(
-            "execution observation has invalid type"
-        )
+        raise ExecutorExecutedSetObservationError("execution observation has invalid type")
 
     paths = observation.executed_or_imported_paths
     if type(paths) is not tuple:
-        raise ExecutorExecutedSetObservationError(
-            "executed/imported paths must be an exact tuple"
-        )
+        raise ExecutorExecutedSetObservationError("executed/imported paths must be an exact tuple")
     if any(type(path) is not str for path in paths):
         raise ExecutorExecutedSetObservationError(
             "executed/imported paths must contain exact strings"
