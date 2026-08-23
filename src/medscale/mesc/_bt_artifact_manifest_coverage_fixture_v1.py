@@ -137,10 +137,10 @@ def _validate_snapshot(evidence: ArtifactManifestCoverageEvidence) -> None:
         ("candidate_keys", evidence.candidate_keys, _CANONICAL_CANDIDATE_KEYS),
         ("item_ids", evidence.item_ids, _CANONICAL_ITEM_IDS),
     )
-    for name, value, expected in tuple_fields:
-        if any(type(member) is not str for member in value):
+    for name, tuple_value, expected in tuple_fields:
+        if any(type(member) is not str for member in tuple_value):
             raise ArtifactManifestCoverageTypeError(f"{name} members must be exact strings")
-        if value != expected:
+        if tuple_value != expected:
             raise ArtifactManifestCoverageValueError(f"{name} does not match frozen coverage")
 
     controls = (
@@ -157,8 +157,8 @@ def _validate_snapshot(evidence: ArtifactManifestCoverageEvidence) -> None:
         ("raw_per_item_hashes_bound", evidence.raw_per_item_hashes_bound),
         ("normalized_per_item_hashes_bound", evidence.normalized_per_item_hashes_bound),
     )
-    for name, value in controls:
-        if type(value) is not bool or value is not True:
+    for name, control_value in controls:
+        if type(control_value) is not bool or control_value is not True:
             raise ArtifactManifestCoverageValueError(
                 f"manifest coverage control {name} must be exact boolean true"
             )
@@ -167,8 +167,8 @@ def _validate_snapshot(evidence: ArtifactManifestCoverageEvidence) -> None:
         ("unbound_required_fields", evidence.unbound_required_fields),
         ("unattributed_artifact_hashes", evidence.unattributed_artifact_hashes),
     )
-    for name, value in counters:
-        if type(value) is not int or value != 0:
+    for name, counter_value in counters:
+        if type(counter_value) is not int or counter_value != 0:
             raise ArtifactManifestCoverageValueError(
                 f"manifest coverage counter {name} must be exact integer zero"
             )
