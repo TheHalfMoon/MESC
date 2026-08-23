@@ -325,7 +325,7 @@ def _load_duplicate_safe_json(payload: bytes) -> object:
         )
     except PhiRemoteCodeManifestJsonError:
         raise
-    except json.JSONDecodeError as error:
+    except (ValueError, RecursionError) as error:
         raise PhiRemoteCodeManifestJsonError("payload is not valid JSON") from error
 
 
