@@ -59,7 +59,7 @@ def _observation(manifest: PhiRemoteCodeManifest) -> PhiRemoteCodeExecutionObser
     return PhiRemoteCodeExecutionObservation(
         executed_remote_code_paths=tuple(entry.path for entry in manifest.entries),
         observation_complete=True,
-        observation_started_before_first_remote_code_import=True,
+        observation_started_before_model_process_start=True,
         observation_ended_after_model_process_exit=True,
         dynamic_remote_fetch_attempts=0,
         unattributed_remote_code_execution_events=0,
@@ -159,7 +159,7 @@ def test_all_completeness_controls_require_exact_true() -> None:
     valid = _observation(manifest)
     invalid_observations = (
         replace(valid, observation_complete=False),
-        replace(valid, observation_started_before_first_remote_code_import=False),
+        replace(valid, observation_started_before_model_process_start=False),
         replace(valid, observation_ended_after_model_process_exit=False),
         replace(valid, observation_complete=cast(bool, 1)),
     )
