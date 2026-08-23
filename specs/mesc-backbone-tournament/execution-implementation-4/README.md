@@ -37,6 +37,8 @@ The pure in-memory verifier:
 - aggregates GPU memory over the complete controlled process tree for each
   frame and derives deterministic peak VRAM in MiB;
 - requires monitoring to begin strictly before the model/probe start marker;
+- requires the model/probe start marker to occur no later than terminal
+  completion;
 - requires terminal completion strictly before device synchronization,
   monitoring to continue through synchronization, and terminal telemetry
   capture strictly after synchronization;
