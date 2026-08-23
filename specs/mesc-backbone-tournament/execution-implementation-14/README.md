@@ -59,19 +59,23 @@ The verifier accepts:
 - a parser-validated canonical `ExecutorAllowlist`;
 - one exact `ExecutorHarnessExecutionObservation`.
 
-Before observation evidence is accepted, the allowlist is revalidated with:
+Before observation evidence is accepted, the verifier copies caller-owned
+allowlist fields into new local `ExecutorAllowlistEntry` and `ExecutorAllowlist`
+objects, then revalidates that local snapshot with:
 
-- exact `ExecutorAllowlist` outer type;
-- exact tuple container;
-- exact `ExecutorAllowlistEntry` entry types;
+- exact `ExecutorAllowlist` outer type on entry to the verifier;
+- exact tuple container captured into the snapshot;
+- exact `ExecutorAllowlistEntry` entry types before scalar capture;
 - exact built-in string metadata and path/blob scalar types;
 - exact built-in integer byte length;
-- canonical serialization and parse round-trip;
-- full equality with the reparsed canonical allowlist, including digest and byte
-  length.
+- canonical serialization and parse round-trip of the local snapshot;
+- full equality between the local snapshot and the reparsed canonical allowlist,
+  including digest and byte length.
 
-Forged dataclass/subclass representations or metadata that does not reproduce
-the canonical object fail closed.
+The expected path tuple is derived only from the reparsed canonical snapshot.
+The verifier does not read the caller-owned allowlist again after that validated
+snapshot is produced. Forged dataclass/subclass representations or metadata that
+does not reproduce the canonical object fail closed.
 
 ## Observation contract
 
@@ -85,12 +89,18 @@ observation_ended_after_last_execution_or_import
 unattributed_execution_or_import_events
 ```
 
+The verifier first captures those fields into a new local exact
+`ExecutorHarnessExecutionObservation`, validates that local snapshot, and returns
+the observed path tuple from that snapshot. It does not reread the caller-owned
+observation after snapshot validation.
+
 `executed_or_imported_paths` is a **canonical unique-set representation**, not a
 chronological event log. Its tuple order is the same canonical path order as the
-validated allowlist. The verifier requires the tuple to equal exactly:
+validated allowlist. The final comparison is therefore exclusively between:
 
 ```text
-tuple(entry.path for entry in allowlist.entries)
+expected_paths = paths from the reparsed canonical allowlist snapshot
+observed_paths = paths from the validated observation snapshot
 ```
 
 Therefore missing paths, extra paths, duplicate path representations, reordered
@@ -118,6 +128,33 @@ These fields are assertions supplied by the future evidence producer. Their
 acceptance by this pure verifier does **not** establish that the producer,
 instrumentation, process hooks, import hooks, tracing mechanism, or runtime
 coverage are trustworthy or complete in reality.
+
+## Snapshot / mutation boundary
+
+The input dataclasses are frozen for ordinary callers, but Python can still
+mutate a frozen instance through mechanisms such as `object.__setattr__`.
+Implementation 14 therefore does not treat caller object identity as immutable
+security state.
+
+The verifier's security boundary is the validated local snapshot:
+
+1. caller values are captured into local objects;
+2. all exact-type, canonicalization, completeness, and attribution checks apply
+   to those local snapshots;
+3. the final path-set comparison uses only values returned from those validated
+   snapshots;
+4. caller-owned allowlist or observation objects are never reread after their
+   corresponding snapshot has been validated.
+
+A mutation of a caller-owned object after snapshot validation therefore cannot
+change the comparison result. Synchronized regression tests deliberately mutate
+both caller-owned allowlist and observation objects inside the former
+validation-to-comparison window and prove that such mutations cannot convert a
+path-set mismatch into verification success.
+
+This snapshot rule is only an in-process fixture-verifier integrity property. It
+does not qualify a future runtime observation producer or establish that real
+execution/import events were observed atomically.
 
 ## Deliberate non-claims
 
