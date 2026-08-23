@@ -81,19 +81,40 @@ Normalized-schema and cross-item violations are deliberately separate
 3. consume leading ASCII whitespace only (`SP`, `HTAB`, `CR`, `LF`);
 4. reject exterior Markdown code fences rather than stripping them;
 5. parse exactly one JSON value with duplicate-object-key rejection at every
-   object nesting level;
+   object nesting level and exact JSON-number token capture;
 6. reject non-standard JSON constants such as `NaN` and infinities;
 7. reject any top-level value that is not a JSON object;
 8. permit only ASCII whitespace after the parsed object and reject any second
    value or other trailing content;
-9. normalize the parsed object as compact, lexically sorted-key JSON with
-   `ensure_ascii=False`, strict finite JSON values, and UTF-8 encoding;
-10. return the parsed object, exact normalized bytes, and SHA-256 of those
-    normalized bytes.
+9. normalize as compact, lexically sorted-key JSON while preserving every
+   accepted JSON-number token exactly and emitting non-ASCII strings as UTF-8;
+10. return the lossless parsed object, exact normalized bytes, and SHA-256 of
+    those normalized bytes.
 
 The normalized bytes contain no added terminal newline. Non-ASCII Unicode text
 is represented directly in UTF-8 rather than being transformed into `\uXXXX`
 escapes.
+
+## JSON-number preservation boundary
+
+The frozen contract prohibits semantic repair. Accordingly, accepted JSON
+numbers must not pass through a representation that can change their value
+before normalization.
+
+The parser therefore routes both integer and fractional/exponent JSON number
+tokens through `ExactJsonNumber`. The wrapper stores the exact token accepted by
+the JSON decoder. The normalization serializer emits that token unchanged.
+
+This prevents binary-`float` rounding, Python integer digit-limit coercion, and
+numeric range conversion from changing normalized bytes. Precision-sensitive
+decimals, exponent values, very large exponents, and very large integer tokens
+remain exact.
+
+This is deliberately conservative. Repair-2 freezes compact sorted-key JSON and
+prohibits semantic repair, but does not separately authorize rewriting one valid
+JSON number spelling into another mathematically equivalent spelling. This slice
+therefore canonicalizes object key order, JSON structure, whitespace, and string
+serialization while retaining each accepted number token exactly.
 
 ## Markdown-fence boundary
 
@@ -129,7 +150,7 @@ explicitly preserve this boundary so a future change cannot silently convert a
 
 `NormalizedOutputParseError.kind` uses only the frozen parser failure-mapping
 keys listed above. The module does not expose raw JSON-decoder, UTF-8-decoder,
-normalization, recursion, or numeric-overflow exceptions as protocol outcomes.
+normalization, or recursion exceptions as protocol outcomes.
 
 Exact input-type checking also prevents `bytearray` or `bytes` subclasses from
 silently crossing the parser byte boundary. Type-boundary misuse is a caller
