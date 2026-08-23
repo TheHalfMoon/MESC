@@ -159,6 +159,4 @@ def _reject_duplicate_object_keys(pairs: list[tuple[str, object]]) -> dict[str, 
 
 
 def _reject_nonstandard_constant(value: str) -> NoReturn:
-    raise _NonStandardJsonConstantError(
-        f"non-standard JSON constant is prohibited: {value}"
-    )
+    raise _NonStandardJsonConstantError(f"non-standard JSON constant is prohibited: {value}")
