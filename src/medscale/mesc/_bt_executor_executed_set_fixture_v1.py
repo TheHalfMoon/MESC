@@ -102,7 +102,9 @@ def _validate_observation_shape(
     observation: ExecutorHarnessExecutionObservation,
 ) -> None:
     if type(observation) is not ExecutorHarnessExecutionObservation:
-        raise ExecutorExecutedSetObservationError("execution observation has invalid type")
+        raise ExecutorExecutedSetObservationError(
+            "execution observation has invalid type"
+        )
 
     paths = observation.executed_or_imported_paths
     if type(paths) is not tuple:
