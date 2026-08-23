@@ -23,9 +23,7 @@ _R2_PROVENANCE_AUDIT_SHA256 = (
 _CORPUS_CONFORMANCE_AUDIT_SHA256 = (
     "842f2e0dbeaea59087223ddd94c8a95844c8f14822a16e1549e67c0c850c67f2"
 )
-_ITEM_IDS = tuple(
-    f"BT-{axis}-{index:03d}" for axis in ("A", "B", "C", "D", "E", "F") for index in range(1, 41)
-)
+_ITEM_IDS = tuple(f"BT-{axis}-{index:03d}" for axis in "ABCDEF" for index in range(1, 41))
 _THREAD_SYNC_TIMEOUT_SECONDS = 30.0
 
 
@@ -93,12 +91,11 @@ def test_identity_requires_exact_outer_type() -> None:
 
 def test_observation_requires_exact_outer_type() -> None:
     valid = _observation()
+    frozen_identity_before_projection = valid.frozen_identity_verified_before_projection
     forged = _ObservationSubclass(
         projected_item_ids=valid.projected_item_ids,
         projection_complete=valid.projection_complete,
-        frozen_identity_verified_before_projection=(
-            valid.frozen_identity_verified_before_projection
-        ),
+        frozen_identity_verified_before_projection=frozen_identity_before_projection,
         audits_verified_before_projection=valid.audits_verified_before_projection,
         payload_only_model_visibility=valid.payload_only_model_visibility,
         metadata_projection_events=valid.metadata_projection_events,
