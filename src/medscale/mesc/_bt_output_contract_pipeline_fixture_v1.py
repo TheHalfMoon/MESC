@@ -106,11 +106,7 @@ def _validate_identity_snapshot(identity: OutputContractIdentityEvidence) -> Non
             identity.normalized_output_schema_sha256,
             _FROZEN_NORMALIZED_OUTPUT_SCHEMA_SHA256,
         ),
-        (
-            "parser_contract_sha256",
-            identity.parser_contract_sha256,
-            _FROZEN_PARSER_CONTRACT_SHA256,
-        ),
+        ("parser_contract_sha256", identity.parser_contract_sha256, _FROZEN_PARSER_CONTRACT_SHA256),
         (
             "scoring_contract_sha256",
             identity.scoring_contract_sha256,
@@ -121,11 +117,7 @@ def _validate_identity_snapshot(identity: OutputContractIdentityEvidence) -> Non
             identity.report_validation_contract_sha256,
             _FROZEN_REPORT_VALIDATION_CONTRACT_SHA256,
         ),
-        (
-            "report_schema_sha256",
-            identity.report_schema_sha256,
-            _FROZEN_REPORT_SCHEMA_SHA256,
-        ),
+        ("report_schema_sha256", identity.report_schema_sha256, _FROZEN_REPORT_SCHEMA_SHA256),
     )
     for name, value, expected in required:
         if type(value) is not str:
