@@ -113,6 +113,10 @@ def qualify_fixture_telemetry(
 
     if qualification.monitor_start_ns >= qualification.model_load_or_probe_start_ns:
         raise FixtureTelemetryBlockedError("monitoring must start before model/probe start")
+    if qualification.model_load_or_probe_start_ns > qualification.final_terminal_ns:
+        raise FixtureTelemetryBlockedError(
+            "model/probe start must not occur after terminal completion"
+        )
     if qualification.final_terminal_ns >= qualification.device_sync_completed_ns:
         raise FixtureTelemetryBlockedError(
             "terminal completion must precede device synchronization"
