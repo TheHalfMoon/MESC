@@ -8,6 +8,7 @@ import pytest
 
 from medscale.mesc._bt_normalized_output_parser_v1 import (
     MAX_RAW_OUTPUT_BYTES,
+    ExactJsonNumber,
     NormalizedOutputParseError,
     parse_normalized_output_fixture,
 )
@@ -28,7 +29,11 @@ def _assert_parse_failure(raw_output: bytes, expected_kind: str) -> None:
 
 def test_valid_object_is_normalized_to_compact_sorted_key_utf8() -> None:
     result = parse_normalized_output_fixture(_VALID_OUTPUT)
-    expected_value = {"z": 2, "a": "é", "nested": {"b": 1, "a": True}}
+    expected_value = {
+        "z": ExactJsonNumber("2"),
+        "a": "é",
+        "nested": {"b": ExactJsonNumber("1"), "a": True},
+    }
 
     assert result.value == expected_value
     assert result.normalized_bytes == _EXPECTED_NORMALIZED
@@ -128,7 +133,7 @@ def test_trailing_non_ascii_whitespace_or_content_is_rejected(raw_output: bytes)
 
 def test_parser_does_not_perform_normalized_schema_validation() -> None:
     result = parse_normalized_output_fixture(b'{"z":1}')
-    assert result.value == {"z": 1}
+    assert result.value == {"z": ExactJsonNumber("1")}
     assert result.normalized_bytes == b'{"z":1}'
 
 
@@ -138,5 +143,37 @@ def test_schema_shaped_fixture_is_only_parsed_not_cross_item_validated() -> None
     assert result.value["evidence_refs"] == ["missing-id"]
 
 
-def test_large_exponent_that_cannot_be_normalized_as_finite_json_fails_closed() -> None:
-    _assert_parse_failure(b'{"x":1e400}', "invalid_json")
+@pytest.mark.parametrize(
+    ("raw_output", "expected_lexeme"),
+    [
+        (
+            b'{"value":0.123456789012345678901234567890}',
+            "0.123456789012345678901234567890",
+        ),
+        (
+            b'{"value":1.234567890123456789e-400}',
+            "1.234567890123456789e-400",
+        ),
+        (
+            b'{"value":1e99999999999999999999}',
+            "1e99999999999999999999",
+        ),
+    ],
+)
+def test_precision_sensitive_numbers_preserve_exact_accepted_lexeme(
+    raw_output: bytes,
+    expected_lexeme: str,
+) -> None:
+    result = parse_normalized_output_fixture(raw_output)
+
+    assert result.value["value"] == ExactJsonNumber(expected_lexeme)
+    assert result.normalized_bytes == b'{"value":' + expected_lexeme.encode() + b"}"
+
+
+def test_very_large_integer_is_not_coerced_through_python_int() -> None:
+    digits = b"9" * 5000
+    raw_output = b'{"value":' + digits + b"}"
+    result = parse_normalized_output_fixture(raw_output)
+
+    assert result.value["value"] == ExactJsonNumber(digits.decode())
+    assert result.normalized_bytes == raw_output
