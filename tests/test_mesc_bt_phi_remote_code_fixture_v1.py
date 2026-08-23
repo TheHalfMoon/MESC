@@ -115,10 +115,9 @@ def test_duplicate_members_are_rejected(member: str) -> None:
     "payload",
     [
         b"[[]]",
-        (
-            f'[{{"byte_length":12,"git_blob_sha":"{_BLOB_A}",'
-            f'"path":"modeling_phi4mm.py"}}]'
-        ).encode("ascii"),
+        (f'[{{"byte_length":12,"git_blob_sha":"{_BLOB_A}","path":"modeling_phi4mm.py"}}]').encode(
+            "ascii"
+        ),
         (
             f'[{{"byte_length":12,"git_blob_sha":"{_BLOB_A}",'
             f'"path":"modeling_phi4mm.py","sha256":"{_DIGEST_A}","extra":"x"}}]'
@@ -184,8 +183,7 @@ def test_path_grammar_is_fail_closed(path: str) -> None:
 
 def test_non_ascii_path_is_fail_closed() -> None:
     payload = (
-        f'[{{"byte_length":12,"git_blob_sha":"{_BLOB_A}",'
-        f'"path":"möd.py","sha256":"{_DIGEST_A}"}}]'
+        f'[{{"byte_length":12,"git_blob_sha":"{_BLOB_A}","path":"möd.py","sha256":"{_DIGEST_A}"}}]'
     ).encode()
 
     with pytest.raises(PhiRemoteCodeManifestSchemaError, match="ASCII"):
@@ -198,9 +196,7 @@ def test_non_ascii_path_is_fail_closed() -> None:
 )
 def test_git_blob_sha_must_be_lowercase_40_hex(blob_sha: str) -> None:
     with pytest.raises(PhiRemoteCodeManifestSchemaError, match="Git blob SHA"):
-        parse_phi_remote_code_manifest(
-            _single_entry_payload(blob_sha=blob_sha)
-        )
+        parse_phi_remote_code_manifest(_single_entry_payload(blob_sha=blob_sha))
 
 
 @pytest.mark.parametrize(
