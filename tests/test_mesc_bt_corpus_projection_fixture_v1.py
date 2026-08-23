@@ -98,7 +98,9 @@ def test_observation_requires_exact_outer_type() -> None:
     forged = _ObservationSubclass(
         projected_item_ids=valid.projected_item_ids,
         projection_complete=valid.projection_complete,
-        frozen_identity_verified_before_projection=valid.frozen_identity_verified_before_projection,
+        frozen_identity_verified_before_projection=(
+            valid.frozen_identity_verified_before_projection
+        ),
         audits_verified_before_projection=valid.audits_verified_before_projection,
         payload_only_model_visibility=valid.payload_only_model_visibility,
         metadata_projection_events=valid.metadata_projection_events,
