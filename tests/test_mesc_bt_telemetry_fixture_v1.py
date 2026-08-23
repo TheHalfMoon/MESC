@@ -5,6 +5,7 @@ from dataclasses import replace
 import pytest
 
 from medscale.mesc._bt_telemetry_fixture_v1 import (
+    CLOCK_SOURCE_MONOTONIC_NS,
     GPU_MODEL_H100,
     FixtureTelemetryBlockedError,
     FixtureTelemetryQualification,
@@ -53,6 +54,7 @@ def _qualification() -> FixtureTelemetryQualification:
     return FixtureTelemetryQualification(
         gpu_uuid="GPU-fixture-001",
         gpu_model=GPU_MODEL_H100,
+        clock_source=CLOCK_SOURCE_MONOTONIC_NS,
         sampling_interval_ms=100,
         controlled_root_pid=100,
         monitor_start_ns=0,
@@ -69,7 +71,7 @@ def _qualification() -> FixtureTelemetryQualification:
             _frame(0, root, system),
             _frame(100_000_000, root, child, system),
             _frame(
-                175_000_000,
+                176_000_000,
                 replace(root, used_memory_bytes=1200 * MIB),
                 child,
                 system,
@@ -85,6 +87,7 @@ def test_qualification_computes_aggregate_peak_and_hash() -> None:
     assert result.frame_count == 3
     assert result.latency_probe_ns == 20
     assert len(result.evidence_sha256) == 64
+    assert b'"clock_source":"monotonic_ns"' in result.evidence_bytes
     assert not result.evidence_bytes.endswith(b"\n")
 
 
@@ -111,6 +114,11 @@ def test_boolean_sampling_interval_blocks() -> None:
 def test_wrong_gpu_model_blocks() -> None:
     with pytest.raises(FixtureTelemetryBlockedError, match="gpu_model"):
         qualify_fixture_telemetry(replace(_qualification(), gpu_model="NVIDIA H100"))
+
+
+def test_wrong_clock_source_blocks() -> None:
+    with pytest.raises(FixtureTelemetryBlockedError, match="clock_source"):
+        qualify_fixture_telemetry(replace(_qualification(), clock_source="wall_clock_ns"))
 
 
 def test_frame_gpu_uuid_mismatch_blocks() -> None:
@@ -229,9 +237,31 @@ def test_first_frame_after_probe_start_blocks() -> None:
         )
 
 
+def test_monitor_start_equal_probe_start_blocks() -> None:
+    qualification = _qualification()
+    with pytest.raises(FixtureTelemetryBlockedError, match="start before"):
+        qualify_fixture_telemetry(
+            replace(
+                qualification,
+                monitor_start_ns=qualification.model_load_or_probe_start_ns,
+            )
+        )
+
+
 def test_sync_before_terminal_blocks() -> None:
     with pytest.raises(FixtureTelemetryBlockedError, match="synchronization"):
         qualify_fixture_telemetry(replace(_qualification(), device_sync_completed_ns=149_999_999))
+
+
+def test_terminal_equal_sync_blocks() -> None:
+    qualification = _qualification()
+    with pytest.raises(FixtureTelemetryBlockedError, match="precede"):
+        qualify_fixture_telemetry(
+            replace(
+                qualification,
+                final_terminal_ns=qualification.device_sync_completed_ns,
+            )
+        )
 
 
 def test_stop_before_sync_blocks() -> None:
@@ -244,6 +274,19 @@ def test_last_frame_before_sync_blocks() -> None:
     frames = (
         *qualification.frames[:-1],
         replace(qualification.frames[-1], monotonic_ns=174_999_999),
+    )
+    with pytest.raises(FixtureTelemetryBlockedError, match="after device synchronization"):
+        qualify_fixture_telemetry(replace(qualification, frames=frames))
+
+
+def test_last_frame_equal_sync_blocks() -> None:
+    qualification = _qualification()
+    frames = (
+        *qualification.frames[:-1],
+        replace(
+            qualification.frames[-1],
+            monotonic_ns=qualification.device_sync_completed_ns,
+        ),
     )
     with pytest.raises(FixtureTelemetryBlockedError, match="after device synchronization"):
         qualify_fixture_telemetry(replace(qualification, frames=frames))
