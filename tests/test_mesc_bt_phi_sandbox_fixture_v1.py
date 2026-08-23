@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import replace
-from typing import cast
-
 import pytest
 
 from medscale.mesc._bt_phi_sandbox_fixture_v1 import (
@@ -43,6 +40,16 @@ def _valid_evidence() -> PhiSandboxControlEvidence:
     )
 
 
+def _forge_field(
+    evidence: PhiSandboxControlEvidence,
+    *,
+    field: str,
+    value: object,
+) -> PhiSandboxControlEvidence:
+    object.__setattr__(evidence, field, value)
+    return evidence
+
+
 def test_accepts_exact_frozen_sandbox_control_evidence() -> None:
     verify_phi_sandbox_control_evidence(_valid_evidence())
 
@@ -80,7 +87,7 @@ def test_rejects_evidence_subclass() -> None:
     ],
 )
 def test_rejects_false_process_or_timing_predicate(field: str) -> None:
-    evidence = replace(_valid_evidence(), **{field: False})
+    evidence = _forge_field(_valid_evidence(), field=field, value=False)
 
     with pytest.raises(PhiSandboxEvidenceError, match="exact boolean true"):
         verify_phi_sandbox_control_evidence(evidence)
@@ -95,7 +102,7 @@ def test_rejects_false_process_or_timing_predicate(field: str) -> None:
     ],
 )
 def test_rejects_integer_for_boolean_predicate(field: str) -> None:
-    evidence = replace(_valid_evidence(), **{field: cast(bool, 1)})
+    evidence = _forge_field(_valid_evidence(), field=field, value=1)
 
     with pytest.raises(PhiSandboxEvidenceError, match="exact boolean true"):
         verify_phi_sandbox_control_evidence(evidence)
@@ -117,7 +124,7 @@ def test_rejects_integer_for_boolean_predicate(field: str) -> None:
     ],
 )
 def test_rejects_wrong_frozen_control_value(field: str, wrong_value: str) -> None:
-    evidence = replace(_valid_evidence(), **{field: wrong_value})
+    evidence = _forge_field(_valid_evidence(), field=field, value=wrong_value)
 
     with pytest.raises(PhiSandboxEvidenceError, match=field):
         verify_phi_sandbox_control_evidence(evidence)
@@ -140,16 +147,18 @@ def test_rejects_wrong_frozen_control_value(field: str, wrong_value: str) -> Non
 )
 def test_rejects_string_subclass_for_control(field: str) -> None:
     valid = _valid_evidence()
-    evidence = replace(valid, **{field: _StringSubclass(getattr(valid, field))})
+    spoof = _StringSubclass(getattr(valid, field))
+    evidence = _forge_field(valid, field=field, value=spoof)
 
     with pytest.raises(PhiSandboxEvidenceError, match="exact string"):
         verify_phi_sandbox_control_evidence(evidence)
 
 
 def test_rejects_non_string_equality_spoof() -> None:
-    evidence = replace(
+    evidence = _forge_field(
         _valid_evidence(),
-        network_egress=cast(str, _EqualToDenyAll()),
+        field="network_egress",
+        value=_EqualToDenyAll(),
     )
     assert evidence.network_egress == "DENY_ALL"
 
