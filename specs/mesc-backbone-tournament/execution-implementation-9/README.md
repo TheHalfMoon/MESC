@@ -46,9 +46,20 @@ The verifier accepts:
 2. one caller-supplied `PhiRemoteCodeExecutionObservation` representing a
    separately produced full-model-process-lifecycle observation.
 
-Before any observation value can be accepted, the verifier reserializes and
-reparses the manifest under the canonical manifest rules and requires the full
-manifest dataclass identity to match.
+Before any observation value can be accepted, the verifier requires the
+manifest object itself to preserve the exact parser-produced Python type shape:
+
+- `PhiRemoteCodeManifest` exactly, not a subclass;
+- `entries` as an exact tuple;
+- every entry as exact `PhiRemoteCodeManifestEntry`;
+- every manifest and entry string field as exact `str`;
+- every byte-length field as exact `int`.
+
+Only after those exact-type predicates pass does the verifier reserialize and
+reparse the manifest under the canonical manifest rules and require the full
+manifest dataclass identity to match. This prevents equality-compatible Python
+subclasses from spoofing parser-produced plain scalar types during round-trip
+comparison.
 
 The observation must have exact type
 `PhiRemoteCodeExecutionObservation` and contain:
@@ -108,8 +119,19 @@ original field `observation_started_before_first_remote_code_import`: it did not
 cover the interval from model-process start to the first remote-code import. The
 contract was therefore tightened to
 `observation_started_before_model_process_start`, and the dedicated tests were
-updated to require that exact full-lifecycle predicate. All evidence produced
-for superseded heads is historical only and does not qualify the current head.
+updated to require that exact full-lifecycle predicate.
+
+A later dependency-boundary review found that canonical reserialization followed
+by dataclass equality was not sufficient by itself to prove parser-produced
+exact Python field types: `str` or `int` subclasses can serialize to canonical
+JSON and still compare equal to reparsed plain scalars. The current verifier
+therefore checks exact outer, entry, tuple, string, and integer types before the
+round trip. Regression tests construct equality-compatible `str` and `int`
+subclasses, prove that the forged dataclasses compare equal to the canonical
+manifest, and require fail-closed rejection before observation acceptance.
+
+All evidence produced for superseded heads is historical only and does not
+qualify the current head.
 
 ## Deliberate non-claims
 
