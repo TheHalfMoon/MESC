@@ -12,8 +12,8 @@ from medscale.mesc._bt_normalized_output_parser_v1 import (
     parse_normalized_output_fixture,
 )
 
-_VALID_OUTPUT = '{"z":2,"a":"é","nested":{"b":1,"a":true}}'.encode("utf-8")
-_EXPECTED_NORMALIZED = '{"a":"é","nested":{"a":true,"b":1},"z":2}'.encode("utf-8")
+_VALID_OUTPUT = '{"z":2,"a":"é","nested":{"b":1,"a":true}}'.encode()
+_EXPECTED_NORMALIZED = '{"a":"é","nested":{"a":true,"b":1},"z":2}'.encode()
 _SCHEMA_INVALID_OUTPUT = (
     b'{"answer":null,"answer_state":"NOT_A_SCHEMA_ENUM","evidence_refs":["missing-id"],'
     b'"safety_action":null,"structured_output":null,"uncertainty":null}'
