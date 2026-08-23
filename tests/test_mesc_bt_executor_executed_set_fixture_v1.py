@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from threading import Event, Thread
 from typing import cast
 
 import pytest
 
+import medscale.mesc._bt_executor_executed_set_fixture_v1 as executed_set_module
 from medscale.mesc._bt_executor_allowlist_v1 import (
     ExecutorAllowlist,
     ExecutorAllowlistEntry,
@@ -18,6 +20,7 @@ from medscale.mesc._bt_executor_executed_set_fixture_v1 import (
 )
 
 _PATHS = ("src/medscale/mesc/a.py", "src/medscale/mesc/b.py")
+_EXTRA_PATH = "src/medscale/mesc/extra.py"
 
 
 class _StringSubclass(str):
@@ -178,7 +181,7 @@ def test_paths_reject_equality_spoof() -> None:
     "paths",
     [
         (_PATHS[0],),
-        (_PATHS[0], _PATHS[1], "src/medscale/mesc/extra.py"),
+        (_PATHS[0], _PATHS[1], _EXTRA_PATH),
         (_PATHS[1], _PATHS[0]),
         (_PATHS[0], _PATHS[0], _PATHS[1]),
     ],
@@ -230,3 +233,104 @@ def test_unattributed_event_counter_requires_exact_integer_zero(value: object) -
 
     with pytest.raises(ExecutorExecutedSetObservationError):
         verify_executor_executed_set_evidence(_allowlist(), forged)
+
+
+def test_allowlist_post_snapshot_mutation_cannot_create_false_success(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    allowlist = _allowlist()
+    observation = _observation()
+    object.__setattr__(
+        observation,
+        "executed_or_imported_paths",
+        (*_PATHS, _EXTRA_PATH),
+    )
+
+    observation_snapshotted = Event()
+    allowlist_mutated = Event()
+    original_observation_paths = executed_set_module._validated_observation_paths
+
+    def synchronized_observation_paths(
+        value: ExecutorHarnessExecutionObservation,
+    ) -> tuple[str, ...]:
+        paths = original_observation_paths(value)
+        observation_snapshotted.set()
+        assert allowlist_mutated.wait(timeout=2.0)
+        return paths
+
+    monkeypatch.setattr(
+        executed_set_module,
+        "_validated_observation_paths",
+        synchronized_observation_paths,
+    )
+
+    def mutate_allowlist() -> None:
+        if not observation_snapshotted.wait(timeout=2.0):
+            return
+        object.__setattr__(
+            allowlist,
+            "entries",
+            (
+                *allowlist.entries,
+                ExecutorAllowlistEntry(git_blob_sha="c" * 40, path=_EXTRA_PATH),
+            ),
+        )
+        allowlist_mutated.set()
+
+    mutator = Thread(target=mutate_allowlist)
+    mutator.start()
+    try:
+        with pytest.raises(ExecutorExecutedSetObservationError):
+            verify_executor_executed_set_evidence(allowlist, observation)
+    finally:
+        mutator.join(timeout=2.0)
+
+    assert allowlist_mutated.is_set()
+    assert not mutator.is_alive()
+
+
+def test_observation_post_snapshot_mutation_cannot_create_false_success(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    allowlist = _allowlist()
+    observation = _observation()
+    object.__setattr__(
+        observation,
+        "executed_or_imported_paths",
+        (*_PATHS, _EXTRA_PATH),
+    )
+
+    observation_snapshotted = Event()
+    observation_mutated = Event()
+    original_observation_paths = executed_set_module._validated_observation_paths
+
+    def synchronized_observation_paths(
+        value: ExecutorHarnessExecutionObservation,
+    ) -> tuple[str, ...]:
+        paths = original_observation_paths(value)
+        observation_snapshotted.set()
+        assert observation_mutated.wait(timeout=2.0)
+        return paths
+
+    monkeypatch.setattr(
+        executed_set_module,
+        "_validated_observation_paths",
+        synchronized_observation_paths,
+    )
+
+    def mutate_observation() -> None:
+        if not observation_snapshotted.wait(timeout=2.0):
+            return
+        object.__setattr__(observation, "executed_or_imported_paths", _PATHS)
+        observation_mutated.set()
+
+    mutator = Thread(target=mutate_observation)
+    mutator.start()
+    try:
+        with pytest.raises(ExecutorExecutedSetObservationError):
+            verify_executor_executed_set_evidence(allowlist, observation)
+    finally:
+        mutator.join(timeout=2.0)
+
+    assert observation_mutated.is_set()
+    assert not mutator.is_alive()
