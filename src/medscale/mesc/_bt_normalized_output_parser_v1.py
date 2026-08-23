@@ -43,11 +43,11 @@ class NormalizedOutputParseError(ValueError):
         self.kind = kind
 
 
-class _DuplicateObjectKey(ValueError):
+class _DuplicateObjectKeyError(ValueError):
     """Internal signal emitted by the duplicate-safe JSON object hook."""
 
 
-class _NonStandardJsonConstant(ValueError):
+class _NonStandardJsonConstantError(ValueError):
     """Internal signal for NaN/Infinity spellings rejected by strict JSON."""
 
 
@@ -95,12 +95,15 @@ def parse_normalized_output_fixture(raw_output: bytes) -> NormalizedOutputParseR
     )
     try:
         decoded, end_index = decoder.raw_decode(candidate)
-    except _DuplicateObjectKey as error:
+    except _DuplicateObjectKeyError as error:
         raise NormalizedOutputParseError("duplicate_key", str(error)) from error
-    except _NonStandardJsonConstant as error:
+    except _NonStandardJsonConstantError as error:
         raise NormalizedOutputParseError("invalid_json", str(error)) from error
     except (json.JSONDecodeError, RecursionError, ValueError, OverflowError) as error:
-        raise NormalizedOutputParseError("invalid_json", "raw output is not one valid JSON value") from error
+        raise NormalizedOutputParseError(
+            "invalid_json",
+            "raw output is not one valid JSON value",
+        ) from error
 
     remainder = candidate[end_index:]
     if any(character not in _ASCII_WHITESPACE for character in remainder):
@@ -150,10 +153,12 @@ def _reject_duplicate_object_keys(pairs: list[tuple[str, object]]) -> dict[str, 
     result: dict[str, object] = {}
     for key, value in pairs:
         if key in result:
-            raise _DuplicateObjectKey(f"duplicate JSON object key: {key!r}")
+            raise _DuplicateObjectKeyError(f"duplicate JSON object key: {key!r}")
         result[key] = value
     return result
 
 
 def _reject_nonstandard_constant(value: str) -> NoReturn:
-    raise _NonStandardJsonConstant(f"non-standard JSON constant is prohibited: {value}")
+    raise _NonStandardJsonConstantError(
+        f"non-standard JSON constant is prohibited: {value}"
+    )
