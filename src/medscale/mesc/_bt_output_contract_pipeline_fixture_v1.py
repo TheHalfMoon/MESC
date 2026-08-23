@@ -164,9 +164,7 @@ def _validate_observation_snapshot(observation: OutputPipelineObservation) -> No
         raise OutputPipelineObservationError("processing_order snapshot must be an exact tuple")
     for value in observation.processing_order:
         if type(value) is not str:
-            raise OutputPipelineObservationError(
-                "processing_order members must be exact strings"
-            )
+            raise OutputPipelineObservationError("processing_order members must be exact strings")
     if observation.processing_order != _CANONICAL_PROCESSING_ORDER:
         raise OutputPipelineObservationError(
             "processing_order must equal parser -> schema -> scorer -> report validator"
