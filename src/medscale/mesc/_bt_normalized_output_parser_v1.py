@@ -50,8 +50,15 @@ class _NonStandardJsonConstantError(ValueError):
 
 
 @dataclass(frozen=True, slots=True)
+class ExactJsonNumber:
+    """One exact JSON number token captured without binary numeric coercion."""
+
+    lexeme: str
+
+
+@dataclass(frozen=True, slots=True)
 class NormalizedOutputParseResult:
-    """Parsed object plus exact compact sorted-key UTF-8 normalization bytes."""
+    """Lossless parsed object plus compact sorted-key UTF-8 normalization bytes."""
 
     value: dict[str, object]
     normalized_bytes: bytes
@@ -92,6 +99,8 @@ def parse_normalized_output_fixture(raw_output: bytes) -> NormalizedOutputParseR
 
     decoder = json.JSONDecoder(
         object_pairs_hook=_reject_duplicate_object_keys,
+        parse_int=_parse_exact_json_number,
+        parse_float=_parse_exact_json_number,
         parse_constant=_reject_nonstandard_constant,
     )
     try:
@@ -121,13 +130,7 @@ def parse_normalized_output_fixture(raw_output: bytes) -> NormalizedOutputParseR
     parsed = cast(dict[str, object], decoded)
 
     try:
-        normalized_text = json.dumps(
-            parsed,
-            ensure_ascii=False,
-            allow_nan=False,
-            separators=(",", ":"),
-            sort_keys=True,
-        )
+        normalized_text = _canonical_json_text(parsed)
         normalized_bytes = normalized_text.encode("utf-8", errors="strict")
     except (TypeError, ValueError, OverflowError, RecursionError) as error:
         raise NormalizedOutputParseError(
@@ -147,6 +150,32 @@ def _skip_ascii_whitespace(text: str, start: int) -> int:
     while index < len(text) and text[index] in _ASCII_WHITESPACE:
         index += 1
     return index
+
+
+def _parse_exact_json_number(lexeme: str) -> ExactJsonNumber:
+    return ExactJsonNumber(lexeme=lexeme)
+
+
+def _canonical_json_text(value: object) -> str:
+    if value is None:
+        return "null"
+    if type(value) is bool:
+        return "true" if value else "false"
+    if type(value) is str:
+        return json.dumps(value, ensure_ascii=False)
+    if type(value) is ExactJsonNumber:
+        return cast(ExactJsonNumber, value).lexeme
+    if type(value) is list:
+        items = cast(list[object], value)
+        return "[" + ",".join(_canonical_json_text(item) for item in items) + "]"
+    if type(value) is dict:
+        mapping = cast(dict[str, object], value)
+        serialized_items = (
+            f"{json.dumps(key, ensure_ascii=False)}:{_canonical_json_text(mapping[key])}"
+            for key in sorted(mapping)
+        )
+        return "{" + ",".join(serialized_items) + "}"
+    raise TypeError(f"unsupported parsed JSON value type: {type(value).__name__}")
 
 
 def _reject_duplicate_object_keys(
