@@ -88,6 +88,15 @@ def _observation(
     )
 
 
+def _constant_resolver(
+    observation: RuntimePhiObjectObservation,
+) -> RuntimePhiObjectResolver:
+    def resolve(_: str) -> RuntimePhiObjectObservation:
+        return observation
+
+    return resolve
+
+
 def test_valid_runtime_identity_evidence_covers_every_manifest_entry() -> None:
     manifest = _manifest()
     observations = {
@@ -146,7 +155,10 @@ def test_resolver_must_return_exact_observation_type() -> None:
     manifest = _manifest()
     resolver = cast(RuntimePhiObjectResolver, lambda _: object())
 
-    with pytest.raises(PhiRuntimeIdentityResolutionError, match="invalid runtime identity evidence"):
+    with pytest.raises(
+        PhiRuntimeIdentityResolutionError,
+        match="invalid runtime identity evidence",
+    ):
         verify_phi_runtime_identity_evidence(manifest, resolver)
 
 
@@ -160,7 +172,7 @@ def test_path_and_open_api_are_exact() -> None:
         replace(valid, open_api="open"),
     ):
         with pytest.raises(PhiRuntimeIdentityResolutionError):
-            verify_phi_runtime_identity_evidence(manifest, lambda _: invalid)
+            verify_phi_runtime_identity_evidence(manifest, _constant_resolver(invalid))
 
 
 def test_resolve_flags_must_be_exact_openat2_set() -> None:
@@ -172,7 +184,7 @@ def test_resolve_flags_must_be_exact_openat2_set() -> None:
         resolve_flags=frozenset({"RESOLVE_BENEATH", "RESOLVE_NO_SYMLINKS"}),
     )
     with pytest.raises(PhiRuntimeIdentityResolutionError, match="resolve flags"):
-        verify_phi_runtime_identity_evidence(manifest, lambda _: invalid)
+        verify_phi_runtime_identity_evidence(manifest, _constant_resolver(invalid))
 
 
 def test_open_flags_must_be_exact_required_set() -> None:
@@ -181,7 +193,7 @@ def test_open_flags_must_be_exact_required_set() -> None:
 
     invalid = replace(valid, open_flags=frozenset({"O_CLOEXEC", "O_RDONLY"}))
     with pytest.raises(PhiRuntimeIdentityResolutionError, match="open flags"):
-        verify_phi_runtime_identity_evidence(manifest, lambda _: invalid)
+        verify_phi_runtime_identity_evidence(manifest, _constant_resolver(invalid))
 
 
 def test_runtime_control_booleans_all_must_be_exact_true() -> None:
@@ -200,7 +212,7 @@ def test_runtime_control_booleans_all_must_be_exact_true() -> None:
 
     for invalid in invalid_observations:
         with pytest.raises(PhiRuntimeIdentityResolutionError, match="not proven"):
-            verify_phi_runtime_identity_evidence(manifest, lambda _: invalid)
+            verify_phi_runtime_identity_evidence(manifest, _constant_resolver(invalid))
 
 
 def test_numeric_identity_rejects_bool_negative_and_zero_inode() -> None:
@@ -215,7 +227,7 @@ def test_numeric_identity_rejects_bool_negative_and_zero_inode() -> None:
 
     for invalid in invalid_observations:
         with pytest.raises(PhiRuntimeIdentityResolutionError, match="identity field"):
-            verify_phi_runtime_identity_evidence(manifest, lambda _: invalid)
+            verify_phi_runtime_identity_evidence(manifest, _constant_resolver(invalid))
 
 
 def test_verified_byte_length_must_match_manifest() -> None:
@@ -224,7 +236,7 @@ def test_verified_byte_length_must_match_manifest() -> None:
     invalid = replace(valid, verification_byte_length=13, handoff_byte_length=13)
 
     with pytest.raises(PhiRuntimeIdentityResolutionError, match="mismatches manifest"):
-        verify_phi_runtime_identity_evidence(manifest, lambda _: invalid)
+        verify_phi_runtime_identity_evidence(manifest, _constant_resolver(invalid))
 
 
 def test_verified_sha256_must_match_manifest() -> None:
@@ -233,7 +245,7 @@ def test_verified_sha256_must_match_manifest() -> None:
     invalid = replace(valid, verification_sha256="e" * 64, handoff_sha256="e" * 64)
 
     with pytest.raises(PhiRuntimeIdentityResolutionError, match="mismatches manifest"):
-        verify_phi_runtime_identity_evidence(manifest, lambda _: invalid)
+        verify_phi_runtime_identity_evidence(manifest, _constant_resolver(invalid))
 
 
 def test_handoff_device_and_inode_must_equal_verified_object() -> None:
@@ -243,12 +255,12 @@ def test_handoff_device_and_inode_must_equal_verified_object() -> None:
     with pytest.raises(PhiRuntimeIdentityResolutionError, match="device identity changed"):
         verify_phi_runtime_identity_evidence(
             manifest,
-            lambda _: replace(valid, handoff_device=18),
+            _constant_resolver(replace(valid, handoff_device=18)),
         )
     with pytest.raises(PhiRuntimeIdentityResolutionError, match="inode identity changed"):
         verify_phi_runtime_identity_evidence(
             manifest,
-            lambda _: replace(valid, handoff_inode=102),
+            _constant_resolver(replace(valid, handoff_inode=102)),
         )
 
 
@@ -259,12 +271,12 @@ def test_handoff_bytes_must_equal_verified_object() -> None:
     with pytest.raises(PhiRuntimeIdentityResolutionError, match="byte length changed"):
         verify_phi_runtime_identity_evidence(
             manifest,
-            lambda _: replace(valid, handoff_byte_length=13),
+            _constant_resolver(replace(valid, handoff_byte_length=13)),
         )
     with pytest.raises(PhiRuntimeIdentityResolutionError, match="SHA-256 changed"):
         verify_phi_runtime_identity_evidence(
             manifest,
-            lambda _: replace(valid, handoff_sha256="e" * 64),
+            _constant_resolver(replace(valid, handoff_sha256="e" * 64)),
         )
 
 
@@ -277,4 +289,4 @@ def test_sha256_fields_must_be_lowercase_64_hex() -> None:
         replace(valid, handoff_sha256="g" * 64),
     ):
         with pytest.raises(PhiRuntimeIdentityResolutionError, match="SHA-256"):
-            verify_phi_runtime_identity_evidence(manifest, lambda _: invalid)
+            verify_phi_runtime_identity_evidence(manifest, _constant_resolver(invalid))
