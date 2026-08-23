@@ -1,3 +1,5 @@
+"""Qualification for the normative Backbone Tournament output parser."""
+
 from __future__ import annotations
 
 import hashlib
@@ -10,6 +12,13 @@ from medscale.mesc._bt_normalized_output_parser_v1 import (
     parse_normalized_output_fixture,
 )
 
+_VALID_OUTPUT = '{"z":2,"a":"é","nested":{"b":1,"a":true}}'.encode("utf-8")
+_EXPECTED_NORMALIZED = '{"a":"é","nested":{"a":true,"b":1},"z":2}'.encode("utf-8")
+_SCHEMA_INVALID_OUTPUT = (
+    b'{"answer":null,"answer_state":"NOT_A_SCHEMA_ENUM","evidence_refs":["missing-id"],'
+    b'"safety_action":null,"structured_output":null,"uncertainty":null}'
+)
+
 
 def _assert_parse_failure(raw_output: bytes, expected_kind: str) -> None:
     with pytest.raises(NormalizedOutputParseError) as captured:
@@ -18,14 +27,12 @@ def _assert_parse_failure(raw_output: bytes, expected_kind: str) -> None:
 
 
 def test_valid_object_is_normalized_to_compact_sorted_key_utf8() -> None:
-    result = parse_normalized_output_fixture(
-        '{"z":2,"a":"é","nested":{"b":1,"a":true}}'.encode(),
-    )
+    result = parse_normalized_output_fixture(_VALID_OUTPUT)
+    expected_value = {"z": 2, "a": "é", "nested": {"b": 1, "a": True}}
 
-    expected = '{"a":"é","nested":{"a":true,"b":1},"z":2}'.encode()
-    assert result.value == {"z": 2, "a": "é", "nested": {"b": 1, "a": True}}
-    assert result.normalized_bytes == expected
-    assert result.normalized_sha256 == hashlib.sha256(expected).hexdigest()
+    assert result.value == expected_value
+    assert result.normalized_bytes == _EXPECTED_NORMALIZED
+    assert result.normalized_sha256 == hashlib.sha256(_EXPECTED_NORMALIZED).hexdigest()
     assert b"\\u00e9" not in result.normalized_bytes
     assert not result.normalized_bytes.endswith(b"\n")
 
@@ -97,13 +104,7 @@ def test_invalid_json_is_rejected_without_semantic_repair(raw_output: bytes) -> 
 
 @pytest.mark.parametrize(
     "raw_output",
-    [
-        b"[]",
-        b"null",
-        b'"text"',
-        b"1",
-        b"true",
-    ],
+    [b"[]", b"null", b'"text"', b"1", b"true"],
 )
 def test_top_level_value_must_be_one_json_object(raw_output: bytes) -> None:
     _assert_parse_failure(raw_output, "invalid_json")
@@ -119,12 +120,7 @@ def test_duplicate_nested_key_is_rejected() -> None:
 
 @pytest.mark.parametrize(
     "raw_output",
-    [
-        b"{}{}",
-        b"{} trailing",
-        b"{}\xc2\xa0",
-        b"{}\n[]",
-    ],
+    [b"{}{}", b"{} trailing", b"{}\xc2\xa0", b"{}\n[]"],
 )
 def test_trailing_non_ascii_whitespace_or_content_is_rejected(raw_output: bytes) -> None:
     _assert_parse_failure(raw_output, "trailing_non_whitespace")
@@ -137,11 +133,7 @@ def test_parser_does_not_perform_normalized_schema_validation() -> None:
 
 
 def test_schema_shaped_fixture_is_only_parsed_not_cross_item_validated() -> None:
-    raw_output = (
-        b'{"answer":null,"answer_state":"NOT_A_SCHEMA_ENUM","evidence_refs":["missing-id"],'
-        b'"safety_action":null,"structured_output":null,"uncertainty":null}'
-    )
-    result = parse_normalized_output_fixture(raw_output)
+    result = parse_normalized_output_fixture(_SCHEMA_INVALID_OUTPUT)
     assert result.value["answer_state"] == "NOT_A_SCHEMA_ENUM"
     assert result.value["evidence_refs"] == ["missing-id"]
 
