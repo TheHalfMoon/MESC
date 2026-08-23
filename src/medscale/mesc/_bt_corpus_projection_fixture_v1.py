@@ -29,16 +29,8 @@ _FROZEN_R2_PROVENANCE_AUDIT_SHA256: Final = (
     "a8f6fd8d9c9f60c5a1a2bedc0bbb49182e635772cf50dae1e9e9028a4eb09398"
 )
 _FROZEN_CORPUS_CONFORMANCE_AUDIT_SHA256: Final = (
-    "842f2e0dbeaea59087223ddd94c8a95844c8f14822a16e1540c850c67f2"
-)
-
-# Correct the constant above at import time only by using the exact frozen value
-# as a separate literal. Keeping the public verifier bound to one value avoids
-# accepting a near-match produced by an accidental transcription.
-_FROZEN_CORPUS_CONFORMANCE_AUDIT_SHA256 = (
     "842f2e0dbeaea59087223ddd94c8a95844c8f14822a16e1549e67c0c850c67f2"
 )
-
 _CANONICAL_AXES: Final = ("A", "B", "C", "D", "E", "F")
 _CANONICAL_ITEM_IDS: Final = tuple(
     f"BT-{axis}-{index:03d}" for axis in _CANONICAL_AXES for index in range(1, 41)
