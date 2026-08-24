@@ -412,9 +412,7 @@ def build_readiness_manifest_from_qualified_dataset(
         decontamination_disposition="PASS",
         license_disposition="PASS",
         r2_training_data_only=qualification.r2_training_data_only,
-        heldout_eval_excluded_from_training=(
-            qualification.heldout_eval_excluded_from_training
-        ),
+        heldout_eval_excluded_from_training=qualification.heldout_eval_excluded_from_training,
         phi_present=qualification.phi_present,
         runtime_qualification_sha256=runtime_qualification_sha256,
         training_authorization_receipt_sha256=training_authorization_receipt_sha256,
