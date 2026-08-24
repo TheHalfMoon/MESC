@@ -99,34 +99,47 @@ reachable_import_graph_artifact_sha256
 
 The graph artifact itself is outside this V1 serialization contract. Before an
 activation package may rely on this security-review artifact, a separately
-reviewed graph-materialization contract and producer must establish:
+reviewed graph-materialization contract and producer must establish all of the
+following mechanically:
 
-- canonical graph bytes and the exact SHA-256 referenced here;
-- completeness semantics and provenance;
-- a canonical source-manifest binding carried by the graph artifact or its
-  inseparable provenance envelope; and
-- an activation-time equality check proving that source-manifest binding equals
-  this security-review artifact's exact `manifest_sha256`.
+- canonical graph artifact bytes and their validation rules;
+- a required `source_manifest_sha256` member **inside those canonical graph
+  artifact bytes**;
+- `source_manifest_sha256 = ^[0-9a-f]{64}$`;
+- graph completeness semantics and provenance;
+- `reachable_import_graph_artifact_sha256 =
+  lowercase_hex(SHA256(exact_validated_canonical_graph_artifact_bytes))`; and
+- activation-time equality of the graph artifact's validated
+  `source_manifest_sha256` to this security-review artifact's exact
+  `manifest_sha256`.
+
+The `source_manifest_sha256` value must therefore be covered directly by the
+bytes whose SHA-256 is `reachable_import_graph_artifact_sha256`. A detached
+provenance document, sidecar, narrative assertion, separately hashed envelope,
+signature over different bytes, or any other relation outside those exact hashed
+graph artifact bytes does **not** satisfy this V1 requirement.
 
 Independent validation of `manifest_sha256` and
 `reachable_import_graph_artifact_sha256` is not sufficient. The activation path
-must prove that the exact graph identified by
-`reachable_import_graph_artifact_sha256` was materialized from the exact manifest
-identified by `manifest_sha256`.
+must parse and validate the exact graph artifact bytes, reproduce their digest,
+extract the in-artifact `source_manifest_sha256`, and require exact equality to
+`manifest_sha256`.
 
-If the future graph contract does not define that same-manifest provenance field
-or equivalent cryptographically bound relation, the activation result is
-`BLOCKED`. If the graph's reproduced source-manifest digest differs from
+If the future graph contract does not define this exact in-artifact
+`source_manifest_sha256` binding, the activation result is `BLOCKED`. If the
+validated graph artifact's `source_manifest_sha256` differs from
 `manifest_sha256`, the activation result is `BLOCKED`.
 
 Therefore a syntactically conformant V1 security-review artifact is necessary
 but not sufficient for activation. If the graph artifact or its governing
 contract is absent, stale, ambiguous, cannot reproduce the bound graph digest,
-or cannot prove same-manifest provenance, the activation result is `BLOCKED`.
+or cannot prove the required in-artifact same-manifest binding, the activation
+result is `BLOCKED`.
 
-This explicit graph digest plus mandatory graph-to-manifest provenance prevents a
-future review artifact from claiming "complete reachable import graph reviewed"
-while leaving either the graph evidence or its source manifest unbound.
+This explicit graph digest plus mandatory in-artifact graph-to-manifest binding
+prevents a future review artifact from claiming "complete reachable import graph
+reviewed" while leaving either the graph evidence or its source manifest
+unbound.
 
 ## Canonical byte rules
 
@@ -180,9 +193,10 @@ A future parser/conformance implementation must prove `BLOCKED` for at least:
 - graph or overall disposition other than `PASS`;
 - manifest SHA-256 mismatch;
 - missing or unreproducible reachable-import-graph artifact binding;
-- graph artifact/provenance contract with no canonical source-manifest binding;
-- graph source-manifest digest different from `manifest_sha256`;
-- graph digest valid in isolation but detached from same-manifest provenance.
+- graph artifact contract with no in-artifact `source_manifest_sha256` member;
+- graph `source_manifest_sha256` different from `manifest_sha256`;
+- valid graph digest whose same-manifest assertion exists only in detached
+  provenance, a sidecar, or other bytes outside the hashed graph artifact.
 
 ## Non-claims
 
