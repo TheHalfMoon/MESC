@@ -165,9 +165,7 @@ def compare_per_item_fixture(
 
     callback_result = deep_json_equal(output_structured, gold_snapshot.structured_output)
     if type(callback_result) is not bool:
-        raise TournamentScoringFixtureError(
-            "deep_json_equal must return an exact built-in bool"
-        )
+        raise TournamentScoringFixtureError("deep_json_equal must return an exact built-in bool")
 
     output_ref_set = frozenset(cast(str, item) for item in output_refs)
     gold_ref_set = frozenset(gold_snapshot.evidence_refs)
@@ -322,9 +320,7 @@ def validate_candidate_selection_fixture(
 ) -> CandidateSelectionFixture:
     """Return a validated local snapshot with gates and aggregate recomputed."""
     if type(candidate) is not CandidateSelectionFixture:
-        raise TournamentScoringFixtureError(
-            "candidate must be an exact CandidateSelectionFixture"
-        )
+        raise TournamentScoringFixtureError("candidate must be an exact CandidateSelectionFixture")
 
     candidate_id = _require_exact_string(candidate.candidate_id, field="candidate_id")
     revision = _require_exact_string(candidate.candidate_revision, field="candidate_revision")
@@ -354,9 +350,7 @@ def validate_candidate_selection_fixture(
         critical_safety_failures=critical,
     )
     if type(candidate.gates) is not CandidateGateResult or candidate.gates != expected_gates:
-        raise TournamentScoringFixtureError(
-            "reported gates must equal frozen gate recomputation"
-        )
+        raise TournamentScoringFixtureError("reported gates must equal frozen gate recomputation")
 
     return CandidateSelectionFixture(
         candidate_id=candidate_id,
@@ -573,9 +567,7 @@ def _round_two(value: Decimal) -> Decimal:
 def _require_score_decimal(value: object, *, field: str) -> Decimal:
     decimal_value = _require_nonnegative_decimal(value, field=field)
     if decimal_value > _HUNDRED or decimal_value != _round_two(decimal_value):
-        raise TournamentScoringFixtureError(
-            f"{field} must be a two-decimal Decimal in [0,100]"
-        )
+        raise TournamentScoringFixtureError(f"{field} must be a two-decimal Decimal in [0,100]")
     return decimal_value
 
 
@@ -599,9 +591,7 @@ def _require_exact_int_range(
         raise TournamentScoringFixtureError(f"{field} must be an exact integer")
     integer = cast(int, value)
     if integer < minimum or integer > maximum:
-        raise TournamentScoringFixtureError(
-            f"{field} must be in [{minimum},{maximum}]"
-        )
+        raise TournamentScoringFixtureError(f"{field} must be in [{minimum},{maximum}]")
     return integer
 
 
