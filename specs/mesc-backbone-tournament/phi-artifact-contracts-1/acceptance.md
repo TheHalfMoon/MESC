@@ -7,15 +7,20 @@ semantics => `BLOCKED`.
 
 ## A. Canonical prerequisite
 
-Before this package may become Ready, require:
+Before this governance package may become Ready, require:
 
 ```text
 BASE_MAIN_SHA = 42615ad465eada4ede814d7f7de1e0703dafe137
 BASE_MAIN_TREE = 0dbe3dc7a43f2dd8bc5be174c33b5986b87a6caf
 PR_171 = CLOSED_CANONICAL
 FD-MESC-BT-EXEC-1 = CONDITIONAL_AUTHORIZATION_CANONICAL
-EXECUTION_ACTIVATION = REQUIRED
 ```
+
+`EXECUTION_ACTIVATION = REQUIRED` remains a separate downstream prerequisite
+before any later Phi access, remote-code import, model load, or tournament use.
+Execution activation is **not** a prerequisite for this docs-only governance
+package to become Ready or canonical, and canonical adoption of this package does
+not satisfy execution activation.
 
 The package must remain a descendant of the exact base with `behind=0` unless a
 separately reviewed base reconciliation is performed. No force-push, rebase, or
@@ -51,17 +56,21 @@ At minimum, reviewers must prove:
 3. it requires independent-review and complete-import-graph PASS claims;
 4. its reachable-import-graph evidence is digest-bound rather than left as an
    unbound narrative claim;
-5. the sandbox artifact binds `runtime_binding_sha256` to the SHA-256 of the
+5. the future graph-materialization contract or activation gate must prove that
+   the graph bound by `reachable_import_graph_artifact_sha256` was materialized
+   from the exact manifest bound by `manifest_sha256`; independent digest checks
+   without same-manifest provenance are insufficient;
+6. the sandbox artifact binds `runtime_binding_sha256` to the SHA-256 of the
    **complete canonical activation `RUNTIME_BINDING` bytes**, rather than
    redeclaring a partial runtime schema;
-6. a future activation verifier must independently validate and canonically
+7. a future activation verifier must independently validate and canonically
    reproduce the full runtime binding before comparing that digest;
-7. the sandbox artifact preserves every exact Section C.3 isolation-control value;
-8. both formats reject duplicate JSON member names and noncanonical byte
+8. the sandbox artifact preserves every exact Section C.3 isolation-control value;
+9. both formats reject duplicate JSON member names and noncanonical byte
    serialization;
-9. neither format treats a syntactic parser PASS as proof that the producer or
+10. neither format treats a syntactic parser PASS as proof that the producer or
    live observation is trustworthy;
-10. neither format grants model access, gated-access authority, execution
+11. neither format grants model access, gated-access authority, execution
     activation, ranking, winner selection, or tournament execution.
 
 A conflict with the existing conditional authorization contract is a blocker.
@@ -81,11 +90,18 @@ Therefore canonical adoption of this package must preserve:
 
 ```text
 REACHABLE_IMPORT_GRAPH_ARTIFACT_CONTRACT = REQUIRED_BEFORE_ACTIVATION_RELIANCE
+REACHABLE_IMPORT_GRAPH_TO_MANIFEST_PROVENANCE = REQUIRED_BEFORE_ACTIVATION_RELIANCE
 REAL_IMPORT_GRAPH_COMPLETENESS = NOT_ESTABLISHED
 ```
 
+The future graph contract or activation gate must expose and verify a canonical
+source-manifest binding equal to the security-review artifact's
+`manifest_sha256`. A graph digest that is valid in isolation but cannot prove it
+was materialized from that exact manifest remains `BLOCKED`.
+
 The security-review artifact cannot satisfy activation while its bound graph
-artifact lacks a separately reviewed canonical contract and producer.
+artifact lacks a separately reviewed canonical contract, producer, completeness
+semantics, and same-manifest provenance proof.
 
 This is intentional fail-closed dependency exposure, not an implied completion
 claim.
@@ -99,8 +115,11 @@ Keep the PR Draft until one unchanged exact head has all of:
 3. CI PASS on the repository's required Python matrix;
 4. CodeQL PASS;
 5. fresh exact-head technical/security/governance review;
-6. fresh independent exact-head review when available;
+6. fresh independent exact-head review with no unresolved blocker;
 7. zero unresolved technical/security/contract/governance blocker threads.
+
+Independent exact-head review is mandatory. If an independent reviewer cannot be
+obtained, the package remains `BLOCKED` and must not transition to Ready.
 
 Any head mutation burns head-specific qualification evidence.
 
