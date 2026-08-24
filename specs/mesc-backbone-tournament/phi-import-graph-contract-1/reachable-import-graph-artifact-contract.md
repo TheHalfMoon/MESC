@@ -56,7 +56,7 @@ fields governed by an ASCII grammar.
 parser-validated canonical `PHI_REMOTE_CODE_MANIFEST` bound by
 `source_manifest_sha256`, once each, in canonical manifest order.
 
-Each path must satisfy the manifest path grammar:
+Each path must satisfy the canonical manifest path grammar:
 
 ```text
 ^[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)*$
@@ -64,8 +64,8 @@ Each path must satisfy the manifest path grammar:
 
 Each slash-separated component must be neither `.` nor `..`.
 
-The graph is `BLOCKED` if the manifest bytes are absent, noncanonical, cannot reproduce
-`source_manifest_sha256`, or `roots` differs from the canonical manifest path sequence.
+Absent/noncanonical manifest bytes, failure to reproduce `source_manifest_sha256`, or
+any root-sequence mismatch => `BLOCKED`.
 
 ## Nodes
 
@@ -97,12 +97,12 @@ Every manifest path must appear exactly once as a `MANIFEST_FILE` node. No
 `MANIFEST_FILE` node may name a path outside the bound manifest.
 
 Runtime/dependency nodes are terminal trust-boundary nodes for this V1 artifact. Their
-internal import graphs are not silently asserted to be Phi remote-code review scope;
-future activation instead binds their environment through exact equality of
-`python_version` and `dependency_lock_sha256` to the canonical `RUNTIME_BINDING`.
+internal import graphs are not asserted to be Phi remote-code review scope. Future
+activation instead binds the environment through exact equality of `python_version` and
+`dependency_lock_sha256` to the canonical `RUNTIME_BINDING`.
 
-Nodes are sorted by the tuple `(kind, identity)` using literal ASCII byte ordering.
-Duplicate `(kind, identity)` pairs are prohibited.
+Nodes are sorted by `(kind, identity)` using literal ASCII byte ordering. Duplicate
+`(kind, identity)` pairs are prohibited.
 
 ## Edges
 
@@ -116,26 +116,35 @@ target_identity
 target_kind
 ```
 
-`source_kind` and `target_kind` use the same exact node-kind enum. The corresponding
-`source_identity` and `target_identity` must identify nodes present in `nodes`.
+The source restriction is exact:
+
+```text
+source_kind = MANIFEST_FILE
+```
+
+`source_identity` must identify an existing `MANIFEST_FILE` node. Edges whose source is
+`PYTHON_RUNTIME_MODULE` or `LOCKED_DEPENDENCY_MODULE` are prohibited because those
+nodes are terminal boundaries in V1.
+
+`target_kind` is one of the three exact node-kind values and `target_identity` must
+identify an existing node of that exact kind.
 
 `import_name` is the absolute module name after the future producer's deterministic
-resolution of any relative import syntax and must match the module-name grammar above.
+resolution of relative-import syntax and must match the module-name grammar above.
 
-Only `MANIFEST_FILE` nodes may be traversed as remote-code sources by this V1 closure.
 If an import from a manifest file resolves to another remotely sourced model-repository
-Python file, `target_kind` must be `MANIFEST_FILE` and `target_identity` must be the exact
-manifest path. A remotely sourced target absent from the canonical manifest is
-`BLOCKED`; it may not be relabeled as a runtime or locked-dependency module.
+Python file, `target_kind` must be `MANIFEST_FILE` and `target_identity` must be that
+exact manifest path. A remotely sourced target absent from the manifest is `BLOCKED`;
+it may not be relabeled as a runtime or locked-dependency module.
 
-Imports that resolve to the bound Python runtime use `PYTHON_RUNTIME_MODULE`. Imports
-that resolve to the immutable dependency environment use `LOCKED_DEPENDENCY_MODULE`.
-If the producer cannot determine exactly which boundary owns the target, the import is
+Imports resolving to the bound Python runtime use `PYTHON_RUNTIME_MODULE`. Imports
+resolving to the immutable dependency environment use `LOCKED_DEPENDENCY_MODULE`. If
+the producer cannot determine exactly which boundary owns a target, the relationship is
 unresolved and the artifact cannot claim PASS.
 
-Edges form a set of module-dependency relationships, not import-site occurrences.
-Repeated syntactic imports that resolve to the same canonical relationship are
-represented once. Edges are sorted by the tuple:
+Edges represent unique module-dependency relationships rather than import-site
+occurrences. Repeated syntactic imports resolving to the same relationship are encoded
+once. Edges are sorted by:
 
 ```text
 (source_kind, source_identity, import_name, target_kind, target_identity)
@@ -152,52 +161,47 @@ unresolved_imports = []
 unresolved_dynamic_imports = []
 ```
 
-The arrays are deliberately present in the hashed artifact so absence of unresolved
-relationships is an explicit claim rather than omitted metadata.
+The arrays are present inside the hashed artifact so absence of unresolved relationships
+is an explicit claim rather than omitted metadata.
 
-A future producer must classify any import relationship it cannot resolve exactly as
-unresolved rather than guessing. Any non-literal or data-dependent import target,
-runtime code generation capable of introducing an import not already represented by a
-canonical edge, or other import mechanism that the reviewed producer cannot close
-mechanically must cause `unresolved_dynamic_imports` to be non-empty during producer
-analysis and therefore prevent a V1 PASS artifact.
+A future producer must classify any relationship it cannot resolve exactly as unresolved
+rather than guessing. Any non-literal or data-dependent import target, runtime code
+generation capable of introducing an import not represented by a canonical edge, or
+other import mechanism the reviewed producer cannot close mechanically must prevent a V1
+PASS artifact.
 
-This V1 contract intentionally does not define a permissive encoding for unresolved
-entries because an accepted artifact requires both arrays to be empty. A future need to
-carry unresolved evidence without blocking requires a separately reviewed contract
-version; it may not be smuggled into V1.
+V1 intentionally defines no permissive encoding for unresolved entries because accepted
+artifacts require both arrays to be empty. Supporting unresolved evidence without
+blocking requires a separately reviewed contract version.
 
 ## Completeness semantics
 
-`completeness_disposition = PASS` is valid only if all of the following hold:
+`completeness_disposition = PASS` is valid only when all of the following hold:
 
 1. the canonical manifest is independently parsed and its digest equals
    `source_manifest_sha256`;
 2. `roots` equals every manifest path exactly once in manifest order;
-3. `nodes` contains every manifest path exactly once and contains no remote model-repo
-   file outside that manifest;
-4. every edge endpoint exists in `nodes` and every edge target is classified without
-   ambiguity;
-5. closure recursively follows every import relationship originating from every
-   `MANIFEST_FILE` node until the target is either another manifest file or one explicit
-   runtime/dependency boundary node;
-6. every remote model-repository Python target discovered by that closure is in the
-   manifest and is recursively traversed;
-7. `unresolved_imports` and `unresolved_dynamic_imports` are both exact empty arrays;
-8. the graph's `python_version` and `dependency_lock_sha256` exactly match the complete
+3. `nodes` contains every manifest path exactly once and no remote model-repository file
+   outside that manifest;
+4. every edge has `source_kind = MANIFEST_FILE`, its source is an existing manifest node,
+   and its target is an existing node classified without ambiguity;
+5. closure exhausts every import relationship originating from every manifest file until
+   the target is either another manifest file or one explicit runtime/dependency terminal
+   boundary node;
+6. every remote model-repository Python target discovered by closure is in the manifest;
+7. `unresolved_imports` and `unresolved_dynamic_imports` are exact empty arrays;
+8. graph `python_version` and `dependency_lock_sha256` exactly match the complete
    canonical activation `RUNTIME_BINDING` before activation reliance; and
-9. a separately reviewed producer/verifier implementation proves that its extraction
-   and resolution algorithm satisfies items 1–8 against the exact source/runtime
-   identities.
+9. a separately reviewed producer/verifier implementation proves its extraction and
+   resolution algorithm satisfies items 1–8 against the exact source/runtime identities.
 
-The artifact's literal `PASS` value, parser conformance, empty unresolved arrays, or a
-security-review PASS cannot by themselves establish item 9. Missing producer identity,
-unreviewed extraction logic, incomplete import-mechanism coverage, ambiguous module
-resolution, or inability to reproduce closure => `BLOCKED`.
+The literal `PASS`, parser conformance, empty unresolved arrays, or security-review PASS
+cannot self-attest item 9. Missing producer qualification, incomplete import-mechanism
+coverage, ambiguous resolution, or inability to reproduce closure => `BLOCKED`.
 
 ## Graph-to-manifest binding
 
-The required provenance member is inside the exact graph bytes:
+The provenance member is inside the exact graph bytes:
 
 ```text
 source_manifest_sha256
@@ -218,21 +222,20 @@ graph.source_manifest_sha256 == security_review.manifest_sha256
 ```
 
 Detached provenance, sidecars, narrative assertions, separately hashed envelopes,
-signatures over different bytes, or any relation outside the exact hashed graph bytes
-do not satisfy this V1 binding.
+signatures over different bytes, or any relation outside the exact hashed graph bytes do
+not satisfy V1.
 
 ## Runtime binding
 
-Before activation reliance, the exact graph artifact must also satisfy:
+Before activation reliance require:
 
 ```text
 graph.python_version == RUNTIME_BINDING.python_version
 graph.dependency_lock_sha256 == RUNTIME_BINDING.dependency_lock_sha256
 ```
 
-This does not make the graph artifact a runtime attestation. It prevents a graph whose
-module-resolution boundaries were produced for one Python/dependency environment from
-being reused against another environment without review.
+This is not a runtime attestation. It prevents graph reuse across a different
+Python/dependency environment without review.
 
 ## Canonical byte rules
 
@@ -243,16 +246,16 @@ The exact artifact bytes are:
 - duplicate member names prohibited at every depth;
 - exact member sets defined above;
 - object keys sorted lexicographically by literal ASCII bytes;
-- arrays ordered exactly by their contract-specific rules;
+- arrays ordered exactly by contract rules;
 - JSON separators exactly `,` and `:`;
 - insignificant whitespace prohibited;
 - JSON escape sequences prohibited in ASCII-grammar fields;
 - no trailing newline.
 
 Before hashing, a duplicate-member-rejecting parser must validate every member set,
-type, enum, grammar, manifest relation, node/edge reference, ordering rule, duplicate
-prohibition, empty unresolved arrays, and PASS predicate. It must canonically reserialize
-and require byte-for-byte equality with the supplied bytes.
+type, enum, grammar, manifest relation, node/edge reference, source-kind restriction,
+ordering rule, duplicate prohibition, empty unresolved arrays, and PASS predicate. It
+must canonically reserialize and require byte-for-byte equality.
 
 Only those exact validated canonical bytes may be hashed.
 
@@ -267,13 +270,13 @@ A future parser/producer conformance implementation must prove `BLOCKED` for at 
 - duplicate root, node, or edge;
 - roots not exactly equal to manifest paths;
 - missing manifest node or extra remote-file node;
-- edge endpoint absent from `nodes`;
+- edge source or target absent from `nodes`;
+- edge whose `source_kind != MANIFEST_FILE`;
 - remote model-repository target absent from the manifest;
 - remote target mislabeled as runtime/dependency boundary;
 - ambiguous runtime-versus-dependency boundary;
-- non-empty `unresolved_imports`;
-- non-empty `unresolved_dynamic_imports`;
-- non-literal dynamic import that the producer cannot close mechanically;
+- non-empty `unresolved_imports` or `unresolved_dynamic_imports`;
+- non-literal dynamic import the producer cannot close mechanically;
 - graph `source_manifest_sha256` mismatch;
 - graph Python-version mismatch with `RUNTIME_BINDING`;
 - graph dependency-lock mismatch with `RUNTIME_BINDING`;
@@ -283,10 +286,9 @@ A future parser/producer conformance implementation must prove `BLOCKED` for at 
 
 Conformance to this byte format does not prove:
 
-- the real Phi source was read or matches a manifest;
+- real Phi source was read or matches a manifest;
 - the graph is complete;
-- the future producer correctly discovered every import relationship;
-- runtime/dependency boundary modules are independently security reviewed here;
-- a Phi security review occurred or passed;
-- a sandbox qualification occurred or passed;
+- the future producer discovered every import relationship correctly;
+- runtime/dependency boundary internals are independently security reviewed here;
+- a Phi security review or sandbox qualification occurred;
 - model access or execution activation exists.

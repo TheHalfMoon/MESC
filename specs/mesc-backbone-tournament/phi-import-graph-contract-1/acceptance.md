@@ -63,17 +63,17 @@ Independent review must verify at least:
    order;
 3. every manifest path appears exactly once as a `MANIFEST_FILE` node and no remote
    model-repository path outside the manifest can appear as a valid remote node;
-4. every represented edge references existing nodes and remote-file targets cannot be
-   relabeled as trusted runtime/dependency boundaries;
-5. closure recursively traverses every import relationship originating from manifest
-   files until it reaches another manifest file or an explicit runtime/dependency
-   boundary node;
+4. every edge has `source_kind = MANIFEST_FILE`, references an existing manifest source
+   node and an existing target node, and cannot relabel a remote-file target as a trusted
+   runtime/dependency boundary;
+5. closure exhausts every import relationship originating from manifest files until it
+   reaches another manifest file or an explicit runtime/dependency terminal boundary;
 6. any remotely sourced Python target discovered by closure must be in the manifest;
 7. runtime/dependency boundary imports remain explicit graph nodes rather than omitted
-   relationships;
+   relationships and no edge may originate from those terminal boundary nodes;
 8. accepted V1 artifacts require exact empty `unresolved_imports` and
    `unresolved_dynamic_imports` arrays;
-9. a dynamic or data-dependent import that the producer cannot resolve mechanically is
+9. a dynamic or data-dependent import the producer cannot resolve mechanically is
    `BLOCKED`, not guessed or silently omitted;
 10. the graph binds `python_version` and `dependency_lock_sha256`, and future activation
     requires exact equality to the complete canonical `RUNTIME_BINDING`;
@@ -102,9 +102,9 @@ REAL_IMPORT_GRAPH_COMPLETENESS = NOT_ESTABLISHED
 ```
 
 The future producer implementation must be a separate package. It must be independently
-reviewed against exact source/runtime identities and must include negative fixtures for
-all blocking cases listed by the artifact contract before activation may rely on any
-graph digest.
+reviewed against exact source/runtime identities and include negative fixtures for all
+blocking cases listed by the artifact contract before activation may rely on a graph
+digest.
 
 No real Phi source read or graph construction is authorized by canonicalizing this
 contract.
