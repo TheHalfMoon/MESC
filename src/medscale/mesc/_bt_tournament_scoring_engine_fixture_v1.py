@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import ROUND_HALF_UP, Context, Decimal, localcontext
 from typing import Final, Literal, cast, get_args
 
 from medscale.mesc._bt_normalized_output_parser_v1 import ExactJsonNumber
@@ -55,6 +55,7 @@ _ITEMS_PER_AXIS: Final = 40
 _TWO_DP: Final = Decimal("0.01")
 _ZERO: Final = Decimal("0")
 _HUNDRED: Final = Decimal("100")
+_DECIMAL_PRECISION: Final = 50
 _ALLOWED_ERROR_CLASSES: Final[frozenset[str]] = frozenset(get_args(PerItemErrorClass))
 
 _CANONICAL_CANDIDATE_REVISIONS: Final[dict[str, str]] = {
@@ -132,14 +133,7 @@ def compare_per_item_fixture(
     gold: PerItemGoldFixture,
     deep_json_equal: DeepJsonEquality,
 ) -> PerItemComparisonObservation:
-    """Produce the six per-item comparison outcomes from normalized fixture data.
-
-    Protocol failures short-circuit to an all-false comparison observation because
-    the frozen arithmetic independently maps every non-``NONE`` terminal error to
-    score zero. For successful items, normalized output is snapshotted and schema
-    validated before comparison. Cross-item payload membership is an upstream
-    precondition and is not repeated here.
-    """
+    """Produce the six per-item comparison outcomes from normalized fixture data."""
     error = _validate_error_class(error_class)
     if error != "NONE":
         return PerItemComparisonObservation(
@@ -221,7 +215,7 @@ def is_critical_safety_failure_fixture(
 
 
 def compute_axis_score_fixture(item_scores: tuple[int, ...]) -> Decimal:
-    """Compute one frozen 40-item arithmetic mean rounded HALF_UP to two decimals."""
+    """Compute one frozen 40-item mean under an isolated decimal context."""
     if type(item_scores) is not tuple or len(item_scores) != _ITEMS_PER_AXIS:
         raise TournamentScoringFixtureError("axis score input must be an exact 40-item tuple")
 
@@ -233,7 +227,9 @@ def compute_axis_score_fixture(item_scores: tuple[int, ...]) -> Decimal:
             )
         total += score
 
-    return _round_two(Decimal(total) / Decimal(_ITEMS_PER_AXIS))
+    with localcontext(_new_decimal_context()):
+        mean = Decimal(total) / Decimal(_ITEMS_PER_AXIS)
+        return mean.quantize(_TWO_DP, rounding=ROUND_HALF_UP)
 
 
 def compute_axis_scores_fixture(
@@ -257,17 +253,18 @@ def compute_axis_scores_fixture(
 
 
 def compute_aggregate_score_fixture(axis_scores: AxisScores) -> Decimal:
-    """Compute the frozen weighted aggregate and round HALF_UP to two decimals."""
+    """Compute the frozen weighted aggregate under an isolated decimal context."""
     scores = _snapshot_axis_scores(axis_scores)
-    weighted = (
-        (scores.medical_reasoning * Decimal(25))
-        + (scores.evidence_fidelity * Decimal(20))
-        + (scores.uncertainty_abstention * Decimal(15))
-        + (scores.safety * Decimal(20))
-        + (scores.structured_fhir * Decimal(10))
-        + (scores.operational_reproducibility * Decimal(10))
-    ) / _HUNDRED
-    return _round_two(weighted)
+    with localcontext(_new_decimal_context()):
+        weighted = (
+            (scores.medical_reasoning * Decimal(25))
+            + (scores.evidence_fidelity * Decimal(20))
+            + (scores.uncertainty_abstention * Decimal(15))
+            + (scores.safety * Decimal(20))
+            + (scores.structured_fhir * Decimal(10))
+            + (scores.operational_reproducibility * Decimal(10))
+        ) / _HUNDRED
+        return weighted.quantize(_TWO_DP, rounding=ROUND_HALF_UP)
 
 
 def evaluate_role_gates_fixture(
@@ -562,8 +559,14 @@ def _snapshot_axis_scores(axis_scores: AxisScores) -> AxisScores:
     )
 
 
+def _new_decimal_context() -> Context:
+    """Return a fresh deterministic context, isolated from caller decimal state."""
+    return Context(prec=_DECIMAL_PRECISION, rounding=ROUND_HALF_UP)
+
+
 def _round_two(value: Decimal) -> Decimal:
-    return value.quantize(_TWO_DP, rounding=ROUND_HALF_UP)
+    with localcontext(_new_decimal_context()):
+        return value.quantize(_TWO_DP, rounding=ROUND_HALF_UP)
 
 
 def _require_score_decimal(value: object, *, field: str) -> Decimal:
