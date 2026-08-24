@@ -94,11 +94,7 @@ def _manifest(
     )
 
 
-def _run(
-    manifest: TrainingReadinessManifest,
-    *,
-    role: TrainingRole,
-) -> TrainingRunPlan:
+def _run(manifest: TrainingReadinessManifest, *, role: TrainingRole) -> TrainingRunPlan:
     if role == "compact":
         candidate = manifest.compact_candidate
         recipe = manifest.compact_recipe
