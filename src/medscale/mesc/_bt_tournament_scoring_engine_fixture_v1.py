@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Final, Literal, cast, get_args
 
 from medscale.mesc._bt_normalized_output_parser_v1 import ExactJsonNumber
