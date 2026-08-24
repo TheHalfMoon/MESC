@@ -110,9 +110,7 @@ _OPERATIONAL_KEYS: Final = frozenset(
     }
 )
 _ROLE_KEYS: Final = frozenset({"compact", "flagship_reasoner"})
-_ROLE_RESULT_KEYS: Final = frozenset(
-    {"outcome", "candidate_id", "reason", "tied_candidate_ids"}
-)
+_ROLE_RESULT_KEYS: Final = frozenset({"outcome", "candidate_id", "reason", "tied_candidate_ids"})
 
 _STATIC_CONSTS: Final[dict[str, object]] = {
     "schema_version": REPORT_SCHEMA_VERSION,
@@ -157,9 +155,7 @@ def validate_report_schema_fixture(report: dict[str, object]) -> None:
 
     _require_pattern_string(root["mesc_commit_sha"], _HEX40, path="$.mesc_commit_sha")
     _require_pattern_string(root["mesc_tree_sha"], _HEX40, path="$.mesc_tree_sha")
-    _require_pattern_string(
-        root["report_schema_sha256"], _HEX64, path="$.report_schema_sha256"
-    )
+    _require_pattern_string(root["report_schema_sha256"], _HEX64, path="$.report_schema_sha256")
     _require_pattern_string(
         root["artifact_manifest_sha256"], _HEX64, path="$.artifact_manifest_sha256"
     )
@@ -235,16 +231,12 @@ def _validate_candidate_report(value: object, *, path: str) -> None:
             path=f"{path}.exclusions[{index}]",
         )
         item_id = _require_item_id(item["item_id"], path=f"{path}.exclusions[{index}].item_id")
-        reason = _require_nonempty_string(
-            item["reason"], path=f"{path}.exclusions[{index}].reason"
-        )
+        reason = _require_nonempty_string(item["reason"], path=f"{path}.exclusions[{index}].reason")
         error_class = _require_string(
             item["error_class"], path=f"{path}.exclusions[{index}].error_class"
         )
         if error_class not in _ERROR_CLASSES:
-            raise ReportSchemaFixtureError(
-                f"{path}.exclusions[{index}].error_class is not frozen"
-            )
+            raise ReportSchemaFixtureError(f"{path}.exclusions[{index}].error_class is not frozen")
         identity = (item_id, reason, error_class)
         if identity in seen_exclusions:
             raise ReportSchemaFixtureError(f"{path}.exclusions must be unique")
