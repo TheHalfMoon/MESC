@@ -116,7 +116,7 @@ def _manifest(manifest: PhiRemoteCodeManifest) -> PhiRemoteCodeManifest:
         raise PhiSecurityReviewArtifactFixtureError("manifest content is not canonical") from error
     if reparsed != manifest:
         raise PhiSecurityReviewArtifactFixtureError("manifest identity is forged or stale")
-    return manifest
+    return reparsed
 
 
 def _graph(
