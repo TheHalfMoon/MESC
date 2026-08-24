@@ -4,30 +4,31 @@ on:
   pull_request:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   diff:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
       - uses: astral-sh/setup-uv@v5
       - run: uv python install 3.11
       - run: uv sync --frozen
-      - name: Format diagnostic files
+      - name: Apply exact Ruff formatting
         run: >-
           uv run ruff format
           src/medscale/mesc/_bt_report_schema_fixture_v1.py
           tests/test_mesc_bt_report_conformance_fixture_v1.py
-      - name: Emit formatted schema bytes
+      - name: Commit formatter output on diagnostic branch only
         run: |
-          echo 'SCHEMA_BASE64_BEGIN'
-          base64 -w0 src/medscale/mesc/_bt_report_schema_fixture_v1.py
-          echo
-          echo 'SCHEMA_BASE64_END'
-      - name: Emit formatted test bytes
-        run: |
-          echo 'TEST_BASE64_BEGIN'
-          base64 -w0 tests/test_mesc_bt_report_conformance_fixture_v1.py
-          echo
-          echo 'TEST_BASE64_END'
+          if git diff --quiet; then
+            echo 'No formatter delta remains.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/medscale/mesc/_bt_report_schema_fixture_v1.py tests/test_mesc_bt_report_conformance_fixture_v1.py
+          git commit -m 'style: apply diagnostic Ruff formatter output'
+          git push origin HEAD:${GITHUB_HEAD_REF}
