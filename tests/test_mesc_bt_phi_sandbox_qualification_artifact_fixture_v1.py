@@ -218,7 +218,7 @@ def test_noncanonical_key_order_is_rejected() -> None:
 
     with pytest.raises(
         PhiSandboxQualificationArtifactFixtureError,
-        match="top-level member set/order|canonical",
+        match=r"top-level member set/order|canonical",
     ):
         _verify(payload, runtime_bytes)
 
