@@ -102,9 +102,7 @@ def test_complete_manifest_is_ready_to_launch() -> None:
 
 
 def test_manifest_without_live_receipts_is_ready_for_authorization() -> None:
-    report = assess_training_readiness(
-        _manifest(runtime_receipt=None, authorization_receipt=None)
-    )
+    report = assess_training_readiness(_manifest(runtime_receipt=None, authorization_receipt=None))
 
     assert report.disposition == "READY_FOR_AUTHORIZATION"
     assert report.can_launch_training is False
