@@ -474,3 +474,51 @@ def test_validation_order_precedes_candidate_identity_with_corpus_stages() -> No
             corpus_audits=_audits(),
             terminal_dispositions=tuple(dispositions),
         )
+
+
+def test_schema_rejects_duplicate_candidate_report_objects() -> None:
+    report = _report()
+    candidates = cast(list[object], report["candidate_reports"])
+    candidates[1] = deepcopy(candidates[0])
+
+    with pytest.raises(ReportSchemaFixtureError, match="unique items"):
+        validate_report_schema_fixture(report)
+
+
+def test_conformance_rejects_top_level_negative_for_unreported_candidate() -> None:
+    report = _report()
+    report["negative_results"] = [
+        {
+            "candidate_id": "microsoft/Phi-4-multimodal-instruct",
+            "category": "OTHER",
+            "summary": "fixture-only negative result",
+            "item_id": None,
+        }
+    ]
+
+    with pytest.raises(ReportConformanceFixtureError, match="not present in candidate_reports"):
+        validate_report_conformance_fixture(
+            report=report,
+            activation=_activation(),
+            corpus_audits=_audits(),
+            terminal_dispositions=_dispositions(),
+        )
+
+
+def test_integer_score_numbers_remain_valid_normalized_report_numbers() -> None:
+    report = _report()
+    candidates = cast(list[object], report["candidate_reports"])
+    for raw_candidate in candidates:
+        candidate = cast(dict[str, object], raw_candidate)
+        axes = cast(dict[str, object], candidate["axis_scores"])
+        for axis, value in tuple(axes.items()):
+            axes[axis] = int(cast(Decimal, value))
+        candidate["aggregate_score"] = int(cast(Decimal, candidate["aggregate_score"]))
+
+    result = validate_report_conformance_fixture(
+        report=report,
+        activation=_activation(),
+        corpus_audits=_audits(),
+        terminal_dispositions=_dispositions(),
+    )
+    assert result.compact.candidate_id == _CANDIDATES[0][0]
