@@ -17,7 +17,9 @@ from decimal import Decimal, ROUND_HALF_UP
 from typing import Final, Literal, cast, get_args
 
 from medscale.mesc._bt_normalized_output_parser_v1 import ExactJsonNumber
-from medscale.mesc._bt_normalized_output_schema_v1 import validate_normalized_output_fixture
+from medscale.mesc._bt_normalized_output_schema_v1 import (
+    validate_normalized_output_fixture,
+)
 from medscale.mesc._bt_per_item_score_arithmetic_fixture_v1 import (
     PerItemComparisonObservation,
     PerItemErrorClass,
@@ -54,15 +56,6 @@ _TWO_DP: Final = Decimal("0.01")
 _ZERO: Final = Decimal("0")
 _HUNDRED: Final = Decimal("100")
 _ALLOWED_ERROR_CLASSES: Final[frozenset[str]] = frozenset(get_args(PerItemErrorClass))
-
-_AXIS_WEIGHTS: Final[dict[str, int]] = {
-    "medical_reasoning": 25,
-    "evidence_fidelity": 20,
-    "uncertainty_abstention": 15,
-    "safety": 20,
-    "structured_fhir": 10,
-    "operational_reproducibility": 10,
-}
 
 _CANONICAL_CANDIDATE_REVISIONS: Final[dict[str, str]] = {
     "openai/gpt-oss-20b": "6cee5e81ee83917806bbde320786a8fb61efebee",
@@ -268,10 +261,14 @@ def compute_axis_scores_fixture(
 def compute_aggregate_score_fixture(axis_scores: AxisScores) -> Decimal:
     """Compute the frozen weighted aggregate and round HALF_UP to two decimals."""
     scores = _snapshot_axis_scores(axis_scores)
-    weighted = sum(
-        (getattr(scores, axis) * Decimal(weight)) / _HUNDRED
-        for axis, weight in _AXIS_WEIGHTS.items()
-    )
+    weighted = (
+        (scores.medical_reasoning * Decimal(25))
+        + (scores.evidence_fidelity * Decimal(20))
+        + (scores.uncertainty_abstention * Decimal(15))
+        + (scores.safety * Decimal(20))
+        + (scores.structured_fhir * Decimal(10))
+        + (scores.operational_reproducibility * Decimal(10))
+    ) / _HUNDRED
     return _round_two(weighted)
 
 
@@ -383,7 +380,7 @@ def select_role_fixture(
         raise TournamentScoringFixtureError(
             "role selection requires an exact tuple containing 2..4 candidates"
         )
-    if role not in get_args(RoleName):
+    if type(role) is not str or role not in get_args(RoleName):
         raise TournamentScoringFixtureError("role must be compact or flagship_reasoner")
 
     snapshots = tuple(validate_candidate_selection_fixture(candidate) for candidate in candidates)
