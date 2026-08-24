@@ -198,9 +198,17 @@ def test_remote_star_import_is_blocked() -> None:
         _produce(sources)
 
 
-def test_relative_import_escape_is_blocked() -> None:
+@pytest.mark.parametrize(
+    ("path", "source"),
+    [
+        ("pkg/model.py", b"from .. import x\n"),
+        ("pkg/model.py", b"from ..json import x\n"),
+        ("model.py", b"from .json import x\n"),
+    ],
+)
+def test_relative_import_escape_is_blocked(path: str, source: bytes) -> None:
     with pytest.raises(PhiImportGraphFixtureError, match="relative import"):
-        _produce({"pkg/model.py": b"from .. import x\n"})
+        _produce({path: source})
 
 
 def test_source_key_set_must_equal_manifest_paths() -> None:
