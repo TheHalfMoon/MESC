@@ -98,10 +98,28 @@ A future activation path must independently validate the complete canonical
 inside the sandbox artifact. This prevents schema drift between sandbox evidence
 and the canonical activation runtime identity.
 
+Runtime equality alone is not freshness. Two activation attempts may use the same
+validated runtime, so the sandbox artifact also contains one exact
+`qualification_challenge`. The future activation verifier must issue that
+challenge from exactly 32 bytes of operating-system CSPRNG output after the
+runtime binding is fixed and immediately before one live qualification producer
+invocation. It must keep a current-process `ISSUED` record binding the challenge
+to that exact runtime digest, expected producer identity, and live producer
+invocation; artifact acceptance atomically consumes the record. Unknown, reused,
+`CONSUMED`, `CANCELLED`, prior-process, prior-invocation, producer-chosen, or
+operator-supplied challenges are fail-closed.
+
+The challenge is not derived from `<ACTIVATION_ID>` and does not grant execution
+authority. The existing activation identity still binds the resulting
+`phi_sandbox_qualification_sha256` only after the canonical artifact bytes have
+been established, avoiding a circular dependency.
+
 The package does not allocate or inspect a provider instance, create namespaces
 or firewall rules, start a model process, or test network behavior. A future live
-qualification producer must generate the observations; this package only freezes
-how accepted observations are serialized and bound to one exact validated runtime.
+qualification producer must generate the observations and a future activation
+verifier must implement the run-scoped challenge lifecycle; this package only
+freezes how accepted observations are serialized and bound to one exact validated
+runtime and one exact live producer invocation.
 
 ## Deliberate non-claims
 
@@ -112,6 +130,7 @@ This package does **not**:
 - perform a security review;
 - define reviewer qualifications or authenticate a reviewer;
 - configure, launch, or inspect a sandbox or model process;
+- implement or execute the sandbox challenge verifier;
 - access provider APIs, GPUs, credentials, gated terms, or model weights;
 - establish either production artifact digest;
 - establish `PHI_REMOTE_CODE_SECURITY_REVIEW = PASS`;
@@ -146,4 +165,5 @@ FINE_TUNING = NOT_AUTHORIZED
 ```
 
 Canonical adoption of this package, if it later passes every exact-head gate,
-freezes artifact **formats only**. It grants no execution or access authority.
+freezes artifact **formats and fail-closed freshness-field semantics only**. It
+grants no execution or access authority.

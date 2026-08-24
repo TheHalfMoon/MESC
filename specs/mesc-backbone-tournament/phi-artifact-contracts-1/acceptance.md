@@ -67,12 +67,38 @@ At minimum, reviewers must prove:
    redeclaring a partial runtime schema;
 7. a future activation verifier must independently validate and canonically
    reproduce the full runtime binding before comparing that digest;
-8. the sandbox artifact preserves every exact Section C.3 isolation-control value;
-9. both formats reject duplicate JSON member names and noncanonical byte
-   serialization;
-10. neither format treats a syntactic parser PASS as proof that the producer or
-   live observation is trustworthy;
-11. neither format grants model access, gated-access authority, execution
+8. the sandbox artifact contains exactly one `qualification_challenge` matching
+   `^[0-9a-f]{64}$`, issued by the future activation verifier from exactly 32
+   bytes of operating-system cryptographically secure random data only after the
+   runtime binding is fixed and immediately before exactly one live qualification
+   producer invocation;
+9. the future activation verifier must maintain a current-process `ISSUED` record
+   binding that exact challenge to the exact `runtime_binding_sha256`, expected
+   `producer_identity`, and its live handle for that one producer invocation;
+10. the artifact's challenge, runtime digest, and producer identity must equal the
+    still-`ISSUED` verifier record, and the bound producer invocation must still be
+    the same live invocation;
+11. after all qualification checks pass, the verifier must atomically transition
+    the run record from `ISSUED` to `CONSUMED` before exposing sandbox
+    qualification PASS; unknown, reused, `CONSUMED`, `CANCELLED`, prior-process,
+    prior-invocation, producer-chosen, or operator-supplied challenges remain
+    `BLOCKED`;
+12. verifier restart, producer exit, cancellation, or artifact rejection must not
+    reconstruct or preserve an `ISSUED` record from artifact bytes or operator
+    input; old artifacts therefore fail closed;
+13. `qualification_challenge` must not be derived from `<ACTIVATION_ID>` and
+    `<ACTIVATION_ID>` must not be required to issue it, avoiding circularity with
+    the existing activation identity preimage that already binds
+    `phi_sandbox_qualification_sha256`;
+14. the sandbox artifact preserves every exact Section C.3 isolation-control value;
+15. both formats reject duplicate JSON member names and noncanonical byte
+    serialization;
+16. neither format treats a syntactic parser PASS as proof that the producer or
+    live observation is trustworthy;
+17. required negative fixtures prove replayed, detached, wrong-runtime,
+    wrong-producer-invocation, unknown, `CONSUMED`, and `CANCELLED` challenge
+    evidence remains `BLOCKED`;
+18. neither format grants model access, gated-access authority, execution
     activation, ranking, winner selection, or tournament execution.
 
 A conflict with the existing conditional authorization contract is a blocker.
@@ -81,7 +107,15 @@ A sandbox format that copies only a subset of the canonical runtime fields is al
 a blocker, because it could drift from the already-canonical runtime-binding
 contract.
 
-## D. Deliberately unresolved dependency
+A sandbox freshness design that relies only on `runtime_binding_sha256`, an
+operator-selected identifier, a producer-selected identifier, a timestamp window,
+or `<ACTIVATION_ID>` is a blocker. Runtime equality alone cannot distinguish a
+fresh qualification run from replay, and `<ACTIVATION_ID>` is derived only after
+the sandbox artifact digest is established.
+
+## D. Deliberately unresolved dependencies
+
+### D.1 Reachable import graph
 
 `security-review-artifact-contract.md` binds a
 `reachable_import_graph_artifact_sha256`, but this package does not freeze the
@@ -116,8 +150,28 @@ The security-review artifact cannot satisfy activation while its bound graph
 artifact lacks a separately reviewed canonical contract, producer, completeness
 semantics, and this mechanically verifiable same-manifest binding.
 
-This is intentional fail-closed dependency exposure, not an implied completion
-claim.
+### D.2 Live sandbox challenge verifier and producer
+
+This package freezes the `qualification_challenge` byte field and its fail-closed
+run-state semantics, but it does not implement or execute the future activation
+verifier or live qualification producer.
+
+Therefore canonical adoption of this package must preserve:
+
+```text
+PHI_SANDBOX_LIVE_PRODUCER = REQUIRED_BEFORE_ACTIVATION_RELIANCE
+PHI_SANDBOX_CHALLENGE_VERIFIER = REQUIRED_BEFORE_ACTIVATION_RELIANCE
+PHI_SANDBOX_REPLAY_NEGATIVE_FIXTURES = REQUIRED_BEFORE_ACTIVATION_RELIANCE
+REAL_SANDBOX_QUALIFICATION_FRESHNESS = NOT_ESTABLISHED
+```
+
+A future implementation must prove the exact `ISSUED -> CONSUMED` lifecycle,
+fail closed on every replay/cancellation mismatch listed by the sandbox contract,
+and undergo separate review before any execution activation may rely on the
+artifact.
+
+These are intentional fail-closed dependency exposures, not implied completion
+claims.
 
 ## E. Exact-head qualification
 
@@ -156,8 +210,9 @@ Only after that verification may the package be described as
 `CLOSED_CANONICAL`.
 
 Canonical adoption freezes only the two proposed artifact serialization
-contracts. It does not establish either real artifact, its digest, its producer,
-or any live qualification result.
+contracts and the sandbox artifact's run-scoped freshness field semantics. It
+does not establish either real artifact, its digest, its producer, the challenge
+verifier implementation, or any live qualification result.
 
 ## G. Hard boundary
 
