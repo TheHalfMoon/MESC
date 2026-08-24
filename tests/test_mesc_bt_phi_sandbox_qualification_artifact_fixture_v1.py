@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import hashlib
 import json
+from types import SimpleNamespace
 from typing import cast
 
 import pytest
 
+import medscale.mesc._bt_phi_sandbox_qualification_artifact_fixture_v1 as sandbox_fixture
 from medscale.mesc._bt_activation_identity_fixture_v1 import (
     EXTERNAL_RUNTIME_PARENT_PATH,
     GPU_MODEL_H100,
@@ -23,7 +25,6 @@ _SHA_A = "a" * 40
 _SHA_B = "b" * 40
 _CHALLENGE = "c" * 64
 _OVERSIZED_INTEGER_JSON = b'{"x":' + b"1" * 5000 + b"}"
-_DEEPLY_NESTED_JSON = b"[" * 1100 + b"0" + b"]" * 1100
 
 
 def _canonical(value: object) -> bytes:
@@ -130,7 +131,6 @@ def test_valid_artifact_is_canonical_digest_and_runtime_bound() -> None:
         (b"[]", "top level"),
         (b'{"x":NaN}', "non-standard JSON constant"),
         (_OVERSIZED_INTEGER_JSON, "not valid JSON"),
-        (_DEEPLY_NESTED_JSON, "not valid JSON"),
     ],
 )
 def test_json_envelope_is_fail_closed(payload: bytes, match: str) -> None:
@@ -138,6 +138,25 @@ def test_json_envelope_is_fail_closed(payload: bytes, match: str) -> None:
 
     with pytest.raises(PhiSandboxQualificationArtifactFixtureError, match=match):
         _verify(payload, runtime_bytes)
+
+
+def test_artifact_json_recursion_error_is_wrapped(monkeypatch: pytest.MonkeyPatch) -> None:
+    runtime_bytes, _ = _fixture()
+
+    def _raise_recursion(*_args: object, **_kwargs: object) -> object:
+        raise RecursionError("fixture parser recursion")
+
+    fake_json = SimpleNamespace(
+        JSONDecodeError=json.JSONDecodeError,
+        loads=_raise_recursion,
+    )
+    monkeypatch.setattr(sandbox_fixture, "json", fake_json)
+
+    with pytest.raises(
+        PhiSandboxQualificationArtifactFixtureError,
+        match="not valid JSON",
+    ):
+        _verify(b"{}", runtime_bytes)
 
 
 def test_bom_trailing_newline_whitespace_and_escaped_ascii_are_noncanonical() -> None:
@@ -295,7 +314,6 @@ def test_every_frozen_isolation_control_value_is_exact(control: str) -> None:
         b"{}\n",
         b"\xef\xbb\xbf{}",
         _OVERSIZED_INTEGER_JSON,
-        _DEEPLY_NESTED_JSON,
     ],
 )
 def test_runtime_binding_must_pass_canonical_activation_validator(bad_runtime: bytes) -> None:
@@ -306,6 +324,25 @@ def test_runtime_binding_must_pass_canonical_activation_validator(bad_runtime: b
         match="runtime binding is not canonical",
     ):
         _verify(_canonical(document), bad_runtime)
+
+
+def test_runtime_binding_recursion_error_is_wrapped(monkeypatch: pytest.MonkeyPatch) -> None:
+    runtime_bytes, document = _fixture()
+
+    def _raise_recursion(*_args: object, **_kwargs: object) -> object:
+        raise RecursionError("fixture runtime parser recursion")
+
+    monkeypatch.setattr(
+        sandbox_fixture.activation_fixture,
+        "_parse_runtime_binding",
+        _raise_recursion,
+    )
+
+    with pytest.raises(
+        PhiSandboxQualificationArtifactFixtureError,
+        match="runtime binding is not canonical",
+    ):
+        _verify(_canonical(document), runtime_bytes)
 
 
 def test_runtime_binding_digest_is_recomputed_from_exact_validated_bytes() -> None:
