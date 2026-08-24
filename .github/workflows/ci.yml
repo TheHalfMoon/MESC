@@ -39,7 +39,7 @@ jobs:
         run: uv run ruff check .
 
       - name: Ruff (format)
-        run: uv run ruff format --check .
+        run: uv run ruff format --diff .
 
       - name: Mypy (strict)
         run: uv run mypy
