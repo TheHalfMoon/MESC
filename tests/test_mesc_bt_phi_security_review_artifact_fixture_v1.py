@@ -14,7 +14,7 @@ from medscale.mesc._bt_phi_import_graph_fixture_v1 import (
     PhiImportGraphRuntimeBinding,
     PhiReachableImportGraphArtifact,
     produce_phi_reachable_import_graph_fixture,
-    verify_phi_reachable_import_graph_fixture as verify_graph_fixture,
+    verify_phi_reachable_import_graph_fixture,
 )
 from medscale.mesc._bt_phi_remote_code_fixture_v1 import (
     PhiRemoteCodeManifest,
@@ -400,7 +400,7 @@ def test_caller_manifest_mutation_after_snapshot_cannot_change_verification(
         boundary_policy: PhiImportGraphBoundaryPolicy,
     ) -> None:
         object.__setattr__(manifest, "sha256", "0" * 64)
-        verify_graph_fixture(
+        verify_phi_reachable_import_graph_fixture(
             graph_payload,
             snapshot,
             graph_sources,
