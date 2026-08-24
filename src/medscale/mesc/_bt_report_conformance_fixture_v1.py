@@ -150,6 +150,10 @@ def validate_report_conformance_fixture(
     candidate_objects = cast(list[object], report["candidate_reports"])
     candidates = tuple(cast(dict[str, object], item) for item in candidate_objects)
     candidate_ids = tuple(cast(str, candidate["candidate_id"]) for candidate in candidates)
+
+    _validate_corpus_audit_fixture(corpus_audits)
+    dispositions = _validate_terminal_dispositions(terminal_dispositions, candidate_ids)
+
     report_pairs = tuple(
         (cast(str, candidate["candidate_id"]), cast(str, candidate["candidate_revision"]))
         for candidate in candidates
@@ -159,10 +163,6 @@ def validate_report_conformance_fixture(
         raise ReportConformanceFixtureError(
             "candidate report pair is not admitted by the injected activation fixture"
         )
-
-    _validate_corpus_audit_fixture(corpus_audits)
-    dispositions = _validate_terminal_dispositions(terminal_dispositions, candidate_ids)
-
     if len(set(candidate_ids)) != len(candidate_ids):
         raise ReportConformanceFixtureError("candidate_reports candidate IDs must be unique")
     if len(set(report_pairs)) != len(report_pairs):
