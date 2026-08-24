@@ -67,6 +67,11 @@ the target of at least one edge, and one module identity cannot appear under bot
 kinds. Runtime/dependency nodes are terminal targets only; no edge may originate from
 them.
 
+Graph-edge identity is also exact rather than merely complete: the future reviewed
+producer/verifier must prove the canonical artifact edge set is equal to the import
+relationship set produced by its reviewed extraction/resolution algorithm. Missing and
+spurious edges are both `BLOCKED`.
+
 This package does not claim that Python-runtime or locked-dependency internals receive
 the Phi remote-code file review. The graph records those boundaries so independent Phi
 review can reason about them without pretending they are remote files. Changing that
@@ -81,12 +86,14 @@ An artifact may claim `completeness_disposition = PASS` only when:
 - every edge source is a `MANIFEST_FILE` node;
 - every remote target reached by import resolution is a manifest node;
 - runtime/dependency imports terminate at explicit, referenced, unambiguous boundary nodes;
+- the artifact edge set exactly equals the reviewed producer's resolved relationship set;
 - `unresolved_imports = []`;
 - `unresolved_dynamic_imports = []`;
 - a separately reviewed future producer/verifier proves its extraction algorithm
   actually exhausts the relationships required by this contract.
 
-Parser conformance or the literal `PASS` string is not proof of completeness.
+Parser conformance or the literal `PASS` string is not proof of completeness or
+soundness.
 
 ## Deliberate non-claims
 

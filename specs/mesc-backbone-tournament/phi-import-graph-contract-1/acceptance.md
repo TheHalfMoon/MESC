@@ -46,9 +46,10 @@ Reviewers must confirm that this package is only the separately reviewed Phase 2
 governance/qualification work permitted by `execution-authorization-1/plan.md` and the
 explicit graph-contract dependency canonically introduced by PR #174.
 
-The package may freeze a graph artifact schema and fail-closed completeness semantics.
-It may not read real Phi source, construct a real graph, qualify a producer, allocate a
-runtime, access model weights, execute remote code, or perform a security review.
+The package may freeze a graph artifact schema and fail-closed completeness/soundness
+semantics. It may not read real Phi source, construct a real graph, qualify a producer,
+allocate a runtime, access model weights, execute remote code, or perform a security
+review.
 
 A conflict with `FD-MESC-BT-EXEC-1` or any expansion into live/runtime/model authority
 is a blocker.
@@ -72,25 +73,28 @@ Independent review must verify at least:
 6. closure exhausts every import relationship originating from manifest files until it
    reaches another manifest file or an explicit runtime/dependency terminal boundary;
 7. any remotely sourced Python target discovered by closure must be in the manifest;
-8. accepted V1 artifacts require exact empty `unresolved_imports` and
+8. the accepted artifact edge set equals exactly the reviewed producer/verifier's
+   canonical resolved relationship set, so omitted and spurious edges are both blocked;
+9. accepted V1 artifacts require exact empty `unresolved_imports` and
    `unresolved_dynamic_imports` arrays;
-9. a dynamic or data-dependent import the producer cannot resolve mechanically is
-   `BLOCKED`, not guessed or silently omitted;
-10. graph `base_container_oci_digest`, `python_version`, and `dependency_lock_sha256`
+10. a dynamic or data-dependent import the producer cannot resolve mechanically is
+    `BLOCKED`, not guessed or silently omitted;
+11. graph `base_container_oci_digest`, `python_version`, and `dependency_lock_sha256`
     are inside the hashed bytes and future activation requires all three to equal the
     complete canonical `RUNTIME_BINDING`; `python_version` must use the same printable
     ASCII identity grammar as that runtime binding rather than a narrower invented token;
-11. parser conformance, empty unresolved arrays, or literal `PASS` do not self-attest
-    graph completeness;
-12. a separately reviewed future producer/verifier remains mandatory and must prove its
-    extraction/module-resolution algorithm exhausts this contract's closure semantics;
-13. graph-to-manifest provenance outside the exact hashed graph bytes is insufficient;
-14. neither this contract nor its canonical adoption establishes a real graph, real Phi
+12. parser conformance, empty unresolved arrays, or literal `PASS` do not self-attest
+    graph completeness or soundness;
+13. a separately reviewed future producer/verifier remains mandatory and must prove its
+    extraction/module-resolution algorithm exhausts this contract's closure semantics and
+    emits no spurious relationship;
+14. graph-to-manifest provenance outside the exact hashed graph bytes is insufficient;
+15. neither this contract nor its canonical adoption establishes a real graph, real Phi
     security review, sandbox qualification, model access, or execution authority.
 
 Any ambiguity that could allow an unmanifested remote file, unresolved dynamic import,
-runtime mismatch, non-minimal graph identity, or unreviewed producer to support
-activation is a blocker.
+runtime mismatch, non-minimal or unsound graph identity, or unreviewed producer to
+support activation is a blocker.
 
 ## E. Deliberately unresolved producer dependency
 

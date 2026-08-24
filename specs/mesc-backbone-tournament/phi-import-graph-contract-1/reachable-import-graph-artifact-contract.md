@@ -158,7 +158,12 @@ unresolved and the artifact cannot claim PASS.
 
 Edges represent unique module-dependency relationships rather than import-site
 occurrences. Repeated syntactic imports resolving to the same relationship are encoded
-once. Edges are sorted by:
+once. The accepted artifact edge set must equal exactly the canonical resolved
+relationship set emitted by the separately reviewed producer/verifier algorithm: every
+resolved relationship appears once and no edge exists without a corresponding resolved
+relationship. Missing or spurious edges => `BLOCKED`.
+
+Edges are sorted by:
 
 ```text
 (source_kind, source_identity, import_name, target_kind, target_identity)
@@ -188,7 +193,7 @@ V1 defines no permissive encoding for unresolved entries because accepted artifa
 require both arrays to be empty. Supporting unresolved evidence without blocking
 requires a separately reviewed contract version.
 
-## Completeness semantics
+## Completeness and soundness semantics
 
 `completeness_disposition = PASS` is valid only when all of the following hold:
 
@@ -204,16 +209,19 @@ requires a separately reviewed contract version.
 6. closure exhausts every import relationship originating from every manifest file until
    the target is another manifest file or one explicit runtime/dependency terminal node;
 7. every remote model-repository Python target discovered by closure is in the manifest;
-8. `unresolved_imports` and `unresolved_dynamic_imports` are exact empty arrays;
-9. graph `base_container_oci_digest`, `python_version`, and `dependency_lock_sha256`
-   exactly match the complete canonical activation `RUNTIME_BINDING` before activation
-   reliance; and
-10. a separately reviewed producer/verifier implementation proves its extraction and
-    resolution algorithm satisfies items 1–9 against the exact source/runtime identities.
+8. the artifact edge set equals exactly the reviewed producer/verifier's canonical
+   resolved relationship set, with neither omitted nor spurious edges;
+9. `unresolved_imports` and `unresolved_dynamic_imports` are exact empty arrays;
+10. graph `base_container_oci_digest`, `python_version`, and `dependency_lock_sha256`
+    exactly match the complete canonical activation `RUNTIME_BINDING` before activation
+    reliance; and
+11. a separately reviewed producer/verifier implementation proves its extraction and
+    resolution algorithm satisfies items 1–10 against the exact source/runtime identities.
 
 The literal `PASS`, parser conformance, empty unresolved arrays, or security-review PASS
-cannot self-attest item 10. Missing producer qualification, incomplete import-mechanism
-coverage, ambiguous resolution, or inability to reproduce closure => `BLOCKED`.
+cannot self-attest item 11. Missing producer qualification, incomplete import-mechanism
+coverage, ambiguous resolution, spurious relationships, or inability to reproduce exact
+closure => `BLOCKED`.
 
 ## Graph-to-manifest binding
 
@@ -272,8 +280,9 @@ The exact artifact bytes are:
 Before hashing, a duplicate-member-rejecting parser must validate every member set,
 type, enum, grammar, manifest relation, node/edge reference, source-kind restriction,
 boundary-node minimality/classification, ordering rule, duplicate prohibition, empty
-unresolved arrays, and PASS predicate. It must canonically reserialize and require
-byte-for-byte equality.
+unresolved arrays, and PASS predicate. Producer/verifier qualification must additionally
+prove exact edge-set equality to its reviewed extraction result. The verifier must
+canonically reserialize and require byte-for-byte equality.
 
 Only those exact validated canonical bytes may be hashed.
 
@@ -293,6 +302,8 @@ A future parser/producer conformance implementation must prove `BLOCKED` for at 
 - edge whose `source_kind != MANIFEST_FILE`;
 - unreferenced runtime/dependency boundary node;
 - one module identity classified as both runtime and dependency;
+- omitted resolved import relationship;
+- spurious edge with no producer-resolved relationship;
 - remote model-repository target absent from the manifest;
 - remote target mislabeled as runtime/dependency boundary;
 - ambiguous runtime-versus-dependency boundary;
@@ -309,7 +320,7 @@ A future parser/producer conformance implementation must prove `BLOCKED` for at 
 Conformance to this byte format does not prove:
 
 - real Phi source was read or matches a manifest;
-- the graph is complete;
+- the graph is complete or sound;
 - the future producer discovered every import relationship correctly;
 - runtime/dependency boundary internals are independently security reviewed here;
 - a Phi security review or sandbox qualification occurred;
