@@ -107,10 +107,7 @@ def produce_phi_reachable_import_graph_fixture(
             }
             for edge in sorted(edges)
         ],
-        "nodes": [
-            {"kind": kind, "identity": identity}
-            for kind, identity in sorted(nodes)
-        ],
+        "nodes": [{"kind": kind, "identity": identity} for kind, identity in sorted(nodes)],
         "python_version": binding.python_version,
         "roots": [entry.path for entry in manifest.entries],
         "source_manifest_sha256": manifest.sha256,
