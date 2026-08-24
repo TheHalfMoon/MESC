@@ -17,8 +17,8 @@ MESC already has content-addressed LoRA/QLoRA recipe objects, but a recipe is no
 training authorization or a proof that the scientific prerequisites for training
 have been satisfied. The current frontier strategy requires Pilot-01 closeout,
 backbone-tournament finalist selection, data provenance/decontamination, held-out
-evaluation isolation, and explicit authorization before the selected finalists are
-trained.
+evaluation isolation, license compatibility, and explicit authorization before the
+selected finalists are trained.
 
 This package adds one deterministic, fail-closed readiness gate that binds those
 requirements to exact identities.
@@ -51,6 +51,7 @@ A `TrainingReadinessManifest` binds:
 - provenance-ledger SHA-256;
 - decontamination-report SHA-256;
 - held-out evaluation contract SHA-256;
+- combined model/data training-license review SHA-256 and `PASS` disposition;
 - R2-only training-data assertion;
 - held-out-evaluation exclusion assertion;
 - PHI absence assertion;
@@ -75,6 +76,7 @@ READY_TO_LAUNCH
 - Pilot-01 closeout is not exactly `PASS`;
 - tournament disposition is not exactly `PASS`;
 - decontamination disposition is not exactly `PASS`;
+- model/data training-license review is not exactly `PASS`;
 - training data is not proven R2-compatible;
 - held-out evaluation data is not proven excluded from training;
 - PHI is present;
@@ -104,18 +106,19 @@ the first P2 training action. It intentionally does not collapse these phases:
 2. execute and accept the backbone tournament under its own authority;
 3. select Compact + Reasoner finalists;
 4. freeze provenance/decontamination/evaluation isolation;
-5. freeze one content-addressed recipe per finalist;
-6. qualify the intended training runtime;
-7. obtain explicit training authorization; then
-8. permit a later executor to launch the frozen training plan.
+5. record a passing combined model/data training-license review;
+6. freeze one content-addressed recipe per finalist;
+7. qualify the intended training runtime;
+8. obtain explicit training authorization; then
+9. permit a later executor to launch the frozen training plan.
 
 ## Non-claims
 
 This package does not prove that any referenced real-world artifact currently exists.
 It validates the manifest and cross-bindings supplied by the caller. The components
 that produce and accept the real tournament report, data/provenance/decontamination
-artifacts, runtime qualification, and operator authorization remain independently
-responsible for those proofs.
+artifacts, license review, runtime qualification, and operator authorization remain
+independently responsible for those proofs.
 
 This package performs no:
 
