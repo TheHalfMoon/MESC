@@ -15,15 +15,17 @@ from typing import Final, cast
 
 REPORT_SCHEMA_VERSION: Final = "MESC-BT-REPORT-V1"
 REPORT_SCHEMA_SHA256: Final = "cb3fc506b41cc6236959bb4a89bce249db13c99aeb0c7178ff233f6de44e026d"
+PROTOCOL_CONFIG_SHA256: Final = "097cdd11f5389203cf432760ec316a78b12d157c0676477de69dde707e058203"
+SCORING_CONTRACT_SHA256: Final = "a61471d467521b59eb62ee2825d23fa15891bb45a664360aaf2e4ef5882c7d40"
 
-_CANDIDATE_REVISIONS: Final[dict[str, str]] = {
+CANDIDATE_REVISIONS: Final[dict[str, str]] = {
     "openai/gpt-oss-20b": "6cee5e81ee83917806bbde320786a8fb61efebee",
     "swiss-ai/Apertus-v1.5-8B": "a411d838600baf0e3635a3daf66fb7c55fc97bb6",
     "microsoft/Phi-4-multimodal-instruct": "93f923e1a7727d1c4f446756212d9d3e8fcc5d81",
     "google/medgemma-1.5-4b-it": "91850547d9f0b2fdd21aa7c5f4f3d1a8a52c243b",
 }
-_CANDIDATE_IDS: Final = frozenset(_CANDIDATE_REVISIONS)
-_CANDIDATE_REVISION_VALUES: Final = frozenset(_CANDIDATE_REVISIONS.values())
+_CANDIDATE_IDS: Final = frozenset(CANDIDATE_REVISIONS)
+_CANDIDATE_REVISION_VALUES: Final = frozenset(CANDIDATE_REVISIONS.values())
 _AXIS_NAMES: Final = (
     "medical_reasoning",
     "evidence_fidelity",
@@ -32,7 +34,7 @@ _AXIS_NAMES: Final = (
     "structured_fhir",
     "operational_reproducibility",
 )
-_ERROR_CLASSES: Final = (
+ERROR_CLASSES: Final = (
     "TIMEOUT",
     "RUNTIME_FAILURE",
     "GENERATION_FAILURE",
@@ -98,7 +100,7 @@ _CANDIDATE_KEYS: Final = frozenset(
         "operational",
     }
 )
-_ERROR_KEYS: Final = frozenset({"total", *_ERROR_CLASSES})
+_ERROR_KEYS: Final = frozenset({"total", *ERROR_CLASSES})
 _OPERATIONAL_KEYS: Final = frozenset(
     {
         "median_latency_ms",
@@ -115,7 +117,7 @@ _ROLE_RESULT_KEYS: Final = frozenset({"outcome", "candidate_id", "reason", "tied
 _STATIC_CONSTS: Final[dict[str, object]] = {
     "schema_version": REPORT_SCHEMA_VERSION,
     "protocol_id": "MESC-BT-PROTOCOL-V1",
-    "protocol_config_sha256": "097cdd11f5389203cf432760ec316a78b12d157c0676477de69dde707e058203",
+    "protocol_config_sha256": PROTOCOL_CONFIG_SHA256,
     "prompt_bundle_sha256": "54d9da5cf3dad58c0bf9fb28761c15d8f82568013895b8467f1cb7d532c314b7",
     "system_prompt_sha256": "02bb1a1fe70036c5d5299d6654618a2734aa03550506d1b023904cefc88ba867",
     "prompt_protocol_sha256": "a2a42aef340e27f9396b40810999d5f2c4136af467ce27ee9e3c149e3257c89c",
@@ -133,7 +135,7 @@ _STATIC_CONSTS: Final[dict[str, object]] = {
         "3e0a1523af45a61db77e3287a3333361fa26411f521321bbef0804dec7a63ed4"
     ),
     "parser_contract_sha256": "9905096b491ddc3bce2b5d668c1f8726f638dde9dba383ac1bb755f1b6b42071",
-    "scoring_contract_sha256": "a61471d467521b59eb62ee2825d23fa15891bb45a664360aaf2e4ef5882c7d40",
+    "scoring_contract_sha256": SCORING_CONTRACT_SHA256,
     "report_validation_contract_sha256": (
         "c68fcac507e4ebc164632370d2392631b9fec9c388369eb5b8bfa495e5877c1a"
     ),
@@ -165,6 +167,8 @@ def validate_report_schema_fixture(report: dict[str, object]) -> None:
         raise ReportSchemaFixtureError("$.candidate_reports must contain 2..4 objects")
     for index, candidate in enumerate(candidate_reports):
         _validate_candidate_report(candidate, path=f"$.candidate_reports[{index}]")
+        if any(candidate == prior for prior in candidate_reports[:index]):
+            raise ReportSchemaFixtureError("$.candidate_reports must contain unique items")
 
     role_results = _require_object(root["role_results"], path="$.role_results")
     _require_exact_keys(role_results, _ROLE_KEYS, path="$.role_results")
@@ -216,7 +220,7 @@ def _validate_candidate_report(value: object, *, path: str) -> None:
 
     errors = _require_object(candidate["errors"], path=f"{path}.errors")
     _require_exact_keys(errors, _ERROR_KEYS, path=f"{path}.errors")
-    for key in ("total", *_ERROR_CLASSES):
+    for key in ("total", *ERROR_CLASSES):
         _require_int_range(errors[key], 0, 240, path=f"{path}.errors.{key}")
 
     exclusions = _require_list(candidate["exclusions"], path=f"{path}.exclusions")
@@ -235,7 +239,7 @@ def _validate_candidate_report(value: object, *, path: str) -> None:
         error_class = _require_string(
             item["error_class"], path=f"{path}.exclusions[{index}].error_class"
         )
-        if error_class not in _ERROR_CLASSES:
+        if error_class not in ERROR_CLASSES:
             raise ReportSchemaFixtureError(f"{path}.exclusions[{index}].error_class is not frozen")
         identity = (item_id, reason, error_class)
         if identity in seen_exclusions:
