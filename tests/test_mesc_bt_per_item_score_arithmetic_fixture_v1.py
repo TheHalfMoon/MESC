@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
-
 import pytest
 
 from medscale.mesc._bt_per_item_score_arithmetic_fixture_v1 import (
@@ -23,6 +21,15 @@ def _all_match() -> PerItemComparisonObservation:
         safety_action_exact=True,
         structured_output_exact=True,
     )
+
+
+def _mutate_fixture_field(
+    observation: PerItemComparisonObservation,
+    field: str,
+    value: object,
+) -> PerItemComparisonObservation:
+    object.__setattr__(observation, field, value)
+    return observation
 
 
 def test_all_matches_score_exactly_100() -> None:
@@ -56,7 +63,7 @@ def test_each_frozen_field_weight_is_applied_exactly(
     expected_total: int,
     expected_component: int,
 ) -> None:
-    observation = replace(_all_match(), **{field: False})
+    observation = _mutate_fixture_field(_all_match(), field, False)
     result = score_per_item_comparison_fixture(observation)
 
     assert result.total_score == expected_total
@@ -93,7 +100,7 @@ def test_all_non_error_comparisons_false_score_zero_without_failure_zeroing() ->
     ],
 )
 def test_every_frozen_protocol_failure_scores_zero(error_class: str) -> None:
-    observation = replace(_all_match(), error_class=error_class)  # type: ignore[arg-type]
+    observation = _mutate_fixture_field(_all_match(), "error_class", error_class)
     result = score_per_item_comparison_fixture(observation)
 
     assert result == PerItemScoreResult(
@@ -167,7 +174,7 @@ def test_observation_requires_exact_dataclass_type() -> None:
 
 
 def test_error_class_rejects_unknown_value() -> None:
-    observation = replace(_all_match(), error_class="UNKNOWN")  # type: ignore[arg-type]
+    observation = _mutate_fixture_field(_all_match(), "error_class", "UNKNOWN")
 
     with pytest.raises(TypeError, match="frozen error-class string"):
         score_per_item_comparison_fixture(observation)
@@ -177,9 +184,10 @@ def test_error_class_rejects_string_subclass() -> None:
     class StringSubclass(str):
         pass
 
-    observation = replace(
+    observation = _mutate_fixture_field(
         _all_match(),
-        error_class=StringSubclass("NONE"),  # type: ignore[arg-type]
+        "error_class",
+        StringSubclass("NONE"),
     )
 
     with pytest.raises(TypeError, match="frozen error-class string"):
@@ -198,7 +206,7 @@ def test_error_class_rejects_string_subclass() -> None:
     ],
 )
 def test_comparison_outcomes_require_exact_bools(field: str) -> None:
-    observation = replace(_all_match(), **{field: 1})
+    observation = _mutate_fixture_field(_all_match(), field, 1)
 
     with pytest.raises(TypeError, match="exact built-in bool"):
         score_per_item_comparison_fixture(observation)
