@@ -127,7 +127,9 @@ class PhiSandboxChallengeVerifierFixture:
         second PASS because only an ``ISSUED`` record may transition to ``CONSUMED``.
         """
         _require_invocation(producer_invocation)
-        challenge, initial_record = self._issued_record_for_invocation(producer_invocation)
+        challenge, initial_record = self._issued_record_for_invocation(
+            producer_invocation
+        )
 
         try:
             artifact = verify_phi_sandbox_qualification_artifact_fixture(
@@ -189,7 +191,9 @@ class PhiSandboxChallengeVerifierFixture:
 
     def status(self, challenge: str) -> ChallengeStatus | None:
         """Return immutable fixture status for a canonical challenge, or ``None`` if unknown."""
-        canonical_challenge = _require_sha256(challenge, field="qualification_challenge")
+        canonical_challenge = _require_sha256(
+            challenge, field="qualification_challenge"
+        )
         with self._lock:
             record = self._records.get(canonical_challenge)
             if record is None:
@@ -240,7 +244,10 @@ def _require_sha256(value: object, *, field: str) -> str:
 
 
 def _require_producer_identity(value: object) -> str:
-    if type(value) is not str or _PRODUCER.fullmatch(value) is None:
+    if (
+        type(value) is not str
+        or _PRODUCER.fullmatch(value) is None
+    ):
         raise PhiSandboxChallengeFixtureError(
             "producer_identity violates the frozen grammar"
         )
