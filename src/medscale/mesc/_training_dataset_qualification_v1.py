@@ -283,7 +283,9 @@ def qualify_training_dataset(
     if not heldout_excluded:
         blockers.append("held-out evaluation records overlap the training record set")
     if evidence.heldout_eval_record_ids_sha256 == training_record_ids_sha256:
-        blockers.append("held-out evaluation identity must differ from training record-set identity")
+        blockers.append(
+            "held-out evaluation identity must differ from training record-set identity"
+        )
 
     _require_summary_subset(
         quality.stage_quality_summaries.get("provenance"),
