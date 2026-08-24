@@ -269,7 +269,7 @@ def _from_base(
     package = source_module if is_package else source_module.rpartition(".")[0]
     parts = package.split(".") if package else []
     ascend = level - 1
-    if ascend > len(parts):
+    if ascend >= len(parts):
         raise PhiImportGraphFixtureError("relative import escapes remote package")
     result = parts[: len(parts) - ascend]
     if module:
