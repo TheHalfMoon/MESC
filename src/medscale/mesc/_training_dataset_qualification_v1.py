@@ -152,13 +152,13 @@ class TrainingDatasetQualificationReport:
             ("heldout_eval_record_ids_sha256", self.heldout_eval_record_ids_sha256),
         ):
             _require_sha256(value, field=field)
-        for field, value in (
+        for bool_field, bool_value in (
             ("r2_training_data_only", self.r2_training_data_only),
             ("heldout_eval_excluded_from_training", self.heldout_eval_excluded_from_training),
             ("phi_present", self.phi_present),
         ):
-            if type(value) is not bool:
-                raise TrainingDatasetQualificationError(f"{field} must be a bool")
+            if type(bool_value) is not bool:
+                raise TrainingDatasetQualificationError(f"{bool_field} must be a bool")
         if any(not isinstance(blocker, str) or not blocker for blocker in self.blockers):
             raise TrainingDatasetQualificationError("blockers must contain non-empty strings only")
         if self.disposition == "PASS":
