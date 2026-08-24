@@ -24,6 +24,7 @@ The top-level value is one object with exactly these keys:
 
 ```text
 artifact_version
+base_container_oci_digest
 completeness_disposition
 dependency_lock_sha256
 edges
@@ -41,6 +42,7 @@ Canonical serialization sorts top-level keys lexicographically by literal ASCII 
 
 ```text
 artifact_version = MESC-BT-PHI-REACHABLE-IMPORT-GRAPH-ARTIFACT-V1
+base_container_oci_digest = ^sha256:[0-9a-f]{64}$
 completeness_disposition = PASS
 dependency_lock_sha256 = ^[0-9a-f]{64}$
 python_version = ^[A-Za-z0-9][A-Za-z0-9._+/-]{0,127}$
@@ -98,8 +100,9 @@ Every manifest path must appear exactly once as a `MANIFEST_FILE` node. No
 
 Runtime/dependency nodes are terminal trust-boundary nodes for this V1 artifact. Their
 internal import graphs are not asserted to be Phi remote-code review scope. Future
-activation instead binds the environment through exact equality of `python_version` and
-`dependency_lock_sha256` to the canonical `RUNTIME_BINDING`.
+activation binds those boundaries to an immutable environment through exact equality of
+`base_container_oci_digest`, `python_version`, and `dependency_lock_sha256` to the
+canonical `RUNTIME_BINDING`.
 
 Nodes are sorted by `(kind, identity)` using literal ASCII byte ordering. Duplicate
 `(kind, identity)` pairs are prohibited.
@@ -170,9 +173,9 @@ generation capable of introducing an import not represented by a canonical edge,
 other import mechanism the reviewed producer cannot close mechanically must prevent a V1
 PASS artifact.
 
-V1 intentionally defines no permissive encoding for unresolved entries because accepted
-artifacts require both arrays to be empty. Supporting unresolved evidence without
-blocking requires a separately reviewed contract version.
+V1 defines no permissive encoding for unresolved entries because accepted artifacts
+require both arrays to be empty. Supporting unresolved evidence without blocking
+requires a separately reviewed contract version.
 
 ## Completeness semantics
 
@@ -186,12 +189,12 @@ blocking requires a separately reviewed contract version.
 4. every edge has `source_kind = MANIFEST_FILE`, its source is an existing manifest node,
    and its target is an existing node classified without ambiguity;
 5. closure exhausts every import relationship originating from every manifest file until
-   the target is either another manifest file or one explicit runtime/dependency terminal
-   boundary node;
+   the target is another manifest file or one explicit runtime/dependency terminal node;
 6. every remote model-repository Python target discovered by closure is in the manifest;
 7. `unresolved_imports` and `unresolved_dynamic_imports` are exact empty arrays;
-8. graph `python_version` and `dependency_lock_sha256` exactly match the complete
-   canonical activation `RUNTIME_BINDING` before activation reliance; and
+8. graph `base_container_oci_digest`, `python_version`, and `dependency_lock_sha256`
+   exactly match the complete canonical activation `RUNTIME_BINDING` before activation
+   reliance; and
 9. a separately reviewed producer/verifier implementation proves its extraction and
    resolution algorithm satisfies items 1–8 against the exact source/runtime identities.
 
@@ -230,12 +233,13 @@ not satisfy V1.
 Before activation reliance require:
 
 ```text
+graph.base_container_oci_digest == RUNTIME_BINDING.base_container_oci_digest
 graph.python_version == RUNTIME_BINDING.python_version
 graph.dependency_lock_sha256 == RUNTIME_BINDING.dependency_lock_sha256
 ```
 
-This is not a runtime attestation. It prevents graph reuse across a different
-Python/dependency environment without review.
+This is not a runtime attestation. It prevents graph reuse across a different immutable
+container/Python/dependency environment without review.
 
 ## Canonical byte rules
 
@@ -265,7 +269,7 @@ A future parser/producer conformance implementation must prove `BLOCKED` for at 
 
 - malformed JSON, BOM, trailing newline, duplicate member, or extra/missing member;
 - wrong JSON scalar/container type;
-- malformed digest, path, module name, enum, or Python-version value;
+- malformed digest, OCI digest, path, module name, enum, or Python-version value;
 - noncanonical object-key or array ordering;
 - duplicate root, node, or edge;
 - roots not exactly equal to manifest paths;
@@ -278,6 +282,7 @@ A future parser/producer conformance implementation must prove `BLOCKED` for at 
 - non-empty `unresolved_imports` or `unresolved_dynamic_imports`;
 - non-literal dynamic import the producer cannot close mechanically;
 - graph `source_manifest_sha256` mismatch;
+- graph base-container digest mismatch with `RUNTIME_BINDING`;
 - graph Python-version mismatch with `RUNTIME_BINDING`;
 - graph dependency-lock mismatch with `RUNTIME_BINDING`;
 - valid graph bytes produced by an unreviewed or incomplete extraction algorithm.

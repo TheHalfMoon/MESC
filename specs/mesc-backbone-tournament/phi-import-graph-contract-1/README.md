@@ -28,10 +28,10 @@ REACHABLE_IMPORT_GRAPH_TO_MANIFEST_PROVENANCE = REQUIRED_BEFORE_ACTIVATION_RELIA
 REAL_IMPORT_GRAPH_COMPLETENESS = NOT_ESTABLISHED
 ```
 
-This package addresses only the first of those governance gaps. It freezes a candidate
-byte-level artifact contract and fail-closed completeness boundary for the reachable
-Phi remote-code import graph. It does not inspect Phi source, construct a graph, qualify
-a graph producer, perform a security review, allocate a runtime, or activate execution.
+This package addresses only the first governance gap. It freezes a candidate byte-level
+artifact contract and fail-closed completeness boundary for the reachable Phi remote-code
+import graph. It does not inspect Phi source, construct a graph, qualify a graph producer,
+perform a security review, allocate a runtime, or activate execution.
 
 ## Exact package scope
 
@@ -54,15 +54,16 @@ closed recursively over remote model-repository Python files. Any remotely sourc
 Python file required by an import must therefore be present in the exact bound manifest;
 a remote target outside the manifest is `BLOCKED`.
 
-Imports that resolve to the already-bound Python runtime or the immutable dependency
-lock are represented as terminal boundary nodes rather than silently disappearing.
-The artifact binds the exact `python_version` and `dependency_lock_sha256`; future
-activation must require equality to the complete canonical `RUNTIME_BINDING`.
+Imports resolving to the bound Python runtime or immutable dependency environment are
+explicit terminal boundary nodes rather than silently disappearing. Because module
+resolution also depends on the immutable runtime image, the graph artifact binds exact
+`base_container_oci_digest`, `python_version`, and `dependency_lock_sha256`; future
+activation must require all three to equal the complete canonical `RUNTIME_BINDING`.
 
 This package does not claim that Python-runtime or locked-dependency internals receive
-the Phi remote-code file review. The graph records those import boundaries so the
-independent Phi review can reason about them without pretending they are remote files.
-Changing that trust boundary requires a separately reviewed contract amendment.
+the Phi remote-code file review. The graph records those boundaries so independent Phi
+review can reason about them without pretending they are remote files. Changing that
+trust boundary requires a separately reviewed contract amendment.
 
 ## Fail-closed completeness
 
@@ -70,13 +71,13 @@ An artifact may claim `completeness_disposition = PASS` only when:
 
 - roots equal the exact canonical manifest paths in manifest order;
 - every manifest path has one `MANIFEST_FILE` node;
-- every represented edge references canonical nodes;
+- every edge source is a `MANIFEST_FILE` node;
 - every remote target reached by import resolution is a manifest node;
-- all runtime/dependency imports terminate at explicit bound boundary nodes;
+- runtime/dependency imports terminate at explicit bound boundary nodes;
 - `unresolved_imports = []`;
 - `unresolved_dynamic_imports = []`;
-- a separately reviewed future producer/verifier proves the extraction algorithm
-  actually exhausts the import relationships required by this contract.
+- a separately reviewed future producer/verifier proves its extraction algorithm
+  actually exhausts the relationships required by this contract.
 
 Parser conformance or the literal `PASS` string is not proof of completeness.
 
@@ -87,7 +88,7 @@ This package does **not**:
 - read, download, clone, inspect, import, or execute Phi source;
 - build, traverse, or validate a real import graph;
 - establish the real Phi manifest or its digest;
-- resolve a real Python runtime or dependency lock;
+- resolve a real runtime image, Python runtime, or dependency lock;
 - qualify an import-graph producer or verifier;
 - perform static analysis, dynamic analysis, malware scanning, or security review;
 - establish `PHI_REMOTE_CODE_SECURITY_REVIEW_SHA256`;

@@ -75,8 +75,9 @@ Independent review must verify at least:
    `unresolved_dynamic_imports` arrays;
 9. a dynamic or data-dependent import the producer cannot resolve mechanically is
    `BLOCKED`, not guessed or silently omitted;
-10. the graph binds `python_version` and `dependency_lock_sha256`, and future activation
-    requires exact equality to the complete canonical `RUNTIME_BINDING`;
+10. graph `base_container_oci_digest`, `python_version`, and `dependency_lock_sha256`
+    are inside the hashed bytes and future activation requires all three to equal the
+    complete canonical `RUNTIME_BINDING`;
 11. parser conformance, empty unresolved arrays, or literal `PASS` do not self-attest
     graph completeness;
 12. a separately reviewed future producer/verifier remains mandatory and must prove its
