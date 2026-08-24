@@ -99,18 +99,34 @@ reachable_import_graph_artifact_sha256
 
 The graph artifact itself is outside this V1 serialization contract. Before an
 activation package may rely on this security-review artifact, a separately
-reviewed graph-materialization contract and producer must establish canonical
-bytes, provenance, completeness semantics, and the exact SHA-256 referenced
-here.
+reviewed graph-materialization contract and producer must establish:
+
+- canonical graph bytes and the exact SHA-256 referenced here;
+- completeness semantics and provenance;
+- a canonical source-manifest binding carried by the graph artifact or its
+  inseparable provenance envelope; and
+- an activation-time equality check proving that source-manifest binding equals
+  this security-review artifact's exact `manifest_sha256`.
+
+Independent validation of `manifest_sha256` and
+`reachable_import_graph_artifact_sha256` is not sufficient. The activation path
+must prove that the exact graph identified by
+`reachable_import_graph_artifact_sha256` was materialized from the exact manifest
+identified by `manifest_sha256`.
+
+If the future graph contract does not define that same-manifest provenance field
+or equivalent cryptographically bound relation, the activation result is
+`BLOCKED`. If the graph's reproduced source-manifest digest differs from
+`manifest_sha256`, the activation result is `BLOCKED`.
 
 Therefore a syntactically conformant V1 security-review artifact is necessary
 but not sufficient for activation. If the graph artifact or its governing
-contract is absent, stale, ambiguous, or cannot reproduce the bound digest, the
-activation result is `BLOCKED`.
+contract is absent, stale, ambiguous, cannot reproduce the bound graph digest,
+or cannot prove same-manifest provenance, the activation result is `BLOCKED`.
 
-This explicit digest field prevents a future review artifact from claiming
-"complete reachable import graph reviewed" while leaving the graph evidence
-unbound.
+This explicit graph digest plus mandatory graph-to-manifest provenance prevents a
+future review artifact from claiming "complete reachable import graph reviewed"
+while leaving either the graph evidence or its source manifest unbound.
 
 ## Canonical byte rules
 
@@ -132,10 +148,11 @@ bytes. The verifier must validate every type, member set, grammar, ordering,
 disposition, and manifest binding, then canonically reserialize the parsed value
 and require byte-for-byte equality with the supplied bytes.
 
-Only those validated canonical bytes may be hashed as:
+Only those validated canonical bytes may be hashed. The published identifier is
+exactly 64 lowercase ASCII hexadecimal characters:
 
 ```text
-PHI_REMOTE_CODE_SECURITY_REVIEW_SHA256 = SHA256(exact_validated_artifact_bytes)
+PHI_REMOTE_CODE_SECURITY_REVIEW_SHA256 = lowercase_hex(SHA256(exact_validated_artifact_bytes))
 ```
 
 ## Required negative conformance fixtures
@@ -162,7 +179,10 @@ A future parser/conformance implementation must prove `BLOCKED` for at least:
 - incomplete graph-review flag;
 - graph or overall disposition other than `PASS`;
 - manifest SHA-256 mismatch;
-- missing or unreproducible reachable-import-graph artifact binding.
+- missing or unreproducible reachable-import-graph artifact binding;
+- graph artifact/provenance contract with no canonical source-manifest binding;
+- graph source-manifest digest different from `manifest_sha256`;
+- graph digest valid in isolation but detached from same-manifest provenance.
 
 ## Non-claims
 
@@ -170,6 +190,8 @@ Conformance to this byte format does not prove:
 
 - the supplied manifest was produced from real Phi source;
 - the reachable import graph is complete;
+- the graph was actually materialized from that manifest unless the separate
+  graph contract/provenance gate is satisfied;
 - a human or tool actually reviewed the files or graph;
 - the reviewer identity string is authenticated;
 - reviewer independence or competence;
