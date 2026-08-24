@@ -163,7 +163,7 @@ class TrainingDatasetQualificationReport:
             raise TrainingDatasetQualificationError("blockers must contain non-empty strings only")
         if self.disposition == "PASS":
             if self.blockers:
-                raise TrainingDatasetQualificationError("PASS qualification cannot contain blockers")
+                raise TrainingDatasetQualificationError("PASS qualification cannot have blockers")
             if not self.r2_training_data_only:
                 raise TrainingDatasetQualificationError(
                     "PASS qualification requires r2_training_data_only=true"
