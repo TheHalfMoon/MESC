@@ -231,7 +231,7 @@ def test_forged_manifest_identity_is_blocked() -> None:
     sources = {"model.py": b"import json\n"}
     parsed = _manifest(sources)
     forged = replace(parsed, sha256="0" * 64)
-    with pytest.raises(PhiImportGraphFixtureError, match="forged|stale"):
+    with pytest.raises(PhiImportGraphFixtureError, match=r"forged|stale"):
         produce_phi_reachable_import_graph_fixture(forged, sources, _binding(), _policy())
 
 
