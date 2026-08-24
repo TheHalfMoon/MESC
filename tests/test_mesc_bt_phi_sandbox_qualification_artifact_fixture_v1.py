@@ -22,6 +22,8 @@ from medscale.mesc._bt_phi_sandbox_qualification_artifact_fixture_v1 import (
 _SHA_A = "a" * 40
 _SHA_B = "b" * 40
 _CHALLENGE = "c" * 64
+_OVERSIZED_INTEGER_JSON = b'{"x":' + b"1" * 5000 + b"}"
+_DEEPLY_NESTED_JSON = b"[" * 1100 + b"0" + b"]" * 1100
 
 
 def _canonical(value: object) -> bytes:
@@ -127,6 +129,8 @@ def test_valid_artifact_is_canonical_digest_and_runtime_bound() -> None:
         (b"{", "not valid JSON"),
         (b"[]", "top level"),
         (b'{"x":NaN}', "non-standard JSON constant"),
+        (_OVERSIZED_INTEGER_JSON, "not valid JSON"),
+        (_DEEPLY_NESTED_JSON, "not valid JSON"),
     ],
 )
 def test_json_envelope_is_fail_closed(payload: bytes, match: str) -> None:
@@ -283,7 +287,17 @@ def test_every_frozen_isolation_control_value_is_exact(control: str) -> None:
         _verify(_canonical(document), runtime_bytes)
 
 
-@pytest.mark.parametrize("bad_runtime", [b"", b"{}", b"{}\n", b"\xef\xbb\xbf{}"])
+@pytest.mark.parametrize(
+    "bad_runtime",
+    [
+        b"",
+        b"{}",
+        b"{}\n",
+        b"\xef\xbb\xbf{}",
+        _OVERSIZED_INTEGER_JSON,
+        _DEEPLY_NESTED_JSON,
+    ],
+)
 def test_runtime_binding_must_pass_canonical_activation_validator(bad_runtime: bytes) -> None:
     _, document = _fixture()
 
