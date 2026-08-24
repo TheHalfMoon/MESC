@@ -72,7 +72,7 @@ class TrainingRunPlan:
             raise TrainingLaunchPlanError("revision must be exactly 40 lowercase hex characters")
         _require_sha256(self.weights_sha256, field="weights_sha256")
         _require_sha256(self.training_dataset_sha256, field="training_dataset_sha256")
-        if not self.seeds or any(isinstance(seed, bool) or seed < 0 for seed in self.seeds):
+        if not self.seeds or any(type(seed) is not int or seed < 0 for seed in self.seeds):
             raise TrainingLaunchPlanError("seeds must be non-empty non-negative integers")
         if len(set(self.seeds)) != len(self.seeds):
             raise TrainingLaunchPlanError("seeds must not contain duplicates")
@@ -99,8 +99,7 @@ class TrainingRunPlan:
             raise TrainingLaunchPlanError("result_paths must be non-empty")
         for path in self.result_paths:
             _require_repository_relative_path(path)
-        if len(set(self.result_paths)) != len(self.result_paths):
-            raise TrainingLaunchPlanError("result_paths must not contain duplicates")
+        _require_disjoint_path_namespaces(self.result_paths, label="result_paths")
         if not self.reproduction_command.strip() or "\n" in self.reproduction_command:
             raise TrainingLaunchPlanError(
                 "reproduction_command must be one non-empty single-line command"
@@ -169,8 +168,10 @@ class TrainingLaunchPlan:
             raise TrainingLaunchPlanError("both runs must bind the same repository_tree")
         if self.compact.dependency_lock_sha256 != self.reasoner.dependency_lock_sha256:
             raise TrainingLaunchPlanError("both runs must bind the same dependency lock")
-        if set(self.compact.result_paths) & set(self.reasoner.result_paths):
-            raise TrainingLaunchPlanError("Compact and Reasoner result_paths must be disjoint")
+        _require_disjoint_path_namespaces(
+            self.compact.result_paths + self.reasoner.result_paths,
+            label="Compact and Reasoner result_paths",
+        )
 
     @property
     def plan_sha256(self) -> str:
@@ -272,5 +273,18 @@ def _require_repository_relative_path(value: str) -> None:
     if not value or "\\" in value:
         raise TrainingLaunchPlanError("result path must be a non-empty POSIX repository path")
     path = PurePosixPath(value)
-    if path.is_absolute() or path == PurePosixPath(".") or ".." in path.parts:
+    canonical = str(path)
+    if path.is_absolute() or canonical == "." or ".." in path.parts:
         raise TrainingLaunchPlanError("result path must remain inside the repository")
+    if canonical != value:
+        raise TrainingLaunchPlanError("result path must use canonical POSIX spelling")
+
+
+def _require_disjoint_path_namespaces(paths: tuple[str, ...], *, label: str) -> None:
+    parsed = tuple(PurePosixPath(path) for path in paths)
+    for index, left in enumerate(parsed):
+        for right in parsed[index + 1 :]:
+            if left == right or left in right.parents or right in left.parents:
+                raise TrainingLaunchPlanError(
+                    f"{label} must be disjoint without equal or ancestor-descendant paths"
+                )
