@@ -66,18 +66,20 @@ Independent review must verify at least:
 4. every edge has `source_kind = MANIFEST_FILE`, references an existing manifest source
    node and an existing target node, and cannot relabel a remote-file target as a trusted
    runtime/dependency boundary;
-5. closure exhausts every import relationship originating from manifest files until it
+5. every runtime/dependency boundary node is referenced by at least one edge, no module
+   identity appears under both boundary kinds, and no edge originates from a boundary
+   node;
+6. closure exhausts every import relationship originating from manifest files until it
    reaches another manifest file or an explicit runtime/dependency terminal boundary;
-6. any remotely sourced Python target discovered by closure must be in the manifest;
-7. runtime/dependency boundary imports remain explicit graph nodes rather than omitted
-   relationships and no edge may originate from those terminal boundary nodes;
+7. any remotely sourced Python target discovered by closure must be in the manifest;
 8. accepted V1 artifacts require exact empty `unresolved_imports` and
    `unresolved_dynamic_imports` arrays;
 9. a dynamic or data-dependent import the producer cannot resolve mechanically is
    `BLOCKED`, not guessed or silently omitted;
 10. graph `base_container_oci_digest`, `python_version`, and `dependency_lock_sha256`
     are inside the hashed bytes and future activation requires all three to equal the
-    complete canonical `RUNTIME_BINDING`;
+    complete canonical `RUNTIME_BINDING`; `python_version` must use the same printable
+    ASCII identity grammar as that runtime binding rather than a narrower invented token;
 11. parser conformance, empty unresolved arrays, or literal `PASS` do not self-attest
     graph completeness;
 12. a separately reviewed future producer/verifier remains mandatory and must prove its
@@ -87,7 +89,8 @@ Independent review must verify at least:
     security review, sandbox qualification, model access, or execution authority.
 
 Any ambiguity that could allow an unmanifested remote file, unresolved dynamic import,
-runtime mismatch, or unreviewed producer to support activation is a blocker.
+runtime mismatch, non-minimal graph identity, or unreviewed producer to support
+activation is a blocker.
 
 ## E. Deliberately unresolved producer dependency
 

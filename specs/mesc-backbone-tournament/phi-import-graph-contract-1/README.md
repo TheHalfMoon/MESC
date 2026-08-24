@@ -59,6 +59,13 @@ explicit terminal boundary nodes rather than silently disappearing. Because modu
 resolution also depends on the immutable runtime image, the graph artifact binds exact
 `base_container_oci_digest`, `python_version`, and `dependency_lock_sha256`; future
 activation must require all three to equal the complete canonical `RUNTIME_BINDING`.
+`python_version` deliberately uses the same non-empty printable-ASCII identity grammar
+as the canonical runtime binding rather than inventing a narrower version-token grammar.
+
+Boundary-node classification is closed and minimal: a runtime/dependency node must be
+the target of at least one edge, and one module identity cannot appear under both boundary
+kinds. Runtime/dependency nodes are terminal targets only; no edge may originate from
+them.
 
 This package does not claim that Python-runtime or locked-dependency internals receive
 the Phi remote-code file review. The graph records those boundaries so independent Phi
@@ -73,7 +80,7 @@ An artifact may claim `completeness_disposition = PASS` only when:
 - every manifest path has one `MANIFEST_FILE` node;
 - every edge source is a `MANIFEST_FILE` node;
 - every remote target reached by import resolution is a manifest node;
-- runtime/dependency imports terminate at explicit bound boundary nodes;
+- runtime/dependency imports terminate at explicit, referenced, unambiguous boundary nodes;
 - `unresolved_imports = []`;
 - `unresolved_dynamic_imports = []`;
 - a separately reviewed future producer/verifier proves its extraction algorithm

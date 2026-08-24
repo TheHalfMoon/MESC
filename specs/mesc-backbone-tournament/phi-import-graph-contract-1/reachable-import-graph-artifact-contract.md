@@ -45,12 +45,16 @@ artifact_version = MESC-BT-PHI-REACHABLE-IMPORT-GRAPH-ARTIFACT-V1
 base_container_oci_digest = ^sha256:[0-9a-f]{64}$
 completeness_disposition = PASS
 dependency_lock_sha256 = ^[0-9a-f]{64}$
-python_version = ^[A-Za-z0-9][A-Za-z0-9._+/-]{0,127}$
 source_manifest_sha256 = ^[0-9a-f]{64}$
 ```
 
-All strings are literal ASCII JSON strings. JSON escape sequences are prohibited for
-fields governed by an ASCII grammar.
+`python_version` must use the exact scalar grammar already imposed by the canonical
+`RUNTIME_BINDING`: a non-empty JSON string whose bytes are printable ASCII `0x20..0x7e`
+excluding `"` (`0x22`) and `\` (`0x5c`). No JSON escape sequence is permitted. The graph
+contract deliberately does not narrow this field to a semantic-version token.
+
+All other strings governed by an ASCII grammar are literal ASCII JSON strings; JSON
+escape sequences are prohibited for them.
 
 ## Roots
 
@@ -103,6 +107,13 @@ internal import graphs are not asserted to be Phi remote-code review scope. Futu
 activation binds those boundaries to an immutable environment through exact equality of
 `base_container_oci_digest`, `python_version`, and `dependency_lock_sha256` to the
 canonical `RUNTIME_BINDING`.
+
+Every `PYTHON_RUNTIME_MODULE` and `LOCKED_DEPENDENCY_MODULE` node must be the target of
+at least one canonical edge. Unreferenced boundary nodes are prohibited so identical
+closure cannot acquire arbitrary extra nodes and therefore arbitrary graph digests.
+
+The same module `identity` must not occur under both `PYTHON_RUNTIME_MODULE` and
+`LOCKED_DEPENDENCY_MODULE`. Such dual classification is ambiguous and => `BLOCKED`.
 
 Nodes are sorted by `(kind, identity)` using literal ASCII byte ordering. Duplicate
 `(kind, identity)` pairs are prohibited.
@@ -188,18 +199,20 @@ requires a separately reviewed contract version.
    outside that manifest;
 4. every edge has `source_kind = MANIFEST_FILE`, its source is an existing manifest node,
    and its target is an existing node classified without ambiguity;
-5. closure exhausts every import relationship originating from every manifest file until
+5. every runtime/dependency boundary node is referenced by at least one edge and no
+   module identity is classified under both boundary kinds;
+6. closure exhausts every import relationship originating from every manifest file until
    the target is another manifest file or one explicit runtime/dependency terminal node;
-6. every remote model-repository Python target discovered by closure is in the manifest;
-7. `unresolved_imports` and `unresolved_dynamic_imports` are exact empty arrays;
-8. graph `base_container_oci_digest`, `python_version`, and `dependency_lock_sha256`
+7. every remote model-repository Python target discovered by closure is in the manifest;
+8. `unresolved_imports` and `unresolved_dynamic_imports` are exact empty arrays;
+9. graph `base_container_oci_digest`, `python_version`, and `dependency_lock_sha256`
    exactly match the complete canonical activation `RUNTIME_BINDING` before activation
    reliance; and
-9. a separately reviewed producer/verifier implementation proves its extraction and
-   resolution algorithm satisfies items 1–8 against the exact source/runtime identities.
+10. a separately reviewed producer/verifier implementation proves its extraction and
+    resolution algorithm satisfies items 1–9 against the exact source/runtime identities.
 
 The literal `PASS`, parser conformance, empty unresolved arrays, or security-review PASS
-cannot self-attest item 9. Missing producer qualification, incomplete import-mechanism
+cannot self-attest item 10. Missing producer qualification, incomplete import-mechanism
 coverage, ambiguous resolution, or inability to reproduce closure => `BLOCKED`.
 
 ## Graph-to-manifest binding
@@ -258,8 +271,9 @@ The exact artifact bytes are:
 
 Before hashing, a duplicate-member-rejecting parser must validate every member set,
 type, enum, grammar, manifest relation, node/edge reference, source-kind restriction,
-ordering rule, duplicate prohibition, empty unresolved arrays, and PASS predicate. It
-must canonically reserialize and require byte-for-byte equality.
+boundary-node minimality/classification, ordering rule, duplicate prohibition, empty
+unresolved arrays, and PASS predicate. It must canonically reserialize and require
+byte-for-byte equality.
 
 Only those exact validated canonical bytes may be hashed.
 
@@ -269,13 +283,16 @@ A future parser/producer conformance implementation must prove `BLOCKED` for at 
 
 - malformed JSON, BOM, trailing newline, duplicate member, or extra/missing member;
 - wrong JSON scalar/container type;
-- malformed digest, OCI digest, path, module name, enum, or Python-version value;
+- malformed digest, OCI digest, path, module name, enum, or runtime-bound identity value;
+- `python_version` containing non-ASCII, control, quote, backslash, or empty content;
 - noncanonical object-key or array ordering;
 - duplicate root, node, or edge;
 - roots not exactly equal to manifest paths;
 - missing manifest node or extra remote-file node;
 - edge source or target absent from `nodes`;
 - edge whose `source_kind != MANIFEST_FILE`;
+- unreferenced runtime/dependency boundary node;
+- one module identity classified as both runtime and dependency;
 - remote model-repository target absent from the manifest;
 - remote target mislabeled as runtime/dependency boundary;
 - ambiguous runtime-versus-dependency boundary;
