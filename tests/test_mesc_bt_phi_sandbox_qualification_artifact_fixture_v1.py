@@ -333,8 +333,7 @@ def test_runtime_binding_recursion_error_is_wrapped(monkeypatch: pytest.MonkeyPa
         raise RecursionError("fixture runtime parser recursion")
 
     monkeypatch.setattr(
-        sandbox_fixture.activation_fixture,
-        "_parse_runtime_binding",
+        "medscale.mesc._bt_activation_identity_fixture_v1._parse_runtime_binding",
         _raise_recursion,
     )
 
