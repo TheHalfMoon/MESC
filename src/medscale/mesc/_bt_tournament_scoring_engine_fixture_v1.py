@@ -387,9 +387,7 @@ def select_role_fixture(
         candidate
         for candidate in snapshots
         if (
-            candidate.gates.compact
-            if role_name == "compact"
-            else candidate.gates.flagship_reasoner
+            candidate.gates.compact if role_name == "compact" else candidate.gates.flagship_reasoner
         )
         == "PASS"
     ]
