@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from dataclasses import replace
 
+import pytest
+
 from medscale.dataset.builder.freeze import SplitAssignmentFreeze
 from medscale.dataset.builder.manifest import AuditReport, DatasetReleaseManifest, QualityReport
 from medscale.dataset.split import SplitStrategy
@@ -253,6 +255,20 @@ def test_dataset_release_audit_quality_and_split_identity_must_agree() -> None:
     assert any("audit contains failures" in blocker for blocker in report.blockers)
 
 
+def test_direct_pass_report_cannot_forge_hard_scientific_flags() -> None:
+    report = _qualify()
+
+    with pytest.raises(TrainingDatasetQualificationError, match="phi_present=false"):
+        replace(report, phi_present=True)
+    with pytest.raises(TrainingDatasetQualificationError, match="r2_training_data_only=true"):
+        replace(report, r2_training_data_only=False)
+    with pytest.raises(
+        TrainingDatasetQualificationError,
+        match="heldout_eval_excluded_from_training=true",
+    ):
+        replace(report, heldout_eval_excluded_from_training=False)
+
+
 def _candidate(*, role: str) -> TrainingCandidate:
     if role == "compact":
         return TrainingCandidate(
@@ -321,7 +337,7 @@ def test_blocked_t5_report_cannot_bind_to_readiness() -> None:
     compact = _candidate(role="compact")
     reasoner = _candidate(role="reasoner")
 
-    try:
+    with pytest.raises(TrainingDatasetQualificationError, match="must be PASS"):
         build_readiness_manifest_from_qualified_dataset(
             qualification=blocked,
             compact_candidate=compact,
@@ -334,7 +350,3 @@ def test_blocked_t5_report_cannot_bind_to_readiness() -> None:
             pilot_closeout_disposition="PASS",
             tournament_disposition="PASS",
         )
-    except TrainingDatasetQualificationError as exc:
-        assert "must be PASS" in str(exc)
-    else:
-        raise AssertionError("blocked T5 qualification unexpectedly bound to readiness")
