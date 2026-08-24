@@ -1,8 +1,8 @@
 """Fail-closed MESC training-readiness assessment.
 
 This module binds the first authorized post-tournament training launch to exact
-finalist, data, provenance, decontamination, evaluation, recipe, runtime, and
-operator-authorization identities. It plans no provider work and executes no
+finalist, data, provenance, decontamination, evaluation, license, recipe, runtime,
+and operator-authorization identities. It plans no provider work and executes no
 training.
 """
 
@@ -60,9 +60,11 @@ class TrainingReadinessManifest:
     provenance_ledger_sha256: str
     decontamination_report_sha256: str
     evaluation_contract_sha256: str
+    license_review_sha256: str
     pilot_closeout_disposition: str
     tournament_disposition: str
     decontamination_disposition: str
+    license_disposition: str
     r2_training_data_only: bool
     heldout_eval_excluded_from_training: bool
     phi_present: bool
@@ -80,6 +82,7 @@ class TrainingReadinessManifest:
             ("provenance_ledger_sha256", self.provenance_ledger_sha256),
             ("decontamination_report_sha256", self.decontamination_report_sha256),
             ("evaluation_contract_sha256", self.evaluation_contract_sha256),
+            ("license_review_sha256", self.license_review_sha256),
         ):
             _require_sha256(value, field=field)
         if self.runtime_qualification_sha256 is not None:
@@ -113,6 +116,8 @@ class TrainingReadinessManifest:
             "decontamination_report_sha256": self.decontamination_report_sha256,
             "evaluation_contract_sha256": self.evaluation_contract_sha256,
             "heldout_eval_excluded_from_training": self.heldout_eval_excluded_from_training,
+            "license_disposition": self.license_disposition,
+            "license_review_sha256": self.license_review_sha256,
             "phi_present": self.phi_present,
             "pilot_closeout_disposition": self.pilot_closeout_disposition,
             "pilot_closeout_sha256": self.pilot_closeout_sha256,
@@ -164,6 +169,11 @@ def assess_training_readiness(manifest: TrainingReadinessManifest) -> TrainingRe
         field="decontamination_disposition",
         blockers=blockers,
     )
+    _require_pass(
+        manifest.license_disposition,
+        field="license_disposition",
+        blockers=blockers,
+    )
 
     if not manifest.r2_training_data_only:
         blockers.append("training data is not proven R2-compatible")
@@ -201,12 +211,9 @@ def assess_training_readiness(manifest: TrainingReadinessManifest) -> TrainingRe
     if manifest.training_authorization_receipt_sha256 is None:
         launch_requirements.append("training authorization receipt is required")
 
-    disposition: TrainingReadinessDisposition
-    if launch_requirements:
-        disposition = "READY_FOR_AUTHORIZATION"
-    else:
-        disposition = "READY_TO_LAUNCH"
-
+    disposition: TrainingReadinessDisposition = (
+        "READY_FOR_AUTHORIZATION" if launch_requirements else "READY_TO_LAUNCH"
+    )
     return TrainingReadinessReport(
         disposition=disposition,
         manifest_sha256=manifest.manifest_sha256,
