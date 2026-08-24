@@ -95,9 +95,9 @@ At minimum, reviewers must prove:
     serialization;
 16. neither format treats a syntactic parser PASS as proof that the producer or
     live observation is trustworthy;
-17. required negative fixtures prove replayed, detached, wrong-runtime,
-    wrong-producer-invocation, unknown, `CONSUMED`, and `CANCELLED` challenge
-    evidence remains `BLOCKED`;
+17. each required negative fixture must PASS by proving replayed, detached,
+    wrong-runtime, wrong-producer-invocation, unknown, `CONSUMED`, and
+    `CANCELLED` challenge evidence reaches `BLOCKED`;
 18. neither format grants model access, gated-access authority, execution
     activation, ranking, winner selection, or tournament execution.
 

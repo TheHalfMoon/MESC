@@ -39,10 +39,10 @@ activating execution.
 Exactly:
 
 ```text
-README.md
-acceptance.md
-sandbox-qualification-artifact-contract.md
-security-review-artifact-contract.md
+specs/mesc-backbone-tournament/phi-artifact-contracts-1/README.md
+specs/mesc-backbone-tournament/phi-artifact-contracts-1/security-review-artifact-contract.md
+specs/mesc-backbone-tournament/phi-artifact-contracts-1/sandbox-qualification-artifact-contract.md
+specs/mesc-backbone-tournament/phi-artifact-contracts-1/acceptance.md
 ```
 
 The package does not modify `FD-MESC-BT-EXEC-1`. It narrows two previously
