@@ -13,6 +13,7 @@ from medscale.mesc._bt_phi_import_graph_fixture_v1 import (
     PhiImportGraphBoundaryPolicy,
     PhiImportGraphFixtureError,
     PhiImportGraphRuntimeBinding,
+    PhiReachableImportGraphArtifact,
     produce_phi_reachable_import_graph_fixture,
     verify_phi_reachable_import_graph_fixture,
 )
@@ -26,6 +27,7 @@ from medscale.mesc._bt_phi_remote_code_fixture_v1 import (
 _BLOB = "1" * 40
 _OCI = "sha256:" + "2" * 64
 _LOCK = "3" * 64
+_IMPORT_ONLY_ERROR = "outside reviewed import-only fixture grammar"
 
 
 def _manifest(sources: dict[str, bytes]) -> PhiRemoteCodeManifest:
@@ -57,7 +59,7 @@ def _produce(
     *,
     binding: PhiImportGraphRuntimeBinding | None = None,
     policy: PhiImportGraphBoundaryPolicy | None = None,
-):
+) -> tuple[PhiRemoteCodeManifest, PhiReachableImportGraphArtifact]:
     manifest = _manifest(sources)
     artifact = produce_phi_reachable_import_graph_fixture(
         manifest,
@@ -81,8 +83,8 @@ def _canonical(document: dict[str, object]) -> bytes:
 def test_producer_emits_canonical_exact_graph_and_digest() -> None:
     sources = {
         "pkg/__init__.py": b"import json\n",
-        "pkg/model.py": b"from . import helper\nimport torch.nn\n",
         "pkg/helper.py": b"import os.path\n",
+        "pkg/model.py": b"from . import helper\nimport torch.nn\n",
     }
     manifest, artifact = _produce(sources)
     doc = _document(artifact.canonical_bytes)
@@ -95,7 +97,24 @@ def test_producer_emits_canonical_exact_graph_and_digest() -> None:
     assert artifact.sha256 == hashlib.sha256(artifact.canonical_bytes).hexdigest()
     assert not artifact.canonical_bytes.endswith(b"\n")
     verify_phi_reachable_import_graph_fixture(
-        artifact.canonical_bytes, manifest, sources, _binding(), _policy()
+        artifact.canonical_bytes,
+        manifest,
+        sources,
+        _binding(),
+        _policy(),
+    )
+
+
+def test_comments_do_not_expand_the_import_only_grammar() -> None:
+    sources = {"model.py": b"# fixture comment\nimport json\n"}
+    manifest, artifact = _produce(sources)
+
+    verify_phi_reachable_import_graph_fixture(
+        artifact.canonical_bytes,
+        manifest,
+        sources,
+        _binding(),
+        _policy(),
     )
 
 
@@ -116,10 +135,14 @@ def test_from_manifest_package_requires_exact_manifested_submodule() -> None:
     [
         b"def f():\n    import json\n",
         b"if True:\n    import json\n",
+        b"value = 1\n",
+        b"class Example:\n    pass\n",
+        b"print('x')\n",
+        b'"module docstring"\nimport json\n',
     ],
 )
-def test_non_module_scope_imports_are_blocked(source: bytes) -> None:
-    with pytest.raises(PhiImportGraphFixtureError, match="non-module-scope"):
+def test_any_non_import_statement_is_blocked(source: bytes) -> None:
+    with pytest.raises(PhiImportGraphFixtureError, match=_IMPORT_ONLY_ERROR):
         _produce({"model.py": source})
 
 
@@ -135,8 +158,10 @@ def test_non_module_scope_imports_are_blocked(source: bytes) -> None:
         b"import types\ntypes.FunctionType(None, {})\n",
     ],
 )
-def test_dynamic_import_and_code_loading_mechanisms_are_blocked(source: bytes) -> None:
-    with pytest.raises(PhiImportGraphFixtureError, match="dynamic import/code loading"):
+def test_dynamic_import_and_code_loading_are_blocked_by_closed_grammar(
+    source: bytes,
+) -> None:
+    with pytest.raises(PhiImportGraphFixtureError, match=_IMPORT_ONLY_ERROR):
         _produce({"model.py": source})
 
 
@@ -148,8 +173,8 @@ def test_dynamic_import_and_code_loading_mechanisms_are_blocked(source: bytes) -
         b"import sys\nsys.path.append('x')\n",
     ],
 )
-def test_import_state_mutation_is_blocked(source: bytes) -> None:
-    with pytest.raises(PhiImportGraphFixtureError, match="import-state mutation|dynamic"):
+def test_import_state_mutation_is_blocked_by_closed_grammar(source: bytes) -> None:
+    with pytest.raises(PhiImportGraphFixtureError, match=_IMPORT_ONLY_ERROR):
         _produce({"model.py": source})
 
 
@@ -166,8 +191,8 @@ def test_missing_remote_package_submodule_is_blocked() -> None:
 
 def test_remote_star_import_is_blocked() -> None:
     sources = {
-        "pkg/__init__.py": b"import json\n",
         "model.py": b"from pkg import *\n",
+        "pkg/__init__.py": b"import json\n",
     }
     with pytest.raises(PhiImportGraphFixtureError, match="star import"):
         _produce(sources)
@@ -250,21 +275,52 @@ def test_boundary_policy_must_be_closed_unique_nonoverlapping(
 def test_artifact_bom_and_trailing_newline_are_blocked() -> None:
     sources = {"model.py": b"import json\n"}
     manifest, artifact = _produce(sources)
-    for payload in (b"\xef\xbb\xbf" + artifact.canonical_bytes, artifact.canonical_bytes + b"\n"):
+    payloads = (
+        b"\xef\xbb\xbf" + artifact.canonical_bytes,
+        artifact.canonical_bytes + b"\n",
+    )
+    for payload in payloads:
         with pytest.raises(PhiImportGraphFixtureError):
             verify_phi_reachable_import_graph_fixture(
-                payload, manifest, sources, _binding(), _policy()
+                payload,
+                manifest,
+                sources,
+                _binding(),
+                _policy(),
             )
+
+
+def test_noncanonical_json_whitespace_is_blocked() -> None:
+    sources = {"model.py": b"import json\n"}
+    manifest, artifact = _produce(sources)
+    payload = artifact.canonical_bytes.replace(b":", b": ", 1)
+
+    with pytest.raises(PhiImportGraphFixtureError, match="canonical JSON"):
+        verify_phi_reachable_import_graph_fixture(
+            payload,
+            manifest,
+            sources,
+            _binding(),
+            _policy(),
+        )
 
 
 def test_duplicate_json_member_is_blocked() -> None:
     sources = {"model.py": b"import json\n"}
     manifest, artifact = _produce(sources)
     payload = artifact.canonical_bytes.replace(
-        b'{"artifact_version":', b'{"artifact_version":"x","artifact_version":', 1
+        b'{"artifact_version":',
+        b'{"artifact_version":"x","artifact_version":',
+        1,
     )
     with pytest.raises(PhiImportGraphFixtureError, match="duplicate"):
-        verify_phi_reachable_import_graph_fixture(payload, manifest, sources, _binding(), _policy())
+        verify_phi_reachable_import_graph_fixture(
+            payload,
+            manifest,
+            sources,
+            _binding(),
+            _policy(),
+        )
 
 
 @pytest.mark.parametrize(
@@ -278,14 +334,21 @@ def test_duplicate_json_member_is_blocked() -> None:
         ("unresolved_dynamic_imports", ["x"]),
     ],
 )
-def test_bound_or_unresolved_artifact_mutations_are_blocked(field: str, value: object) -> None:
+def test_bound_or_unresolved_artifact_mutations_are_blocked(
+    field: str,
+    value: object,
+) -> None:
     sources = {"model.py": b"import json\n"}
     manifest, artifact = _produce(sources)
     doc = _document(artifact.canonical_bytes)
     doc[field] = value
     with pytest.raises(PhiImportGraphFixtureError):
         verify_phi_reachable_import_graph_fixture(
-            _canonical(doc), manifest, sources, _binding(), _policy()
+            _canonical(doc),
+            manifest,
+            sources,
+            _binding(),
+            _policy(),
         )
 
 
@@ -299,7 +362,11 @@ def test_missing_manifest_node_is_blocked() -> None:
     doc["nodes"] = [node for node in nodes if node["kind"] != "MANIFEST_FILE"]
     with pytest.raises(PhiImportGraphFixtureError, match="producer relationship set"):
         verify_phi_reachable_import_graph_fixture(
-            _canonical(doc), manifest, sources, _binding(), _policy()
+            _canonical(doc),
+            manifest,
+            sources,
+            _binding(),
+            _policy(),
         )
 
 
@@ -314,7 +381,11 @@ def test_unreferenced_boundary_node_is_blocked() -> None:
     nodes.sort(key=lambda node: (node["kind"], node["identity"]))
     with pytest.raises(PhiImportGraphFixtureError, match="producer relationship set"):
         verify_phi_reachable_import_graph_fixture(
-            _canonical(doc), manifest, sources, _binding(), _policy()
+            _canonical(doc),
+            manifest,
+            sources,
+            _binding(),
+            _policy(),
         )
 
 
@@ -331,7 +402,11 @@ def test_omitted_producer_relationship_is_blocked_even_if_schema_valid() -> None
     doc["nodes"] = [node for node in nodes if node["identity"] != "os"]
     with pytest.raises(PhiImportGraphFixtureError, match="producer relationship set"):
         verify_phi_reachable_import_graph_fixture(
-            _canonical(doc), manifest, sources, _binding(), _policy()
+            _canonical(doc),
+            manifest,
+            sources,
+            _binding(),
+            _policy(),
         )
 
 
@@ -366,5 +441,9 @@ def test_spurious_producer_relationship_is_blocked_even_if_schema_valid() -> Non
     )
     with pytest.raises(PhiImportGraphFixtureError, match="producer relationship set"):
         verify_phi_reachable_import_graph_fixture(
-            _canonical(doc), manifest, sources, _binding(), _policy()
+            _canonical(doc),
+            manifest,
+            sources,
+            _binding(),
+            _policy(),
         )
