@@ -267,7 +267,7 @@ def test_axis_rounding_is_decimal_half_up_two_dp() -> None:
 
 def test_axis_score_rejects_bool_and_out_of_range_values() -> None:
     with pytest.raises(TournamentScoringFixtureError, match="exact integer"):
-        compute_axis_score_fixture((True,) + (0,) * 39)  # type: ignore[arg-type]
+        compute_axis_score_fixture((True,) + (0,) * 39)
     with pytest.raises(TournamentScoringFixtureError, match="exact integer"):
         compute_axis_score_fixture((101,) + (0,) * 39)
 
@@ -373,6 +373,17 @@ def test_no_eligible_candidate_returns_frozen_no_selection() -> None:
     assert result.reason == "NO_ELIGIBLE_CANDIDATE"
     assert result.candidate_id is None
     assert result.tied_candidate_ids == ()
+
+
+def test_role_requires_exact_builtin_string() -> None:
+    class StringSubclass(str):
+        pass
+
+    with pytest.raises(TournamentScoringFixtureError, match="role must be"):
+        select_role_fixture(
+            (_candidate("openai/gpt-oss-20b"), _candidate("swiss-ai/Apertus-v1.5-8B")),
+            role=StringSubclass("compact"),
+        )
 
 
 def test_tie_breaker_prefers_higher_safety_first() -> None:
