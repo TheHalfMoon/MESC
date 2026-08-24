@@ -78,8 +78,14 @@ class TrainingRunPlan:
             raise TrainingLaunchPlanError("seeds must not contain duplicates")
         if not isinstance(self.runner_class, RunnerClass):
             raise TrainingLaunchPlanError("runner_class must be a RunnerClass")
-        if not self.python_version.strip() or not self.os_name.strip() or not self.gpu_model.strip():
-            raise TrainingLaunchPlanError("python_version, os_name, and gpu_model must be non-empty")
+        if (
+            not self.python_version.strip()
+            or not self.os_name.strip()
+            or not self.gpu_model.strip()
+        ):
+            raise TrainingLaunchPlanError(
+                "python_version, os_name, and gpu_model must be non-empty"
+            )
         _require_sha256(self.dependency_lock_sha256, field="dependency_lock_sha256")
         if _GIT_SHA.fullmatch(self.repository_sha) is None:
             raise TrainingLaunchPlanError(
@@ -152,7 +158,9 @@ class TrainingLaunchPlan:
             field="training_authorization_receipt_sha256",
         )
         if self.compact.role != "compact" or self.reasoner.role != "reasoner":
-            raise TrainingLaunchPlanError("run plans must occupy their exact Compact/Reasoner roles")
+            raise TrainingLaunchPlanError(
+                "run plans must occupy their exact Compact/Reasoner roles"
+            )
         if self.compact.experiment_id == self.reasoner.experiment_id:
             raise TrainingLaunchPlanError("Compact and Reasoner experiment_id values must differ")
         if self.compact.repository_sha != self.reasoner.repository_sha:
@@ -176,9 +184,7 @@ class TrainingLaunchPlan:
             "readiness_manifest_sha256": self.readiness_manifest_sha256,
             "reasoner": self.reasoner.to_dict(),
             "runtime_qualification_sha256": self.runtime_qualification_sha256,
-            "training_authorization_receipt_sha256": (
-                self.training_authorization_receipt_sha256
-            ),
+            "training_authorization_receipt_sha256": self.training_authorization_receipt_sha256,
         }
 
 
@@ -192,7 +198,9 @@ def build_training_launch_plan(
     """Build a plan only from an exact, independently recomputable launch-ready manifest."""
     recomputed = assess_training_readiness(manifest)
     if readiness != recomputed:
-        raise TrainingLaunchPlanError("supplied readiness report does not match recomputed readiness")
+        raise TrainingLaunchPlanError(
+            "supplied readiness report does not match recomputed readiness"
+        )
     if readiness.disposition != "READY_TO_LAUNCH" or not readiness.can_launch_training:
         raise TrainingLaunchPlanError("training readiness disposition is not READY_TO_LAUNCH")
     if readiness.blockers or readiness.launch_requirements:
@@ -264,5 +272,5 @@ def _require_repository_relative_path(value: str) -> None:
     if not value or "\\" in value:
         raise TrainingLaunchPlanError("result path must be a non-empty POSIX repository path")
     path = PurePosixPath(value)
-    if path.is_absolute() or ".." in path.parts or "." in path.parts:
+    if path.is_absolute() or path == PurePosixPath(".") or ".." in path.parts:
         raise TrainingLaunchPlanError("result path must remain inside the repository")
