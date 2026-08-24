@@ -30,7 +30,6 @@ _MODULE: Final = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*
 _BOM: Final = b"\xef\xbb\xbf"
 
 
-
 class PhiImportGraphFixtureError(ValueError):
     """Fail-closed fixture producer or verifier error."""
 
