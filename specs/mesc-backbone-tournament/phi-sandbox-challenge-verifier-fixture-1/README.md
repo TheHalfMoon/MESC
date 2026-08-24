@@ -74,8 +74,8 @@ producer process is started by this package.
 
 `consume(...)` first requires a current `ISSUED` record for the exact fixture
 invocation identity. It then reuses the canonical
-`verify_phi_sandbox_qualification_artifact_fixture(...)` implementation from PR
-#178 to validate the supplied artifact bytes and exact fixture runtime-binding
+`verify_phi_sandbox_qualification_artifact_fixture(...)` implementation from
+PR `#178` to validate the supplied artifact bytes and exact fixture runtime-binding
 bytes.
 
 Only after artifact conformance passes does the lifecycle verifier require exact
