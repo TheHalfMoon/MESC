@@ -15,12 +15,12 @@ authority.
 
 from __future__ import annotations
 
-import re
 import secrets
 from dataclasses import dataclass, replace
 from threading import Lock
 from typing import Final, Literal
 
+from medscale.mesc import _bt_phi_sandbox_qualification_artifact_fixture_v1 as artifact_fixture
 from medscale.mesc._bt_phi_sandbox_qualification_artifact_fixture_v1 import (
     PhiSandboxQualificationArtifact,
     PhiSandboxQualificationArtifactFixtureError,
@@ -29,8 +29,8 @@ from medscale.mesc._bt_phi_sandbox_qualification_artifact_fixture_v1 import (
 
 ChallengeStatus = Literal["ISSUED", "CONSUMED", "CANCELLED"]
 
-_SHA256: Final = re.compile(r"^[0-9a-f]{64}$")
-_PRODUCER: Final = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,255}$")
+_SHA256: Final = artifact_fixture._SHA256
+_PRODUCER: Final = artifact_fixture._PRODUCER
 
 
 class PhiSandboxChallengeFixtureError(ValueError):
