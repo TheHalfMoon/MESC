@@ -8,6 +8,7 @@ import pytest
 
 from medscale.mesc._training_launch_plan_v1 import (
     TrainingLaunchPlanError,
+    TrainingRole,
     TrainingRunPlan,
     build_training_launch_plan,
 )
@@ -27,7 +28,7 @@ _REPOSITORY_TREE = "b" * 40
 _LOCK_SHA = "c" * 64
 
 
-def _candidate(*, role: str) -> TrainingCandidate:
+def _candidate(*, role: TrainingRole) -> TrainingCandidate:
     if role == "compact":
         return TrainingCandidate(
             model_id="fixture/compact",
@@ -96,7 +97,7 @@ def _manifest(
 def _run(
     manifest: TrainingReadinessManifest,
     *,
-    role: str,
+    role: TrainingRole,
 ) -> TrainingRunPlan:
     if role == "compact":
         candidate = manifest.compact_candidate
@@ -115,7 +116,7 @@ def _run(
             "experiments/mesc-t6-reasoner-sft/results",
         )
     return TrainingRunPlan(
-        role=role,  # type: ignore[arg-type]
+        role=role,
         experiment_id=experiment_id,
         rq_refs=("RQ1",),
         recipe_id=recipe.recipe_id,
@@ -136,7 +137,12 @@ def _run(
     )
 
 
-def _build():
+def _build() -> tuple[
+    TrainingReadinessManifest,
+    TrainingReadinessReport,
+    TrainingRunPlan,
+    TrainingRunPlan,
+]:
     manifest = _manifest()
     readiness = assess_training_readiness(manifest)
     compact = _run(manifest, role="compact")
@@ -252,8 +258,7 @@ def test_result_paths_must_be_repository_relative_and_disjoint() -> None:
 
 
 def test_seeds_are_explicit_unique_and_non_negative() -> None:
-    manifest, _, compact, _ = _build()
-    del manifest
+    _, _, compact, _ = _build()
 
     with pytest.raises(TrainingLaunchPlanError, match="non-empty non-negative"):
         replace(compact, seeds=())
