@@ -13,7 +13,7 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Final, Literal, cast
+from typing import Final, cast
 
 from medscale.mesc._bt_output_contract_pipeline_fixture_v1 import (
     OutputContractIdentityEvidence,
@@ -28,19 +28,11 @@ from medscale.mesc._bt_tournament_scoring_engine_fixture_v1 import (
     AxisScores,
     CandidateGateResult,
     CandidateSelectionFixture,
+    GateResult,
     RoleSelectionResult,
     select_role_fixture,
     validate_candidate_selection_fixture,
 )
-
-TerminalErrorClass = Literal[
-    "TIMEOUT",
-    "RUNTIME_FAILURE",
-    "GENERATION_FAILURE",
-    "PARSE_FAILURE",
-    "SCHEMA_FAILURE",
-    "SAFETY_FAILURE",
-]
 
 REPORT_VALIDATION_CONTRACT_VERSION: Final = "MESC-BT-REPORT-VALIDATION-V1"
 REPORT_VALIDATION_CONTRACT_SHA256: Final = (
@@ -55,7 +47,7 @@ _CANONICAL_CANDIDATE_REVISIONS: Final[dict[str, str]] = {
     "microsoft/Phi-4-multimodal-instruct": "93f923e1a7727d1c4f446756212d9d3e8fcc5d81",
     "google/medgemma-1.5-4b-it": "91850547d9f0b2fdd21aa7c5f4f3d1a8a52c243b",
 }
-_ERROR_CLASSES: Final[tuple[TerminalErrorClass, ...]] = (
+_ERROR_CLASSES: Final[tuple[str, ...]] = (
     "TIMEOUT",
     "RUNTIME_FAILURE",
     "GENERATION_FAILURE",
@@ -100,7 +92,7 @@ class FailedItemFixture:
     """One injected canonical terminal failed-item disposition."""
 
     item_id: str
-    error_class: TerminalErrorClass
+    error_class: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -130,39 +122,34 @@ def validate_report_conformance_fixture(
 ) -> ReportConformanceResult:
     """Validate all deterministic report-contract invariants available to fixtures."""
     validate_report_schema_fixture(report)
-    root = report
     activation_snapshot = _validate_activation_fixture(activation)
-    _validate_corpus_audit_fixture(corpus_audits)
 
-    _require_report_binding(root, "mesc_commit_sha", activation_snapshot.mesc_commit_sha)
-    _require_report_binding(root, "mesc_tree_sha", activation_snapshot.mesc_tree_sha)
+    _require_report_binding(report, "mesc_commit_sha", activation_snapshot.mesc_commit_sha)
+    _require_report_binding(report, "mesc_tree_sha", activation_snapshot.mesc_tree_sha)
     _require_report_binding(
-        root,
+        report,
         "protocol_config_sha256",
         activation_snapshot.protocol_config_sha256,
     )
     _require_report_binding(
-        root,
+        report,
         "scoring_contract_sha256",
         activation_snapshot.scoring_contract_sha256,
     )
     _require_report_binding(
-        root,
+        report,
         "report_schema_sha256",
         activation_snapshot.report_schema_sha256,
     )
     _require_report_binding(
-        root,
+        report,
         "artifact_manifest_sha256",
         activation_snapshot.artifact_manifest_sha256,
     )
 
-    candidate_objects = cast(list[object], root["candidate_reports"])
+    candidate_objects = cast(list[object], report["candidate_reports"])
     candidates = tuple(cast(dict[str, object], item) for item in candidate_objects)
     candidate_ids = tuple(cast(str, candidate["candidate_id"]) for candidate in candidates)
-    if len(set(candidate_ids)) != len(candidate_ids):
-        raise ReportConformanceFixtureError("candidate_reports candidate IDs must be unique")
-
     report_pairs = tuple(
         (cast(str, candidate["candidate_id"]), cast(str, candidate["candidate_revision"]))
         for candidate in candidates
@@ -173,7 +160,14 @@ def validate_report_conformance_fixture(
             "candidate report pair is not admitted by the injected activation fixture"
         )
 
+    _validate_corpus_audit_fixture(corpus_audits)
     dispositions = _validate_terminal_dispositions(terminal_dispositions, candidate_ids)
+
+    if len(set(candidate_ids)) != len(candidate_ids):
+        raise ReportConformanceFixtureError("candidate_reports candidate IDs must be unique")
+    if len(set(report_pairs)) != len(report_pairs):
+        raise ReportConformanceFixtureError("candidate report ID/revision pairs must be unique")
+
     selection_candidates: list[CandidateSelectionFixture] = []
     for candidate in candidates:
         candidate_id = cast(str, candidate["candidate_id"])
@@ -183,7 +177,7 @@ def validate_report_conformance_fixture(
     candidate_tuple = tuple(selection_candidates)
     compact = select_role_fixture(candidate_tuple, role="compact")
     flagship = select_role_fixture(candidate_tuple, role="flagship_reasoner")
-    role_results = cast(dict[str, object], root["role_results"])
+    role_results = cast(dict[str, object], report["role_results"])
     _require_role_result_matches(
         cast(dict[str, object], role_results["compact"]),
         compact,
@@ -326,8 +320,7 @@ def _validate_terminal_dispositions(
 
         completed: list[str] = []
         for item_id in value.completed_item_ids:
-            _require_canonical_item_id(item_id, field="completed_item_ids")
-            completed.append(item_id)
+            completed.append(_require_canonical_item_id(item_id, field="completed_item_ids"))
         if len(set(completed)) != len(completed):
             raise ReportConformanceFixtureError("completed item IDs must be unique")
 
@@ -336,19 +329,15 @@ def _validate_terminal_dispositions(
         for failed_item in value.failed_items:
             if type(failed_item) is not FailedItemFixture:
                 raise ReportConformanceFixtureError("failed item must be exact FailedItemFixture")
-            _require_canonical_item_id(failed_item.item_id, field="failed_items.item_id")
-            if (
-                type(failed_item.error_class) is not str
-                or failed_item.error_class not in _ERROR_CLASSES
-            ):
-                raise ReportConformanceFixtureError("failed item error_class is not frozen")
-            failed.append(
-                FailedItemFixture(
-                    item_id=failed_item.item_id,
-                    error_class=failed_item.error_class,
-                )
+            item_id = _require_canonical_item_id(
+                failed_item.item_id,
+                field="failed_items.item_id",
             )
-            failed_ids.append(failed_item.item_id)
+            error_class: object = failed_item.error_class
+            if type(error_class) is not str or error_class not in _ERROR_CLASSES:
+                raise ReportConformanceFixtureError("failed item error_class is not frozen")
+            failed.append(FailedItemFixture(item_id=item_id, error_class=error_class))
+            failed_ids.append(item_id)
         if len(set(failed_ids)) != len(failed_ids):
             raise ReportConformanceFixtureError("failed item IDs must be unique")
         if set(completed) & set(failed_ids):
@@ -445,8 +434,8 @@ def _candidate_selection_from_report(candidate: dict[str, object]) -> CandidateS
         aggregate_score=_decimal(candidate["aggregate_score"]),
         critical_safety_failures=cast(int, candidate["critical_safety_failures"]),
         gates=CandidateGateResult(
-            compact=cast(Literal["PASS", "FAIL"], candidate["compact_gate"]),
-            flagship_reasoner=cast(Literal["PASS", "FAIL"], candidate["flagship_gate"]),
+            compact=cast(GateResult, candidate["compact_gate"]),
+            flagship_reasoner=cast(GateResult, candidate["flagship_gate"]),
         ),
         peak_vram_mb=_decimal(operational["peak_vram_mb"]),
         median_latency_ms=_decimal(operational["median_latency_ms"]),
