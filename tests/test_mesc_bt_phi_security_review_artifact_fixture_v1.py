@@ -9,11 +9,13 @@ from typing import cast
 
 import pytest
 
+import medscale.mesc._bt_phi_security_review_artifact_fixture_v1 as security_fixture
 from medscale.mesc._bt_phi_import_graph_fixture_v1 import (
     PhiImportGraphBoundaryPolicy,
     PhiImportGraphRuntimeBinding,
     PhiReachableImportGraphArtifact,
     produce_phi_reachable_import_graph_fixture,
+    verify_phi_reachable_import_graph_fixture as verify_graph_fixture,
 )
 from medscale.mesc._bt_phi_remote_code_fixture_v1 import (
     PhiRemoteCodeManifest,
@@ -382,3 +384,45 @@ def test_forged_manifest_object_is_rejected() -> None:
 
     with pytest.raises(PhiSecurityReviewArtifactFixtureError, match=r"forged|stale"):
         _verify(_canonical(document), sources, forged, graph.canonical_bytes)
+
+
+def test_caller_manifest_mutation_after_snapshot_cannot_change_verification(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sources, manifest, graph, document = _fixture()
+    payload = _canonical(document)
+    original_sha256 = manifest.sha256
+
+    def mutate_caller_then_verify(
+        graph_payload: bytes,
+        snapshot: PhiRemoteCodeManifest,
+        graph_sources: dict[str, bytes],
+        runtime_binding: PhiImportGraphRuntimeBinding,
+        boundary_policy: PhiImportGraphBoundaryPolicy,
+    ) -> None:
+        object.__setattr__(manifest, "sha256", "0" * 64)
+        verify_graph_fixture(
+            graph_payload,
+            snapshot,
+            graph_sources,
+            runtime_binding,
+            boundary_policy,
+        )
+
+    monkeypatch.setattr(
+        security_fixture,
+        "verify_phi_reachable_import_graph_fixture",
+        mutate_caller_then_verify,
+    )
+
+    artifact = security_fixture.verify_phi_security_review_artifact_fixture(
+        payload,
+        manifest,
+        graph.canonical_bytes,
+        sources,
+        _binding(),
+        _policy(),
+    )
+
+    assert artifact.canonical_bytes == payload
+    assert manifest.sha256 != original_sha256
