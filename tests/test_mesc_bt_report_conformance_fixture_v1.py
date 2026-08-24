@@ -427,3 +427,50 @@ def test_gate_and_role_results_are_recomputed_fail_closed() -> None:
             corpus_audits=_audits(),
             terminal_dispositions=_dispositions(),
         )
+
+
+def test_validation_order_precedes_candidate_identity_with_corpus_stages() -> None:
+    activation = _activation()
+    unadmitted = ActivationBindingFixture(
+        mesc_commit_sha=activation.mesc_commit_sha,
+        mesc_tree_sha=activation.mesc_tree_sha,
+        protocol_config_sha256=activation.protocol_config_sha256,
+        scoring_contract_sha256=activation.scoring_contract_sha256,
+        report_schema_sha256=activation.report_schema_sha256,
+        artifact_manifest_sha256=activation.artifact_manifest_sha256,
+        admitted_candidate_pairs=(
+            _CANDIDATES[0],
+            (
+                "microsoft/Phi-4-multimodal-instruct",
+                "93f923e1a7727d1c4f446756212d9d3e8fcc5d81",
+            ),
+        ),
+        binding_evidence_passed=True,
+    )
+    failed_audit = CorpusAuditFixture(
+        r2_provenance_audit_passed=True,
+        spec_conformance_audit_passed=False,
+        audit_artifacts_bound_before_prompt_serialization=True,
+    )
+    with pytest.raises(ReportConformanceFixtureError, match="spec_conformance_audit_passed"):
+        validate_report_conformance_fixture(
+            report=_report(),
+            activation=unadmitted,
+            corpus_audits=failed_audit,
+            terminal_dispositions=_dispositions(),
+        )
+
+    dispositions = list(_dispositions())
+    first = dispositions[0]
+    dispositions[0] = CandidateTerminalDispositionFixture(
+        candidate_id=first.candidate_id,
+        completed_item_ids=first.completed_item_ids[:-1],
+        failed_items=(),
+    )
+    with pytest.raises(ReportConformanceFixtureError, match="partition the exact canonical"):
+        validate_report_conformance_fixture(
+            report=_report(),
+            activation=unadmitted,
+            corpus_audits=_audits(),
+            terminal_dispositions=tuple(dispositions),
+        )
