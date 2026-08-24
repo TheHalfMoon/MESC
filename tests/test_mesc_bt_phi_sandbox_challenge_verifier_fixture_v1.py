@@ -8,7 +8,6 @@ from typing import cast
 
 import pytest
 
-import medscale.mesc._bt_phi_sandbox_challenge_verifier_fixture_v1 as challenge_fixture
 from medscale.mesc._bt_activation_identity_fixture_v1 import (
     EXTERNAL_RUNTIME_PARENT_PATH,
     GPU_MODEL_H100,
@@ -22,6 +21,9 @@ from medscale.mesc._bt_phi_sandbox_challenge_verifier_fixture_v1 import (
 
 _SHA_A = "a" * 40
 _SHA_B = "b" * 40
+_TOKEN_BYTES_TARGET = (
+    "medscale.mesc._bt_phi_sandbox_challenge_verifier_fixture_v1.secrets.token_bytes"
+)
 
 
 def _canonical(value: object) -> bytes:
@@ -107,7 +109,7 @@ def _artifact(
 
 def _fixed_csprng(monkeypatch: pytest.MonkeyPatch, byte: int) -> str:
     raw = bytes([byte]) * 32
-    monkeypatch.setattr(challenge_fixture.secrets, "token_bytes", lambda size: raw)
+    monkeypatch.setattr(_TOKEN_BYTES_TARGET, lambda size: raw)
     return raw.hex()
 
 
@@ -180,7 +182,7 @@ def test_csprng_must_return_exactly_32_bytes(
     monkeypatch: pytest.MonkeyPatch,
     raw: bytes,
 ) -> None:
-    monkeypatch.setattr(challenge_fixture.secrets, "token_bytes", lambda size: raw)
+    monkeypatch.setattr(_TOKEN_BYTES_TARGET, lambda size: raw)
     verifier = PhiSandboxChallengeVerifierFixture()
 
     with pytest.raises(PhiSandboxChallengeFixtureError, match="exactly 32"):
@@ -196,7 +198,7 @@ def test_non_bytes_csprng_result_is_fail_closed(monkeypatch: pytest.MonkeyPatch)
         del size
         return cast(bytes, bytearray(b"x" * 32))
 
-    monkeypatch.setattr(challenge_fixture.secrets, "token_bytes", bad_token_bytes)
+    monkeypatch.setattr(_TOKEN_BYTES_TARGET, bad_token_bytes)
     verifier = PhiSandboxChallengeVerifierFixture()
 
     with pytest.raises(PhiSandboxChallengeFixtureError, match="built-in bytes"):
