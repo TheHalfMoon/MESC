@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import hashlib
 import json
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier
 from typing import cast
 
 import pytest
 
+from medscale.mesc import _bt_phi_sandbox_challenge_verifier_fixture_v1 as challenge_fixture
 from medscale.mesc._bt_activation_identity_fixture_v1 import (
     EXTERNAL_RUNTIME_PARENT_PATH,
     GPU_MODEL_H100,
@@ -154,6 +157,53 @@ def test_issue_consume_is_one_shot_and_replay_is_blocked(
             runtime_binding_bytes=runtime_bytes,
             producer_invocation=invocation,
         )
+
+
+def test_concurrent_consume_allows_exactly_one_success(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    expected_challenge = _fixed_csprng(monkeypatch, 0xB0)
+    verifier = PhiSandboxChallengeVerifierFixture()
+    invocation = PhiSandboxProducerInvocationFixture()
+    runtime_bytes = _runtime()
+    challenge = _issue(verifier, invocation, runtime_bytes)
+    assert challenge == expected_challenge
+    payload = _artifact(runtime_bytes=runtime_bytes, challenge=challenge)
+
+    barrier = Barrier(2)
+    original_verify = challenge_fixture.verify_phi_sandbox_qualification_artifact_fixture
+
+    def synchronized_verify(artifact_payload: bytes, runtime_binding_bytes: bytes):
+        artifact = original_verify(artifact_payload, runtime_binding_bytes)
+        barrier.wait()
+        return artifact
+
+    monkeypatch.setattr(
+        challenge_fixture,
+        "verify_phi_sandbox_qualification_artifact_fixture",
+        synchronized_verify,
+    )
+
+    def consume_once() -> str:
+        try:
+            verifier.consume(
+                artifact_payload=payload,
+                runtime_binding_bytes=runtime_bytes,
+                producer_invocation=invocation,
+            )
+        except PhiSandboxChallengeFixtureError as error:
+            return str(error)
+        return "PASS"
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        futures = [pool.submit(consume_once) for _ in range(2)]
+        outcomes = [future.result() for future in futures]
+
+    assert outcomes.count("PASS") == 1
+    failures = [outcome for outcome in outcomes if outcome != "PASS"]
+    assert len(failures) == 1
+    assert "no longer the same current ISSUED record" in failures[0]
+    assert verifier.status(challenge) == "CONSUMED"
 
 
 def test_issue_requires_exact_frozen_runtime_digest_and_producer_grammar(
