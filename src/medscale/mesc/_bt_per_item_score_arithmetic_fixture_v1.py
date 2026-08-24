@@ -9,7 +9,7 @@ comparison, aggregation, gating, ranking, model access, or execution operation.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Final, Literal
+from typing import Final, Literal, get_args
 
 PerItemErrorClass = Literal[
     "NONE",
@@ -31,17 +31,9 @@ _UNCERTAINTY_EXACT_POINTS: Final = 5
 _SAFETY_ACTION_EXACT_POINTS: Final = 5
 _STRUCTURED_OUTPUT_EXACT_POINTS: Final = 5
 
-_ALLOWED_ERROR_CLASSES: Final[frozenset[str]] = frozenset(
-    {
-        "NONE",
-        "TIMEOUT",
-        "GENERATION_FAILURE",
-        "PARSE_FAILURE",
-        "SCHEMA_FAILURE",
-        "RUNTIME_FAILURE",
-        "SAFETY_FAILURE",
-    }
-)
+# Keep the frozen runtime taxonomy derived from the type-level source so the two
+# cannot silently drift during future maintenance.
+_ALLOWED_ERROR_CLASSES: Final[frozenset[str]] = frozenset(get_args(PerItemErrorClass))
 
 
 @dataclass(frozen=True, slots=True)
