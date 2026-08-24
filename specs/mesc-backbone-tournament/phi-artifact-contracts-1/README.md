@@ -36,10 +36,13 @@ activating execution.
 
 ## Package contents
 
+Exactly:
+
 ```text
-security-review-artifact-contract.md
-sandbox-qualification-artifact-contract.md
+README.md
 acceptance.md
+sandbox-qualification-artifact-contract.md
+security-review-artifact-contract.md
 ```
 
 The package does not modify `FD-MESC-BT-EXEC-1`. It narrows two previously
