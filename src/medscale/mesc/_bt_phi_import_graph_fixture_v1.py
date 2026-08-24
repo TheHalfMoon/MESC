@@ -28,44 +28,7 @@ _SHA256: Final = re.compile(r"^[0-9a-f]{64}$")
 _OCI: Final = re.compile(r"^sha256:[0-9a-f]{64}$")
 _MODULE: Final = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*$")
 _BOM: Final = b"\xef\xbb\xbf"
-_DYNAMIC_CALLS: Final = frozenset(
-    {
-        "__import__",
-        "builtins.__import__",
-        "compile",
-        "builtins.compile",
-        "eval",
-        "builtins.eval",
-        "exec",
-        "builtins.exec",
-        "importlib.import_module",
-        "importlib.reload",
-        "runpy.run_module",
-        "runpy.run_path",
-        "types.CodeType",
-        "types.FunctionType",
-    }
-)
-_DYNAMIC_PREFIXES: Final = (
-    "importlib.",
-    "marshal.",
-    "pkgutil.",
-    "runpy.",
-    "sys.meta_path.",
-    "sys.modules.",
-    "sys.path.",
-    "sys.path_hooks.",
-)
-_MUTABLE_IMPORT_STATE: Final = frozenset(
-    {
-        "builtins.__import__",
-        "importlib.import_module",
-        "sys.meta_path",
-        "sys.modules",
-        "sys.path",
-        "sys.path_hooks",
-    }
-)
+
 
 
 class PhiImportGraphFixtureError(ValueError):
@@ -290,51 +253,11 @@ def _source_tree(path: str, payload: bytes) -> ast.Module:
 
 
 def _reject_unsupported(path: str, tree: ast.Module) -> None:
-    top_imports = {
-        id(node) for node in tree.body if isinstance(node, (ast.Import, ast.ImportFrom))
-    }
-    for node in ast.walk(tree):
-        if isinstance(node, (ast.Import, ast.ImportFrom)) and id(node) not in top_imports:
+    for statement in tree.body:
+        if not isinstance(statement, (ast.Import, ast.ImportFrom)):
             raise PhiImportGraphFixtureError(
-                f"non-module-scope import is unsupported: {path!r}"
+                f"source statement is outside reviewed import-only fixture grammar: {path!r}"
             )
-        if isinstance(node, ast.Call):
-            name = _dotted(node.func)
-            if name in _DYNAMIC_CALLS or (
-                name is not None and name.startswith(_DYNAMIC_PREFIXES)
-            ):
-                raise PhiImportGraphFixtureError(
-                    f"dynamic import/code loading is unsupported: {path!r}"
-                )
-        if isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign, ast.Delete)):
-            for target in _targets(node):
-                if _mutation_name(target) in _MUTABLE_IMPORT_STATE:
-                    raise PhiImportGraphFixtureError(
-                        f"import-state mutation is unsupported: {path!r}"
-                    )
-
-
-def _targets(node: ast.AST) -> tuple[ast.AST, ...]:
-    if isinstance(node, ast.Assign):
-        return tuple(node.targets)
-    if isinstance(node, (ast.AnnAssign, ast.AugAssign)):
-        return (node.target,)
-    if isinstance(node, ast.Delete):
-        return tuple(node.targets)
-    return ()
-
-
-def _mutation_name(node: ast.AST) -> str | None:
-    return _dotted(node.value) if isinstance(node, ast.Subscript) else _dotted(node)
-
-
-def _dotted(node: ast.AST) -> str | None:
-    if isinstance(node, ast.Name):
-        return node.id
-    if isinstance(node, ast.Attribute):
-        parent = _dotted(node.value)
-        return f"{parent}.{node.attr}" if parent else None
-    return None
 
 
 def _from_base(
