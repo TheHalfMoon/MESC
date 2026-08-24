@@ -55,21 +55,45 @@ launch, source import/execution, model access, prompt serialization, inference,
 generation, scoring, ranking, winner selection, tournament execution, training, or
 fine-tuning.
 
+## Reviewed source grammar
+
+The fixture producer deliberately uses a closed allowlist rather than attempting to
+blacklist every possible Python dynamic-import or reflection mechanism.
+
+After UTF-8 decoding and `ast.parse`, every top-level source statement must be exactly
+one of:
+
+```text
+ast.Import
+ast.ImportFrom
+```
+
+Any other top-level statement is `BLOCKED`, including function/class definitions,
+assignments, expression statements/calls, control flow, runtime code generation,
+dynamic-import calls, import-state mutation, executable module docstrings, or any future
+Python construct outside this two-statement allowlist.
+
+Comments are not executable AST statements and therefore do not expand the accepted
+source grammar.
+
+This restriction is intentionally narrower than general Python. Passing fixture tests
+under this grammar does **not** prove that real Phi source fits the grammar. Real Phi
+source remains unread and unqualified.
+
 ## Extraction and resolution behavior
 
 For accepted fixture inputs, the producer:
 
 - maps every manifest `.py` path deterministically to one absolute Python module identity;
 - parses fixture bytes with Python `ast` without importing or executing them;
-- accepts only module-scope static `import` and `from ... import ...` relationships;
+- extracts only top-level static `import` and `from ... import ...` relationships;
 - resolves relative imports from the source module/package identity;
 - maps exact manifested targets to `MANIFEST_FILE` nodes;
 - maps only explicitly classified runtime/dependency names to terminal
   `PYTHON_RUNTIME_MODULE` or `LOCKED_DEPENDENCY_MODULE` nodes;
 - blocks unknown or ambiguous targets instead of guessing;
 - blocks remote package submodules that are not themselves manifested;
-- blocks remote star imports, non-module-scope imports, dynamic import/code-loading
-  mechanisms, and import-state mutation covered by the fixture algorithm;
+- blocks remote star imports whose target is a remote manifest module;
 - emits unique deterministic node/edge sets in canonical order; and
 - emits exact canonical ASCII JSON bytes for
   `MESC-BT-PHI-REACHABLE-IMPORT-GRAPH-ARTIFACT-V1` with empty
@@ -90,8 +114,9 @@ been qualified.
 
 The tests exercise fail-closed cases including:
 
-- non-module-scope static imports;
-- dynamic import, runtime code loading/generation, and import-state mutation;
+- any source statement outside the import-only allowlist, including nested imports,
+  dynamic-import/code-loading calls, assignments/import-state mutation, control flow,
+  function/class definitions, and ordinary executable expressions;
 - unknown imports and ambiguous/missing remote-package targets;
 - relative-import escape and remote star imports;
 - source-set or source-identity mismatch and forged manifest identity;
@@ -103,8 +128,8 @@ The tests exercise fail-closed cases including:
 - omitted and spurious producer relationships that remain otherwise canonical JSON.
 
 Passing these fixtures qualifies only the bounded extraction/reproduction mechanics in
-this package. It does not prove that real Phi source fits the accepted static subset, that
-all real Phi import mechanisms are covered, or that a real Phi graph is complete.
+this package. It does not prove that real Phi source fits the accepted import-only subset,
+that all real Phi import mechanisms are covered, or that a real Phi graph is complete.
 
 ## Qualification rule
 
@@ -126,7 +151,7 @@ This package does **not**:
 
 - read, download, clone, inspect, or construct a graph from real Phi source;
 - establish a real `PHI_REMOTE_CODE_MANIFEST` or real graph digest;
-- prove that real Phi source fits the fixture producer's accepted static subset;
+- prove that real Phi source fits the fixture producer's accepted import-only subset;
 - establish real source/runtime identity qualification;
 - perform the independent Phi remote-code security review;
 - establish `PHI_REMOTE_CODE_SECURITY_REVIEW_SHA256`;
