@@ -150,7 +150,9 @@ class TrainingReadinessReport:
         return self.disposition == "READY_TO_LAUNCH"
 
 
-def assess_training_readiness(manifest: TrainingReadinessManifest) -> TrainingReadinessReport:
+def assess_training_readiness(
+    manifest: TrainingReadinessManifest,
+) -> TrainingReadinessReport:
     """Assess training readiness without accessing models, data, providers, or runtimes."""
     blockers: list[str] = []
 
