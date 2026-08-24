@@ -161,7 +161,11 @@ def _validate_document(
     if frozenset(document) != _TOP_LEVEL_KEYS:
         raise PhiSecurityReviewArtifactFixtureError("artifact has an invalid top-level member set")
 
-    _require_exact_string(document["artifact_version"], field="artifact_version", value=_VERSION)
+    _require_exact_string(
+        document["artifact_version"],
+        field="artifact_version",
+        expected=_VERSION,
+    )
     _require_exact_true(document["independent_review"], field="independent_review")
     _require_exact_true(
         document["complete_reachable_import_graph_reviewed"],
@@ -170,9 +174,13 @@ def _validate_document(
     _require_exact_string(
         document["complete_reachable_import_graph_disposition"],
         field="complete_reachable_import_graph_disposition",
-        value=_PASS,
+        expected=_PASS,
     )
-    _require_exact_string(document["overall_disposition"], field="overall_disposition", value=_PASS)
+    _require_exact_string(
+        document["overall_disposition"],
+        field="overall_disposition",
+        expected=_PASS,
+    )
 
     manifest_sha256 = _require_sha256(document["manifest_sha256"], field="manifest_sha256")
     if manifest_sha256 != manifest.sha256:
@@ -240,6 +248,66 @@ def _validate_file_dispositions(value: object, manifest: PhiRemoteCodeManifest) 
             )
 
 
-def _require_exact_string(value: object, *, field: str, value: str) -> None:
-    if type(value) is not str or value != value:
-        raise AssertionError("unreachable")
+def _require_exact_string(actual: object, *, field: str, expected: str) -> None:
+    if type(actual) is not str or actual != expected:
+        raise PhiSecurityReviewArtifactFixtureError(f"{field} must be exactly {expected!r}")
+
+
+def _require_exact_true(actual: object, *, field: str) -> None:
+    if type(actual) is not bool or actual is not True:
+        raise PhiSecurityReviewArtifactFixtureError(f"{field} must be exact JSON true")
+
+
+def _require_sha256(actual: object, *, field: str) -> str:
+    if type(actual) is not str or _SHA256.fullmatch(actual) is None:
+        raise PhiSecurityReviewArtifactFixtureError(f"{field} must be 64 lowercase hex characters")
+    return actual
+
+
+def _canonical(document: dict[str, object]) -> bytes:
+    try:
+        text = json.dumps(
+            document,
+            ensure_ascii=False,
+            allow_nan=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        )
+        return text.encode("ascii")
+    except (TypeError, UnicodeEncodeError, ValueError) as error:
+        raise PhiSecurityReviewArtifactFixtureError(
+            "artifact cannot be serialized as canonical ASCII JSON"
+        ) from error
+
+
+def _load_json(payload: bytes) -> object:
+    try:
+        text = payload.decode("utf-8", errors="strict")
+    except UnicodeDecodeError as error:
+        raise PhiSecurityReviewArtifactFixtureError("artifact must be valid UTF-8") from error
+
+    try:
+        return json.loads(
+            text,
+            object_pairs_hook=_object_from_unique_pairs,
+            parse_constant=_reject_json_constant,
+        )
+    except PhiSecurityReviewArtifactFixtureError:
+        raise
+    except (ValueError, RecursionError) as error:
+        raise PhiSecurityReviewArtifactFixtureError("artifact is not valid JSON") from error
+
+
+def _object_from_unique_pairs(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    document: dict[str, object] = {}
+    for key, value in pairs:
+        if key in document:
+            raise PhiSecurityReviewArtifactFixtureError(f"duplicate JSON member: {key!r}")
+        document[key] = value
+    return document
+
+
+def _reject_json_constant(value: str) -> Never:
+    raise PhiSecurityReviewArtifactFixtureError(
+        f"non-standard JSON constant is prohibited: {value}"
+    )
