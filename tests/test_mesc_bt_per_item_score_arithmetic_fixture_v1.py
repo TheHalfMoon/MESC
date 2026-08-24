@@ -214,9 +214,18 @@ def test_comparison_outcomes_require_exact_bools(field: str) -> None:
 
 def test_scoring_does_not_mutate_observation() -> None:
     observation = _all_match()
-    before = observation
+    before = PerItemComparisonObservation(
+        error_class=observation.error_class,
+        answer_exact=observation.answer_exact,
+        answer_state_exact=observation.answer_state_exact,
+        evidence_refs_exact_set=observation.evidence_refs_exact_set,
+        uncertainty_exact=observation.uncertainty_exact,
+        safety_action_exact=observation.safety_action_exact,
+        structured_output_exact=observation.structured_output_exact,
+    )
 
     result = score_per_item_comparison_fixture(observation)
 
     assert observation == before
+    assert observation is not before
     assert result.total_score == 100
