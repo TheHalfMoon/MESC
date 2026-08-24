@@ -156,9 +156,7 @@ def _document(raw: bytes) -> dict[str, object]:
     try:
         text = raw.decode("ascii")
     except UnicodeDecodeError as error:
-        raise PhiSandboxQualificationArtifactFixtureError(
-            "artifact must be ASCII JSON"
-        ) from error
+        raise PhiSandboxQualificationArtifactFixtureError("artifact must be ASCII JSON") from error
     try:
         value: object = json.loads(
             text,
@@ -166,9 +164,7 @@ def _document(raw: bytes) -> dict[str, object]:
             parse_constant=_reject_json_constant,
         )
     except json.JSONDecodeError as error:
-        raise PhiSandboxQualificationArtifactFixtureError(
-            "artifact is not valid JSON"
-        ) from error
+        raise PhiSandboxQualificationArtifactFixtureError("artifact is not valid JSON") from error
     if type(value) is not dict:
         raise PhiSandboxQualificationArtifactFixtureError(
             "artifact top level must be exactly one JSON object"
@@ -187,9 +183,7 @@ def _controls(value: object) -> dict[str, str]:
     for key, expected in _CONTROL_VALUES.items():
         actual = controls[key]
         if type(actual) is not str or actual != expected:
-            raise PhiSandboxQualificationArtifactFixtureError(
-                f"control value mismatch: {key}"
-            )
+            raise PhiSandboxQualificationArtifactFixtureError(f"control value mismatch: {key}")
         validated[key] = actual
     return validated
 
@@ -213,9 +207,7 @@ def _reject_duplicate_members(pairs: list[tuple[str, object]]) -> dict[str, obje
     result: dict[str, object] = {}
     for key, value in pairs:
         if key in result:
-            raise PhiSandboxQualificationArtifactFixtureError(
-                f"duplicate JSON member: {key}"
-            )
+            raise PhiSandboxQualificationArtifactFixtureError(f"duplicate JSON member: {key}")
         result[key] = value
     return result
 
@@ -228,16 +220,12 @@ def _reject_json_constant(token: str) -> Never:
 
 def _require_exact_true(value: object, *, field: str) -> None:
     if type(value) is not bool or value is not True:
-        raise PhiSandboxQualificationArtifactFixtureError(
-            f"{field} must be JSON boolean true"
-        )
+        raise PhiSandboxQualificationArtifactFixtureError(f"{field} must be JSON boolean true")
 
 
 def _require_exact_string(value: object, *, field: str, expected: str) -> None:
     if type(value) is not str or value != expected:
-        raise PhiSandboxQualificationArtifactFixtureError(
-            f"{field} must be exactly {expected}"
-        )
+        raise PhiSandboxQualificationArtifactFixtureError(f"{field} must be exactly {expected}")
 
 
 def _require_sha256(value: object, *, field: str) -> str:
