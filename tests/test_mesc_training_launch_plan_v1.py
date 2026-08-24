@@ -165,12 +165,15 @@ def test_launch_plan_is_content_addressed_and_preserves_all_bindings() -> None:
     assert plan.compact.run_plan_sha256 == compact.run_plan_sha256
     assert plan.reasoner.run_plan_sha256 == reasoner.run_plan_sha256
     assert len(plan.plan_sha256) == 64
-    assert plan.plan_sha256 == build_training_launch_plan(
-        manifest=manifest,
-        readiness=readiness,
-        compact=compact,
-        reasoner=reasoner,
-    ).plan_sha256
+    assert (
+        plan.plan_sha256
+        == build_training_launch_plan(
+            manifest=manifest,
+            readiness=readiness,
+            compact=compact,
+            reasoner=reasoner,
+        ).plan_sha256
+    )
 
 
 def test_ready_for_authorization_cannot_build_launch_plan() -> None:
