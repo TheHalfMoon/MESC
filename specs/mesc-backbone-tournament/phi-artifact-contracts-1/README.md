@@ -87,15 +87,21 @@ evidence exact, closed, hashable, and replayable.
 
 ## Sandbox-qualification artifact
 
-`sandbox-qualification-artifact-contract.md` defines a bounded artifact that binds
-the exact activation runtime identity fields already named by
-`FD-MESC-BT-EXEC-1`, plus the exact Phi model-process isolation controls required
+`sandbox-qualification-artifact-contract.md` binds the sandbox evidence to the
+SHA-256 of the **complete canonical `RUNTIME_BINDING` bytes already defined by the
+activation identity layer**, rather than redeclaring a partial copy of runtime
+fields. It also freezes the exact Phi model-process isolation controls required
 before remote-code import or model load.
 
-It does not allocate or inspect a provider instance, create namespaces or firewall
-rules, start a model process, or test network behavior. A future live qualification
-producer must generate the observations; this package only freezes how accepted
-observations are serialized and bound to one exact runtime.
+A future activation path must independently validate the complete canonical
+`RUNTIME_BINDING`, recompute its SHA-256, and require exact equality to the digest
+inside the sandbox artifact. This prevents schema drift between sandbox evidence
+and the canonical activation runtime identity.
+
+The package does not allocate or inspect a provider instance, create namespaces
+or firewall rules, start a model process, or test network behavior. A future live
+qualification producer must generate the observations; this package only freezes
+how accepted observations are serialized and bound to one exact validated runtime.
 
 ## Deliberate non-claims
 
