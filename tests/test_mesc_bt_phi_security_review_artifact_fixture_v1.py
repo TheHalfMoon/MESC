@@ -9,7 +9,6 @@ from typing import cast
 
 import pytest
 
-import medscale.mesc._bt_phi_security_review_artifact_fixture_v1 as security_fixture
 from medscale.mesc._bt_phi_import_graph_fixture_v1 import (
     PhiImportGraphBoundaryPolicy,
     PhiImportGraphRuntimeBinding,
@@ -410,12 +409,12 @@ def test_caller_manifest_mutation_after_snapshot_cannot_change_verification(
         )
 
     monkeypatch.setattr(
-        security_fixture,
+        "medscale.mesc._bt_phi_security_review_artifact_fixture_v1."
         "verify_phi_reachable_import_graph_fixture",
         mutate_caller_then_verify,
     )
 
-    artifact = security_fixture.verify_phi_security_review_artifact_fixture(
+    artifact = verify_phi_security_review_artifact_fixture(
         payload,
         manifest,
         graph.canonical_bytes,
