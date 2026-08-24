@@ -137,7 +137,7 @@ def verify_phi_sandbox_qualification_artifact_fixture(
 def _runtime_binding_sha256(raw: bytes) -> str:
     try:
         activation_fixture._parse_runtime_binding(raw)
-    except activation_fixture.FixtureActivationBlockedError as error:
+    except (activation_fixture.FixtureActivationBlockedError, ValueError, RecursionError) as error:
         raise PhiSandboxQualificationArtifactFixtureError(
             "runtime binding is not canonical under the activation identity validator"
         ) from error
@@ -163,7 +163,9 @@ def _document(raw: bytes) -> dict[str, object]:
             object_pairs_hook=_reject_duplicate_members,
             parse_constant=_reject_json_constant,
         )
-    except json.JSONDecodeError as error:
+    except PhiSandboxQualificationArtifactFixtureError:
+        raise
+    except (ValueError, RecursionError) as error:
         raise PhiSandboxQualificationArtifactFixtureError("artifact is not valid JSON") from error
     if type(value) is not dict:
         raise PhiSandboxQualificationArtifactFixtureError(
