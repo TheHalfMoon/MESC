@@ -51,17 +51,24 @@ At minimum, reviewers must prove:
 3. it requires independent-review and complete-import-graph PASS claims;
 4. its reachable-import-graph evidence is digest-bound rather than left as an
    unbound narrative claim;
-5. the sandbox artifact binds the exact runtime identity field categories already
-   required by `FD-MESC-BT-EXEC-1`;
-6. it preserves every exact Section C.3 isolation-control value;
-7. both formats reject duplicate JSON member names and noncanonical byte
+5. the sandbox artifact binds `runtime_binding_sha256` to the SHA-256 of the
+   **complete canonical activation `RUNTIME_BINDING` bytes**, rather than
+   redeclaring a partial runtime schema;
+6. a future activation verifier must independently validate and canonically
+   reproduce the full runtime binding before comparing that digest;
+7. the sandbox artifact preserves every exact Section C.3 isolation-control value;
+8. both formats reject duplicate JSON member names and noncanonical byte
    serialization;
-8. neither format treats a syntactic parser PASS as proof that the producer or
+9. neither format treats a syntactic parser PASS as proof that the producer or
    live observation is trustworthy;
-9. neither format grants model access, gated-access authority, execution
-   activation, ranking, winner selection, or tournament execution.
+10. neither format grants model access, gated-access authority, execution
+    activation, ranking, winner selection, or tournament execution.
 
 A conflict with the existing conditional authorization contract is a blocker.
+
+A sandbox format that copies only a subset of the canonical runtime fields is also
+a blocker, because it could drift from the already-canonical runtime-binding
+contract.
 
 ## D. Deliberately unresolved dependency
 
