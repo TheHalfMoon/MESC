@@ -21,6 +21,9 @@ from medscale.mesc._bt_phi_sandbox_challenge_verifier_fixture_v1 import (
     PhiSandboxChallengeVerifierFixture,
     PhiSandboxProducerInvocationFixture,
 )
+from medscale.mesc._bt_phi_sandbox_qualification_artifact_fixture_v1 import (
+    verify_phi_sandbox_qualification_artifact_fixture,
+)
 
 _SHA_A = "a" * 40
 _SHA_B = "b" * 40
@@ -171,7 +174,7 @@ def test_concurrent_consume_allows_exactly_one_success(
     payload = _artifact(runtime_bytes=runtime_bytes, challenge=challenge)
 
     barrier = Barrier(2)
-    original_verify = challenge_fixture.verify_phi_sandbox_qualification_artifact_fixture
+    original_verify = verify_phi_sandbox_qualification_artifact_fixture
 
     def synchronized_verify(artifact_payload: bytes, runtime_binding_bytes: bytes) -> object:
         artifact = original_verify(artifact_payload, runtime_binding_bytes)
