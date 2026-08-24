@@ -13,9 +13,7 @@ from typing import Final, Literal, cast
 CrossItemFailureKind = Literal["cross_item_violation"]
 
 PARSER_CONTRACT_VERSION: Final = "MESC-BT-PARSER-V1"
-PARSER_CONTRACT_SHA256: Final = (
-    "9905096b491ddc3bce2b5d668c1f8726f638dde9dba383ac1bb755f1b6b42071"
-)
+PARSER_CONTRACT_SHA256: Final = "9905096b491ddc3bce2b5d668c1f8726f638dde9dba383ac1bb755f1b6b42071"
 
 
 class CrossItemEvidenceValidationError(ValueError):
