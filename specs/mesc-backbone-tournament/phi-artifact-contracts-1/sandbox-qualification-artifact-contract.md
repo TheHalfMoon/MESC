@@ -60,7 +60,8 @@ or prove that the producer is trustworthy.
 
 ## Exact runtime binding
 
-`runtime_binding_sha256` must equal:
+`runtime_binding_sha256` must equal the 64-character lowercase ASCII hexadecimal
+representation of:
 
 ```text
 SHA256(exact_validated_canonical_RUNTIME_BINDING_bytes)
@@ -81,7 +82,8 @@ the activation path must independently:
 3. prove every complete runtime-binding predicate, including exact member set and
    ordering;
 4. canonically reserialize and require byte-for-byte equality;
-5. recompute SHA-256 from those exact validated bytes; and
+5. recompute SHA-256 from those exact validated bytes and encode the result as
+   exactly 64 lowercase ASCII hexadecimal characters; and
 6. require exact equality to this artifact's `runtime_binding_sha256`.
 
 Missing, stale, malformed, partial, differently serialized, or unreproducible
@@ -134,10 +136,11 @@ must validate every member set, type, grammar, frozen control value, ordering
 rule, and runtime-binding digest shape, then canonically reserialize and require
 byte-for-byte equality before accepting the artifact digest.
 
-Only those validated canonical bytes may be hashed as:
+Only those validated canonical bytes may be hashed. The published identifier is
+exactly 64 lowercase ASCII hexadecimal characters:
 
 ```text
-PHI_SANDBOX_QUALIFICATION_SHA256 = SHA256(exact_validated_artifact_bytes)
+PHI_SANDBOX_QUALIFICATION_SHA256 = lowercase_hex(SHA256(exact_validated_artifact_bytes))
 ```
 
 ## Required negative conformance fixtures
@@ -151,7 +154,7 @@ A future parser/conformance implementation must prove `BLOCKED` for at least:
 - wrong JSON scalar/container type;
 - noncanonical key order or whitespace;
 - JSON escape sequence in a literal-ASCII field;
-- malformed `runtime_binding_sha256`;
+- malformed or non-lowercase-hex `runtime_binding_sha256`;
 - any isolation-control value mismatch;
 - any process/timing predicate other than JSON boolean `true`;
 - qualification disposition other than `PASS`;
@@ -165,8 +168,14 @@ format. Activation still requires a separately reviewed live qualification
 producer that measures the exact runtime and proves the isolation controls were
 active for the complete required model-process window.
 
-A parser PASS with an untrusted, incomplete, stale, or detached producer is not a
-sandbox qualification and must not activate execution.
+The activation package must bind the exact
+`PHI_SANDBOX_QUALIFICATION_SHA256` derived from these artifact bytes to the exact
+validated runtime used by that activation. Replayed, stale, incomplete, or
+detached qualification evidence, or evidence whose bound runtime digest cannot
+be reproduced from the activation runtime, remains `BLOCKED`.
+
+A parser PASS with an untrusted, incomplete, stale, replayed, or detached producer
+is not a sandbox qualification and must not activate execution.
 
 ## Non-claims
 
