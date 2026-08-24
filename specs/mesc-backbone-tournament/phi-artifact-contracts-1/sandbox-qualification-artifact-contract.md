@@ -15,13 +15,22 @@ artifact proving the required model-process isolation controls on the exact
 runtime. Execution Implementation 11 validates only injected fixture evidence
 and deliberately leaves production artifact bytes undefined.
 
-This contract freezes a deterministic serialization for a future qualification
-producer. It does not configure or inspect a sandbox and does not establish any
-live observation.
+The activation identity layer already defines one canonical `RUNTIME_BINDING`
+whose complete byte schema covers the provider, hardware, container, dependency,
+checkout-root object identity, repository-result-parent object identity, checkout
+SHA/tree, and sequential single-GPU execution predicates. This contract does not
+redeclare any subset of that runtime schema. Instead it binds the sandbox
+qualification to the SHA-256 of those exact validated canonical runtime-binding
+bytes.
+
+This contract freezes only deterministic sandbox-qualification artifact bytes. It
+does not configure or inspect a sandbox and does not establish any live
+observation.
 
 ## Canonical JSON value
 
-The top-level value is an object with exactly these keys:
+The top-level value is an object with exactly these keys, serialized in this
+lexicographic ASCII order:
 
 ```text
 artifact_version
@@ -31,7 +40,7 @@ controls_active_before_remote_code_import
 dedicated_model_process
 producer_identity
 qualification_disposition
-runtime_identity
+runtime_binding_sha256
 ```
 
 ### Top-level scalar fields
@@ -41,70 +50,50 @@ artifact_version = MESC-BT-PHI-SANDBOX-QUALIFICATION-ARTIFACT-V1
 dedicated_model_process = true
 controls_active_before_remote_code_import = true
 controls_active_before_model_load = true
-qualification_disposition = PASS
 producer_identity = ^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,255}$
+qualification_disposition = PASS
+runtime_binding_sha256 = ^[0-9a-f]{64}$
 ```
 
 `producer_identity` is an audit label only. It does not authenticate the producer
 or prove that the producer is trustworthy.
 
-## Exact runtime identity
+## Exact runtime binding
 
-`runtime_identity` is an object with exactly these keys:
-
-```text
-acceleration_runtime_identities
-base_container_oci_digest
-cuda_runtime_version
-dependency_lock_sha256
-gpu_model
-gpu_uuid
-nvidia_driver_version
-provider_instance_or_pod_id
-provider_region
-python_version
-pytorch_version
-repository_checkout_sha
-repository_checkout_tree
-transformers_identity
-```
-
-The required values and grammars are:
+`runtime_binding_sha256` must equal:
 
 ```text
-provider_region = non-empty ASCII string, length <= 255
-provider_instance_or_pod_id = non-empty ASCII string, length <= 255
-gpu_uuid = non-empty ASCII string, length <= 255
-gpu_model = NVIDIA H100 80GB HBM3
-nvidia_driver_version = non-empty ASCII string, length <= 255
-cuda_runtime_version = non-empty ASCII string, length <= 255
-base_container_oci_digest = ^sha256:[0-9a-f]{64}$
-python_version = non-empty ASCII string, length <= 255
-pytorch_version = non-empty ASCII string, length <= 255
-transformers_identity = non-empty ASCII string, length <= 512
-acceleration_runtime_identities = non-empty array of unique non-empty ASCII strings
-                               sorted ascending by literal ASCII bytes
-dependency_lock_sha256 = ^[0-9a-f]{64}$
-repository_checkout_sha = ^[0-9a-f]{40}$
-repository_checkout_tree = ^[0-9a-f]{40}$
+SHA256(exact_validated_canonical_RUNTIME_BINDING_bytes)
 ```
 
-For every free-form ASCII identity field above, permitted bytes are printable
-ASCII `0x21..0x7e` except `"` and `\`. JSON escape sequences are therefore
-prohibited. Empty strings, leading/trailing ASCII whitespace, control bytes, and
-non-ASCII bytes are invalid.
+where `RUNTIME_BINDING` is the complete canonical activation runtime-binding
+object defined by `FD-MESC-BT-EXEC-1` and the already-canonical activation
+identity verifier.
 
-This contract intentionally binds the runtime identity names already required by
-`FD-MESC-BT-EXEC-1`. It does not infer or fabricate their live values.
+A future sandbox artifact verifier must not accept `runtime_binding_sha256` as a
+self-asserted detached digest. Before the sandbox artifact can support activation,
+the activation path must independently:
 
-Before this artifact can support activation, the activation verifier must
-independently prove that `repository_checkout_sha` resolves to
-`repository_checkout_tree` and that every other runtime identity equals the
-separately measured activation environment. The artifact is not self-attesting.
+1. obtain the exact candidate `RUNTIME_BINDING` bytes through the separately
+   reviewed activation producer;
+2. parse them with the canonical duplicate-member-rejecting runtime-binding
+   validator;
+3. prove every complete runtime-binding predicate, including exact member set and
+   ordering;
+4. canonically reserialize and require byte-for-byte equality;
+5. recompute SHA-256 from those exact validated bytes; and
+6. require exact equality to this artifact's `runtime_binding_sha256`.
+
+Missing, stale, malformed, partial, differently serialized, or unreproducible
+runtime-binding bytes, or any digest mismatch, => `BLOCKED`.
+
+This digest indirection is deliberate: the sandbox artifact cannot drift from the
+full canonical runtime schema by copying only a subset of runtime fields.
 
 ## Exact isolation controls
 
-`controls` is an object with exactly these keys and values:
+`controls` is an object with exactly these keys and values, in lexicographic ASCII
+key order:
 
 ```text
 cloud_metadata_access = DENIED
@@ -124,7 +113,7 @@ shown above. No aliases, case folding, escape sequences, or additional controls
 are accepted by this V1 contract.
 
 The three process/timing predicates at top level must be JSON booleans equal to
-`true` and `qualification_disposition` must be exactly `PASS`.
+`true`, and `qualification_disposition` must be exactly `PASS`.
 
 ## Canonical byte rules
 
@@ -133,19 +122,17 @@ The exact artifact bytes are:
 - UTF-8 without BOM;
 - one top-level JSON object;
 - duplicate JSON member names prohibited at every depth;
-- exact member sets at top level, `runtime_identity`, and `controls`;
+- exact member sets at top level and `controls`;
 - object keys sorted lexicographically by literal ASCII bytes;
-- `acceleration_runtime_identities` sorted ascending by literal ASCII bytes and
-  duplicate-free;
 - JSON separators exactly `,` and `:`;
 - no insignificant whitespace;
-- no JSON escape sequences in fields governed by literal ASCII grammars;
+- no JSON escape sequences in literal-ASCII fields;
 - no trailing newline.
 
 A duplicate-member-rejecting parser must parse the supplied bytes. The verifier
-must validate every member set, type, grammar, frozen value, ordering rule, and
-runtime-binding shape, then canonically reserialize and require byte-for-byte
-equality before accepting the digest.
+must validate every member set, type, grammar, frozen control value, ordering
+rule, and runtime-binding digest shape, then canonically reserialize and require
+byte-for-byte equality before accepting the artifact digest.
 
 Only those validated canonical bytes may be hashed as:
 
@@ -159,20 +146,17 @@ A future parser/conformance implementation must prove `BLOCKED` for at least:
 
 - malformed JSON;
 - BOM or trailing newline;
-- duplicate member at top level, `runtime_identity`, or `controls`;
+- duplicate member at top level or inside `controls`;
 - extra or missing member at any level;
 - wrong JSON scalar/container type;
-- noncanonical key order, array order, or whitespace;
-- duplicate acceleration-runtime identity;
+- noncanonical key order or whitespace;
 - JSON escape sequence in a literal-ASCII field;
-- empty, whitespace-padded, control-byte, or non-ASCII free-form identity;
-- malformed repository SHA/tree, dependency-lock SHA-256, or OCI digest;
-- GPU model other than exact `NVIDIA H100 80GB HBM3`;
+- malformed `runtime_binding_sha256`;
 - any isolation-control value mismatch;
 - any process/timing predicate other than JSON boolean `true`;
 - qualification disposition other than `PASS`;
-- separately reproduced checkout SHA/tree mismatch;
-- any separately measured runtime identity mismatch.
+- absent or noncanonical `RUNTIME_BINDING` bytes;
+- independently recomputed runtime-binding digest mismatch.
 
 ## Live evidence boundary
 
@@ -189,6 +173,7 @@ sandbox qualification and must not activate execution.
 Conformance to this byte format does not prove:
 
 - a provider instance or GPU exists;
+- the bound `RUNTIME_BINDING` reflects a real measured environment;
 - network ingress/egress is actually denied;
 - DNS, metadata, credentials, secrets, or control sockets are actually absent;
 - mounts or writable paths are actually restricted;
