@@ -173,7 +173,7 @@ def test_concurrent_consume_allows_exactly_one_success(
     barrier = Barrier(2)
     original_verify = challenge_fixture.verify_phi_sandbox_qualification_artifact_fixture
 
-    def synchronized_verify(artifact_payload: bytes, runtime_binding_bytes: bytes):
+    def synchronized_verify(artifact_payload: bytes, runtime_binding_bytes: bytes) -> object:
         artifact = original_verify(artifact_payload, runtime_binding_bytes)
         barrier.wait()
         return artifact
