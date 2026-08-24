@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from typing import cast
 
 import pytest
 
@@ -238,11 +239,20 @@ def test_runs_must_bind_same_repository_and_dependency_lock() -> None:
         )
 
 
-def test_result_paths_must_be_repository_relative_and_disjoint() -> None:
+def test_result_paths_must_be_repository_relative_canonical_and_disjoint() -> None:
     manifest, readiness, compact, reasoner = _build()
 
     with pytest.raises(TrainingLaunchPlanError, match="inside the repository"):
         replace(compact, result_paths=("../escape",))
+    with pytest.raises(TrainingLaunchPlanError, match="canonical POSIX"):
+        replace(compact, result_paths=("experiments/x/",))
+    with pytest.raises(TrainingLaunchPlanError, match="canonical POSIX"):
+        replace(compact, result_paths=("experiments/./x",))
+    with pytest.raises(TrainingLaunchPlanError, match="result_paths must be disjoint"):
+        replace(
+            compact,
+            result_paths=("experiments/x", "experiments/x/results"),
+        )
 
     with pytest.raises(TrainingLaunchPlanError, match="result_paths must be disjoint"):
         build_training_launch_plan(
@@ -252,8 +262,19 @@ def test_result_paths_must_be_repository_relative_and_disjoint() -> None:
             reasoner=replace(reasoner, result_paths=compact.result_paths),
         )
 
+    with pytest.raises(TrainingLaunchPlanError, match="result_paths must be disjoint"):
+        build_training_launch_plan(
+            manifest=manifest,
+            readiness=readiness,
+            compact=compact,
+            reasoner=replace(
+                reasoner,
+                result_paths=("experiments/mesc-t6-compact-sft",),
+            ),
+        )
 
-def test_seeds_are_explicit_unique_and_non_negative() -> None:
+
+def test_seeds_are_explicit_unique_non_negative_integers() -> None:
     _, _, compact, _ = _build()
 
     with pytest.raises(TrainingLaunchPlanError, match="non-empty non-negative"):
@@ -262,6 +283,10 @@ def test_seeds_are_explicit_unique_and_non_negative() -> None:
         replace(compact, seeds=(42, 42))
     with pytest.raises(TrainingLaunchPlanError, match="non-empty non-negative"):
         replace(compact, seeds=(42, -1))
+    with pytest.raises(TrainingLaunchPlanError, match="non-empty non-negative"):
+        replace(compact, seeds=cast(tuple[int, ...], (0.5,)))
+    with pytest.raises(TrainingLaunchPlanError, match="non-empty non-negative"):
+        replace(compact, seeds=cast(tuple[int, ...], ("42",)))
 
 
 def test_reproduction_command_is_single_line() -> None:
