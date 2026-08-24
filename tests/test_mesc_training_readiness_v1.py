@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import replace
 
 import pytest
@@ -170,23 +171,24 @@ def test_recipe_must_bind_exact_candidate_and_dataset() -> None:
     )
 
 
-@pytest.mark.parametrize(
-    ("field", "value"),
-    [
-        ("pilot_closeout_sha256", "A" * 64),
-        ("tournament_report_sha256", "x" * 64),
-        ("training_dataset_sha256", "0" * 63),
-        ("provenance_ledger_sha256", ""),
-        ("decontamination_report_sha256", "abc"),
-        ("evaluation_contract_sha256", "g" * 64),
-        ("license_review_sha256", "h" * 64),
-        ("runtime_qualification_sha256", "F" * 64),
-        ("training_authorization_receipt_sha256", "1" * 65),
-    ],
+_ManifestMutation = Callable[[TrainingReadinessManifest], TrainingReadinessManifest]
+_HASH_MUTATIONS: tuple[_ManifestMutation, ...] = (
+    lambda manifest: replace(manifest, pilot_closeout_sha256="A" * 64),
+    lambda manifest: replace(manifest, tournament_report_sha256="x" * 64),
+    lambda manifest: replace(manifest, training_dataset_sha256="0" * 63),
+    lambda manifest: replace(manifest, provenance_ledger_sha256=""),
+    lambda manifest: replace(manifest, decontamination_report_sha256="abc"),
+    lambda manifest: replace(manifest, evaluation_contract_sha256="g" * 64),
+    lambda manifest: replace(manifest, license_review_sha256="h" * 64),
+    lambda manifest: replace(manifest, runtime_qualification_sha256="F" * 64),
+    lambda manifest: replace(manifest, training_authorization_receipt_sha256="1" * 65),
 )
-def test_manifest_rejects_noncanonical_sha256(field: str, value: str) -> None:
+
+
+@pytest.mark.parametrize("mutation", _HASH_MUTATIONS)
+def test_manifest_rejects_noncanonical_sha256(mutation: _ManifestMutation) -> None:
     with pytest.raises(ValueError, match="64 lowercase hex"):
-        replace(_manifest(), **{field: value})
+        mutation(_manifest())
 
 
 def test_candidate_requires_exact_revision_and_weight_identity() -> None:
