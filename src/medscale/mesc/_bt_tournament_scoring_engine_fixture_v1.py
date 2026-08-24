@@ -367,7 +367,7 @@ def validate_candidate_selection_fixture(
 def select_role_fixture(
     candidates: tuple[CandidateSelectionFixture, ...],
     *,
-    role: RoleName,
+    role: object,
 ) -> RoleSelectionResult:
     """Apply the frozen role gate and ordered tie-breakers deterministically."""
     if type(candidates) is not tuple or not 2 <= len(candidates) <= 4:
@@ -376,6 +376,7 @@ def select_role_fixture(
         )
     if type(role) is not str or role not in get_args(RoleName):
         raise TournamentScoringFixtureError("role must be compact or flagship_reasoner")
+    role_name = cast(RoleName, role)
 
     snapshots = tuple(validate_candidate_selection_fixture(candidate) for candidate in candidates)
     candidate_ids = tuple(candidate.candidate_id for candidate in snapshots)
@@ -385,7 +386,11 @@ def select_role_fixture(
     eligible = [
         candidate
         for candidate in snapshots
-        if (candidate.gates.compact if role == "compact" else candidate.gates.flagship_reasoner)
+        if (
+            candidate.gates.compact
+            if role_name == "compact"
+            else candidate.gates.flagship_reasoner
+        )
         == "PASS"
     ]
     if not eligible:
@@ -520,8 +525,7 @@ def _snapshot_json_value(value: object, *, path: str) -> object:
     if value is None or type(value) is bool or type(value) is str:
         return value
     if type(value) is ExactJsonNumber:
-        exact_number = cast(ExactJsonNumber, value)
-        return ExactJsonNumber(lexeme=exact_number.lexeme)
+        return ExactJsonNumber(lexeme=value.lexeme)
     if type(value) is list:
         values = cast(list[object], value)
         return [_snapshot_json_value(item, path=f"{path}[]") for item in values]
@@ -574,10 +578,9 @@ def _require_score_decimal(value: object, *, field: str) -> Decimal:
 def _require_nonnegative_decimal(value: object, *, field: str) -> Decimal:
     if type(value) is not Decimal:
         raise TournamentScoringFixtureError(f"{field} must be an exact Decimal")
-    decimal_value = cast(Decimal, value)
-    if not decimal_value.is_finite() or decimal_value < _ZERO:
+    if not value.is_finite() or value < _ZERO:
         raise TournamentScoringFixtureError(f"{field} must be finite and non-negative")
-    return decimal_value
+    return value
 
 
 def _require_exact_int_range(
@@ -589,16 +592,15 @@ def _require_exact_int_range(
 ) -> int:
     if type(value) is not int:
         raise TournamentScoringFixtureError(f"{field} must be an exact integer")
-    integer = cast(int, value)
-    if integer < minimum or integer > maximum:
+    if value < minimum or value > maximum:
         raise TournamentScoringFixtureError(f"{field} must be in [{minimum},{maximum}]")
-    return integer
+    return value
 
 
 def _require_exact_string(value: object, *, field: str) -> str:
     if type(value) is not str:
         raise TournamentScoringFixtureError(f"{field} must be an exact string")
-    return cast(str, value)
+    return value
 
 
 def _require_nullable_exact_string(value: object, *, field: str) -> str | None:
