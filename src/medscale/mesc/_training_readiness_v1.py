@@ -129,9 +129,7 @@ class TrainingReadinessManifest:
             "runtime_qualification_sha256": self.runtime_qualification_sha256,
             "tournament_disposition": self.tournament_disposition,
             "tournament_report_sha256": self.tournament_report_sha256,
-            "training_authorization_receipt_sha256": (
-                self.training_authorization_receipt_sha256
-            ),
+            "training_authorization_receipt_sha256": self.training_authorization_receipt_sha256,
             "training_dataset_sha256": self.training_dataset_sha256,
         }
 
