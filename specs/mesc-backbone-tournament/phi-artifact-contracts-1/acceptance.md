@@ -56,10 +56,12 @@ At minimum, reviewers must prove:
 3. it requires independent-review and complete-import-graph PASS claims;
 4. its reachable-import-graph evidence is digest-bound rather than left as an
    unbound narrative claim;
-5. the future graph-materialization contract or activation gate must prove that
-   the graph bound by `reachable_import_graph_artifact_sha256` was materialized
-   from the exact manifest bound by `manifest_sha256`; independent digest checks
-   without same-manifest provenance are insufficient;
+5. the future graph-materialization contract must place a required
+   `source_manifest_sha256` member **inside the exact canonical graph artifact
+   bytes** whose SHA-256 equals `reachable_import_graph_artifact_sha256`, and the
+   activation verifier must require that value to equal the security-review
+   artifact's exact `manifest_sha256`; detached provenance or independent digest
+   checks are insufficient;
 6. the sandbox artifact binds `runtime_binding_sha256` to the SHA-256 of the
    **complete canonical activation `RUNTIME_BINDING` bytes**, rather than
    redeclaring a partial runtime schema;
@@ -83,8 +85,8 @@ contract.
 
 `security-review-artifact-contract.md` binds a
 `reachable_import_graph_artifact_sha256`, but this package does not freeze the
-byte-level schema or completeness semantics of the import-graph materialization
-itself.
+full byte-level schema or completeness semantics of the import-graph
+materialization itself.
 
 Therefore canonical adoption of this package must preserve:
 
@@ -94,14 +96,25 @@ REACHABLE_IMPORT_GRAPH_TO_MANIFEST_PROVENANCE = REQUIRED_BEFORE_ACTIVATION_RELIA
 REAL_IMPORT_GRAPH_COMPLETENESS = NOT_ESTABLISHED
 ```
 
-The future graph contract or activation gate must expose and verify a canonical
-source-manifest binding equal to the security-review artifact's
-`manifest_sha256`. A graph digest that is valid in isolation but cannot prove it
-was materialized from that exact manifest remains `BLOCKED`.
+The future graph contract must define a required `source_manifest_sha256` member
+inside the canonical graph artifact bytes, and those exact bytes must be the
+bytes hashed to produce `reachable_import_graph_artifact_sha256`. The activation
+verifier must parse and validate those exact bytes, reproduce the graph artifact
+digest, and require:
+
+```text
+graph.source_manifest_sha256 == security_review.manifest_sha256
+```
+
+A detached provenance document, sidecar, narrative assertion, separately hashed
+envelope, signature over different bytes, or any other relation outside the
+exact hashed graph artifact bytes does not satisfy this requirement. A graph
+digest valid in isolation but lacking the in-artifact `source_manifest_sha256`
+binding remains `BLOCKED`.
 
 The security-review artifact cannot satisfy activation while its bound graph
 artifact lacks a separately reviewed canonical contract, producer, completeness
-semantics, and same-manifest provenance proof.
+semantics, and this mechanically verifiable same-manifest binding.
 
 This is intentional fail-closed dependency exposure, not an implied completion
 claim.
