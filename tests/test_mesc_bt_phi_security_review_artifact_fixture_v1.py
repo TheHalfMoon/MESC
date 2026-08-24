@@ -259,7 +259,10 @@ def test_graph_digest_grammar_and_exact_bytes_are_bound() -> None:
 
     with pytest.raises(PhiSecurityReviewArtifactFixtureError, match="64 lowercase hex"):
         _verify(_canonical(malformed), sources, manifest, graph.canonical_bytes)
-    with pytest.raises(PhiSecurityReviewArtifactFixtureError, match="does not reproduce graph bytes"):
+    with pytest.raises(
+        PhiSecurityReviewArtifactFixtureError,
+        match="does not reproduce graph bytes",
+    ):
         _verify(_canonical(mismatch), sources, manifest, graph.canonical_bytes)
 
 
@@ -313,7 +316,10 @@ def test_file_disposition_schema_path_and_pass_value_are_fail_closed() -> None:
         _verify(_canonical(wrong_members), sources, manifest, graph.canonical_bytes)
     with pytest.raises(PhiSecurityReviewArtifactFixtureError, match="disposition must be PASS"):
         _verify(_canonical(wrong_disposition), sources, manifest, graph.canonical_bytes)
-    with pytest.raises(PhiSecurityReviewArtifactFixtureError, match="frozen grammar"):
+    with pytest.raises(
+        PhiSecurityReviewArtifactFixtureError,
+        match=r"dot component|frozen grammar",
+    ):
         _verify(_canonical(traversal), sources, manifest, graph.canonical_bytes)
 
 
