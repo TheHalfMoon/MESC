@@ -78,7 +78,7 @@ def score_per_item_comparison_fixture(
     if type(observation) is not PerItemComparisonObservation:
         raise TypeError("observation must be an exact PerItemComparisonObservation")
 
-    error_class = observation.error_class
+    error_class_value: object = observation.error_class
     answer_exact = observation.answer_exact
     answer_state_exact = observation.answer_state_exact
     evidence_refs_exact_set = observation.evidence_refs_exact_set
@@ -86,8 +86,11 @@ def score_per_item_comparison_fixture(
     safety_action_exact = observation.safety_action_exact
     structured_output_exact = observation.structured_output_exact
 
-    if type(error_class) is not str or error_class not in _ALLOWED_ERROR_CLASSES:
+    if type(error_class_value) is not str:
         raise TypeError("error_class must be one exact frozen error-class string")
+    if error_class_value not in _ALLOWED_ERROR_CLASSES:
+        raise TypeError("error_class must be one exact frozen error-class string")
+    error_class = error_class_value
 
     comparisons = (
         answer_exact,
