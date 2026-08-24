@@ -26,7 +26,11 @@ def _candidate(*, model_id: str, revision: str, weight_byte: str) -> TrainingCan
     )
 
 
-def _recipe(candidate: TrainingCandidate, *, dataset_sha: str = _DATASET_SHA) -> TrainingRecipe:
+def _recipe(
+    candidate: TrainingCandidate,
+    *,
+    dataset_sha: str = _DATASET_SHA,
+) -> TrainingRecipe:
     return TrainingRecipe(
         base=ModelRef(
             model_id=candidate.model_id,
