@@ -1,0 +1,67 @@
+name: Report Mypy Repair Diagnostic
+
+on:
+  pull_request:
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+      - uses: astral-sh/setup-uv@v5
+      - run: uv python install 3.11
+      - run: uv sync --frozen
+      - name: Apply exact typing-only repair
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/medscale/mesc/_bt_report_conformance_fixture_v1.py')
+          text = path.read_text()
+          old = '''            if (
+                type(failed_item.error_class) is not str
+                or failed_item.error_class not in _ERROR_CLASSES
+            ):
+                raise ReportConformanceFixtureError("failed item error_class is not frozen")
+            failed.append(
+                FailedItemFixture(
+                    item_id=failed_item.item_id,
+                    error_class=failed_item.error_class,
+                )
+            )
+'''
+          new = '''            error_class_value: object = failed_item.error_class
+            if type(error_class_value) is not str or error_class_value not in _ERROR_CLASSES:
+                raise ReportConformanceFixtureError("failed item error_class is not frozen")
+            error_class = cast(TerminalErrorClass, error_class_value)
+            failed.append(
+                FailedItemFixture(
+                    item_id=failed_item.item_id,
+                    error_class=error_class,
+                )
+            )
+'''
+          if text.count(old) != 1:
+              raise SystemExit('expected exact source snippet not found exactly once')
+          path.write_text(text.replace(old, new))
+          PY
+      - name: Format and type-check repair
+        run: |
+          uv run ruff check src/medscale/mesc/_bt_report_conformance_fixture_v1.py
+          uv run ruff format src/medscale/mesc/_bt_report_conformance_fixture_v1.py
+          uv run ruff format --check src/medscale/mesc/_bt_report_conformance_fixture_v1.py
+          uv run mypy
+      - name: Focused report tests
+        run: uv run pytest -q tests/test_mesc_bt_report_conformance_fixture_v1.py
+      - name: Commit verified repair on diagnostic branch only
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/medscale/mesc/_bt_report_conformance_fixture_v1.py
+          git commit -m 'fix: validate terminal error class through object boundary'
+          git push origin HEAD:${GITHUB_HEAD_REF}
