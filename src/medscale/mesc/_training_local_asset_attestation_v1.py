@@ -316,7 +316,11 @@ def _attest_corpus(
     if not path.is_file():
         blockers.append("corpus path is not an existing regular file")
         return None, None
-    observed_sha, observed_bytes = _observe_file(path)
+    try:
+        observed_sha, observed_bytes = _observe_file(path)
+    except OSError:
+        blockers.append("local corpus could not be read")
+        return None, None
     if observed_sha != binding.canonical_jsonl_sha256:
         blockers.append("local corpus SHA does not match canonical corpus binding")
     if observed_bytes != binding.canonical_jsonl_byte_count:
