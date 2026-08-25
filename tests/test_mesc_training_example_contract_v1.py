@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from typing import Any
 
 import pytest
 
@@ -19,8 +20,9 @@ _SHA_B = "b" * 64
 
 
 def _example(**overrides: object) -> TrainingExampleV1:
-    values: dict[str, object] = {
+    values: dict[str, Any] = {
         "example_id": "example-1",
+        "training_record_id": "record-1",
         "source_id": "source-1",
         "source_revision": "rev-1",
         "source_license": "Apache-2.0",
@@ -47,7 +49,7 @@ def _example(**overrides: object) -> TrainingExampleV1:
         "contamination_state": "CLEAR",
     }
     values.update(overrides)
-    return TrainingExampleV1(**values)  # type: ignore[arg-type]
+    return TrainingExampleV1(**values)
 
 
 def test_valid_example_is_eligible_and_content_addressed() -> None:
@@ -55,6 +57,10 @@ def test_valid_example_is_eligible_and_content_addressed() -> None:
     assert example.eligible_for_sft is True
     assert len(example.example_sha256) == 64
     assert example.example_sha256 == _example().example_sha256
+
+
+def test_training_record_identity_participates_in_example_identity() -> None:
+    assert _example().example_sha256 != _example(training_record_id="record-2").example_sha256
 
 
 def test_trl_projection_is_conversational_prompt_completion_only() -> None:
@@ -84,7 +90,7 @@ def test_hand_authored_fixture_without_synthetic_provenance_is_valid() -> None:
 
 
 def test_non_r2_origin_is_rejected() -> None:
-    with pytest.raises(TrainingExampleContractError, match="origin must be exactly"):
+    with pytest.raises(TrainingExampleContractError, match="unsupported origin"):
         _example(origin="external_clinical")
 
 
@@ -105,7 +111,7 @@ def test_system_message_is_leading_and_unique() -> None:
 
 
 def test_completion_must_be_assistant() -> None:
-    with pytest.raises(TrainingExampleContractError, match="completion role"):
+    with pytest.raises(TrainingExampleContractError, match="completion must be"):
         _example(completion=TrainingMessage(role="user", content="wrong role"))
 
 
@@ -116,11 +122,25 @@ def test_evidence_refs_are_required_and_unique() -> None:
         _example(evidence_refs=("evidence-1", "evidence-1"))
 
 
-def test_source_sha_and_language_are_strict() -> None:
+def test_source_sha_language_and_training_record_id_are_strict() -> None:
     with pytest.raises(TrainingExampleContractError, match="source_sha256"):
         _example(source_sha256="ABC")
     with pytest.raises(TrainingExampleContractError, match="language"):
         _example(language="english")
+    with pytest.raises(TrainingExampleContractError, match="training_record_id"):
+        _example(training_record_id="Record 1")
+
+
+def test_non_string_timestamp_fails_with_contract_error() -> None:
+    with pytest.raises(TrainingExampleContractError, match="source_timestamp"):
+        _example(source_timestamp=123)
+
+
+def test_unhashable_literal_like_values_fail_with_contract_error() -> None:
+    with pytest.raises(TrainingExampleContractError, match="unsupported origin"):
+        _example(origin=[])
+    with pytest.raises(TrainingExampleContractError, match="unsupported training_stage"):
+        _example(training_stage=[])
 
 
 def test_supported_answer_requires_supported_noncontradictory_state() -> None:
@@ -175,6 +195,14 @@ def test_build_corpus_sorts_examples_and_rejects_duplicates() -> None:
 
     with pytest.raises(TrainingExampleContractError, match="duplicate example_id"):
         build_training_corpus((_example(), _example()))
+
+
+def test_corpus_exposes_unique_sorted_t5_training_record_ids() -> None:
+    first = _example(example_id="example-1", training_record_id="record-2")
+    second = _example(example_id="example-2", training_record_id="record-1", source_sha256="c" * 64)
+    third = _example(example_id="example-3", training_record_id="record-2", source_sha256="d" * 64)
+    corpus = build_training_corpus((third, first, second))
+    assert corpus.training_record_ids == ("record-1", "record-2")
 
 
 def test_corpus_hash_and_jsonl_are_order_independent_at_builder_boundary() -> None:
