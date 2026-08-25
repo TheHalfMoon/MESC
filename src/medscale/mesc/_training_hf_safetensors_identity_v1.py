@@ -374,9 +374,7 @@ def _reject_unsafe_weight_files(root: Path) -> None:
 def _root_safetensors_names(root: Path) -> set[str]:
     try:
         return {
-            entry.name
-            for entry in os.scandir(root)
-            if entry.name.lower().endswith(".safetensors")
+            entry.name for entry in os.scandir(root) if entry.name.lower().endswith(".safetensors")
         }
     except OSError as exc:
         raise TrainingModelArtifactIdentityError("model_root could not be enumerated") from exc
