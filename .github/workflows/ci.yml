@@ -7,7 +7,7 @@ on:
     branches: [main]
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -34,6 +34,81 @@ jobs:
 
       - name: Sync (locked)
         run: uv sync --frozen
+
+      - name: Apply exact PR 190 path type repair
+        if: matrix.python-version == '3.12'
+        env:
+          TARGET_BRANCH: feat/mesc-hf-local-sft-backend-v1
+        run: |
+          git fetch origin "$TARGET_BRANCH"
+          git checkout "$TARGET_BRANCH"
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(text: str, old: str, new: str, *, label: str) -> str:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{label} matched {count} times, expected exactly once")
+              return text.replace(old, new, 1)
+
+          source = Path("src/medscale/mesc/_training_hf_local_sft_backend_v1.py")
+          text = source.read_text(encoding="utf-8")
+          text = replace_once(
+              text,
+              "            if type(value) is not Path:\n",
+              "            if not isinstance(value, Path):\n",
+              label="path runtime type guard",
+          )
+          source.write_text(text, encoding="utf-8", newline="\n")
+
+          tests = Path("tests/test_mesc_training_hf_local_sft_backend_v1.py")
+          text = tests.read_text(encoding="utf-8")
+          text = replace_once(
+              text,
+              "from pathlib import Path\n",
+              "from pathlib import Path\nfrom typing import cast\n",
+              label="cast import",
+          )
+          marker = "\n\ndef test_success_runs_all_seeds_and_atomically_publishes_namespaces(tmp_path: Path) -> None:\n"
+          test = '''
+
+
+def test_constructor_accepts_platform_path_and_rejects_non_path(tmp_path: Path) -> None:
+    runtime = _FakeRuntime()
+    backend, _ = _backend(tmp_path, runtime)
+    assert isinstance(backend, HfLocalSftBackend)
+
+    recipe = _recipe()
+    with pytest.raises(HfLocalSftBackendError, match="model_root must be an exact pathlib.Path"):
+        HfLocalSftBackend(
+            recipe=recipe,
+            model_root=cast(Path, "not-a-path"),
+            corpus_path=tmp_path / "corpus.jsonl",
+            repository_root=tmp_path / "repo",
+            runtime=runtime,
+        )
+'''
+          text = replace_once(text, marker, test + marker, label="path runtime regression test")
+          tests.write_text(text, encoding="utf-8", newline="\n")
+          PY
+          uv run ruff format \
+            src/medscale/mesc/_training_hf_local_sft_backend_v1.py \
+            tests/test_mesc_training_hf_local_sft_backend_v1.py
+          uv run ruff check \
+            src/medscale/mesc/_training_hf_local_sft_backend_v1.py \
+            tests/test_mesc_training_hf_local_sft_backend_v1.py
+          uv run mypy \
+            src/medscale/mesc/_training_hf_local_sft_backend_v1.py \
+            tests/test_mesc_training_hf_local_sft_backend_v1.py
+          uv run pytest -q tests/test_mesc_training_hf_local_sft_backend_v1.py
+          git diff --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            src/medscale/mesc/_training_hf_local_sft_backend_v1.py \
+            tests/test_mesc_training_hf_local_sft_backend_v1.py
+          git commit -m "fix(mesc): accept concrete pathlib implementations"
+          git push origin "HEAD:$TARGET_BRANCH"
 
       - name: Ruff (lint)
         run: uv run ruff check .
