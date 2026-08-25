@@ -148,10 +148,7 @@ class TrainingLocalAssetAttestationReport:
                 raise TrainingLocalAssetAttestationError(f"{bool_name} must be a bool")
         _require_count(self.expected_corpus_byte_count, field="expected_corpus_byte_count")
         if self.observed_corpus_byte_count is not None:
-            _require_count(
-                self.observed_corpus_byte_count,
-                field="observed_corpus_byte_count",
-            )
+            _require_count(self.observed_corpus_byte_count, field="observed_corpus_byte_count")
         if not isinstance(self.blockers, tuple):
             raise TrainingLocalAssetAttestationError("blockers must be an immutable tuple")
         if any(not isinstance(item, str) or not item for item in self.blockers):
@@ -291,9 +288,7 @@ def attest_local_training_assets(
             None if observation is None else observation.verifier_receipt_sha256
         ),
         model_network_accessed=False if observation is None else observation.network_accessed,
-        model_remote_code_allowed=(
-            False if observation is None else observation.remote_code_allowed
-        ),
+        model_remote_code_allowed=False if observation is None else observation.remote_code_allowed,
         model_gated_terms_accepted=(
             False if observation is None else observation.gated_terms_accepted
         ),
@@ -347,12 +342,7 @@ def _attest_model(
     if type(candidate) is not LocalModelAssetObservation:
         blockers.append("local model verifier returned a non-canonical observation")
         return None
-    _check_model_observation(
-        candidate,
-        run_plan=run_plan,
-        role=role,
-        blockers=blockers,
-    )
+    _check_model_observation(candidate, run_plan=run_plan, role=role, blockers=blockers)
     return candidate
 
 
@@ -399,15 +389,11 @@ def _require_sha256(value: object, *, field: str) -> str:
 
 def _require_text(value: object, *, field: str) -> str:
     if not isinstance(value, str) or not value.strip() or "\x00" in value:
-        raise TrainingLocalAssetAttestationError(
-            f"{field} must be non-empty NUL-free text"
-        )
+        raise TrainingLocalAssetAttestationError(f"{field} must be non-empty NUL-free text")
     return value
 
 
 def _require_count(value: object, *, field: str) -> int:
     if type(value) is not int or value < 0:
-        raise TrainingLocalAssetAttestationError(
-            f"{field} must be a non-negative int"
-        )
+        raise TrainingLocalAssetAttestationError(f"{field} must be a non-negative int")
     return value
