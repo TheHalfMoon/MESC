@@ -8,7 +8,7 @@ model, provider, tokenizer, trainer, or GPU access.
 from __future__ import annotations
 
 import re
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from dataclasses import dataclass
 from typing import Final, Literal
 
@@ -88,8 +88,7 @@ class TrainingMessage:
     content: str
 
     def __post_init__(self) -> None:
-        if self.role not in _ALLOWED_ROLES:
-            raise TrainingExampleContractError("message role must be system, user, or assistant")
+        _require_choice(self.role, allowed=_ALLOWED_ROLES, field="message role")
         _require_text(self.content, field="message content")
 
     def to_dict(self) -> dict[str, str]:
@@ -101,6 +100,7 @@ class TrainingExampleV1:
     """One provenance-complete supervised MESC training example."""
 
     example_id: str
+    training_record_id: str
     source_id: str
     source_revision: str
     source_license: str
@@ -130,19 +130,18 @@ class TrainingExampleV1:
                 f"contract_version must be exactly {_CONTRACT_VERSION}"
             )
         _require_stable_id(self.example_id, field="example_id")
+        _require_stable_id(self.training_record_id, field="training_record_id")
         _require_stable_id(self.source_id, field="source_id")
         _require_text(self.source_revision, field="source_revision")
         _require_text(self.source_license, field="source_license")
         _require_sha256(self.source_sha256, field="source_sha256")
+        _require_text(self.source_timestamp, field="source_timestamp")
         try:
             validate_timestamp(self.source_timestamp, "source_timestamp")
         except ValueError as exc:
             raise TrainingExampleContractError(str(exc)) from exc
 
-        if self.origin not in _ALLOWED_ORIGINS:
-            raise TrainingExampleContractError(
-                "origin must be exactly synthetic or hand_authored_fixture"
-            )
+        _require_choice(self.origin, allowed=_ALLOWED_ORIGINS, field="origin")
         if self.origin == "synthetic":
             if self.synthetic_provenance_sha256 is None:
                 raise TrainingExampleContractError(
@@ -170,26 +169,43 @@ class TrainingExampleV1:
             ("patient_population", self.patient_population),
         ):
             _require_text(value, field=field)
-        if _LANGUAGE.fullmatch(self.language) is None:
+        if not isinstance(self.language, str) or _LANGUAGE.fullmatch(self.language) is None:
             raise TrainingExampleContractError("language must be a BCP-47-like language tag")
-        if self.training_stage not in _ALLOWED_STAGES:
-            raise TrainingExampleContractError("unsupported training_stage")
+        _require_choice(self.training_stage, allowed=_ALLOWED_STAGES, field="training_stage")
 
         _validate_prompt(self.prompt)
-        if self.completion.role != "assistant":
-            raise TrainingExampleContractError("completion role must be exactly assistant")
-        if self.uncertainty_class not in _ALLOWED_UNCERTAINTY:
-            raise TrainingExampleContractError("unsupported uncertainty_class")
-        if self.abstention_target not in _ALLOWED_ABSTENTION:
-            raise TrainingExampleContractError("unsupported abstention_target")
-        if self.contradiction_state not in _ALLOWED_CONTRADICTION:
-            raise TrainingExampleContractError("unsupported contradiction_state")
-        if self.verification_state not in _ALLOWED_VERIFICATION:
-            raise TrainingExampleContractError("unsupported verification_state")
-        if self.clinician_review_state not in _ALLOWED_CLINICIAN_REVIEW:
-            raise TrainingExampleContractError("unsupported clinician_review_state")
-        if self.contamination_state not in _ALLOWED_CONTAMINATION:
-            raise TrainingExampleContractError("unsupported contamination_state")
+        if not isinstance(self.completion, TrainingMessage) or self.completion.role != "assistant":
+            raise TrainingExampleContractError("completion must be one assistant TrainingMessage")
+        _require_choice(
+            self.uncertainty_class,
+            allowed=_ALLOWED_UNCERTAINTY,
+            field="uncertainty_class",
+        )
+        _require_choice(
+            self.abstention_target,
+            allowed=_ALLOWED_ABSTENTION,
+            field="abstention_target",
+        )
+        _require_choice(
+            self.contradiction_state,
+            allowed=_ALLOWED_CONTRADICTION,
+            field="contradiction_state",
+        )
+        _require_choice(
+            self.verification_state,
+            allowed=_ALLOWED_VERIFICATION,
+            field="verification_state",
+        )
+        _require_choice(
+            self.clinician_review_state,
+            allowed=_ALLOWED_CLINICIAN_REVIEW,
+            field="clinician_review_state",
+        )
+        _require_choice(
+            self.contamination_state,
+            allowed=_ALLOWED_CONTAMINATION,
+            field="contamination_state",
+        )
         _validate_target_consistency(self)
 
     @property
@@ -235,6 +251,7 @@ class TrainingExampleV1:
             "specialty": self.specialty,
             "synthetic_provenance_sha256": self.synthetic_provenance_sha256,
             "task_type": self.task_type,
+            "training_record_id": self.training_record_id,
             "training_stage": self.training_stage,
             "uncertainty_class": self.uncertainty_class,
             "verification_state": self.verification_state,
@@ -259,7 +276,7 @@ class TrainingCorpusV1:
         if len(ids) != len(set(ids)):
             raise TrainingExampleContractError("training corpus contains duplicate example_id")
         if tuple(ids) != tuple(sorted(ids)):
-            raise TrainingExampleContractError("training corpus examples must be sorted by example_id")
+            raise TrainingExampleContractError("corpus examples must be sorted by example_id")
         if any(not example.eligible_for_sft for example in self.examples):
             raise TrainingExampleContractError(
                 "every corpus example must be verified, clinician-reviewed, and contamination-clear"
@@ -273,6 +290,11 @@ class TrainingCorpusV1:
                 "examples": [example.to_dict() for example in self.examples],
             }
         )
+
+    @property
+    def training_record_ids(self) -> tuple[str, ...]:
+        """Unique sorted T5 record identifiers represented by this corpus."""
+        return tuple(sorted({example.training_record_id for example in self.examples}))
 
     def canonical_jsonl(self) -> str:
         """Return byte-stable full-fidelity JSONL for storage and audit."""
@@ -289,13 +311,16 @@ def build_training_corpus(examples: Sequence[TrainingExampleV1]) -> TrainingCorp
     return TrainingCorpusV1(examples=ordered)
 
 
-def _validate_prompt(prompt: tuple[TrainingMessage, ...]) -> None:
-    if not prompt:
-        raise TrainingExampleContractError("prompt must be non-empty")
-    system_positions = [index for index, message in enumerate(prompt) if message.role == "system"]
+def _validate_prompt(prompt: object) -> None:
+    if not isinstance(prompt, tuple) or not prompt:
+        raise TrainingExampleContractError("prompt must be a non-empty tuple")
+    if any(not isinstance(message, TrainingMessage) for message in prompt):
+        raise TrainingExampleContractError("prompt members must be TrainingMessage values")
+    messages = tuple(message for message in prompt if isinstance(message, TrainingMessage))
+    system_positions = [index for index, message in enumerate(messages) if message.role == "system"]
     if len(system_positions) > 1 or (system_positions and system_positions[0] != 0):
         raise TrainingExampleContractError("prompt may contain at most one leading system message")
-    if prompt[-1].role != "user":
+    if messages[-1].role != "user":
         raise TrainingExampleContractError("prompt must end with a user message")
 
 
@@ -328,11 +353,19 @@ def _validate_target_consistency(example: TrainingExampleV1) -> None:
             raise TrainingExampleContractError(
                 "REQUEST_MORE_INFORMATION requires PARTIAL or INSUFFICIENT uncertainty"
             )
-    elif example.abstention_target == "ANSWER_WITH_UNCERTAINTY":
-        if example.uncertainty_class not in {"PARTIAL", "STALE"}:
-            raise TrainingExampleContractError(
-                "ANSWER_WITH_UNCERTAINTY requires PARTIAL or STALE uncertainty"
-            )
+    elif (
+        example.abstention_target == "ANSWER_WITH_UNCERTAINTY"
+        and example.uncertainty_class not in {"PARTIAL", "STALE"}
+    ):
+        raise TrainingExampleContractError(
+            "ANSWER_WITH_UNCERTAINTY requires PARTIAL or STALE uncertainty"
+        )
+
+
+def _require_choice(value: object, *, allowed: Collection[str], field: str) -> str:
+    if not isinstance(value, str) or value not in allowed:
+        raise TrainingExampleContractError(f"unsupported {field}")
+    return value
 
 
 def _require_text(value: object, *, field: str) -> str:
