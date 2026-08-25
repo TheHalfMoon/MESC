@@ -1,27 +1,38 @@
-name: MESC Executor Format Artifact
+name: MESC Executor Format Commit
 
 on:
   pull_request:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   format:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out exact executor branch
+        uses: actions/checkout@v4
+        with:
+          ref: feat/mesc-training-executor-v1
+          fetch-depth: 0
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
 
-      - name: Sync locked environment
-        run: uv sync --frozen
-
-      - name: Format executor files
+      - name: Format and commit exact-head files
+        shell: bash
         run: |
+          set -euo pipefail
+          expected_head="98ca4b50520051389982bfd97af379b4d5a67777"
+          current_head="$(git rev-parse HEAD)"
+          if [[ "$current_head" != "$expected_head" ]]; then
+            echo "Executor branch moved from expected head; formatter helper is a no-op."
+            exit 0
+          fi
+
+          uv sync --frozen
           uv run ruff format \
             src/medscale/mesc/_training_executor_v1.py \
             tests/test_mesc_training_executor_v1.py
@@ -30,11 +41,15 @@ jobs:
             tests/test_mesc_training_executor_v1.py
           git diff --check
 
-      - name: Upload formatted files
-        uses: actions/upload-artifact@v4
-        with:
-          name: mesc-executor-formatted
-          if-no-files-found: error
-          path: |
-            src/medscale/mesc/_training_executor_v1.py
+          changed_count="$(git diff --name-only | wc -l | tr -d ' ')"
+          test "$changed_count" = "2"
+          git diff --name-only | grep -Fx 'src/medscale/mesc/_training_executor_v1.py'
+          git diff --name-only | grep -Fx 'tests/test_mesc_training_executor_v1.py'
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- \
+            src/medscale/mesc/_training_executor_v1.py \
             tests/test_mesc_training_executor_v1.py
+          git commit -m 'style(mesc): format training executor files'
+          git push origin HEAD:feat/mesc-training-executor-v1
