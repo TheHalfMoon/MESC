@@ -270,8 +270,14 @@ class TrainingCorpusV1:
     def __post_init__(self) -> None:
         if self.corpus_version != _CORPUS_VERSION:
             raise TrainingExampleContractError(f"corpus_version must be exactly {_CORPUS_VERSION}")
+        if not isinstance(self.examples, tuple):
+            raise TrainingExampleContractError("training corpus examples must be a tuple")
         if not self.examples:
             raise TrainingExampleContractError("training corpus must be non-empty")
+        if any(not isinstance(example, TrainingExampleV1) for example in self.examples):
+            raise TrainingExampleContractError(
+                "training corpus members must be TrainingExampleV1 values"
+            )
         ids = [example.example_id for example in self.examples]
         if len(ids) != len(set(ids)):
             raise TrainingExampleContractError("training corpus contains duplicate example_id")
