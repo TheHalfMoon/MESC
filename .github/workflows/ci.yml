@@ -45,47 +45,49 @@ jobs:
           python - <<'PY'
           from pathlib import Path
 
+          def replace_once(text: str, old: str, new: str, *, label: str) -> str:
+              if text.count(old) != 1:
+                  raise SystemExit(f"{label} did not match exactly once")
+              return text.replace(old, new, 1)
+
           source = Path("src/medscale/mesc/_training_hf_local_sft_backend_v1.py")
           text = source.read_text(encoding="utf-8")
-          old = '''        for key, value in self.metrics:
-              _require_text(key, field="runtime metric name")
-              if type(value) is not float:
-                  raise HfLocalSftBackendError("runtime metric values must be floats")
-          for key, value in self.packages:
-              _require_text(key, field="runtime package name")
-              _require_text(value, field="runtime package version")
-          '''
-          new = '''        for key, metric_value in self.metrics:
-              _require_text(key, field="runtime metric name")
-              if type(metric_value) is not float:
-                  raise HfLocalSftBackendError("runtime metric values must be floats")
-          for key, package_value in self.packages:
-              _require_text(key, field="runtime package name")
-              _require_text(package_value, field="runtime package version")
-          '''
-          if text.count(old) != 1:
-              raise SystemExit("source typing target did not match exactly once")
-          source.write_text(text.replace(old, new), encoding="utf-8", newline="\n")
+          text = replace_once(
+              text,
+              "for key, value in self.metrics:",
+              "for key, metric_value in self.metrics:",
+              label="metrics loop target",
+          )
+          text = replace_once(
+              text,
+              "if type(value) is not float:",
+              "if type(metric_value) is not float:",
+              label="metrics value target",
+          )
+          text = replace_once(
+              text,
+              "for key, value in self.packages:",
+              "for key, package_value in self.packages:",
+              label="packages loop target",
+          )
+          text = replace_once(
+              text,
+              '_require_text(value, field="runtime package version")',
+              '_require_text(package_value, field="runtime package version")',
+              label="package value target",
+          )
+          source.write_text(text, encoding="utf-8", newline="\n")
 
           tests = Path("tests/test_mesc_training_hf_local_sft_backend_v1.py")
           text = tests.read_text(encoding="utf-8")
-          old = '''    records = (
-              {
-                  "prompt": [{"role": "user", "content": "Question?"}],
-                  "completion": [{"role": "assistant", "content": "Answer."}],
-              },
+          needle = '    records = (\n        {\n            "prompt": [{"role": "user", "content": "Question?"}],'
+          replacement = (
+              '    records: tuple[dict[str, object], ...] = (\n'
+              '        {\n'
+              '            "prompt": [{"role": "user", "content": "Question?"}],'
           )
-          '''
-          new = '''    records: tuple[dict[str, object], ...] = (
-              {
-                  "prompt": [{"role": "user", "content": "Question?"}],
-                  "completion": [{"role": "assistant", "content": "Answer."}],
-              },
-          )
-          '''
-          if text.count(old) != 1:
-              raise SystemExit("test typing target did not match exactly once")
-          tests.write_text(text.replace(old, new), encoding="utf-8", newline="\n")
+          text = replace_once(text, needle, replacement, label="records annotation target")
+          tests.write_text(text, encoding="utf-8", newline="\n")
           PY
           uv run ruff format \
             src/medscale/mesc/_training_hf_local_sft_backend_v1.py \
