@@ -51,6 +51,8 @@ asset contract is changed.
 
 No backend means fail closed.
 
+Before recomputation, the executor snapshots the exact canonical input objects into core-owned copies. All subsequent authority checks and manifest construction operate exclusively on those snapshots, so caller-side mutation after entry cannot change the validated execution identity.
+
 ## Independent upstream revalidation
 
 The executor does not trust caller booleans or a supplied READY status.

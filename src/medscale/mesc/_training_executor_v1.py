@@ -8,6 +8,7 @@ model loading, provider access, network access, GPU work, or training by itself.
 from __future__ import annotations
 
 import re
+from copy import deepcopy
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import PurePosixPath
@@ -482,6 +483,16 @@ def execute_training(
         raise TrainingExecutionError("role must be compact or reasoner")
     if backend is None:
         raise TrainingExecutionError("an explicit training backend is required")
+
+    try:
+        manifest = deepcopy(manifest)
+        readiness = deepcopy(readiness)
+        launch_plan = deepcopy(launch_plan)
+        corpus_binding = deepcopy(corpus_binding)
+        local_assets = deepcopy(local_assets)
+        environment = deepcopy(environment)
+    except Exception as exc:
+        raise TrainingExecutionError("canonical execution inputs could not be snapshotted") from exc
 
     rebuilt_launch = _recompute_launch(
         manifest=manifest,

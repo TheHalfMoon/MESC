@@ -6,6 +6,7 @@ from dataclasses import replace
 
 import pytest
 
+import medscale.mesc._training_executor_v1 as executor_module
 from medscale.mesc._training_corpus_binding_v1 import TrainingCorpusBindingReport
 from medscale.mesc._training_executor_v1 import (
     TrainingBackend,
@@ -653,3 +654,80 @@ def test_subclassed_environment_is_rejected_before_execution() -> None:
             backend=backend,
         )
     assert backend.calls == 0
+
+
+def test_reasoner_role_executes_end_to_end() -> None:
+    backend = _SuccessBackend()
+    receipt = _execute(backend, role="reasoner")
+
+    assert receipt.disposition == "SUCCEEDED"
+    assert receipt.role == "reasoner"
+    assert receipt.model_id == "fixture/reasoner"
+    assert backend.manifest is not None
+    assert backend.manifest.role == "reasoner"
+    assert backend.manifest.model_id == "fixture/reasoner"
+
+
+def test_aborted_backend_returns_canonical_terminal_receipt() -> None:
+    class AbortedBackend:
+        def execute(
+            self,
+            *,
+            manifest: TrainingExecutionManifest,
+        ) -> TrainingBackendResult:
+            del manifest
+            return TrainingBackendResult(
+                disposition="ABORTED",
+                backend_id="fixture-backend",
+                backend_version="v1",
+                started_at="2026-08-25T05:00:00Z",
+                finished_at="2026-08-25T05:00:15Z",
+                artifacts=(),
+                failure_reason="fixture operator abort",
+            )
+
+    receipt = _execute(AbortedBackend())
+    assert receipt.disposition == "ABORTED"
+    assert receipt.result_artifacts == ()
+    assert receipt.result_manifest_sha256 is None
+    assert receipt.failure_reason == "fixture operator abort"
+
+
+def test_caller_owned_launch_mutation_after_validation_is_isolated(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manifest, readiness, launch, binding, assets, environment = _bundle()
+    backend = _SuccessBackend()
+    original_require_environment = executor_module._require_environment
+
+    def mutate_caller_after_validation(
+        observed_environment: TrainingExecutionEnvironment,
+        *,
+        run_plan: TrainingRunPlan,
+    ) -> None:
+        original_require_environment(
+            observed_environment,
+            run_plan=run_plan,
+        )
+        object.__setattr__(launch.compact, "model_id", "tampered/model")
+
+    monkeypatch.setattr(
+        executor_module,
+        "_require_environment",
+        mutate_caller_after_validation,
+    )
+
+    receipt = execute_training(
+        manifest=manifest,
+        readiness=readiness,
+        launch_plan=launch,
+        corpus_binding=binding,
+        local_assets=assets,
+        environment=environment,
+        role="compact",
+        backend=backend,
+    )
+
+    assert receipt.model_id == "fixture/compact"
+    assert backend.manifest is not None
+    assert backend.manifest.model_id == "fixture/compact"
