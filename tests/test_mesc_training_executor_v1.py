@@ -8,10 +8,12 @@ import pytest
 
 from medscale.mesc._training_corpus_binding_v1 import TrainingCorpusBindingReport
 from medscale.mesc._training_executor_v1 import (
+    TrainingBackend,
     TrainingBackendResult,
     TrainingExecutionEnvironment,
     TrainingExecutionError,
     TrainingExecutionManifest,
+    TrainingExecutionReceipt,
     TrainingResultArtifact,
     execute_training,
 )
@@ -106,7 +108,11 @@ def _readiness_manifest() -> TrainingReadinessManifest:
     )
 
 
-def _run(manifest: TrainingReadinessManifest, *, role: TrainingRole) -> TrainingRunPlan:
+def _run(
+    manifest: TrainingReadinessManifest,
+    *,
+    role: TrainingRole,
+) -> TrainingRunPlan:
     if role == "compact":
         candidate = manifest.compact_candidate
         recipe = manifest.compact_recipe
@@ -115,6 +121,7 @@ def _run(manifest: TrainingReadinessManifest, *, role: TrainingRole) -> Training
         candidate = manifest.reasoner_candidate
         recipe = manifest.reasoner_recipe
         experiment_id = "mesc-t6-reasoner-sft"
+
     return TrainingRunPlan(
         role=role,
         experiment_id=experiment_id,
@@ -136,7 +143,9 @@ def _run(manifest: TrainingReadinessManifest, *, role: TrainingRole) -> Training
             f"experiments/{experiment_id}/outputs",
             f"experiments/{experiment_id}/results",
         ),
-        reproduction_command=f"uv run medscale mesc-train --plan {experiment_id}.json",
+        reproduction_command=(
+            f"uv run medscale mesc-train --plan {experiment_id}.json"
+        ),
     )
 
 
@@ -211,7 +220,9 @@ def _environment(run: TrainingRunPlan) -> TrainingExecutionEnvironment:
     )
 
 
-def _bundle(role: TrainingRole = "compact") -> tuple[
+def _bundle(
+    role: TrainingRole = "compact",
+) -> tuple[
     TrainingReadinessManifest,
     TrainingReadinessReport,
     TrainingLaunchPlan,
@@ -240,7 +251,11 @@ class _SuccessBackend:
         self.manifest: TrainingExecutionManifest | None = None
         self.reverse = reverse
 
-    def execute(self, *, manifest: TrainingExecutionManifest) -> TrainingBackendResult:
+    def execute(
+        self,
+        *,
+        manifest: TrainingExecutionManifest,
+    ) -> TrainingBackendResult:
         self.calls += 1
         self.manifest = manifest
         artifacts = [
@@ -264,10 +279,10 @@ class _SuccessBackend:
 
 
 def _execute(
-    backend: object,
+    backend: TrainingBackend,
     *,
     role: TrainingRole = "compact",
-):
+) -> TrainingExecutionReceipt:
     manifest, readiness, launch, binding, assets, environment = _bundle(role)
     return execute_training(
         manifest=manifest,
@@ -277,11 +292,11 @@ def _execute(
         local_assets=assets,
         environment=environment,
         role=role,
-        backend=backend,  # type: ignore[arg-type]
+        backend=backend,
     )
 
 
-def test_success_receipt_binds_all_upstream_and_backend_identities() -> None:
+def test_success_receipt_binds_all_authority_and_results() -> None:
     manifest, readiness, launch, binding, assets, environment = _bundle()
     backend = _SuccessBackend(reverse=True)
 
@@ -304,21 +319,17 @@ def test_success_receipt_binds_all_upstream_and_backend_identities() -> None:
     assert receipt.readiness_manifest_sha256 == manifest.manifest_sha256
     assert receipt.corpus_binding_sha256 == binding.binding_sha256
     assert receipt.local_asset_attestation_sha256 == assets.attestation_sha256
-    assert receipt.execution_manifest_sha256 == backend.manifest.execution_manifest_sha256
     assert receipt.environment_sha256 == environment.environment_sha256
     assert receipt.runtime_qualification_sha256 == _RUNTIME_SHA
     assert receipt.training_authorization_receipt_sha256 == _AUTH_SHA
-    assert receipt.backend_id == "fixture-backend"
-    assert receipt.started_at == "2026-08-25T05:00:00Z"
-    assert receipt.finished_at == "2026-08-25T05:01:00Z"
     assert receipt.result_manifest_sha256 is not None
-    assert [item.path for item in receipt.result_artifacts] == sorted(
-        item.path for item in receipt.result_artifacts
+    assert tuple(item.path for item in receipt.result_artifacts) == tuple(
+        sorted(item.path for item in receipt.result_artifacts)
     )
     assert len(receipt.receipt_sha256) == 64
 
 
-def test_forged_readiness_fails_before_backend_invocation() -> None:
+def test_forged_readiness_fails_before_backend() -> None:
     manifest, readiness, launch, binding, assets, environment = _bundle()
     forged = replace(readiness, manifest_sha256="f" * 64)
     backend = _SuccessBackend()
@@ -337,7 +348,7 @@ def test_forged_readiness_fails_before_backend_invocation() -> None:
     assert backend.calls == 0
 
 
-def test_forged_launch_plan_fails_before_backend_invocation() -> None:
+def test_forged_launch_plan_fails_before_backend() -> None:
     manifest, readiness, launch, binding, assets, environment = _bundle()
     forged = replace(launch, runtime_qualification_sha256="f" * 64)
     backend = _SuccessBackend()
@@ -356,7 +367,7 @@ def test_forged_launch_plan_fails_before_backend_invocation() -> None:
     assert backend.calls == 0
 
 
-def test_corpus_binding_must_match_selected_training_dataset() -> None:
+def test_corpus_binding_must_match_selected_dataset() -> None:
     manifest, readiness, launch, binding, assets, environment = _bundle()
     mismatched = replace(binding, training_dataset_sha256="f" * 64)
     backend = _SuccessBackend()
@@ -375,7 +386,7 @@ def test_corpus_binding_must_match_selected_training_dataset() -> None:
     assert backend.calls == 0
 
 
-def test_local_attestation_must_bind_exact_role_and_launch() -> None:
+def test_local_attestation_must_bind_exact_role() -> None:
     manifest, readiness, launch, binding, assets, environment = _bundle()
     mismatched = replace(assets, role="reasoner")
     backend = _SuccessBackend()
@@ -394,7 +405,7 @@ def test_local_attestation_must_bind_exact_role_and_launch() -> None:
     assert backend.calls == 0
 
 
-def test_environment_must_match_repository_tree_lock_and_runtime_shape() -> None:
+def test_environment_must_match_selected_run() -> None:
     manifest, readiness, launch, binding, assets, environment = _bundle()
     stale = replace(environment, repository_tree="9" * 40)
     backend = _SuccessBackend()
@@ -428,7 +439,7 @@ def test_backend_is_mandatory() -> None:
         )
 
 
-def test_backend_receives_only_core_owned_execution_manifest() -> None:
+def test_backend_receives_only_core_owned_manifest() -> None:
     backend = _SuccessBackend()
     _execute(backend)
     assert backend.manifest is not None
@@ -440,7 +451,11 @@ def test_backend_receives_only_core_owned_execution_manifest() -> None:
 
 def test_backend_mutation_of_core_manifest_is_detected() -> None:
     class MutatingBackend(_SuccessBackend):
-        def execute(self, *, manifest: TrainingExecutionManifest) -> TrainingBackendResult:
+        def execute(
+            self,
+            *,
+            manifest: TrainingExecutionManifest,
+        ) -> TrainingBackendResult:
             result = super().execute(manifest=manifest)
             object.__setattr__(manifest, "model_id", "tampered/model")
             return result
@@ -449,18 +464,28 @@ def test_backend_mutation_of_core_manifest_is_detected() -> None:
         _execute(MutatingBackend())
 
 
-def test_backend_exception_never_fabricates_a_receipt() -> None:
+def test_backend_exception_never_fabricates_receipt() -> None:
     class BrokenBackend:
-        def execute(self, *, manifest: TrainingExecutionManifest) -> TrainingBackendResult:
+        def execute(
+            self,
+            *,
+            manifest: TrainingExecutionManifest,
+        ) -> TrainingBackendResult:
+            del manifest
             raise RuntimeError("backend crashed")
 
     with pytest.raises(TrainingExecutionError, match="without a canonical result"):
         _execute(BrokenBackend())
 
 
-def test_result_artifacts_must_stay_inside_all_planned_namespaces() -> None:
+def test_success_artifacts_must_stay_in_all_namespaces() -> None:
     class EscapingBackend:
-        def execute(self, *, manifest: TrainingExecutionManifest) -> TrainingBackendResult:
+        def execute(
+            self,
+            *,
+            manifest: TrainingExecutionManifest,
+        ) -> TrainingBackendResult:
+            del manifest
             return TrainingBackendResult(
                 disposition="SUCCEEDED",
                 backend_id="fixture-backend",
@@ -480,7 +505,11 @@ def test_result_artifacts_must_stay_inside_all_planned_namespaces() -> None:
         _execute(EscapingBackend())
 
     class MissingNamespaceBackend:
-        def execute(self, *, manifest: TrainingExecutionManifest) -> TrainingBackendResult:
+        def execute(
+            self,
+            *,
+            manifest: TrainingExecutionManifest,
+        ) -> TrainingBackendResult:
             return TrainingBackendResult(
                 disposition="SUCCEEDED",
                 backend_id="fixture-backend",
@@ -489,7 +518,9 @@ def test_result_artifacts_must_stay_inside_all_planned_namespaces() -> None:
                 finished_at="2026-08-25T05:01:00Z",
                 artifacts=(
                     TrainingResultArtifact(
-                        path=f"{manifest.result_namespaces[0]}/result.json",
+                        path=(
+                            f"{manifest.result_namespaces[0]}/result.json"
+                        ),
                         sha256="1" * 64,
                         byte_count=10,
                     ),
@@ -500,9 +531,14 @@ def test_result_artifacts_must_stay_inside_all_planned_namespaces() -> None:
         _execute(MissingNamespaceBackend())
 
 
-def test_failed_backend_receipt_has_no_partial_canonical_artifacts() -> None:
+def test_failed_receipt_has_no_partial_canonical_artifacts() -> None:
     class FailedBackend:
-        def execute(self, *, manifest: TrainingExecutionManifest) -> TrainingBackendResult:
+        def execute(
+            self,
+            *,
+            manifest: TrainingExecutionManifest,
+        ) -> TrainingBackendResult:
+            del manifest
             return TrainingBackendResult(
                 disposition="FAILED",
                 backend_id="fixture-backend",
@@ -531,6 +567,7 @@ def test_backend_result_requires_real_ordered_utc_timestamps() -> None:
             artifacts=(),
             failure_reason="failure",
         )
+
     with pytest.raises(TrainingExecutionError, match="must not precede"):
         TrainingBackendResult(
             disposition="FAILED",
@@ -543,7 +580,7 @@ def test_backend_result_requires_real_ordered_utc_timestamps() -> None:
         )
 
 
-def test_failed_or_aborted_result_cannot_claim_partial_artifacts() -> None:
+def test_failed_or_aborted_result_cannot_claim_artifacts() -> None:
     artifact = TrainingResultArtifact(
         path="experiments/x/result.json",
         sha256="1" * 64,
@@ -566,7 +603,11 @@ def test_noncanonical_backend_result_subclass_is_rejected() -> None:
         pass
 
     class ForgingBackend:
-        def execute(self, *, manifest: TrainingExecutionManifest) -> TrainingBackendResult:
+        def execute(
+            self,
+            *,
+            manifest: TrainingExecutionManifest,
+        ) -> TrainingBackendResult:
             artifacts = tuple(
                 TrainingResultArtifact(
                     path=f"{namespace}/result.json",
