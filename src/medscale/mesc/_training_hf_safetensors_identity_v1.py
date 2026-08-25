@@ -103,6 +103,7 @@ class HfSafeTensorsArtifactIdentity:
             raise TrainingModelArtifactIdentityError(
                 "files must contain exact HfArtifactFileIdentity values"
             )
+
         paths = tuple(item.path for item in self.files)
         if len(set(paths)) != len(paths):
             raise TrainingModelArtifactIdentityError("artifact file paths must be unique")
@@ -169,6 +170,7 @@ def identify_hf_safetensors_artifact(
         raise TrainingModelArtifactIdentityError(
             "revision must be exactly 40 lowercase hex characters"
         )
+
     root = _require_model_root(model_root)
     _reject_unsafe_weight_files(root)
 
@@ -181,6 +183,7 @@ def identify_hf_safetensors_artifact(
         raise TrainingModelArtifactIdentityError(
             "model root is ambiguous: both single and sharded SafeTensors layouts exist"
         )
+
     if single_exists:
         extra = _root_safetensors_names(root) - {_SINGLE_WEIGHT}
         if extra:
@@ -198,6 +201,7 @@ def identify_hf_safetensors_artifact(
             layout="single",
             files=(file_identity,),
         )
+
     if index_exists:
         index_raw, index_sha256, index_byte_count = _read_regular_file(
             index_path,
@@ -280,12 +284,14 @@ def _parse_index(raw: bytes) -> tuple[str, ...]:
         raise TrainingModelArtifactIdentityError(
             "SafeTensors index must be valid UTF-8 JSON"
         ) from exc
+
     if not isinstance(payload, dict) or set(payload) - {"metadata", "weight_map"}:
         raise TrainingModelArtifactIdentityError(
             "SafeTensors index must contain only metadata and weight_map"
         )
     if "metadata" in payload and not isinstance(payload["metadata"], dict):
         raise TrainingModelArtifactIdentityError("SafeTensors index metadata must be an object")
+
     weight_map = payload.get("weight_map")
     if not isinstance(weight_map, dict) or not weight_map:
         raise TrainingModelArtifactIdentityError(
@@ -318,15 +324,18 @@ def _parse_index(raw: bytes) -> tuple[str, ...]:
 def _require_complete_shard_sequence(names: tuple[str, ...]) -> None:
     if not names:
         raise TrainingModelArtifactIdentityError("sharded layout requires at least one shard")
+
     parsed: list[tuple[int, int]] = []
     for name in names:
         match = _SHARD.fullmatch(name)
         if match is None:
             raise TrainingModelArtifactIdentityError("invalid canonical shard filename")
         parsed.append((int(match.group(1)), int(match.group(2))))
+
     totals = {total for _, total in parsed}
     if len(totals) != 1:
         raise TrainingModelArtifactIdentityError("all shards must declare the same shard count")
+
     total = next(iter(totals))
     expected = tuple(range(1, total + 1))
     if total != len(parsed) or tuple(index for index, _ in parsed) != expected:
@@ -353,6 +362,7 @@ def _reject_unsafe_weight_files(root: Path) -> None:
         names = tuple(entry.name for entry in os.scandir(root))
     except OSError as exc:
         raise TrainingModelArtifactIdentityError("model_root could not be enumerated") from exc
+
     for name in names:
         if name.lower().endswith(_UNSAFE_WEIGHT_SUFFIXES):
             raise TrainingModelArtifactIdentityError(
@@ -363,7 +373,11 @@ def _reject_unsafe_weight_files(root: Path) -> None:
 
 def _root_safetensors_names(root: Path) -> set[str]:
     try:
-        return {entry.name for entry in os.scandir(root) if entry.name.endswith(".safetensors")}
+        return {
+            entry.name
+            for entry in os.scandir(root)
+            if entry.name.lower().endswith(".safetensors")
+        }
     except OSError as exc:
         raise TrainingModelArtifactIdentityError("model_root could not be enumerated") from exc
 
@@ -394,6 +408,7 @@ def _read_regular_file(
         raise TrainingModelArtifactIdentityError(
             f"artifact file could not be statted: {path.name}"
         ) from exc
+
     if stat.S_ISLNK(before.st_mode) or not stat.S_ISREG(before.st_mode):
         raise TrainingModelArtifactIdentityError(
             f"artifact file must be a non-symlink regular file: {path.name}"
@@ -424,6 +439,7 @@ def _read_regular_file(
             raise TrainingModelArtifactIdentityError(
                 f"opened artifact is not a regular file: {path.name}"
             )
+
         while True:
             chunk = os.read(fd, _CHUNK_SIZE)
             if not chunk:
@@ -436,6 +452,7 @@ def _read_regular_file(
             digest.update(chunk)
             if max_bytes is not None:
                 chunks.append(chunk)
+
         finished = os.fstat(fd)
     finally:
         os.close(fd)
@@ -447,30 +464,10 @@ def _read_regular_file(
             f"artifact file changed during verification: {path.name}"
         ) from exc
 
-    expected_identity = (
-        before.st_dev,
-        before.st_ino,
-        before.st_size,
-        before.st_mtime_ns,
-    )
-    opened_identity = (
-        opened.st_dev,
-        opened.st_ino,
-        opened.st_size,
-        opened.st_mtime_ns,
-    )
-    finished_identity = (
-        finished.st_dev,
-        finished.st_ino,
-        finished.st_size,
-        finished.st_mtime_ns,
-    )
-    after_identity = (
-        after.st_dev,
-        after.st_ino,
-        after.st_size,
-        after.st_mtime_ns,
-    )
+    expected_identity = _stat_identity(before)
+    opened_identity = _stat_identity(opened)
+    finished_identity = _stat_identity(finished)
+    after_identity = _stat_identity(after)
     if not (expected_identity == opened_identity == finished_identity == after_identity):
         raise TrainingModelArtifactIdentityError(
             f"artifact file changed during verification: {path.name}"
@@ -479,7 +476,18 @@ def _read_regular_file(
         raise TrainingModelArtifactIdentityError(
             f"artifact byte count changed during verification: {path.name}"
         )
+
     return b"".join(chunks), digest.hexdigest(), byte_count
+
+
+def _stat_identity(observation: os.stat_result) -> tuple[int, int, int, int, int]:
+    return (
+        observation.st_dev,
+        observation.st_ino,
+        observation.st_size,
+        observation.st_mtime_ns,
+        observation.st_ctime_ns,
+    )
 
 
 def _lexists(path: Path) -> bool:
@@ -497,6 +505,7 @@ def _lexists(path: Path) -> bool:
 def _require_relative_basename(value: object, *, field: str) -> str:
     if not isinstance(value, str) or not value or "\\" in value or "\x00" in value:
         raise TrainingModelArtifactIdentityError(f"{field} must be one non-empty POSIX basename")
+
     path = PurePosixPath(value)
     if path.is_absolute() or len(path.parts) != 1 or str(path) != value or value in (".", ".."):
         raise TrainingModelArtifactIdentityError(f"{field} must be one canonical POSIX basename")
