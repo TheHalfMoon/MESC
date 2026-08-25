@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+import medscale.mesc._training_hf_safetensors_identity_v1 as identity_mod
 from medscale.mesc._training_hf_safetensors_identity_v1 import (
     HfSafeTensorsLocalModelVerifier,
     TrainingModelArtifactIdentityError,
@@ -112,6 +113,38 @@ def test_single_identity_is_path_independent_and_content_addressed(
     assert mutated.weights_sha256 != first.weights_sha256
 
 
+def test_same_size_mutation_with_restored_mtime_fails_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "model"
+    _single(root)
+    weight = root / "model.safetensors"
+    before = weight.stat()
+    original_read = identity_mod.os.read
+    mutated = False
+
+    def _read_then_mutate(fd: int, size: int) -> bytes:
+        nonlocal mutated
+        chunk = original_read(fd, size)
+        if chunk and not mutated:
+            weight.write_bytes(b"mutated-safetensors")
+            identity_mod.os.utime(
+                weight,
+                ns=(before.st_atime_ns, before.st_mtime_ns),
+            )
+            mutated = True
+        return chunk
+
+    monkeypatch.setattr(identity_mod.os, "read", _read_then_mutate)
+
+    with pytest.raises(
+        TrainingModelArtifactIdentityError,
+        match="changed during verification",
+    ):
+        _identify(root)
+
+
 def test_sharded_identity_binds_index_and_complete_shards(tmp_path: Path) -> None:
     root = tmp_path / "model"
     _sharded(root)
@@ -189,6 +222,18 @@ def test_single_layout_rejects_additional_safetensors(tmp_path: Path) -> None:
     root = tmp_path / "model"
     _single(root)
     (root / "adapter.safetensors").write_bytes(b"adapter")
+
+    with pytest.raises(
+        TrainingModelArtifactIdentityError,
+        match="unexpected additional weight files",
+    ):
+        _identify(root)
+
+
+def test_single_layout_rejects_case_variant_safetensors(tmp_path: Path) -> None:
+    root = tmp_path / "model"
+    _single(root)
+    (root / "ORPHAN.SAFETENSORS").write_bytes(b"orphan")
 
     with pytest.raises(
         TrainingModelArtifactIdentityError,
