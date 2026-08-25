@@ -368,7 +368,9 @@ def _open_model_root(model_root: Path) -> tuple[int, os.stat_result]:
         opened = os.fstat(root_fd)
     except OSError as exc:
         os.close(root_fd)
-        raise TrainingModelArtifactIdentityError("model_root descriptor could not be inspected") from exc
+        raise TrainingModelArtifactIdentityError(
+            "model_root descriptor could not be inspected"
+        ) from exc
 
     if not stat.S_ISDIR(opened.st_mode):
         os.close(root_fd)
