@@ -53,7 +53,7 @@ class LocalModelAssetObservation:
         if self.role not in ("compact", "reasoner"):
             raise TrainingLocalAssetAttestationError("role must be compact or reasoner")
         _require_text(self.model_id, field="model_id")
-        if _GIT_SHA.fullmatch(self.revision) is None:
+        if not isinstance(self.revision, str) or _GIT_SHA.fullmatch(self.revision) is None:
             raise TrainingLocalAssetAttestationError(
                 "revision must be exactly 40 lowercase hex characters"
             )
@@ -134,8 +134,14 @@ class TrainingLocalAssetAttestationReport:
         ):
             if optional_value is not None:
                 _require_sha256(optional_value, field=optional_name)
+        for text_name, text_value in (
+            ("model_verifier_id", self.model_verifier_id),
+            ("model_verifier_version", self.model_verifier_version),
+        ):
+            if text_value is not None:
+                _require_text(text_value, field=text_name)
         _require_text(self.model_id, field="model_id")
-        if _GIT_SHA.fullmatch(self.revision) is None:
+        if not isinstance(self.revision, str) or _GIT_SHA.fullmatch(self.revision) is None:
             raise TrainingLocalAssetAttestationError(
                 "revision must be exactly 40 lowercase hex characters"
             )
@@ -166,6 +172,10 @@ class TrainingLocalAssetAttestationReport:
         if self.observed_corpus_sha256 != self.expected_corpus_sha256:
             raise TrainingLocalAssetAttestationError(
                 "PASS attestation requires exact expected/observed corpus SHA equality"
+            )
+        if self.expected_corpus_byte_count <= 0:
+            raise TrainingLocalAssetAttestationError(
+                "PASS attestation requires a positive corpus byte count"
             )
         if self.observed_corpus_byte_count != self.expected_corpus_byte_count:
             raise TrainingLocalAssetAttestationError(
