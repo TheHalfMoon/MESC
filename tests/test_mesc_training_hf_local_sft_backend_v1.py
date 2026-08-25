@@ -530,7 +530,7 @@ def test_real_runtime_uses_local_only_no_auth_hf_calls(
     output_dir = tmp_path / "output"
     output_dir.mkdir()
     recipe = _recipe()
-    records = (
+    records: tuple[dict[str, object], ...] = (
         {
             "prompt": [{"role": "user", "content": "Question?"}],
             "completion": [{"role": "assistant", "content": "Answer."}],

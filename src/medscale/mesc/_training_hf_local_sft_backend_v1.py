@@ -109,13 +109,13 @@ class HfSftRuntimeResult:
             raise HfLocalSftBackendError("runtime metric keys must be unique")
         if len({key for key, _ in self.packages}) != len(self.packages):
             raise HfLocalSftBackendError("runtime package keys must be unique")
-        for key, value in self.metrics:
+        for key, metric_value in self.metrics:
             _require_text(key, field="runtime metric name")
-            if type(value) is not float:
+            if type(metric_value) is not float:
                 raise HfLocalSftBackendError("runtime metric values must be floats")
-        for key, value in self.packages:
+        for key, package_value in self.packages:
             _require_text(key, field="runtime package name")
-            _require_text(value, field="runtime package version")
+            _require_text(package_value, field="runtime package version")
 
 
 class HfLocalSftRuntime(Protocol):
