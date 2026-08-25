@@ -38,6 +38,9 @@ jobs:
       - name: Ruff (lint)
         run: uv run ruff check .
 
+      - name: Ruff (format diff diagnostic)
+        run: uv run ruff format --diff src/medscale/mesc/_training_hf_local_sft_backend_v1.py || true
+
       - name: Ruff (format)
         run: uv run ruff format --check .
 
