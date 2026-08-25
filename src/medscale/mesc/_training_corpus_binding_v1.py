@@ -45,9 +45,7 @@ class TrainingCorpusBindingReport:
 
     def __post_init__(self) -> None:
         if self.binding_version != _BINDING_VERSION:
-            raise TrainingCorpusBindingError(
-                f"binding_version must be exactly {_BINDING_VERSION}"
-            )
+            raise TrainingCorpusBindingError(f"binding_version must be exactly {_BINDING_VERSION}")
         if self.disposition not in ("BLOCKED", "PASS"):
             raise TrainingCorpusBindingError("disposition must be exactly BLOCKED or PASS")
         for field, value in (
@@ -111,9 +109,7 @@ class TrainingCorpusBindingReport:
             "disposition": self.disposition,
             "example_count": self.example_count,
             "qualification_sha256": self.qualification_sha256,
-            "qualified_training_record_ids_sha256": (
-                self.qualified_training_record_ids_sha256
-            ),
+            "qualified_training_record_ids_sha256": self.qualified_training_record_ids_sha256,
             "training_dataset_sha256": self.training_dataset_sha256,
         }
 
