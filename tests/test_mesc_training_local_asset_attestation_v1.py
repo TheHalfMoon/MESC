@@ -21,6 +21,7 @@ from medscale.mesc._training_launch_plan_v1 import (
 from medscale.mesc._training_local_asset_attestation_v1 import (
     LocalModelAssetObservation,
     TrainingLocalAssetAttestationError,
+    TrainingLocalAssetAttestationReport,
     attest_local_training_assets,
 )
 from medscale.modelkit.manifests import RunnerClass
@@ -133,7 +134,11 @@ def _paths(tmp_path: Path, raw: bytes) -> tuple[Path, Path]:
     return model_root, corpus_path
 
 
-def _attest(tmp_path: Path, raw: bytes, verifier: _Verifier | None = None):
+def _attest(
+    tmp_path: Path,
+    raw: bytes,
+    verifier: _Verifier | None = None,
+) -> TrainingLocalAssetAttestationReport:
     model_root, corpus_path = _paths(tmp_path, raw)
     return attest_local_training_assets(
         launch_plan=_launch(),
@@ -235,19 +240,26 @@ def test_model_identity_mismatch_blocks(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize(
-    ("kwargs", "fragment"),
+    ("network_accessed", "remote_code_allowed", "gated_terms_accepted", "fragment"),
     [
-        ({"network_accessed": True}, "network"),
-        ({"remote_code_allowed": True}, "remote code"),
-        ({"gated_terms_accepted": True}, "gated terms"),
+        (True, False, False, "network"),
+        (False, True, False, "remote code"),
+        (False, False, True, "gated terms"),
     ],
 )
 def test_security_observations_block(
     tmp_path: Path,
-    kwargs: dict[str, bool],
+    network_accessed: bool,
+    remote_code_allowed: bool,
+    gated_terms_accepted: bool,
     fragment: str,
 ) -> None:
-    report = _attest(tmp_path, b'{"example":"one"}\n', _Verifier(**kwargs))
+    verifier = _Verifier(
+        network_accessed=network_accessed,
+        remote_code_allowed=remote_code_allowed,
+        gated_terms_accepted=gated_terms_accepted,
+    )
+    report = _attest(tmp_path, b'{"example":"one"}\n', verifier)
     assert report.disposition == "BLOCKED"
     assert any(fragment in item for item in report.blockers)
 
@@ -313,6 +325,27 @@ def test_verifier_exception_and_subclass_observation_fail_closed(tmp_path: Path)
     assert any("non-canonical" in item for item in forged.blockers)
 
 
+def test_non_string_revisions_fail_with_contract_errors(tmp_path: Path) -> None:
+    bad_revision: Any = 123
+    with pytest.raises(TrainingLocalAssetAttestationError, match="revision"):
+        LocalModelAssetObservation(
+            role="compact",
+            model_id="example/compact",
+            revision=bad_revision,
+            weights_sha256=_SHA_B,
+            verifier_id="fixture-local-verifier",
+            verifier_version="v1",
+            verifier_receipt_sha256=_SHA_D,
+            network_accessed=False,
+            remote_code_allowed=False,
+            gated_terms_accepted=False,
+        )
+
+    report = _attest(tmp_path, b'{"example":"one"}\n')
+    with pytest.raises(TrainingLocalAssetAttestationError, match="revision"):
+        replace(report, revision=bad_revision)
+
+
 def test_direct_pass_report_rejects_forged_content(tmp_path: Path) -> None:
     report = _attest(tmp_path, b'{"example":"one"}\n')
     with pytest.raises(TrainingLocalAssetAttestationError, match="weight identity"):
@@ -321,6 +354,12 @@ def test_direct_pass_report_rejects_forged_content(tmp_path: Path) -> None:
         replace(report, observed_corpus_sha256=_SHA_A)
     with pytest.raises(TrainingLocalAssetAttestationError, match="corpus byte"):
         replace(report, observed_corpus_byte_count=report.expected_corpus_byte_count + 1)
+    with pytest.raises(TrainingLocalAssetAttestationError, match="positive corpus byte count"):
+        replace(report, expected_corpus_byte_count=0, observed_corpus_byte_count=0)
+    with pytest.raises(TrainingLocalAssetAttestationError, match="model_verifier_id"):
+        replace(report, model_verifier_id="")
+    with pytest.raises(TrainingLocalAssetAttestationError, match="model_verifier_version"):
+        replace(report, model_verifier_version="")
     with pytest.raises(TrainingLocalAssetAttestationError, match="cannot have blockers"):
         replace(report, blockers=("forged",))
     with pytest.raises(TrainingLocalAssetAttestationError, match="forbids network"):
