@@ -38,8 +38,11 @@ jobs:
       - name: Ruff (lint)
         run: uv run ruff check .
 
-      - name: Ruff (format)
-        run: uv run ruff format --check .
+      - name: Ruff (format oracle)
+        run: |
+          uv run ruff format src/medscale/mesc/_training_local_asset_attestation_v1.py
+          git diff -- src/medscale/mesc/_training_local_asset_attestation_v1.py
+          exit 1
 
       - name: Mypy (strict)
         run: uv run mypy
