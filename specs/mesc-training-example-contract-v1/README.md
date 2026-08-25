@@ -102,6 +102,23 @@ qualified `training_record_ids_sha256`.
 No missing T5 record may be inferred from source metadata and no extra record may be
 admitted merely because its provenance is valid.
 
+### Immutable container boundary
+
+The dataclasses are frozen, so nested containers that participate in scientific identity
+must also be immutable at runtime rather than merely annotated as immutable.
+
+V1 therefore requires:
+
+- `evidence_refs` to be an actual tuple;
+- `prompt` to be an actual tuple of `TrainingMessage` values; and
+- direct `TrainingCorpusV1.examples` construction to use an actual tuple containing only
+  `TrainingExampleV1` values.
+
+`build_training_corpus(...)` may accept a normal sequence such as a list, but validates
+all runtime members before sorting and freezes the result into a tuple. Invalid containers
+or forged members fail with `TrainingExampleContractError` instead of leaking incidental
+`AttributeError`/mutation behavior.
+
 ## Supervised stages
 
 V1 intentionally covers the supervised generator stages that precede preference or RL
