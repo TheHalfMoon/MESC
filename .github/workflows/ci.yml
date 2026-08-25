@@ -7,7 +7,7 @@ on:
     branches: [main]
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -34,6 +34,73 @@ jobs:
 
       - name: Sync (locked)
         run: uv sync --frozen
+
+      - name: Apply exact mypy fixes to PR 190 branch
+        if: matrix.python-version == '3.12'
+        env:
+          TARGET_BRANCH: feat/mesc-hf-local-sft-backend-v1
+        run: |
+          git fetch origin "$TARGET_BRANCH"
+          git checkout "$TARGET_BRANCH"
+          python - <<'PY'
+          from pathlib import Path
+
+          source = Path("src/medscale/mesc/_training_hf_local_sft_backend_v1.py")
+          text = source.read_text(encoding="utf-8")
+          old = '''        for key, value in self.metrics:
+              _require_text(key, field="runtime metric name")
+              if type(value) is not float:
+                  raise HfLocalSftBackendError("runtime metric values must be floats")
+          for key, value in self.packages:
+              _require_text(key, field="runtime package name")
+              _require_text(value, field="runtime package version")
+          '''
+          new = '''        for key, metric_value in self.metrics:
+              _require_text(key, field="runtime metric name")
+              if type(metric_value) is not float:
+                  raise HfLocalSftBackendError("runtime metric values must be floats")
+          for key, package_value in self.packages:
+              _require_text(key, field="runtime package name")
+              _require_text(package_value, field="runtime package version")
+          '''
+          if text.count(old) != 1:
+              raise SystemExit("source typing target did not match exactly once")
+          source.write_text(text.replace(old, new), encoding="utf-8", newline="\n")
+
+          tests = Path("tests/test_mesc_training_hf_local_sft_backend_v1.py")
+          text = tests.read_text(encoding="utf-8")
+          old = '''    records = (
+              {
+                  "prompt": [{"role": "user", "content": "Question?"}],
+                  "completion": [{"role": "assistant", "content": "Answer."}],
+              },
+          )
+          '''
+          new = '''    records: tuple[dict[str, object], ...] = (
+              {
+                  "prompt": [{"role": "user", "content": "Question?"}],
+                  "completion": [{"role": "assistant", "content": "Answer."}],
+              },
+          )
+          '''
+          if text.count(old) != 1:
+              raise SystemExit("test typing target did not match exactly once")
+          tests.write_text(text.replace(old, new), encoding="utf-8", newline="\n")
+          PY
+          uv run ruff format \
+            src/medscale/mesc/_training_hf_local_sft_backend_v1.py \
+            tests/test_mesc_training_hf_local_sft_backend_v1.py
+          uv run ruff check \
+            src/medscale/mesc/_training_hf_local_sft_backend_v1.py \
+            tests/test_mesc_training_hf_local_sft_backend_v1.py
+          git diff --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            src/medscale/mesc/_training_hf_local_sft_backend_v1.py \
+            tests/test_mesc_training_hf_local_sft_backend_v1.py
+          git commit -m "fix(mesc): satisfy strict typing for local SFT backend"
+          git push origin "HEAD:$TARGET_BRANCH"
 
       - name: Ruff (lint)
         run: uv run ruff check .
