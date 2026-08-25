@@ -103,9 +103,7 @@ class HfSftRuntimeResult:
     def __post_init__(self) -> None:
         if tuple(key for key, _ in self.metrics) != tuple(sorted(key for key, _ in self.metrics)):
             raise HfLocalSftBackendError("runtime metrics must use canonical key ordering")
-        if tuple(key for key, _ in self.packages) != tuple(
-            sorted(key for key, _ in self.packages)
-        ):
+        if tuple(key for key, _ in self.packages) != tuple(sorted(key for key, _ in self.packages)):
             raise HfLocalSftBackendError("runtime packages must use canonical key ordering")
         if len({key for key, _ in self.metrics}) != len(self.metrics):
             raise HfLocalSftBackendError("runtime metric keys must be unique")
