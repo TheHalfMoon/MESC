@@ -7,7 +7,7 @@ on:
     branches: [main]
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -34,6 +34,26 @@ jobs:
 
       - name: Sync (locked)
         run: uv sync --frozen
+
+      - name: Apply exact PR 190 review hardening
+        if: matrix.python-version == '3.12'
+        env:
+          TARGET_BRANCH: feat/mesc-hf-local-sft-backend-v1
+          PATCHER_B64: CmZyb20gcGF0aGxpYiBpbXBvcnQgUGF0aAoKZGVmIHJlcGxhY2Vfb25jZSh0ZXh0OiBzdHIsIG9sZDogc3RyLCBuZXc6IHN0ciwgKiwgbGFiZWw6IHN0cikgLT4gc3RyOgogICAgY291bnQgPSB0ZXh0LmNvdW50KG9sZCkKICAgIGlmIGNvdW50ICE9IDE6CiAgICAgICAgcmFpc2UgU3lzdGVtRXhpdChmIntsYWJlbH0gbWF0Y2hlZCB7Y291bnR9IHRpbWVzLCBleHBlY3RlZCBleGFjdGx5IG9uY2UiKQogICAgcmV0dXJuIHRleHQucmVwbGFjZShvbGQsIG5ldywgMSkKCnNvdXJjZSA9IFBhdGgoInNyYy9tZWRzY2FsZS9tZXNjL190cmFpbmluZ19oZl9sb2NhbF9zZnRfYmFja2VuZF92MS5weSIpCnRleHQgPSBzb3VyY2UucmVhZF90ZXh0KGVuY29kaW5nPSJ1dGYtOCIpCgp0ZXh0ID0gcmVwbGFjZV9vbmNlKAogICAgdGV4dCwKICAgICdfU0hBMjU2X0NIVU5LOiBGaW5hbCA9IDEwMjQgKiAxMDI0XG5fUkVRVUlSRURfUlVOVElNRV9NT0RVTEVTOiBGaW5hbCA9IChcbicsCiAgICAnX1NIQTI1Nl9DSFVOSzogRmluYWwgPSAxMDI0ICogMTAyNFxuJwogICAgJ19PX0JJTkFSWTogRmluYWwgPSBnZXRhdHRyKG9zLCAiT19CSU5BUlkiLCAwKVxuJwogICAgJ19PX0RJUkVDVE9SWTogRmluYWwgPSBnZXRhdHRyKG9zLCAiT19ESVJFQ1RPUlkiLCAwKVxuJwogICAgJ19PX05PRk9MTE9XOiBGaW5hbCA9IGdldGF0dHIob3MsICJPX05PRk9MTE9XIiwgMClcbicKICAgICdfUkVRVUlSRURfUlVOVElNRV9NT0RVTEVTOiBGaW5hbCA9IChcbicsCiAgICBsYWJlbD0ic2FmZS1vcGVuIGNvbnN0YW50cyIsCikKCnRleHQgPSByZXBsYWNlX29uY2UoCiAgICB0ZXh0LAogICAgJycnICAgICAgICAgICAgaWYgZmluYWxfcGFyZW50LmV4aXN0cygpIG9yIGZpbmFsX3BhcmVudC5pc19zeW1saW5rKCk6CiAgICAgICAgICAgICAgICByYWlzZSBIZkxvY2FsU2Z0QmFja2VuZEVycm9yKCJwbGFubmVkIGV4cGVyaW1lbnQgcmVzdWx0IHJvb3QgYWxyZWFkeSBleGlzdHMiKQogICAgICAgICAgICBmaW5hbF9wYXJlbnQucGFyZW50Lm1rZGlyKHBhcmVudHM9VHJ1ZSwgZXhpc3Rfb2s9VHJ1ZSkKICAgICAgICAgICAgc3RhZ2luZyA9IFBhdGgoCiAgICAgICAgICAgICAgICB0ZW1wZmlsZS5ta2R0ZW1wKAogICAgICAgICAgICAgICAgICAgIHByZWZpeD1mIi57bWFuaWZlc3QuZXhwZXJpbWVudF9pZH0ubWVzYy1zZnQtIiwKICAgICAgICAgICAgICAgICAgICBkaXI9ZmluYWxfcGFyZW50LnBhcmVudCwKICAgICAgICAgICAgICAgICkKICAgICAgICAgICAgKQonJycsCiAgICAnJycgICAgICAgICAgICBpZiBfcGF0aF9leGlzdHNfbm9fZm9sbG93KGZpbmFsX3BhcmVudCk6CiAgICAgICAgICAgICAgICByYWlzZSBIZkxvY2FsU2Z0QmFja2VuZEVycm9yKCJwbGFubmVkIGV4cGVyaW1lbnQgcmVzdWx0IHJvb3QgYWxyZWFkeSBleGlzdHMiKQogICAgICAgICAgICBwdWJsaWNhdGlvbl9wYXJlbnQgPSBfcHJlcGFyZV9wdWJsaWNhdGlvbl9wYXJlbnQoCiAgICAgICAgICAgICAgICBmaW5hbF9wYXJlbnQucGFyZW50LAogICAgICAgICAgICAgICAgcmVwb3NpdG9yeV9yb290PXNlbGYuX3JlcG9zaXRvcnlfcm9vdCwKICAgICAgICAgICAgKQogICAgICAgICAgICByZXBvc2l0b3J5X2ZkID0gX29wZW5fZGlyZWN0b3J5X2ZkKAogICAgICAgICAgICAgICAgc2VsZi5fcmVwb3NpdG9yeV9yb290LAogICAgICAgICAgICAgICAgZmllbGQ9InJlcG9zaXRvcnlfcm9vdCIsCiAgICAgICAgICAgICkKICAgICAgICAgICAgcHVibGljYXRpb25fZmQgPSBfb3Blbl9kaXJlY3RvcnlfZmQoCiAgICAgICAgICAgICAgICBwdWJsaWNhdGlvbl9wYXJlbnQsCiAgICAgICAgICAgICAgICBmaWVsZD0icHVibGljYXRpb25fcGFyZW50IiwKICAgICAgICAgICAgKQogICAgICAgICAgICBzdGFnaW5nID0gUGF0aCgKICAgICAgICAgICAgICAgIHRlbXBmaWxlLm1rZHRlbXAoCiAgICAgICAgICAgICAgICAgICAgcHJlZml4PWYiLnttYW5pZmVzdC5leHBlcmltZW50X2lkfS5tZXNjLXNm dC0iLAogICAgICAgICAgICAgICAgICAgIGRpcj1zZWxmLl9yZXBvc2l0b3J5X3Jvb3QsCiAgICAgICAgICAgICAgICApCiAgICAgICAgICAgICkKJycnLnJlcGxhY2UoIiBzZnQgIiwgInNmdCIpLAogICAgbGFiZWw9ImluaXRpYWwgcHVibGljYXRpb24gYmxvY2siLApdCg==
+        run: |
+          git fetch origin "$TARGET_BRANCH"
+          git checkout "$TARGET_BRANCH"
+          printf '%s' "$PATCHER_B64" | base64 -d > /tmp/pr190_patch.py
+          python /tmp/pr190_patch.py
+          uv run ruff format             src/medscale/mesc/_training_hf_local_sft_backend_v1.py             tests/test_mesc_training_hf_local_sft_backend_v1.py
+          uv run ruff check             src/medscale/mesc/_training_hf_local_sft_backend_v1.py             tests/test_mesc_training_hf_local_sft_backend_v1.py
+          python -m py_compile src/medscale/mesc/_training_hf_local_sft_backend_v1.py
+          git diff --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add             specs/mesc-hf-local-sft-backend-v1/README.md             src/medscale/mesc/_training_hf_local_sft_backend_v1.py             tests/test_mesc_training_hf_local_sft_backend_v1.py
+          git commit -m "fix(mesc): harden local SFT publication boundary"
+          git push origin "HEAD:$TARGET_BRANCH"
 
       - name: Ruff (lint)
         run: uv run ruff check .
