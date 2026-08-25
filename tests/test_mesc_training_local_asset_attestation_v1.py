@@ -206,9 +206,22 @@ def test_corpus_read_failure_blocks_instead_of_raising(
         verifier=_Verifier(),
     )
     assert report.disposition == "BLOCKED"
-    assert "local corpus could not be read" in report.blockers
+    assert "local corpus could not be read safely" in report.blockers
     assert report.observed_corpus_sha256 is None
     assert report.observed_corpus_byte_count is None
+
+
+def test_descriptor_observer_rejects_symlink_without_caller_precheck(tmp_path: Path) -> None:
+    target = tmp_path / "target.jsonl"
+    target.write_bytes(b'{"example":"one"}\n')
+    link = tmp_path / "link.jsonl"
+    try:
+        link.symlink_to(target)
+    except OSError:
+        pytest.skip("symlink creation is unavailable on this platform")
+
+    with pytest.raises(OSError):
+        attestation_mod._observe_file(link)
 
 
 def test_missing_paths_fail_closed_without_model_verification(tmp_path: Path) -> None:
@@ -288,6 +301,53 @@ def test_security_observations_block(
     report = _attest(tmp_path, b'{"example":"one"}\n', verifier)
     assert report.disposition == "BLOCKED"
     assert any(fragment in item for item in report.blockers)
+
+
+def test_model_verifier_observation_is_snapshotted_before_validation(tmp_path: Path) -> None:
+    model_root = tmp_path / "model"
+    model_root.mkdir()
+    run_plan = _run("compact")
+
+    class RetainingVerifier:
+        def __init__(self) -> None:
+            self.observation: LocalModelAssetObservation | None = None
+
+        def verify(
+            self,
+            *,
+            role: TrainingRole,
+            model_root: Path,
+            run_plan: TrainingRunPlan,
+        ) -> LocalModelAssetObservation:
+            self.observation = LocalModelAssetObservation(
+                role=role,
+                model_id=run_plan.model_id,
+                revision=run_plan.revision,
+                weights_sha256=run_plan.weights_sha256,
+                verifier_id="retaining-verifier",
+                verifier_version="v1",
+                verifier_receipt_sha256=_SHA_D,
+                network_accessed=False,
+                remote_code_allowed=False,
+                gated_terms_accepted=False,
+            )
+            return self.observation
+
+    verifier = RetainingVerifier()
+    blockers: list[str] = []
+    snapshot = attestation_mod._attest_model(
+        model_root,
+        verifier=verifier,
+        role="compact",
+        run_plan=run_plan,
+        blockers=blockers,
+    )
+    assert snapshot is not None
+    assert verifier.observation is not None
+    assert snapshot is not verifier.observation
+    object.__setattr__(verifier.observation, "weights_sha256", _SHA_A)
+    assert snapshot.weights_sha256 == _SHA_B
+    assert blockers == []
 
 
 def test_verifier_exception_and_subclass_observation_fail_closed(tmp_path: Path) -> None:
