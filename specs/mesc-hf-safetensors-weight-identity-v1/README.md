@@ -97,7 +97,9 @@ V1 supports exactly two SafeTensors layouts.
 model.safetensors
 ```
 
-No other root-level `*.safetensors` file may coexist with it.
+No other root-level `*.safetensors` file may coexist with it. Extension detection is
+case-insensitive for the purpose of rejecting additional payloads, so a file such as
+`ORPHAN.SAFETENSORS` cannot bypass the single-layout boundary.
 
 The canonical manifest contains exactly one `weight` entry.
 
@@ -152,9 +154,19 @@ Future weight formats require their own versioned identity contract rather than 
 
 `model_root` must be an existing non-symlink directory.
 
+Before any root enumeration or child-file inspection, the verifier opens `model_root` as a
+retained read-only, no-follow directory descriptor. Root enumeration, child `stat`, and
+child `open` operations are then performed descriptor-relatively. The original path is not
+re-resolved for traversal. A concurrent replacement of the supplied path therefore cannot
+redirect verification to a different directory.
+
+V1 requires platform support for no-follow directory descriptors plus descriptor-relative
+`open`, `stat`, and directory listing. A platform without those primitives fails closed
+rather than falling back to path-based traversal.
+
 Every participating file must be:
 
-- a direct child of `model_root`;
+- a direct child of the pinned `model_root` descriptor;
 - addressed by one canonical POSIX basename;
 - non-empty;
 - a regular file; and
@@ -163,9 +175,14 @@ Every participating file must be:
 Hashing uses bounded streaming reads for weight files. The index is capped at 16 MiB and is
 read only because it must be parsed.
 
-The verifier records file identity before open, from the open descriptor, after reading,
-and after close. Device, inode, size, and nanosecond mtime must remain equal across those
-observations. Any detected mutation fails closed.
+For each participating file, the verifier records identity before open, from the open
+descriptor, after reading, and after close. Device, inode, size, nanosecond mtime, and
+nanosecond ctime must remain equal across those observations. Including ctime prevents a
+same-size content mutation from being hidden by restoring mtime after the write.
+
+The pinned root descriptor is also observed before and after successful verification using
+the same device/inode/size/mtime/ctime identity tuple. Root-entry mutation or replacement
+detected during verification fails closed.
 
 The identity never contains the absolute or local filesystem path.
 
@@ -261,11 +278,15 @@ and it does not require a GPU or model download.
 This gate is complete only when exact-head CI and review prove at least:
 
 - path-independent deterministic identity;
+- `weights_sha256` independence from `model_id` and immutable revision;
 - content mutation changes identity;
+- same-size mutation with restored mtime fails closed;
+- concurrent `model_root` replacement cannot redirect verification and fails closed when detected;
 - single-file layout acceptance;
 - canonical sharded layout acceptance;
 - raw index mutation changes identity;
 - missing, extra, ambiguous, malformed, or non-contiguous shards fail closed;
+- case-variant additional SafeTensors files fail closed;
 - symlinks and non-regular files fail closed;
 - pickle-compatible root weight files fail closed; and
 - the concrete verifier emits an exact local-only `LocalModelAssetObservation`.
