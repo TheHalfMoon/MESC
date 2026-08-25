@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from pathlib import Path
 
 import pytest
 
-import medscale.mesc._training_hf_safetensors_identity_v1 as identity_mod
 from medscale.mesc._training_hf_safetensors_identity_v1 import (
+    HfSafeTensorsArtifactIdentity,
     HfSafeTensorsLocalModelVerifier,
     TrainingModelArtifactIdentityError,
     identify_hf_safetensors_artifact,
@@ -53,7 +54,7 @@ def _run(
     )
 
 
-def _identify(root: Path):
+def _identify(root: Path) -> HfSafeTensorsArtifactIdentity:
     return identify_hf_safetensors_artifact(
         model_root=root,
         model_id="example/model",
@@ -121,7 +122,7 @@ def test_same_size_mutation_with_restored_mtime_fails_closed(
     _single(root)
     weight = root / "model.safetensors"
     before = weight.stat()
-    original_read = identity_mod.os.read
+    original_read = os.read
     mutated = False
 
     def _read_then_mutate(fd: int, size: int) -> bytes:
@@ -129,14 +130,17 @@ def test_same_size_mutation_with_restored_mtime_fails_closed(
         chunk = original_read(fd, size)
         if chunk and not mutated:
             weight.write_bytes(b"mutated-safetensors")
-            identity_mod.os.utime(
+            os.utime(
                 weight,
                 ns=(before.st_atime_ns, before.st_mtime_ns),
             )
             mutated = True
         return chunk
 
-    monkeypatch.setattr(identity_mod.os, "read", _read_then_mutate)
+    monkeypatch.setattr(
+        "medscale.mesc._training_hf_safetensors_identity_v1.os.read",
+        _read_then_mutate,
+    )
 
     with pytest.raises(
         TrainingModelArtifactIdentityError,
