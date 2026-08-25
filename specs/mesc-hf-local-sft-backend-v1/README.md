@@ -336,17 +336,25 @@ The final experiment result root must not exist before execution.
 
 The backend:
 
-1. creates a private staging directory beside the final experiment root on the same
-   filesystem;
-2. trains every seed only into staging;
-3. writes the summary only into staging;
-4. rejects symlink, empty, non-regular, or namespace-escaping outputs;
-5. hashes every final file into canonical `TrainingResultArtifact` values;
-6. rechecks that the final result root still does not exist; and
-7. atomically renames the complete staged experiment root into its final location.
+1. validates every existing publication-path ancestor below `repository_root` as a real
+   non-symlink directory, creates missing ancestors one at a time, requires the resolved
+   parent to remain inside the repository and on the same filesystem, and pins repository
+   and publication directories with no-follow descriptors;
+2. creates a private staging directory directly beneath the validated repository root;
+3. trains every seed only into staging;
+4. writes the summary only into staging;
+5. rejects symlink, empty, non-regular, namespace-escaping, or multi-link outputs;
+6. hashes every final file through a no-follow file descriptor, requiring stable
+   descriptor identity and a single hard link before and after hashing;
+7. revalidates publication ancestors and pinned directory identities and rechecks that the
+   final result root still does not exist; and
+8. atomically renames the complete staged experiment root with pinned source and
+   destination directory descriptors.
 
-Any exception before publication deletes staging and returns a canonical `FAILED`
-`TrainingBackendResult` with no result artifacts.
+Any ordinary exception before publication deletes staging and returns a canonical
+`FAILED` `TrainingBackendResult` with no result artifacts. `KeyboardInterrupt`,
+`SystemExit`, and other `BaseException` subclasses also delete staging, but are re-raised
+instead of being converted into canonical failure results.
 
 The backend never overwrites a prior experiment result root.
 
@@ -379,9 +387,11 @@ It validates:
 - exact corpus byte identity;
 - local prompt-completion projection;
 - multiple-seed execution;
-- runtime failure cleanup;
+- runtime failure and interrupt cleanup;
 - no result overwrite;
+- symlinked publication-ancestor rejection;
 - namespace confinement;
+- hardlink rejection and descriptor-based no-follow artifact hashing;
 - lazy package import behavior; and
 - exact local-only/no-token/no-remote-code/no-Hub arguments supplied by the real runtime
   adapter using fake modules.
@@ -414,7 +424,9 @@ This backend gate is complete only when exact-head CI, CodeQL, and review prove 
 - local-only/no-auth/no-remote-code model and tokenizer calls;
 - no implicit reporting, Hub push, or distributed launch;
 - no existing result overwrite;
-- failed execution publishes no canonical artifacts;
+- publication ancestors cannot redirect writes through symlinks or another filesystem;
+- runtime artifact hashing is no-follow, single-link, and descriptor-stable;
+- failed or interrupted execution leaves no staged canonical artifacts;
 - successful execution atomically publishes both planned namespaces; and
 - returned artifact hashes and byte counts describe the published files.
 

@@ -63,6 +63,60 @@ class _FakeRuntime:
         )
 
 
+class _InterruptRuntime(_FakeRuntime):
+    def train_seed(
+        self,
+        *,
+        model_root: Path,
+        records: tuple[dict[str, object], ...],
+        recipe: TrainingRecipe,
+        seed: int,
+        output_dir: Path,
+        profile: HfLocalSftExecutionProfile,
+    ) -> HfSftRuntimeResult:
+        result = super().train_seed(
+            model_root=model_root,
+            records=records,
+            recipe=recipe,
+            seed=seed,
+            output_dir=output_dir,
+            profile=profile,
+        )
+        del result
+        raise KeyboardInterrupt("fixture interrupt")
+
+
+class _HardlinkRuntime(_FakeRuntime):
+    def __init__(self, source: Path) -> None:
+        super().__init__()
+        self.source = source
+
+    def train_seed(
+        self,
+        *,
+        model_root: Path,
+        records: tuple[dict[str, object], ...],
+        recipe: TrainingRecipe,
+        seed: int,
+        output_dir: Path,
+        profile: HfLocalSftExecutionProfile,
+    ) -> HfSftRuntimeResult:
+        assert model_root.is_dir()
+        assert records
+        assert recipe.recipe_id
+        assert profile.max_length == 2048
+        self.calls.append(seed)
+        (output_dir / "adapter_model.safetensors").hardlink_to(self.source)
+        (output_dir / "adapter_config.json").write_text(
+            '{"peft_type":"LORA"}\n',
+            encoding="utf-8",
+        )
+        return HfSftRuntimeResult(
+            metrics=(("train_loss", float(seed) / 100.0),),
+            packages=(("trl", "fixture"),),
+        )
+
+
 def _recipe(*, model_id: str = "example/model") -> TrainingRecipe:
     return TrainingRecipe(
         base=ModelRef(
@@ -193,7 +247,7 @@ def test_success_runs_all_seeds_and_atomically_publishes_namespaces(tmp_path: Pa
     final_root = tmp_path / "repo" / "experiments" / "mesc-t6-compact-sft"
     assert (final_root / "outputs").is_dir()
     assert (final_root / "results").is_dir()
-    assert not tuple((tmp_path / "repo" / "experiments").glob(".*.mesc-sft-*"))
+    assert not tuple((tmp_path / "repo").glob(".mesc-t6-compact-sft.mesc-sft-*"))
 
 
 def test_runtime_failure_returns_failed_without_canonical_artifacts(tmp_path: Path) -> None:
@@ -207,6 +261,56 @@ def test_runtime_failure_returns_failed_without_canonical_artifacts(tmp_path: Pa
     assert result.artifacts == ()
     assert result.failure_reason is not None
     assert not (tmp_path / "repo" / "experiments" / "mesc-t6-compact-sft").exists()
+
+
+def test_interrupt_cleans_staging_and_reraises(tmp_path: Path) -> None:
+    runtime = _InterruptRuntime()
+    backend, manifest = _backend(tmp_path, runtime)
+
+    with pytest.raises(KeyboardInterrupt, match="fixture interrupt"):
+        backend.execute(manifest=manifest)
+
+    repository_root = tmp_path / "repo"
+    assert runtime.calls == [17]
+    assert not (repository_root / "experiments" / "mesc-t6-compact-sft").exists()
+    assert not tuple(repository_root.glob(".mesc-t6-compact-sft.mesc-sft-*"))
+
+
+def test_symlinked_publication_ancestor_fails_before_runtime(tmp_path: Path) -> None:
+    runtime = _FakeRuntime()
+    backend, manifest = _backend(tmp_path, runtime)
+    repository_root = tmp_path / "repo"
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    try:
+        (repository_root / "experiments").symlink_to(outside, target_is_directory=True)
+    except OSError:
+        pytest.skip("directory symlinks are unavailable on this platform")
+
+    result = backend.execute(manifest=manifest)
+
+    assert result.disposition == "FAILED"
+    assert runtime.calls == []
+    assert "symlink" in (result.failure_reason or "")
+    assert not (outside / "mesc-t6-compact-sft").exists()
+
+
+def test_hardlinked_runtime_output_fails_closed(tmp_path: Path) -> None:
+    external = tmp_path / "external-adapter.safetensors"
+    external.write_bytes(b"external-adapter")
+    runtime = _HardlinkRuntime(external)
+    backend, manifest = _backend(tmp_path, runtime)
+
+    result = backend.execute(manifest=manifest)
+
+    assert result.disposition == "FAILED"
+    assert runtime.calls == [17, 42]
+    assert result.artifacts == ()
+    assert "hard link" in (result.failure_reason or "")
+    assert external.read_bytes() == b"external-adapter"
+    repository_root = tmp_path / "repo"
+    assert not (repository_root / "experiments" / "mesc-t6-compact-sft").exists()
+    assert not tuple(repository_root.glob(".mesc-t6-compact-sft.mesc-sft-*"))
 
 
 def test_model_weight_mismatch_fails_before_runtime(tmp_path: Path) -> None:

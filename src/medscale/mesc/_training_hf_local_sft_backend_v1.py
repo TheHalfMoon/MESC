@@ -39,6 +39,9 @@ _BACKEND_ID: Final = "mesc-hf-local-sft"
 _BACKEND_VERSION: Final = "v1"
 _PROFILE_VERSION: Final = "MESC-HF-LOCAL-SFT-PROFILE-V1"
 _SHA256_CHUNK: Final = 1024 * 1024
+_O_BINARY: Final = getattr(os, "O_BINARY", 0)
+_O_DIRECTORY: Final = getattr(os, "O_DIRECTORY", 0)
+_O_NOFOLLOW: Final = getattr(os, "O_NOFOLLOW", 0)
 _REQUIRED_RUNTIME_MODULES: Final = (
     "torch",
     "transformers",
@@ -172,6 +175,8 @@ class HfLocalSftBackend:
             )
         started_at = _utc_now()
         staging: Path | None = None
+        repository_fd: int | None = None
+        publication_fd: int | None = None
         try:
             self._require_manifest_binding(manifest)
             model_identity = self._identify_model(manifest)
@@ -182,13 +187,24 @@ class HfLocalSftBackend:
                 manifest.result_namespaces,
                 repository_root=self._repository_root,
             )
-            if final_parent.exists() or final_parent.is_symlink():
+            if _path_exists_no_follow(final_parent):
                 raise HfLocalSftBackendError("planned experiment result root already exists")
-            final_parent.parent.mkdir(parents=True, exist_ok=True)
+            publication_parent = _prepare_publication_parent(
+                final_parent.parent,
+                repository_root=self._repository_root,
+            )
+            repository_fd = _open_directory_fd(
+                self._repository_root,
+                field="repository_root",
+            )
+            publication_fd = _open_directory_fd(
+                publication_parent,
+                field="publication_parent",
+            )
             staging = Path(
                 tempfile.mkdtemp(
                     prefix=f".{manifest.experiment_id}.mesc-sft-",
-                    dir=final_parent.parent,
+                    dir=self._repository_root,
                 )
             )
             outputs_dir = staging / "outputs"
@@ -249,11 +265,37 @@ class HfLocalSftBackend:
                 staging,
                 final_parent_relative=final_parent_relative,
             )
-            if final_parent.exists() or final_parent.is_symlink():
+            if publication_fd is None or repository_fd is None:
+                raise HfLocalSftBackendError("publication descriptors are unavailable")
+            _require_publication_parent_safe(
+                publication_parent,
+                repository_root=self._repository_root,
+            )
+            _require_directory_fd_matches_path(
+                repository_fd,
+                self._repository_root,
+                field="repository_root",
+            )
+            _require_directory_fd_matches_path(
+                publication_fd,
+                publication_parent,
+                field="publication_parent",
+            )
+            if _path_exists_no_follow(final_parent):
                 raise HfLocalSftBackendError(
                     "planned experiment result root appeared during training"
                 )
-            staging.replace(final_parent)
+            try:
+                os.replace(
+                    staging.name,
+                    final_parent.name,
+                    src_dir_fd=repository_fd,
+                    dst_dir_fd=publication_fd,
+                )
+            except OSError as exc:
+                raise HfLocalSftBackendError(
+                    "staged experiment root could not be published atomically"
+                ) from exc
             staging = None
             return TrainingBackendResult(
                 disposition="SUCCEEDED",
@@ -275,6 +317,15 @@ class HfLocalSftBackend:
                 artifacts=(),
                 failure_reason=_failure_reason(exc),
             )
+        except BaseException:
+            if staging is not None:
+                shutil.rmtree(staging, ignore_errors=True)
+            raise
+        finally:
+            if publication_fd is not None:
+                os.close(publication_fd)
+            if repository_fd is not None:
+                os.close(repository_fd)
 
     def _identify_model(
         self,
@@ -505,6 +556,131 @@ def _resolve_result_parent(
     return final_parent, parent_text
 
 
+def _path_exists_no_follow(path: Path) -> bool:
+    try:
+        os.lstat(path)
+    except FileNotFoundError:
+        return False
+    except OSError as exc:
+        raise HfLocalSftBackendError("publication path could not be inspected safely") from exc
+    return True
+
+
+def _open_directory_fd(path: Path, *, field: str) -> int:
+    if _O_DIRECTORY == 0 or _O_NOFOLLOW == 0:
+        raise HfLocalSftBackendError(
+            "platform cannot enforce descriptor-pinned publication directories"
+        )
+    flags = os.O_RDONLY | _O_BINARY | _O_DIRECTORY | _O_NOFOLLOW
+    try:
+        fd = os.open(path, flags)
+    except OSError as exc:
+        raise HfLocalSftBackendError(f"{field} could not be opened safely") from exc
+    try:
+        info = os.fstat(fd)
+        if not stat.S_ISDIR(info.st_mode):
+            raise HfLocalSftBackendError(f"{field} descriptor must reference a directory")
+    except BaseException:
+        os.close(fd)
+        raise
+    return fd
+
+
+def _require_directory_fd_matches_path(fd: int, path: Path, *, field: str) -> None:
+    try:
+        descriptor_info = os.fstat(fd)
+        path_info = os.lstat(path)
+    except OSError as exc:
+        raise HfLocalSftBackendError(f"{field} changed during execution") from exc
+    if stat.S_ISLNK(path_info.st_mode) or not stat.S_ISDIR(path_info.st_mode):
+        raise HfLocalSftBackendError(f"{field} must remain a non-symlink directory")
+    if (descriptor_info.st_dev, descriptor_info.st_ino) != (path_info.st_dev, path_info.st_ino):
+        raise HfLocalSftBackendError(f"{field} changed during execution")
+
+
+def _prepare_publication_parent(
+    publication_parent: Path,
+    *,
+    repository_root: Path,
+) -> Path:
+    return _walk_publication_parent(
+        publication_parent,
+        repository_root=repository_root,
+        create_missing=True,
+    )
+
+
+def _require_publication_parent_safe(
+    publication_parent: Path,
+    *,
+    repository_root: Path,
+) -> None:
+    _walk_publication_parent(
+        publication_parent,
+        repository_root=repository_root,
+        create_missing=False,
+    )
+
+
+def _walk_publication_parent(
+    publication_parent: Path,
+    *,
+    repository_root: Path,
+    create_missing: bool,
+) -> Path:
+    try:
+        root_info = os.lstat(repository_root)
+    except OSError as exc:
+        raise HfLocalSftBackendError("repository_root could not be inspected safely") from exc
+    if stat.S_ISLNK(root_info.st_mode) or not stat.S_ISDIR(root_info.st_mode):
+        raise HfLocalSftBackendError("repository_root must be an existing non-symlink directory")
+    try:
+        relative = publication_parent.relative_to(repository_root)
+    except ValueError as exc:
+        raise HfLocalSftBackendError(
+            "publication parent must remain inside repository_root"
+        ) from exc
+
+    current = repository_root
+    for part in relative.parts:
+        current = current / part
+        try:
+            info = os.lstat(current)
+        except FileNotFoundError:
+            if not create_missing:
+                raise HfLocalSftBackendError(
+                    "publication parent disappeared during execution"
+                ) from None
+            try:
+                current.mkdir()
+                info = os.lstat(current)
+            except OSError as exc:
+                raise HfLocalSftBackendError(
+                    "publication parent could not be created safely"
+                ) from exc
+        except OSError as exc:
+            raise HfLocalSftBackendError(
+                "publication parent could not be inspected safely"
+            ) from exc
+        if stat.S_ISLNK(info.st_mode):
+            raise HfLocalSftBackendError("publication parent ancestors must not be symlinks")
+        if not stat.S_ISDIR(info.st_mode):
+            raise HfLocalSftBackendError("publication parent ancestors must be directories")
+        if info.st_dev != root_info.st_dev:
+            raise HfLocalSftBackendError(
+                "publication parent must remain on the repository filesystem"
+            )
+
+    try:
+        root_resolved = repository_root.resolve(strict=True)
+        current_resolved = current.resolve(strict=True)
+    except OSError as exc:
+        raise HfLocalSftBackendError("publication parent could not be resolved safely") from exc
+    if current_resolved != root_resolved and root_resolved not in current_resolved.parents:
+        raise HfLocalSftBackendError("publication parent resolved outside repository_root")
+    return current
+
+
 def _read_attested_file(path: Path) -> bytes:
     if type(path) is not Path:
         raise HfLocalSftBackendError("corpus_path must be an exact pathlib.Path")
@@ -603,6 +779,8 @@ def _collect_result_artifacts(
         info = child.stat(follow_symlinks=False)
         if not stat.S_ISREG(info.st_mode) or info.st_size <= 0:
             raise HfLocalSftBackendError("runtime output must contain non-empty regular files only")
+        if info.st_nlink != 1:
+            raise HfLocalSftBackendError("runtime output files must have exactly one hard link")
         relative = child.relative_to(staging)
         if relative.parts[0] not in ("outputs", "results"):
             raise HfLocalSftBackendError("runtime output escaped planned namespaces")
@@ -622,15 +800,46 @@ def _collect_result_artifacts(
 
 
 def _hash_regular_file(path: Path) -> tuple[str, int]:
+    if _O_NOFOLLOW == 0:
+        raise HfLocalSftBackendError("platform cannot enforce no-follow runtime output hashing")
+    flags = os.O_RDONLY | _O_BINARY | _O_NOFOLLOW
+    try:
+        fd = os.open(path, flags)
+    except OSError as exc:
+        raise HfLocalSftBackendError("runtime output could not be opened safely") from exc
+
     digest = hashlib.sha256()
     byte_count = 0
-    with path.open("rb") as handle:
+    try:
+        before = os.fstat(fd)
+        if not stat.S_ISREG(before.st_mode) or before.st_size <= 0:
+            raise HfLocalSftBackendError("runtime output must contain non-empty regular files only")
+        if before.st_nlink != 1:
+            raise HfLocalSftBackendError("runtime output files must have exactly one hard link")
         while True:
-            chunk = handle.read(_SHA256_CHUNK)
+            chunk = os.read(fd, _SHA256_CHUNK)
             if not chunk:
                 break
             byte_count += len(chunk)
             digest.update(chunk)
+        after = os.fstat(fd)
+    finally:
+        os.close(fd)
+
+    if _stat_identity(before) != _stat_identity(after):
+        raise HfLocalSftBackendError("runtime output changed while being hashed")
+    if byte_count != before.st_size:
+        raise HfLocalSftBackendError("runtime output byte count changed while being hashed")
+    try:
+        current = os.lstat(path)
+    except OSError as exc:
+        raise HfLocalSftBackendError("runtime output changed after hashing") from exc
+    if stat.S_ISLNK(current.st_mode) or not stat.S_ISREG(current.st_mode):
+        raise HfLocalSftBackendError("runtime output path changed after hashing")
+    if current.st_nlink != 1:
+        raise HfLocalSftBackendError("runtime output files must have exactly one hard link")
+    if _stat_identity(after) != _stat_identity(current):
+        raise HfLocalSftBackendError("runtime output changed after hashing")
     return digest.hexdigest(), byte_count
 
 
