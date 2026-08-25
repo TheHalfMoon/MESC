@@ -130,7 +130,7 @@ class TrainingExampleV1:
                 f"contract_version must be exactly {_CONTRACT_VERSION}"
             )
         _require_stable_id(self.example_id, field="example_id")
-        _require_stable_id(self.training_record_id, field="training_record_id")
+        _require_t5_record_id(self.training_record_id)
         _require_stable_id(self.source_id, field="source_id")
         _require_text(self.source_revision, field="source_revision")
         _require_text(self.source_license, field="source_license")
@@ -176,8 +176,8 @@ class TrainingExampleV1:
         _require_choice(self.training_stage, allowed=_ALLOWED_STAGES, field="training_stage")
 
         _validate_prompt(self.prompt)
-        if not isinstance(self.completion, TrainingMessage):
-            raise TrainingExampleContractError("completion must be a TrainingMessage")
+        if type(self.completion) is not TrainingMessage:
+            raise TrainingExampleContractError("completion must be an exact TrainingMessage")
         if self.completion.role != "assistant":
             raise TrainingExampleContractError("completion role must be exactly assistant")
         _require_choice(
@@ -276,9 +276,9 @@ class TrainingCorpusV1:
             raise TrainingExampleContractError("training corpus examples must be a tuple")
         if not self.examples:
             raise TrainingExampleContractError("training corpus must be non-empty")
-        if any(not isinstance(example, TrainingExampleV1) for example in self.examples):
+        if any(type(example) is not TrainingExampleV1 for example in self.examples):
             raise TrainingExampleContractError(
-                "training corpus members must be TrainingExampleV1 values"
+                "training corpus members must be exact TrainingExampleV1 values"
             )
         ids = [example.example_id for example in self.examples]
         if len(ids) != len(set(ids)):
@@ -327,9 +327,9 @@ def _validate_training_examples_runtime(examples: object) -> list[TrainingExampl
 
     validated: list[TrainingExampleV1] = []
     for example in examples:
-        if not isinstance(example, TrainingExampleV1):
+        if type(example) is not TrainingExampleV1:
             raise TrainingExampleContractError(
-                "examples must contain only TrainingExampleV1 values"
+                "examples must contain only exact TrainingExampleV1 values"
             )
         validated.append(example)
     return validated
@@ -340,8 +340,8 @@ def _validate_prompt(prompt: object) -> None:
         raise TrainingExampleContractError("prompt must be a non-empty tuple")
     messages: list[TrainingMessage] = []
     for message in prompt:
-        if not isinstance(message, TrainingMessage):
-            raise TrainingExampleContractError("prompt members must be TrainingMessage values")
+        if type(message) is not TrainingMessage:
+            raise TrainingExampleContractError("prompt members must be exact TrainingMessage values")
         messages.append(message)
 
     system_positions: list[int] = []
@@ -398,6 +398,13 @@ def _require_choice(value: object, *, allowed: Collection[str], field: str) -> s
 def _require_text(value: object, *, field: str) -> str:
     if not isinstance(value, str) or not value.strip() or "\x00" in value:
         raise TrainingExampleContractError(f"{field} must be non-empty text without NUL")
+    return value
+
+
+def _require_t5_record_id(value: object) -> str:
+    """Match the upstream SplitAssignmentFreeze record-id domain exactly."""
+    if not isinstance(value, str) or not value.strip():
+        raise TrainingExampleContractError("training_record_id must be a non-empty string")
     return value
 
 
