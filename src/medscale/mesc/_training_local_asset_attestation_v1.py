@@ -152,9 +152,7 @@ class TrainingLocalAssetAttestationReport:
         if not isinstance(self.blockers, tuple):
             raise TrainingLocalAssetAttestationError("blockers must be an immutable tuple")
         if any(not isinstance(item, str) or not item for item in self.blockers):
-            raise TrainingLocalAssetAttestationError(
-                "blockers must contain non-empty strings only"
-            )
+            raise TrainingLocalAssetAttestationError("blockers must contain non-empty strings only")
         if self.disposition == "PASS":
             self._validate_pass()
 
@@ -236,9 +234,7 @@ def attest_local_training_assets(
 ) -> TrainingLocalAssetAttestationReport:
     """Attest one launch run against already-local model and corpus assets."""
     if type(launch_plan) is not TrainingLaunchPlan:
-        raise TrainingLocalAssetAttestationError(
-            "launch_plan must be an exact TrainingLaunchPlan"
-        )
+        raise TrainingLocalAssetAttestationError("launch_plan must be an exact TrainingLaunchPlan")
     if type(corpus_binding) is not TrainingCorpusBindingReport:
         raise TrainingLocalAssetAttestationError(
             "corpus_binding must be an exact TrainingCorpusBindingReport"
@@ -246,9 +242,7 @@ def attest_local_training_assets(
     if role not in ("compact", "reasoner"):
         raise TrainingLocalAssetAttestationError("role must be compact or reasoner")
     if not isinstance(model_root, Path) or not isinstance(corpus_path, Path):
-        raise TrainingLocalAssetAttestationError(
-            "model_root and corpus_path must be pathlib.Path"
-        )
+        raise TrainingLocalAssetAttestationError("model_root and corpus_path must be pathlib.Path")
 
     run_plan = launch_plan.compact if role == "compact" else launch_plan.reasoner
     blockers: list[str] = []
