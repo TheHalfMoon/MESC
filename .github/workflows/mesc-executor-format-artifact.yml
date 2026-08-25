@@ -1,4 +1,4 @@
-name: MESC Executor Format Commit
+name: MESC Executor Hardening Commit
 
 on:
   pull_request:
@@ -7,7 +7,7 @@ permissions:
   contents: write
 
 jobs:
-  format:
+  harden:
     runs-on: ubuntu-latest
     steps:
       - name: Check out exact executor branch
@@ -21,35 +21,98 @@ jobs:
         with:
           enable-cache: true
 
-      - name: Format and commit exact-head files
+      - name: Harden snapshots and qualification coverage
         shell: bash
         run: |
           set -euo pipefail
-          expected_head="98ca4b50520051389982bfd97af379b4d5a67777"
+          expected_head="8bcac419d1337d71345863cb673af25b52cc973f"
           current_head="$(git rev-parse HEAD)"
           if [[ "$current_head" != "$expected_head" ]]; then
-            echo "Executor branch moved from expected head; formatter helper is a no-op."
+            echo "Executor branch moved from expected head; hardening helper is a no-op."
             exit 0
           fi
 
           uv sync --frozen
+
+          python - <<'PY'
+          from pathlib import Path
+
+          source_path = Path("src/medscale/mesc/_training_executor_v1.py")
+          source = source_path.read_text(encoding="utf-8")
+          import_anchor = "from dataclasses import dataclass\n"
+          if import_anchor not in source:
+              raise SystemExit("source import anchor missing")
+          source = source.replace(
+              import_anchor,
+              "from copy import deepcopy\nfrom dataclasses import dataclass\n",
+              1,
+          )
+
+          execution_anchor = '''    if backend is None:\n        raise TrainingExecutionError("an explicit training backend is required")\n\n    rebuilt_launch = _recompute_launch(\n'''
+          if execution_anchor not in source:
+              raise SystemExit("execution snapshot anchor missing")
+          execution_replacement = '''    if backend is None:\n        raise TrainingExecutionError("an explicit training backend is required")\n\n    try:\n        manifest = deepcopy(manifest)\n        readiness = deepcopy(readiness)\n        launch_plan = deepcopy(launch_plan)\n        corpus_binding = deepcopy(corpus_binding)\n        local_assets = deepcopy(local_assets)\n        environment = deepcopy(environment)\n    except Exception as exc:\n        raise TrainingExecutionError(\n            "canonical execution inputs could not be snapshotted"\n        ) from exc\n\n    rebuilt_launch = _recompute_launch(\n'''
+          source = source.replace(execution_anchor, execution_replacement, 1)
+          source_path.write_text(source, encoding="utf-8")
+
+          test_path = Path("tests/test_mesc_training_executor_v1.py")
+          tests = test_path.read_text(encoding="utf-8")
+          test_import_anchor = "import pytest\n\n"
+          if test_import_anchor not in tests:
+              raise SystemExit("test import anchor missing")
+          tests = tests.replace(
+              test_import_anchor,
+              "import pytest\n\nimport medscale.mesc._training_executor_v1 as executor_module\n\n",
+              1,
+          )
+          sentinel = "def test_reasoner_role_executes_end_to_end() -> None:"
+          if sentinel in tests:
+              raise SystemExit("qualification tests already appended")
+          tests += '''\n\n\ndef test_reasoner_role_executes_end_to_end() -> None:\n    backend = _SuccessBackend()\n    receipt = _execute(backend, role="reasoner")\n\n    assert receipt.disposition == "SUCCEEDED"\n    assert receipt.role == "reasoner"\n    assert receipt.model_id == "fixture/reasoner"\n    assert backend.manifest is not None\n    assert backend.manifest.role == "reasoner"\n    assert backend.manifest.model_id == "fixture/reasoner"\n\n\ndef test_aborted_backend_returns_canonical_terminal_receipt() -> None:\n    class AbortedBackend:\n        def execute(\n            self,\n            *,\n            manifest: TrainingExecutionManifest,\n        ) -> TrainingBackendResult:\n            del manifest\n            return TrainingBackendResult(\n                disposition="ABORTED",\n                backend_id="fixture-backend",\n                backend_version="v1",\n                started_at="2026-08-25T05:00:00Z",\n                finished_at="2026-08-25T05:00:15Z",\n                artifacts=(),\n                failure_reason="fixture operator abort",\n            )\n\n    receipt = _execute(AbortedBackend())\n    assert receipt.disposition == "ABORTED"\n    assert receipt.result_artifacts == ()\n    assert receipt.result_manifest_sha256 is None\n    assert receipt.failure_reason == "fixture operator abort"\n\n\ndef test_caller_owned_launch_mutation_after_validation_is_isolated(\n    monkeypatch: pytest.MonkeyPatch,\n) -> None:\n    manifest, readiness, launch, binding, assets, environment = _bundle()\n    backend = _SuccessBackend()\n    original_require_environment = executor_module._require_environment\n\n    def mutate_caller_after_validation(\n        observed_environment: TrainingExecutionEnvironment,\n        *,\n        run_plan: TrainingRunPlan,\n    ) -> None:\n        original_require_environment(\n            observed_environment,\n            run_plan=run_plan,\n        )\n        object.__setattr__(launch.compact, "model_id", "tampered/model")\n\n    monkeypatch.setattr(\n        executor_module,\n        "_require_environment",\n        mutate_caller_after_validation,\n    )\n\n    receipt = execute_training(\n        manifest=manifest,\n        readiness=readiness,\n        launch_plan=launch,\n        corpus_binding=binding,\n        local_assets=assets,\n        environment=environment,\n        role="compact",\n        backend=backend,\n    )\n\n    assert receipt.model_id == "fixture/compact"\n    assert backend.manifest is not None\n    assert backend.manifest.model_id == "fixture/compact"\n'''
+          test_path.write_text(tests, encoding="utf-8")
+
+          readme_path = Path("specs/mesc-training-executor-v1/README.md")
+          readme = readme_path.read_text(encoding="utf-8")
+          readme_anchor = "No backend means fail closed.\n\n## Independent upstream revalidation\n"
+          if readme_anchor not in readme:
+              raise SystemExit("README snapshot anchor missing")
+          readme = readme.replace(
+              readme_anchor,
+              "No backend means fail closed.\n\n"
+              "Before recomputation, the executor snapshots the exact canonical input objects "
+              "into core-owned copies. All subsequent authority checks and manifest construction "
+              "operate exclusively on those snapshots, so caller-side mutation after entry cannot "
+              "change the validated execution identity.\n\n"
+              "## Independent upstream revalidation\n",
+              1,
+          )
+          readme_path.write_text(readme, encoding="utf-8")
+          PY
+
           uv run ruff format \
+            src/medscale/mesc/_training_executor_v1.py \
+            tests/test_mesc_training_executor_v1.py
+          uv run ruff check \
             src/medscale/mesc/_training_executor_v1.py \
             tests/test_mesc_training_executor_v1.py
           uv run ruff format --check \
             src/medscale/mesc/_training_executor_v1.py \
             tests/test_mesc_training_executor_v1.py
+          uv run mypy
+          uv run pytest tests/test_mesc_training_executor_v1.py -q
           git diff --check
 
           changed_count="$(git diff --name-only | wc -l | tr -d ' ')"
-          test "$changed_count" = "2"
+          test "$changed_count" = "3"
+          git diff --name-only | grep -Fx 'specs/mesc-training-executor-v1/README.md'
           git diff --name-only | grep -Fx 'src/medscale/mesc/_training_executor_v1.py'
           git diff --name-only | grep -Fx 'tests/test_mesc_training_executor_v1.py'
 
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -- \
+            specs/mesc-training-executor-v1/README.md \
             src/medscale/mesc/_training_executor_v1.py \
             tests/test_mesc_training_executor_v1.py
-          git commit -m 'style(mesc): format training executor files'
+          git commit -m 'fix(mesc): snapshot executor inputs before validation'
           git push origin HEAD:feat/mesc-training-executor-v1
