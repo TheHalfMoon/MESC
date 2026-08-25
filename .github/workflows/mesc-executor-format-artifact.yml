@@ -89,6 +89,9 @@ jobs:
           readme_path.write_text(readme, encoding="utf-8")
           PY
 
+          uv run ruff check --fix \
+            src/medscale/mesc/_training_executor_v1.py \
+            tests/test_mesc_training_executor_v1.py
           uv run ruff format \
             src/medscale/mesc/_training_executor_v1.py \
             tests/test_mesc_training_executor_v1.py
