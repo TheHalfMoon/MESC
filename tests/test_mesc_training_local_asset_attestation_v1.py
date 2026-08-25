@@ -9,6 +9,7 @@ from typing import Any
 
 import pytest
 
+import medscale.mesc._training_local_asset_attestation_v1 as attestation_mod
 from medscale.mesc._training_corpus_binding_v1 import (
     TrainingCorpusBindingDisposition,
     TrainingCorpusBindingReport,
@@ -183,6 +184,31 @@ def test_corpus_content_and_size_mismatch_block(tmp_path: Path) -> None:
     assert report.disposition == "BLOCKED"
     assert any("corpus SHA" in item for item in report.blockers)
     assert any("corpus byte count" in item for item in report.blockers)
+
+
+def test_corpus_read_failure_blocks_instead_of_raising(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    raw = b'{"example":"one"}\n'
+    model_root, corpus_path = _paths(tmp_path, raw)
+
+    def fail_read(path: Path) -> tuple[str, int]:
+        raise PermissionError("denied")
+
+    monkeypatch.setattr(attestation_mod, "_observe_file", fail_read)
+    report = attest_local_training_assets(
+        launch_plan=_launch(),
+        corpus_binding=_binding(raw),
+        role="compact",
+        model_root=model_root,
+        corpus_path=corpus_path,
+        verifier=_Verifier(),
+    )
+    assert report.disposition == "BLOCKED"
+    assert "local corpus could not be read" in report.blockers
+    assert report.observed_corpus_sha256 is None
+    assert report.observed_corpus_byte_count is None
 
 
 def test_missing_paths_fail_closed_without_model_verification(tmp_path: Path) -> None:
