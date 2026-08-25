@@ -231,8 +231,15 @@ class TrainingExecutionManifest:
             raise TrainingExecutionError("canonical_corpus_byte_count must be a positive int")
         if not isinstance(self.result_namespaces, tuple) or not self.result_namespaces:
             raise TrainingExecutionError("result_namespaces must be a non-empty immutable tuple")
+        if len(set(self.result_namespaces)) != len(self.result_namespaces):
+            raise TrainingExecutionError("result_namespaces must be unique")
+        namespace_paths = tuple(PurePosixPath(path) for path in self.result_namespaces)
         for path in self.result_namespaces:
             _require_repository_relative_path(path, field="result namespace")
+        for index, left in enumerate(namespace_paths):
+            for right in namespace_paths[index + 1 :]:
+                if left in right.parents or right in left.parents:
+                    raise TrainingExecutionError("result_namespaces must be disjoint")
 
     @property
     def execution_manifest_sha256(self) -> str:
@@ -316,6 +323,8 @@ class TrainingExecutionReceipt:
             raise TrainingExecutionError(f"executor_version must be exactly {_EXECUTOR_VERSION}")
         if self.disposition not in ("SUCCEEDED", "FAILED", "ABORTED"):
             raise TrainingExecutionError("receipt disposition is invalid")
+        if self.role not in ("compact", "reasoner"):
+            raise TrainingExecutionError("role must be compact or reasoner")
         for field, value in (
             ("launch_plan_sha256", self.launch_plan_sha256),
             ("run_plan_sha256", self.run_plan_sha256),
@@ -353,6 +362,11 @@ class TrainingExecutionReceipt:
             raise TrainingExecutionError(
                 "result_artifacts must contain exact TrainingResultArtifact values"
             )
+        artifact_paths = tuple(item.path for item in self.result_artifacts)
+        if len(set(artifact_paths)) != len(artifact_paths):
+            raise TrainingExecutionError("result_artifact paths must be unique")
+        if artifact_paths != tuple(sorted(artifact_paths)):
+            raise TrainingExecutionError("result_artifacts must use canonical path ordering")
         if self.disposition == "SUCCEEDED":
             if not self.result_artifacts or self.result_manifest_sha256 is None:
                 raise TrainingExecutionError(
@@ -360,6 +374,16 @@ class TrainingExecutionReceipt:
                 )
             if self.failure_reason is not None:
                 raise TrainingExecutionError("SUCCEEDED receipt cannot have failure_reason")
+            expected_result_manifest = content_hash(
+                {
+                    "artifacts": [item.to_dict() for item in self.result_artifacts],
+                    "kind": _RESULT_MANIFEST_KIND,
+                }
+            )
+            if self.result_manifest_sha256 != expected_result_manifest:
+                raise TrainingExecutionError(
+                    "result_manifest_sha256 does not match canonical result artifacts"
+                )
         else:
             if self.result_artifacts or self.result_manifest_sha256 is not None:
                 raise TrainingExecutionError(
@@ -490,7 +514,10 @@ def execute_training(
 
     result_manifest_sha256: str | None = None
     if result.disposition == "SUCCEEDED":
-        _require_result_namespaces(artifacts, run_plan=run_plan)
+        _require_result_namespaces(
+            artifacts,
+            namespaces=execution_manifest.result_namespaces,
+        )
         result_manifest_sha256 = content_hash(
             {
                 "artifacts": [item.to_dict() for item in artifacts],
@@ -500,25 +527,25 @@ def execute_training(
 
     return TrainingExecutionReceipt(
         disposition=result.disposition,
-        launch_plan_sha256=launch_plan.plan_sha256,
-        run_plan_sha256=run_plan.run_plan_sha256,
-        readiness_manifest_sha256=manifest.manifest_sha256,
-        corpus_binding_sha256=corpus_binding.binding_sha256,
-        local_asset_attestation_sha256=local_assets.attestation_sha256,
+        launch_plan_sha256=execution_manifest.launch_plan_sha256,
+        run_plan_sha256=execution_manifest.run_plan_sha256,
+        readiness_manifest_sha256=execution_manifest.readiness_manifest_sha256,
+        corpus_binding_sha256=execution_manifest.corpus_binding_sha256,
+        local_asset_attestation_sha256=execution_manifest.local_asset_attestation_sha256,
         execution_manifest_sha256=manifest_sha256,
-        environment_sha256=environment.environment_sha256,
-        role=role,
-        experiment_id=run_plan.experiment_id,
-        model_id=run_plan.model_id,
-        revision=run_plan.revision,
-        weights_sha256=run_plan.weights_sha256,
-        training_dataset_sha256=run_plan.training_dataset_sha256,
-        repository_sha=run_plan.repository_sha,
-        repository_tree=run_plan.repository_tree,
-        dependency_lock_sha256=run_plan.dependency_lock_sha256,
-        runtime_qualification_sha256=launch_plan.runtime_qualification_sha256,
+        environment_sha256=execution_manifest.environment_sha256,
+        role=execution_manifest.role,
+        experiment_id=execution_manifest.experiment_id,
+        model_id=execution_manifest.model_id,
+        revision=execution_manifest.revision,
+        weights_sha256=execution_manifest.weights_sha256,
+        training_dataset_sha256=execution_manifest.training_dataset_sha256,
+        repository_sha=execution_manifest.repository_sha,
+        repository_tree=execution_manifest.repository_tree,
+        dependency_lock_sha256=execution_manifest.dependency_lock_sha256,
+        runtime_qualification_sha256=execution_manifest.runtime_qualification_sha256,
         training_authorization_receipt_sha256=(
-            launch_plan.training_authorization_receipt_sha256
+            execution_manifest.training_authorization_receipt_sha256
         ),
         backend_id=result.backend_id,
         backend_version=result.backend_version,
@@ -700,14 +727,14 @@ def _snapshot_backend_result(result: TrainingBackendResult) -> TrainingBackendRe
 def _require_result_namespaces(
     artifacts: tuple[TrainingResultArtifact, ...],
     *,
-    run_plan: TrainingRunPlan,
+    namespaces: tuple[str, ...],
 ) -> None:
-    namespaces = tuple(PurePosixPath(path) for path in run_plan.result_paths)
+    namespace_paths = tuple(PurePosixPath(path) for path in namespaces)
     artifact_paths = tuple(PurePosixPath(item.path) for item in artifacts)
     for path in artifact_paths:
-        if not any(path == namespace or namespace in path.parents for namespace in namespaces):
+        if not any(path == namespace or namespace in path.parents for namespace in namespace_paths):
             raise TrainingExecutionError("backend result artifact escapes planned result namespaces")
-    for namespace in namespaces:
+    for namespace in namespace_paths:
         if not any(path == namespace or namespace in path.parents for path in artifact_paths):
             raise TrainingExecutionError(
                 "backend result does not represent every planned result namespace"
