@@ -114,6 +114,25 @@ def test_single_identity_is_path_independent_and_content_addressed(
     assert mutated.weights_sha256 != first.weights_sha256
 
 
+def test_weight_identity_excludes_model_id_and_revision(tmp_path: Path) -> None:
+    root = tmp_path / "model"
+    _single(root)
+
+    first = identify_hf_safetensors_artifact(
+        model_root=root,
+        model_id="example/model",
+        revision=_GIT_A,
+    )
+    second = identify_hf_safetensors_artifact(
+        model_root=root,
+        model_id="mirror/model",
+        revision=_GIT_B,
+    )
+
+    assert first.weights_sha256 == second.weights_sha256
+    assert first.verifier_receipt_sha256 != second.verifier_receipt_sha256
+
+
 def test_same_size_mutation_with_restored_mtime_fails_closed(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -147,6 +166,40 @@ def test_same_size_mutation_with_restored_mtime_fails_closed(
         match="changed during verification",
     ):
         _identify(root)
+
+
+def test_model_root_replacement_during_traversal_fails_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "model"
+    replacement = tmp_path / "replacement"
+    parked = tmp_path / "parked"
+    _single(root, b"trusted-safetensors")
+    _single(replacement, b"hostile-safetensors")
+    replaced = False
+
+    def _list_root_names_then_replace(root_fd: int) -> tuple[str, ...]:
+        nonlocal replaced
+        if not replaced:
+            root.rename(parked)
+            replacement.rename(root)
+            replaced = True
+        return tuple(sorted(os.listdir(root_fd)))
+
+    monkeypatch.setattr(
+        "medscale.mesc._training_hf_safetensors_identity_v1._list_root_names",
+        _list_root_names_then_replace,
+    )
+
+    with pytest.raises(
+        TrainingModelArtifactIdentityError,
+        match="model_root changed during verification",
+    ):
+        _identify(root)
+
+    assert (root / "model.safetensors").read_bytes() == b"hostile-safetensors"
+    assert (parked / "model.safetensors").read_bytes() == b"trusted-safetensors"
 
 
 def test_sharded_identity_binds_index_and_complete_shards(tmp_path: Path) -> None:
