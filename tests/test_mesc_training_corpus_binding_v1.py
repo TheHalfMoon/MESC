@@ -317,5 +317,8 @@ def test_binding_rejects_subclassed_canonical_inputs() -> None:
 
     with pytest.raises(TrainingCorpusBindingError, match="exact TrainingCorpusV1"):
         bind_training_corpus(qualification=qualification, corpus=fake_corpus)
-    with pytest.raises(TrainingCorpusBindingError, match="exact TrainingDatasetQualificationReport"):
+    with pytest.raises(
+        TrainingCorpusBindingError,
+        match="exact TrainingDatasetQualificationReport",
+    ):
         bind_training_corpus(qualification=fake_qualification, corpus=corpus)
