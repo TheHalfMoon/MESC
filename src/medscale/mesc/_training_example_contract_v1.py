@@ -341,7 +341,7 @@ def _validate_prompt(prompt: object) -> None:
     messages: list[TrainingMessage] = []
     for message in prompt:
         if type(message) is not TrainingMessage:
-            raise TrainingExampleContractError("prompt members must be exact TrainingMessage values")
+            raise TrainingExampleContractError("prompt member must be exact TrainingMessage")
         messages.append(message)
 
     system_positions: list[int] = []
