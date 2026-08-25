@@ -1,0 +1,1 @@
+Temporary formatter artifact trigger. This branch/PR is isolated from the canonical Training Executor PR and will be closed after extracting the Ruff-formatted files.
