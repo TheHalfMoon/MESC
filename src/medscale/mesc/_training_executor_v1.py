@@ -137,7 +137,9 @@ class TrainingBackendResult:
         if not isinstance(self.artifacts, tuple):
             raise TrainingExecutionError("artifacts must be an immutable tuple")
         if any(type(item) is not TrainingResultArtifact for item in self.artifacts):
-            raise TrainingExecutionError("artifacts must contain exact TrainingResultArtifact values")
+            raise TrainingExecutionError(
+                "artifacts must contain exact TrainingResultArtifact values"
+            )
         if len({item.path for item in self.artifacts}) != len(self.artifacts):
             raise TrainingExecutionError("backend result artifact paths must be unique")
         if self.disposition == "SUCCEEDED":
@@ -227,7 +229,10 @@ class TrainingExecutionManifest:
             raise TrainingExecutionError("seeds must be non-empty non-negative integers")
         if len(set(self.seeds)) != len(self.seeds):
             raise TrainingExecutionError("seeds must not contain duplicates")
-        if type(self.canonical_corpus_byte_count) is not int or self.canonical_corpus_byte_count <= 0:
+        if (
+            type(self.canonical_corpus_byte_count) is not int
+            or self.canonical_corpus_byte_count <= 0
+        ):
             raise TrainingExecutionError("canonical_corpus_byte_count must be a positive int")
         if not isinstance(self.result_namespaces, tuple) or not self.result_namespaces:
             raise TrainingExecutionError("result_namespaces must be a non-empty immutable tuple")
@@ -627,7 +632,9 @@ def _require_local_attestation(
         or attestation.model_remote_code_allowed
         or attestation.model_gated_terms_accepted
     ):
-        raise TrainingExecutionError("local asset attestation contains forbidden security observations")
+        raise TrainingExecutionError(
+            "local asset attestation contains forbidden security observations"
+        )
     if attestation.model_verifier_receipt_sha256 is None:
         raise TrainingExecutionError("local asset attestation lacks model verifier receipt")
 
@@ -652,7 +659,9 @@ def _require_environment(
     )
     for field, actual, wanted in expected:
         if actual != wanted:
-            raise TrainingExecutionError(f"execution environment {field} does not match selected run")
+            raise TrainingExecutionError(
+                f"execution environment {field} does not match selected run"
+            )
 
 
 def _build_execution_manifest(
@@ -732,8 +741,12 @@ def _require_result_namespaces(
     namespace_paths = tuple(PurePosixPath(path) for path in namespaces)
     artifact_paths = tuple(PurePosixPath(item.path) for item in artifacts)
     for path in artifact_paths:
-        if not any(path == namespace or namespace in path.parents for namespace in namespace_paths):
-            raise TrainingExecutionError("backend result artifact escapes planned result namespaces")
+        if not any(
+            path == namespace or namespace in path.parents for namespace in namespace_paths
+        ):
+            raise TrainingExecutionError(
+                "backend result artifact escapes planned result namespaces"
+            )
     for namespace in namespace_paths:
         if not any(path == namespace or namespace in path.parents for path in artifact_paths):
             raise TrainingExecutionError(
