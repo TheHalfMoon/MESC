@@ -40,6 +40,8 @@ _CHUNK_SIZE: Final = 1024 * 1024
 _MAX_INDEX_BYTES: Final = 16 * 1024 * 1024
 _O_BINARY: Final = getattr(os, "O_BINARY", 0)
 _O_NOFOLLOW: Final = getattr(os, "O_NOFOLLOW", 0)
+_O_DIRECTORY: Final = getattr(os, "O_DIRECTORY", 0)
+_O_CLOEXEC: Final = getattr(os, "O_CLOEXEC", 0)
 
 
 class TrainingModelArtifactIdentityError(ValueError):
@@ -164,79 +166,85 @@ def identify_hf_safetensors_artifact(
     model_id: str,
     revision: str,
 ) -> HfSafeTensorsArtifactIdentity:
-    """Inspect an already-local root and derive the canonical V1 weight identity."""
+    """Inspect one pinned already-local root and derive its canonical V1 identity."""
     _require_text(model_id, field="model_id")
     if not isinstance(revision, str) or _GIT_SHA.fullmatch(revision) is None:
         raise TrainingModelArtifactIdentityError(
             "revision must be exactly 40 lowercase hex characters"
         )
 
-    root = _require_model_root(model_root)
-    _reject_unsafe_weight_files(root)
+    root_fd, root_before = _open_model_root(model_root)
+    try:
+        root_names = _list_root_names(root_fd)
+        _reject_unsafe_weight_files(root_names)
 
-    single_path = root / _SINGLE_WEIGHT
-    index_path = root / _INDEX
-    single_exists = _lexists(single_path)
-    index_exists = _lexists(index_path)
-
-    if single_exists and index_exists:
-        raise TrainingModelArtifactIdentityError(
-            "model root is ambiguous: both single and sharded SafeTensors layouts exist"
-        )
-
-    if single_exists:
-        extra = _root_safetensors_names(root) - {_SINGLE_WEIGHT}
-        if extra:
+        single_exists = _SINGLE_WEIGHT in root_names
+        index_exists = _INDEX in root_names
+        if single_exists and index_exists:
             raise TrainingModelArtifactIdentityError(
-                "single SafeTensors layout contains unexpected additional weight files"
+                "model root is ambiguous: both single and sharded SafeTensors layouts exist"
             )
-        file_identity = _hash_file_identity(
-            single_path,
-            relative_name=_SINGLE_WEIGHT,
-            kind="weight",
-        )
-        return HfSafeTensorsArtifactIdentity(
-            model_id=model_id,
-            revision=revision,
-            layout="single",
-            files=(file_identity,),
-        )
 
-    if index_exists:
-        index_raw, index_sha256, index_byte_count = _read_regular_file(
-            index_path,
-            max_bytes=_MAX_INDEX_BYTES,
-        )
-        shard_names = _parse_index(index_raw)
-        unexpected = _root_safetensors_names(root) - set(shard_names)
-        if unexpected:
-            raise TrainingModelArtifactIdentityError(
-                "sharded SafeTensors layout contains unreferenced weight files"
-            )
-        index_identity = HfArtifactFileIdentity(
-            path=_INDEX,
-            kind="index",
-            sha256=index_sha256,
-            byte_count=index_byte_count,
-        )
-        shard_identities = tuple(
-            _hash_file_identity(
-                root / shard_name,
-                relative_name=shard_name,
+        if single_exists:
+            extra = _root_safetensors_names(root_names) - {_SINGLE_WEIGHT}
+            if extra:
+                raise TrainingModelArtifactIdentityError(
+                    "single SafeTensors layout contains unexpected additional weight files"
+                )
+            file_identity = _hash_file_identity(
+                root_fd,
+                relative_name=_SINGLE_WEIGHT,
                 kind="weight",
             )
-            for shard_name in shard_names
-        )
-        return HfSafeTensorsArtifactIdentity(
-            model_id=model_id,
-            revision=revision,
-            layout="sharded",
-            files=(index_identity, *shard_identities),
-        )
+            identity = HfSafeTensorsArtifactIdentity(
+                model_id=model_id,
+                revision=revision,
+                layout="single",
+                files=(file_identity,),
+            )
+            _require_root_unchanged(root_fd, root_before)
+            return identity
 
-    raise TrainingModelArtifactIdentityError(
-        "model root does not contain a canonical SafeTensors weight layout"
-    )
+        if index_exists:
+            index_raw, index_sha256, index_byte_count = _read_regular_file(
+                root_fd,
+                relative_name=_INDEX,
+                max_bytes=_MAX_INDEX_BYTES,
+            )
+            shard_names = _parse_index(index_raw)
+            unexpected = _root_safetensors_names(root_names) - set(shard_names)
+            if unexpected:
+                raise TrainingModelArtifactIdentityError(
+                    "sharded SafeTensors layout contains unreferenced weight files"
+                )
+            index_identity = HfArtifactFileIdentity(
+                path=_INDEX,
+                kind="index",
+                sha256=index_sha256,
+                byte_count=index_byte_count,
+            )
+            shard_identities = tuple(
+                _hash_file_identity(
+                    root_fd,
+                    relative_name=shard_name,
+                    kind="weight",
+                )
+                for shard_name in shard_names
+            )
+            identity = HfSafeTensorsArtifactIdentity(
+                model_id=model_id,
+                revision=revision,
+                layout="sharded",
+                files=(index_identity, *shard_identities),
+            )
+            _require_root_unchanged(root_fd, root_before)
+            return identity
+
+        raise TrainingModelArtifactIdentityError(
+            "model root does not contain a canonical SafeTensors weight layout"
+        )
+    finally:
+        os.close(root_fd)
 
 
 class HfSafeTensorsLocalModelVerifier:
@@ -343,48 +351,72 @@ def _require_complete_shard_sequence(names: tuple[str, ...]) -> None:
         )
 
 
-def _require_model_root(model_root: Path) -> Path:
+def _open_model_root(model_root: Path) -> tuple[int, os.stat_result]:
     if not isinstance(model_root, Path):
         raise TrainingModelArtifactIdentityError("model_root must be a pathlib.Path")
-    if model_root.is_symlink():
-        raise TrainingModelArtifactIdentityError("model_root must not be a symlink")
+    _require_descriptor_relative_support()
+
+    flags = os.O_RDONLY | _O_DIRECTORY | _O_NOFOLLOW | _O_CLOEXEC
     try:
-        if not model_root.is_dir():
-            raise TrainingModelArtifactIdentityError("model_root must be an existing directory")
+        root_fd = os.open(model_root, flags)
     except OSError as exc:
-        raise TrainingModelArtifactIdentityError("model_root could not be inspected") from exc
-    return model_root
+        raise TrainingModelArtifactIdentityError(
+            "model_root must be an existing non-symlink directory"
+        ) from exc
 
-
-def _reject_unsafe_weight_files(root: Path) -> None:
     try:
-        names = tuple(entry.name for entry in os.scandir(root))
+        opened = os.fstat(root_fd)
+    except OSError as exc:
+        os.close(root_fd)
+        raise TrainingModelArtifactIdentityError("model_root descriptor could not be inspected") from exc
+
+    if not stat.S_ISDIR(opened.st_mode):
+        os.close(root_fd)
+        raise TrainingModelArtifactIdentityError("model_root descriptor must reference a directory")
+    return root_fd, opened
+
+
+def _require_descriptor_relative_support() -> None:
+    if _O_DIRECTORY == 0 or _O_NOFOLLOW == 0:
+        raise TrainingModelArtifactIdentityError(
+            "platform lacks required no-follow directory descriptor support"
+        )
+    if (
+        os.open not in os.supports_dir_fd
+        or os.stat not in os.supports_dir_fd
+        or os.listdir not in os.supports_fd
+    ):
+        raise TrainingModelArtifactIdentityError(
+            "platform lacks required descriptor-relative filesystem operations"
+        )
+
+
+def _list_root_names(root_fd: int) -> tuple[str, ...]:
+    try:
+        return tuple(sorted(os.listdir(root_fd)))
     except OSError as exc:
         raise TrainingModelArtifactIdentityError("model_root could not be enumerated") from exc
 
-    for name in names:
+
+def _reject_unsafe_weight_files(root_names: tuple[str, ...]) -> None:
+    for name in root_names:
         if name.lower().endswith(_UNSAFE_WEIGHT_SUFFIXES):
             raise TrainingModelArtifactIdentityError(
                 "pickle-compatible weight files are forbidden by the V1 SafeTensors contract"
             )
 
 
-def _root_safetensors_names(root: Path) -> set[str]:
-    try:
-        return {
-            entry.name for entry in os.scandir(root) if entry.name.lower().endswith(".safetensors")
-        }
-    except OSError as exc:
-        raise TrainingModelArtifactIdentityError("model_root could not be enumerated") from exc
+def _root_safetensors_names(root_names: tuple[str, ...]) -> set[str]:
+    return {name for name in root_names if name.lower().endswith(".safetensors")}
 
 
 def _hash_file_identity(
-    path: Path,
+    root_fd: int,
     *,
     relative_name: str,
     kind: HfArtifactFileKind,
 ) -> HfArtifactFileIdentity:
-    _, digest, byte_count = _read_regular_file(path)
+    _, digest, byte_count = _read_regular_file(root_fd, relative_name=relative_name)
     return HfArtifactFileIdentity(
         path=relative_name,
         kind=kind,
@@ -394,34 +426,38 @@ def _hash_file_identity(
 
 
 def _read_regular_file(
-    path: Path,
+    root_fd: int,
     *,
+    relative_name: str,
     max_bytes: int | None = None,
 ) -> tuple[bytes, str, int]:
+    _require_relative_basename(relative_name, field="artifact file path")
     try:
-        before = path.stat(follow_symlinks=False)
+        before = os.stat(relative_name, dir_fd=root_fd, follow_symlinks=False)
     except OSError as exc:
         raise TrainingModelArtifactIdentityError(
-            f"artifact file could not be statted: {path.name}"
+            f"artifact file could not be statted: {relative_name}"
         ) from exc
 
     if stat.S_ISLNK(before.st_mode) or not stat.S_ISREG(before.st_mode):
         raise TrainingModelArtifactIdentityError(
-            f"artifact file must be a non-symlink regular file: {path.name}"
+            f"artifact file must be a non-symlink regular file: {relative_name}"
         )
     if before.st_size <= 0:
-        raise TrainingModelArtifactIdentityError(f"artifact file must be non-empty: {path.name}")
+        raise TrainingModelArtifactIdentityError(
+            f"artifact file must be non-empty: {relative_name}"
+        )
     if max_bytes is not None and before.st_size > max_bytes:
         raise TrainingModelArtifactIdentityError(
-            f"artifact file exceeds the bounded read limit: {path.name}"
+            f"artifact file exceeds the bounded read limit: {relative_name}"
         )
 
-    flags = os.O_RDONLY | _O_BINARY | _O_NOFOLLOW
+    flags = os.O_RDONLY | _O_BINARY | _O_NOFOLLOW | _O_CLOEXEC
     try:
-        fd = os.open(path, flags)
+        fd = os.open(relative_name, flags, dir_fd=root_fd)
     except OSError as exc:
         raise TrainingModelArtifactIdentityError(
-            f"artifact file could not be opened safely: {path.name}"
+            f"artifact file could not be opened safely: {relative_name}"
         ) from exc
 
     digest = hashlib.sha256()
@@ -431,7 +467,7 @@ def _read_regular_file(
         opened = os.fstat(fd)
         if not stat.S_ISREG(opened.st_mode):
             raise TrainingModelArtifactIdentityError(
-                f"opened artifact is not a regular file: {path.name}"
+                f"opened artifact is not a regular file: {relative_name}"
             )
 
         while True:
@@ -441,7 +477,7 @@ def _read_regular_file(
             byte_count += len(chunk)
             if max_bytes is not None and byte_count > max_bytes:
                 raise TrainingModelArtifactIdentityError(
-                    f"artifact file exceeds the bounded read limit: {path.name}"
+                    f"artifact file exceeds the bounded read limit: {relative_name}"
                 )
             digest.update(chunk)
             if max_bytes is not None:
@@ -452,10 +488,10 @@ def _read_regular_file(
         os.close(fd)
 
     try:
-        after = path.stat(follow_symlinks=False)
+        after = os.stat(relative_name, dir_fd=root_fd, follow_symlinks=False)
     except OSError as exc:
         raise TrainingModelArtifactIdentityError(
-            f"artifact file changed during verification: {path.name}"
+            f"artifact file changed during verification: {relative_name}"
         ) from exc
 
     expected_identity = _stat_identity(before)
@@ -464,14 +500,25 @@ def _read_regular_file(
     after_identity = _stat_identity(after)
     if not (expected_identity == opened_identity == finished_identity == after_identity):
         raise TrainingModelArtifactIdentityError(
-            f"artifact file changed during verification: {path.name}"
+            f"artifact file changed during verification: {relative_name}"
         )
     if byte_count != before.st_size:
         raise TrainingModelArtifactIdentityError(
-            f"artifact byte count changed during verification: {path.name}"
+            f"artifact byte count changed during verification: {relative_name}"
         )
 
     return b"".join(chunks), digest.hexdigest(), byte_count
+
+
+def _require_root_unchanged(root_fd: int, before: os.stat_result) -> None:
+    try:
+        after = os.fstat(root_fd)
+    except OSError as exc:
+        raise TrainingModelArtifactIdentityError(
+            "model_root descriptor changed during verification"
+        ) from exc
+    if _stat_identity(before) != _stat_identity(after):
+        raise TrainingModelArtifactIdentityError("model_root changed during verification")
 
 
 def _stat_identity(observation: os.stat_result) -> tuple[int, int, int, int, int]:
@@ -482,18 +529,6 @@ def _stat_identity(observation: os.stat_result) -> tuple[int, int, int, int, int
         observation.st_mtime_ns,
         observation.st_ctime_ns,
     )
-
-
-def _lexists(path: Path) -> bool:
-    try:
-        os.lstat(path)
-    except FileNotFoundError:
-        return False
-    except OSError as exc:
-        raise TrainingModelArtifactIdentityError(
-            f"artifact path could not be inspected: {path.name}"
-        ) from exc
-    return True
 
 
 def _require_relative_basename(value: object, *, field: str) -> str:
