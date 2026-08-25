@@ -9,7 +9,9 @@ inference, or training.
 from __future__ import annotations
 
 import hashlib
+import os
 import re
+import stat
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final, Literal, Protocol
@@ -28,6 +30,8 @@ _SHA256: Final = re.compile(r"^[0-9a-f]{64}$", flags=re.ASCII)
 _GIT_SHA: Final = re.compile(r"^[0-9a-f]{40}$", flags=re.ASCII)
 _ATTESTATION_VERSION: Final = "MESC-TRAINING-LOCAL-ASSET-ATTESTATION-V1"
 _CHUNK_SIZE: Final = 1024 * 1024
+_O_BINARY: Final = getattr(os, "O_BINARY", 0)
+_O_NOFOLLOW: Final = getattr(os, "O_NOFOLLOW", 0)
 
 
 class TrainingLocalAssetAttestationError(ValueError):
@@ -319,7 +323,7 @@ def _attest_corpus(
     try:
         observed_sha, observed_bytes = _observe_file(path)
     except OSError:
-        blockers.append("local corpus could not be read")
+        blockers.append("local corpus could not be read safely")
         return None, None
     if observed_sha != binding.canonical_jsonl_sha256:
         blockers.append("local corpus SHA does not match canonical corpus binding")
@@ -350,8 +354,24 @@ def _attest_model(
     if type(candidate) is not LocalModelAssetObservation:
         blockers.append("local model verifier returned a non-canonical observation")
         return None
-    _check_model_observation(candidate, run_plan=run_plan, role=role, blockers=blockers)
-    return candidate
+    try:
+        observation = LocalModelAssetObservation(
+            role=candidate.role,
+            model_id=candidate.model_id,
+            revision=candidate.revision,
+            weights_sha256=candidate.weights_sha256,
+            verifier_id=candidate.verifier_id,
+            verifier_version=candidate.verifier_version,
+            verifier_receipt_sha256=candidate.verifier_receipt_sha256,
+            network_accessed=candidate.network_accessed,
+            remote_code_allowed=candidate.remote_code_allowed,
+            gated_terms_accepted=candidate.gated_terms_accepted,
+        )
+    except TrainingLocalAssetAttestationError:
+        blockers.append("local model verifier returned an invalid observation")
+        return None
+    _check_model_observation(observation, run_plan=run_plan, role=role, blockers=blockers)
+    return observation
 
 
 def _check_model_observation(
@@ -378,13 +398,26 @@ def _check_model_observation(
 
 
 def _observe_file(path: Path) -> tuple[str, int]:
-    digest = hashlib.sha256()
-    byte_count = 0
-    with path.open("rb") as handle:
-        while chunk := handle.read(_CHUNK_SIZE):
+    before = path.stat(follow_symlinks=False)
+    if not stat.S_ISREG(before.st_mode):
+        raise OSError("corpus path is not a regular file")
+    descriptor = os.open(path, os.O_RDONLY | _O_BINARY | _O_NOFOLLOW)
+    try:
+        opened = os.fstat(descriptor)
+        after = path.stat(follow_symlinks=False)
+        if not stat.S_ISREG(opened.st_mode) or not stat.S_ISREG(after.st_mode):
+            raise OSError("corpus path changed to a non-regular file")
+        if not os.path.samestat(before, opened) or not os.path.samestat(opened, after):
+            raise OSError("corpus path identity changed while opening")
+
+        digest = hashlib.sha256()
+        byte_count = 0
+        while chunk := os.read(descriptor, _CHUNK_SIZE):
             digest.update(chunk)
             byte_count += len(chunk)
-    return digest.hexdigest(), byte_count
+        return digest.hexdigest(), byte_count
+    finally:
+        os.close(descriptor)
 
 
 def _require_sha256(value: object, *, field: str) -> str:
