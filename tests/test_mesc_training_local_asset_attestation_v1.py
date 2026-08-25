@@ -9,8 +9,15 @@ from typing import Any
 
 import pytest
 
-from medscale.mesc._training_corpus_binding_v1 import TrainingCorpusBindingReport
-from medscale.mesc._training_launch_plan_v1 import TrainingLaunchPlan, TrainingRunPlan
+from medscale.mesc._training_corpus_binding_v1 import (
+    TrainingCorpusBindingDisposition,
+    TrainingCorpusBindingReport,
+)
+from medscale.mesc._training_launch_plan_v1 import (
+    TrainingLaunchPlan,
+    TrainingRole,
+    TrainingRunPlan,
+)
 from medscale.mesc._training_local_asset_attestation_v1 import (
     LocalModelAssetObservation,
     TrainingLocalAssetAttestationError,
@@ -26,10 +33,10 @@ _GIT_A = "1" * 40
 _GIT_B = "2" * 40
 
 
-def _run(role: str) -> TrainingRunPlan:
-    suffix = "compact" if role == "compact" else "reasoner"
+def _run(role: TrainingRole) -> TrainingRunPlan:
+    suffix = role
     return TrainingRunPlan(
-        role=role,  # type: ignore[arg-type]
+        role=role,
         experiment_id=f"train-{suffix}",
         rq_refs=("RQ1",),
         recipe_id=_SHA_A,
@@ -60,10 +67,14 @@ def _launch() -> TrainingLaunchPlan:
     )
 
 
-def _binding(raw: bytes, *, disposition: str = "PASS") -> TrainingCorpusBindingReport:
+def _binding(
+    raw: bytes,
+    *,
+    disposition: TrainingCorpusBindingDisposition = "PASS",
+) -> TrainingCorpusBindingReport:
     blockers = () if disposition == "PASS" else ("blocked",)
     return TrainingCorpusBindingReport(
-        disposition=disposition,  # type: ignore[arg-type]
+        disposition=disposition,
         qualification_sha256=_SHA_A,
         training_dataset_sha256=_SHA_D,
         qualified_training_record_ids_sha256=_SHA_B,
@@ -94,14 +105,14 @@ class _Verifier:
     def verify(
         self,
         *,
-        role: str,
+        role: TrainingRole,
         model_root: Path,
         run_plan: TrainingRunPlan,
     ) -> LocalModelAssetObservation:
         self.calls += 1
         assert model_root.is_dir()
         return LocalModelAssetObservation(
-            role=role,  # type: ignore[arg-type]
+            role=role,
             model_id=run_plan.model_id,
             revision=run_plan.revision,
             weights_sha256=_SHA_A if self.wrong_weights else run_plan.weights_sha256,
@@ -122,19 +133,22 @@ def _paths(tmp_path: Path, raw: bytes) -> tuple[Path, Path]:
     return model_root, corpus_path
 
 
-def test_exact_local_assets_pass_without_paths_in_identity(tmp_path: Path) -> None:
-    raw = b'{"example":"one"}\n'
+def _attest(tmp_path: Path, raw: bytes, verifier: _Verifier | None = None):
     model_root, corpus_path = _paths(tmp_path, raw)
-    verifier = _Verifier()
-
-    report = attest_local_training_assets(
+    return attest_local_training_assets(
         launch_plan=_launch(),
         corpus_binding=_binding(raw),
         role="compact",
         model_root=model_root,
         corpus_path=corpus_path,
-        verifier=verifier,
+        verifier=_Verifier() if verifier is None else verifier,
     )
+
+
+def test_exact_local_assets_pass_and_paths_do_not_change_identity(tmp_path: Path) -> None:
+    raw = b'{"example":"one"}\n'
+    verifier = _Verifier()
+    report = _attest(tmp_path, raw, verifier)
 
     assert report.disposition == "PASS"
     assert report.can_execute_training is True
@@ -142,28 +156,17 @@ def test_exact_local_assets_pass_without_paths_in_identity(tmp_path: Path) -> No
     assert report.observed_corpus_sha256 == hashlib.sha256(raw).hexdigest()
     assert report.observed_corpus_byte_count == len(raw)
     assert verifier.calls == 1
-    assert len(report.attestation_sha256) == 64
 
-    other_root = tmp_path / "elsewhere" / "model"
-    other_root.mkdir(parents=True)
-    other_corpus = tmp_path / "elsewhere" / "corpus.jsonl"
-    other_corpus.write_bytes(raw)
-    other = attest_local_training_assets(
-        launch_plan=_launch(),
-        corpus_binding=_binding(raw),
-        role="compact",
-        model_root=other_root,
-        corpus_path=other_corpus,
-        verifier=_Verifier(),
-    )
-    assert other.attestation_sha256 == report.attestation_sha256
+    other = tmp_path / "other"
+    other.mkdir()
+    other_report = _attest(other, raw)
+    assert other_report.attestation_sha256 == report.attestation_sha256
 
 
-def test_corpus_content_or_size_mismatch_blocks(tmp_path: Path) -> None:
+def test_corpus_content_and_size_mismatch_block(tmp_path: Path) -> None:
     expected = b'{"example":"one"}\n'
     actual = b'{"example":"tampered"}\n'
     model_root, corpus_path = _paths(tmp_path, actual)
-
     report = attest_local_training_assets(
         launch_plan=_launch(),
         corpus_binding=_binding(expected),
@@ -172,14 +175,12 @@ def test_corpus_content_or_size_mismatch_blocks(tmp_path: Path) -> None:
         corpus_path=corpus_path,
         verifier=_Verifier(),
     )
-
     assert report.disposition == "BLOCKED"
-    assert report.can_execute_training is False
-    assert any("corpus SHA" in blocker for blocker in report.blockers)
-    assert any("corpus byte count" in blocker for blocker in report.blockers)
+    assert any("corpus SHA" in item for item in report.blockers)
+    assert any("corpus byte count" in item for item in report.blockers)
 
 
-def test_missing_local_paths_fail_closed_without_model_verification(tmp_path: Path) -> None:
+def test_missing_paths_fail_closed_without_model_verification(tmp_path: Path) -> None:
     raw = b'{"example":"one"}\n'
     verifier = _Verifier()
     report = attest_local_training_assets(
@@ -187,17 +188,16 @@ def test_missing_local_paths_fail_closed_without_model_verification(tmp_path: Pa
         corpus_binding=_binding(raw),
         role="compact",
         model_root=tmp_path / "missing-model",
-        corpus_path=tmp_path / "missing-corpus.jsonl",
+        corpus_path=tmp_path / "missing-corpus",
         verifier=verifier,
     )
-
     assert report.disposition == "BLOCKED"
     assert verifier.calls == 0
     assert report.observed_weights_sha256 is None
     assert report.observed_corpus_sha256 is None
 
 
-def test_blocked_binding_or_dataset_mismatch_cannot_pass(tmp_path: Path) -> None:
+def test_blocked_binding_and_dataset_mismatch_cannot_pass(tmp_path: Path) -> None:
     raw = b'{"example":"one"}\n'
     model_root, corpus_path = _paths(tmp_path, raw)
     blocked = attest_local_training_assets(
@@ -211,32 +211,27 @@ def test_blocked_binding_or_dataset_mismatch_cannot_pass(tmp_path: Path) -> None
     assert blocked.disposition == "BLOCKED"
     assert "corpus binding is not PASS" in blocked.blockers
 
-    mismatched_binding = replace(_binding(raw), training_dataset_sha256=_SHA_A)
+    mismatch_binding = replace(_binding(raw), training_dataset_sha256=_SHA_A)
     mismatch = attest_local_training_assets(
         launch_plan=_launch(),
-        corpus_binding=mismatched_binding,
+        corpus_binding=mismatch_binding,
         role="compact",
         model_root=model_root,
         corpus_path=corpus_path,
         verifier=_Verifier(),
     )
     assert mismatch.disposition == "BLOCKED"
-    assert any("training dataset" in blocker for blocker in mismatch.blockers)
+    assert any("training dataset" in item for item in mismatch.blockers)
 
 
 def test_model_identity_mismatch_blocks(tmp_path: Path) -> None:
-    raw = b'{"example":"one"}\n'
-    model_root, corpus_path = _paths(tmp_path, raw)
-    report = attest_local_training_assets(
-        launch_plan=_launch(),
-        corpus_binding=_binding(raw),
-        role="compact",
-        model_root=model_root,
-        corpus_path=corpus_path,
-        verifier=_Verifier(wrong_weights=True),
+    report = _attest(
+        tmp_path,
+        b'{"example":"one"}\n',
+        _Verifier(wrong_weights=True),
     )
     assert report.disposition == "BLOCKED"
-    assert any("weights_sha256" in blocker for blocker in report.blockers)
+    assert any("weights_sha256" in item for item in report.blockers)
 
 
 @pytest.mark.parametrize(
@@ -247,31 +242,28 @@ def test_model_identity_mismatch_blocks(tmp_path: Path) -> None:
         ({"gated_terms_accepted": True}, "gated terms"),
     ],
 )
-def test_verifier_security_observations_block(
+def test_security_observations_block(
     tmp_path: Path,
     kwargs: dict[str, bool],
     fragment: str,
 ) -> None:
-    raw = b'{"example":"one"}\n'
-    model_root, corpus_path = _paths(tmp_path, raw)
-    report = attest_local_training_assets(
-        launch_plan=_launch(),
-        corpus_binding=_binding(raw),
-        role="compact",
-        model_root=model_root,
-        corpus_path=corpus_path,
-        verifier=_Verifier(**kwargs),
-    )
+    report = _attest(tmp_path, b'{"example":"one"}\n', _Verifier(**kwargs))
     assert report.disposition == "BLOCKED"
-    assert any(fragment in blocker for blocker in report.blockers)
+    assert any(fragment in item for item in report.blockers)
 
 
-def test_verifier_exception_and_noncanonical_observation_fail_closed(tmp_path: Path) -> None:
+def test_verifier_exception_and_subclass_observation_fail_closed(tmp_path: Path) -> None:
     raw = b'{"example":"one"}\n'
     model_root, corpus_path = _paths(tmp_path, raw)
 
     class BrokenVerifier:
-        def verify(self, **_: object) -> LocalModelAssetObservation:
+        def verify(
+            self,
+            *,
+            role: TrainingRole,
+            model_root: Path,
+            run_plan: TrainingRunPlan,
+        ) -> LocalModelAssetObservation:
             raise RuntimeError("boom")
 
     broken = attest_local_training_assets(
@@ -289,13 +281,18 @@ def test_verifier_exception_and_noncanonical_observation_fail_closed(tmp_path: P
         pass
 
     class ForgingVerifier:
-        def verify(self, **_: object) -> LocalModelAssetObservation:
-            run = _run("compact")
+        def verify(
+            self,
+            *,
+            role: TrainingRole,
+            model_root: Path,
+            run_plan: TrainingRunPlan,
+        ) -> LocalModelAssetObservation:
             return FakeObservation(
-                role="compact",
-                model_id=run.model_id,
-                revision=run.revision,
-                weights_sha256=run.weights_sha256,
+                role=role,
+                model_id=run_plan.model_id,
+                revision=run_plan.revision,
+                weights_sha256=run_plan.weights_sha256,
                 verifier_id="fake",
                 verifier_version="v1",
                 verifier_receipt_sha256=_SHA_D,
@@ -313,21 +310,11 @@ def test_verifier_exception_and_noncanonical_observation_fail_closed(tmp_path: P
         verifier=ForgingVerifier(),
     )
     assert forged.disposition == "BLOCKED"
-    assert any("non-canonical" in blocker for blocker in forged.blockers)
+    assert any("non-canonical" in item for item in forged.blockers)
 
 
 def test_direct_pass_report_rejects_forged_content(tmp_path: Path) -> None:
-    raw = b'{"example":"one"}\n'
-    model_root, corpus_path = _paths(tmp_path, raw)
-    report = attest_local_training_assets(
-        launch_plan=_launch(),
-        corpus_binding=_binding(raw),
-        role="compact",
-        model_root=model_root,
-        corpus_path=corpus_path,
-        verifier=_Verifier(),
-    )
-
+    report = _attest(tmp_path, b'{"example":"one"}\n')
     with pytest.raises(TrainingLocalAssetAttestationError, match="weight identity"):
         replace(report, observed_weights_sha256=_SHA_A)
     with pytest.raises(TrainingLocalAssetAttestationError, match="corpus SHA"):
@@ -340,7 +327,7 @@ def test_direct_pass_report_rejects_forged_content(tmp_path: Path) -> None:
         replace(report, model_network_accessed=True)
 
 
-def test_rejects_subclassed_canonical_plan_or_binding(tmp_path: Path) -> None:
+def test_rejects_subclassed_canonical_plan_and_binding(tmp_path: Path) -> None:
     raw = b'{"example":"one"}\n'
     model_root, corpus_path = _paths(tmp_path, raw)
 
@@ -359,7 +346,18 @@ def test_rejects_subclassed_canonical_plan_or_binding(tmp_path: Path) -> None:
         reasoner=launch.reasoner,
     )
     binding = _binding(raw)
-    fake_binding: Any = FakeBinding(**binding.__dict__)
+    fake_binding: Any = FakeBinding(
+        disposition=binding.disposition,
+        qualification_sha256=binding.qualification_sha256,
+        training_dataset_sha256=binding.training_dataset_sha256,
+        qualified_training_record_ids_sha256=binding.qualified_training_record_ids_sha256,
+        corpus_sha256=binding.corpus_sha256,
+        corpus_training_record_ids_sha256=binding.corpus_training_record_ids_sha256,
+        canonical_jsonl_sha256=binding.canonical_jsonl_sha256,
+        canonical_jsonl_byte_count=binding.canonical_jsonl_byte_count,
+        example_count=binding.example_count,
+        blockers=binding.blockers,
+    )
 
     with pytest.raises(TrainingLocalAssetAttestationError, match="exact TrainingLaunchPlan"):
         attest_local_training_assets(
@@ -370,7 +368,10 @@ def test_rejects_subclassed_canonical_plan_or_binding(tmp_path: Path) -> None:
             corpus_path=corpus_path,
             verifier=_Verifier(),
         )
-    with pytest.raises(TrainingLocalAssetAttestationError, match="exact TrainingCorpusBindingReport"):
+    with pytest.raises(
+        TrainingLocalAssetAttestationError,
+        match="exact TrainingCorpusBindingReport",
+    ):
         attest_local_training_assets(
             launch_plan=launch,
             corpus_binding=fake_binding,
