@@ -51,10 +51,7 @@ class TrainingCorpusBindingReport:
         for field, value in (
             ("qualification_sha256", self.qualification_sha256),
             ("training_dataset_sha256", self.training_dataset_sha256),
-            (
-                "qualified_training_record_ids_sha256",
-                self.qualified_training_record_ids_sha256,
-            ),
+            ("qualified_training_record_ids_sha256", self.qualified_training_record_ids_sha256),
             ("corpus_sha256", self.corpus_sha256),
             ("corpus_training_record_ids_sha256", self.corpus_training_record_ids_sha256),
             ("canonical_jsonl_sha256", self.canonical_jsonl_sha256),
@@ -74,10 +71,7 @@ class TrainingCorpusBindingReport:
         if self.disposition == "PASS":
             if self.blockers:
                 raise TrainingCorpusBindingError("PASS binding cannot have blockers")
-            if (
-                self.qualified_training_record_ids_sha256
-                != self.corpus_training_record_ids_sha256
-            ):
+            if self.qualified_training_record_ids_sha256 != self.corpus_training_record_ids_sha256:
                 raise TrainingCorpusBindingError(
                     "PASS binding requires exact T5/corpus training-record identity equality"
                 )
