@@ -174,8 +174,10 @@ class TrainingExampleV1:
         _require_choice(self.training_stage, allowed=_ALLOWED_STAGES, field="training_stage")
 
         _validate_prompt(self.prompt)
-        if not isinstance(self.completion, TrainingMessage) or self.completion.role != "assistant":
-            raise TrainingExampleContractError("completion must be one assistant TrainingMessage")
+        if not isinstance(self.completion, TrainingMessage):
+            raise TrainingExampleContractError("completion must be a TrainingMessage")
+        if self.completion.role != "assistant":
+            raise TrainingExampleContractError("completion role must be exactly assistant")
         _require_choice(
             self.uncertainty_class,
             allowed=_ALLOWED_UNCERTAINTY,
@@ -314,10 +316,16 @@ def build_training_corpus(examples: Sequence[TrainingExampleV1]) -> TrainingCorp
 def _validate_prompt(prompt: object) -> None:
     if not isinstance(prompt, tuple) or not prompt:
         raise TrainingExampleContractError("prompt must be a non-empty tuple")
-    if any(not isinstance(message, TrainingMessage) for message in prompt):
-        raise TrainingExampleContractError("prompt members must be TrainingMessage values")
-    messages = tuple(message for message in prompt if isinstance(message, TrainingMessage))
-    system_positions = [index for index, message in enumerate(messages) if message.role == "system"]
+    messages: list[TrainingMessage] = []
+    for message in prompt:
+        if not isinstance(message, TrainingMessage):
+            raise TrainingExampleContractError("prompt members must be TrainingMessage values")
+        messages.append(message)
+
+    system_positions: list[int] = []
+    for index, message in enumerate(messages):
+        if message.role == "system":
+            system_positions.append(index)
     if len(system_positions) > 1 or (system_positions and system_positions[0] != 0):
         raise TrainingExampleContractError("prompt may contain at most one leading system message")
     if messages[-1].role != "user":
