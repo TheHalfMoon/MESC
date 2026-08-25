@@ -143,9 +143,7 @@ def _run(
             f"experiments/{experiment_id}/outputs",
             f"experiments/{experiment_id}/results",
         ),
-        reproduction_command=(
-            f"uv run medscale mesc-train --plan {experiment_id}.json"
-        ),
+        reproduction_command=(f"uv run medscale mesc-train --plan {experiment_id}.json"),
     )
 
 
@@ -518,9 +516,7 @@ def test_success_artifacts_must_stay_in_all_namespaces() -> None:
                 finished_at="2026-08-25T05:01:00Z",
                 artifacts=(
                     TrainingResultArtifact(
-                        path=(
-                            f"{manifest.result_namespaces[0]}/result.json"
-                        ),
+                        path=(f"{manifest.result_namespaces[0]}/result.json"),
                         sha256="1" * 64,
                         byte_count=10,
                     ),
