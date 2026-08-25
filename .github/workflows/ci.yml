@@ -41,9 +41,11 @@ jobs:
           TARGET_BRANCH: feat/mesc-hf-local-sft-backend-v1
         run: |
           cp .github/pr190_review_patch.py /tmp/pr190_review_patch.py
+          cp .github/pr190_review_postfix.py /tmp/pr190_review_postfix.py
           git fetch origin "$TARGET_BRANCH"
           git checkout "$TARGET_BRANCH"
           python /tmp/pr190_review_patch.py
+          python /tmp/pr190_review_postfix.py
           uv run ruff format \
             src/medscale/mesc/_training_hf_local_sft_backend_v1.py \
             tests/test_mesc_training_hf_local_sft_backend_v1.py
