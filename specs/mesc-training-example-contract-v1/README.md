@@ -85,9 +85,15 @@ Every complete record has a deterministic `example_sha256`.
 
 ### T5 membership identity
 
-`training_record_id` is not a second provenance field. It is the exact stable record id
+`training_record_id` is not a second provenance field. It is the exact record identifier
 from the T5-qualified `SplitAssignmentFreeze.train` membership that authorized this
 example's source record for training.
+
+Its validation deliberately matches the upstream split-freeze identifier domain: the
+value must be a `str` and must be non-empty after `strip()`. No additional ASCII,
+lowercase, or separator grammar is imposed here. Therefore Unicode and other identifiers
+accepted by `SplitAssignmentFreeze` remain representable without normalization or loss.
+The original string is preserved exactly for hashing and equality.
 
 `source_id` remains the provenance/source identity and may differ from
 `training_record_id`.
@@ -102,22 +108,26 @@ qualified `training_record_ids_sha256`.
 No missing T5 record may be inferred from source metadata and no extra record may be
 admitted merely because its provenance is valid.
 
-### Immutable container boundary
+### Immutable and exact-type boundary
 
 The dataclasses are frozen, so nested containers that participate in scientific identity
-must also be immutable at runtime rather than merely annotated as immutable.
+must also be immutable at runtime rather than merely annotated as immutable. Canonical
+objects also reject subclasses: accepting a subclass would permit overridden methods or
+additional mutable state to alter hashed behavior outside the V1 schema.
 
 V1 therefore requires:
 
 - `evidence_refs` to be an actual tuple;
-- `prompt` to be an actual tuple of `TrainingMessage` values; and
+- `prompt` to be an actual tuple containing exact `TrainingMessage` values;
+- `completion` to be an exact `TrainingMessage`; and
 - direct `TrainingCorpusV1.examples` construction to use an actual tuple containing only
-  `TrainingExampleV1` values.
+  exact `TrainingExampleV1` values.
 
-`build_training_corpus(...)` may accept a normal sequence such as a list, but validates
-all runtime members before sorting and freezes the result into a tuple. Invalid containers
-or forged members fail with `TrainingExampleContractError` instead of leaking incidental
-`AttributeError`/mutation behavior.
+`build_training_corpus(...)` may accept a normal sequence such as a list, but a dedicated
+runtime validator checks the dynamic container and every member before sorting and freezes
+the result into a tuple. Invalid containers, forged members, and subclasses fail with
+`TrainingExampleContractError` instead of leaking incidental `AttributeError`, mutation,
+or overridden serialization behavior.
 
 ## Supervised stages
 
@@ -136,7 +146,7 @@ contracts rather than overloading the SFT record.
 
 ## Conversational target contract
 
-A prompt is an ordered tuple of normalized `TrainingMessage` values.
+A prompt is an ordered tuple of exact `TrainingMessage` values.
 
 Rules:
 
@@ -144,7 +154,8 @@ Rules:
 - at most one `system` message is allowed and it must be first;
 - prompt must end with `user`;
 - completion is exactly one `assistant` message;
-- message content must be non-empty and contain no NUL byte.
+- message content must be non-empty and contain no NUL byte; and
+- `TrainingMessage` subclasses are not canonical inputs.
 
 This produces a deterministic conversational prompt-completion projection suitable for
 a later TRL `SFTTrainer` adapter. The canonical MESC record remains richer than the
@@ -195,6 +206,7 @@ CONTAMINATION_STATE = CLEAR
 The corpus also requires:
 
 - at least one example;
+- exact `TrainingExampleV1` members;
 - unique stable `example_id` values; and
 - canonical ordering by `example_id`.
 
