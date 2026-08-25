@@ -269,9 +269,7 @@ class TrainingCorpusV1:
 
     def __post_init__(self) -> None:
         if self.corpus_version != _CORPUS_VERSION:
-            raise TrainingExampleContractError(
-                f"corpus_version must be exactly {_CORPUS_VERSION}"
-            )
+            raise TrainingExampleContractError(f"corpus_version must be exactly {_CORPUS_VERSION}")
         if not self.examples:
             raise TrainingExampleContractError("training corpus must be non-empty")
         ids = [example.example_id for example in self.examples]
@@ -344,10 +342,7 @@ def _validate_target_consistency(example: TrainingExampleV1) -> None:
                 "ABSTAIN_INSUFFICIENT_EVIDENCE requires INSUFFICIENT uncertainty"
             )
     elif example.abstention_target == "ABSTAIN_CONFLICTED_EVIDENCE":
-        if (
-            example.uncertainty_class != "CONFLICTED"
-            or example.contradiction_state != "PRESENT"
-        ):
+        if example.uncertainty_class != "CONFLICTED" or example.contradiction_state != "PRESENT":
             raise TrainingExampleContractError(
                 "ABSTAIN_CONFLICTED_EVIDENCE requires conflicted uncertainty and contradiction"
             )
