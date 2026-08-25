@@ -75,9 +75,13 @@ def test_training_record_identity_participates_in_example_identity() -> None:
 
 
 def test_training_record_id_matches_upstream_freeze_identifier_domain() -> None:
-    assert _example(training_record_id="α-1").training_record_id == "α-1"
+    unicode_id = f"{chr(0x03B1)}-1"
+    assert _example(training_record_id=unicode_id).training_record_id == unicode_id
     assert _example(training_record_id="Record 1").training_record_id == "Record 1"
-    with pytest.raises(TrainingExampleContractError, match="training_record_id must be a non-empty"):
+    with pytest.raises(
+        TrainingExampleContractError,
+        match="training_record_id must be a non-empty",
+    ):
         _example(training_record_id="")
 
 
@@ -221,13 +225,19 @@ def test_corpus_direct_construction_rejects_mutable_or_wrong_member_container() 
         TrainingCorpusV1(examples=mutable_examples)
 
     wrong_member: Any = ("not-an-example",)
-    with pytest.raises(TrainingExampleContractError, match="members must be exact TrainingExampleV1"):
+    with pytest.raises(
+        TrainingExampleContractError,
+        match="members must be exact TrainingExampleV1",
+    ):
         TrainingCorpusV1(examples=wrong_member)
 
 
 def test_example_subclasses_are_rejected_by_corpus_and_builder() -> None:
     forged = _example(_FakeExample)
-    with pytest.raises(TrainingExampleContractError, match="members must be exact TrainingExampleV1"):
+    with pytest.raises(
+        TrainingExampleContractError,
+        match="members must be exact TrainingExampleV1",
+    ):
         TrainingCorpusV1(examples=(forged,))
     with pytest.raises(TrainingExampleContractError, match="only exact TrainingExampleV1"):
         build_training_corpus([forged])
@@ -257,11 +267,21 @@ def test_build_corpus_freezes_lists_and_rejects_forged_runtime_inputs() -> None:
 
 
 def test_corpus_exposes_unique_sorted_t5_training_record_ids() -> None:
-    first = _example(example_id="example-1", training_record_id="β-2")
-    second = _example(example_id="example-2", training_record_id="α-1", source_sha256="c" * 64)
-    third = _example(example_id="example-3", training_record_id="β-2", source_sha256="d" * 64)
+    first_id = f"{chr(0x03B2)}-2"
+    second_id = f"{chr(0x03B1)}-1"
+    first = _example(example_id="example-1", training_record_id=first_id)
+    second = _example(
+        example_id="example-2",
+        training_record_id=second_id,
+        source_sha256="c" * 64,
+    )
+    third = _example(
+        example_id="example-3",
+        training_record_id=first_id,
+        source_sha256="d" * 64,
+    )
     corpus = build_training_corpus((third, first, second))
-    assert corpus.training_record_ids == ("α-1", "β-2")
+    assert corpus.training_record_ids == tuple(sorted((first_id, second_id)))
 
 
 def test_corpus_hash_and_jsonl_are_order_independent_at_builder_boundary() -> None:
