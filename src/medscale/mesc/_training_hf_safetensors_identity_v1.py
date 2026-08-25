@@ -422,7 +422,7 @@ def _read_regular_file(
     max_bytes: int | None = None,
 ) -> tuple[bytes, str, int]:
     try:
-        before = os.stat(path, follow_symlinks=False)
+        before = path.stat(follow_symlinks=False)
     except OSError as exc:
         raise TrainingModelArtifactIdentityError(
             f"artifact file could not be statted: {path.name}"
@@ -474,7 +474,7 @@ def _read_regular_file(
         os.close(fd)
 
     try:
-        after = os.stat(path, follow_symlinks=False)
+        after = path.stat(follow_symlinks=False)
     except OSError as exc:
         raise TrainingModelArtifactIdentityError(
             f"artifact file changed during verification: {path.name}"

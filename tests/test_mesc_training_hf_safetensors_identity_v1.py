@@ -350,7 +350,7 @@ def test_symlink_weight_is_rejected(tmp_path: Path) -> None:
 
     with pytest.raises(
         TrainingModelArtifactIdentityError,
-        match="non-symlink regular file|opened safely",
+        match=r"non-symlink regular file|opened safely",
     ):
         _identify(root)
 
