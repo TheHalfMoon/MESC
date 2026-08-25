@@ -488,7 +488,8 @@ def test_real_runtime_uses_local_only_no_auth_hf_calls(
             calls["sft_config"] = kwargs
 
     class _TrainOutput:
-        metrics = {"train_loss": 0.25, "ignored": "text"}
+        def __init__(self) -> None:
+            self.metrics: dict[str, object] = {"train_loss": 0.25, "ignored": "text"}
 
     class _SFTTrainer:
         def __init__(
