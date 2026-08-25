@@ -294,11 +294,7 @@ def _parse_index(raw: bytes) -> tuple[str, ...]:
 
     shard_names: set[str] = set()
     for tensor_name, shard_name in weight_map.items():
-        if (
-            not isinstance(tensor_name, str)
-            or not tensor_name.strip()
-            or "\x00" in tensor_name
-        ):
+        if not isinstance(tensor_name, str) or not tensor_name.strip() or "\x00" in tensor_name:
             raise TrainingModelArtifactIdentityError(
                 "SafeTensors weight_map keys must be non-empty NUL-free strings"
             )
