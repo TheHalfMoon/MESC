@@ -1,0 +1,40 @@
+name: MESC Executor Format Artifact
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Sync locked environment
+        run: uv sync --frozen
+
+      - name: Format executor files
+        run: |
+          uv run ruff format \
+            src/medscale/mesc/_training_executor_v1.py \
+            tests/test_mesc_training_executor_v1.py
+          uv run ruff format --check \
+            src/medscale/mesc/_training_executor_v1.py \
+            tests/test_mesc_training_executor_v1.py
+          git diff --check
+
+      - name: Upload formatted files
+        uses: actions/upload-artifact@v4
+        with:
+          name: mesc-executor-formatted
+          if-no-files-found: error
+          path: |
+            src/medscale/mesc/_training_executor_v1.py
+            tests/test_mesc_training_executor_v1.py
