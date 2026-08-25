@@ -8,8 +8,7 @@ model loading, provider access, network access, GPU work, or training by itself.
 from __future__ import annotations
 
 import re
-from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import PurePosixPath
 from typing import Final, Literal, Protocol
@@ -25,11 +24,14 @@ from medscale.mesc._training_local_asset_attestation_v1 import (
     TrainingLocalAssetAttestationReport,
 )
 from medscale.mesc._training_readiness_v1 import (
+    TrainingCandidate,
     TrainingReadinessManifest,
     TrainingReadinessReport,
     assess_training_readiness,
 )
+from medscale.modelkit.interfaces import ModelRef
 from medscale.modelkit.manifests import RunnerClass
+from medscale.modelkit.recipes import AdapterMethod, DatasetRef, TrainingRecipe
 from medscale.reproducibility import content_hash
 
 TrainingExecutionDisposition = Literal["SUCCEEDED", "FAILED", "ABORTED"]
@@ -484,15 +486,21 @@ def execute_training(
     if backend is None:
         raise TrainingExecutionError("an explicit training backend is required")
 
-    try:
-        manifest = deepcopy(manifest)
-        readiness = deepcopy(readiness)
-        launch_plan = deepcopy(launch_plan)
-        corpus_binding = deepcopy(corpus_binding)
-        local_assets = deepcopy(local_assets)
-        environment = deepcopy(environment)
-    except Exception as exc:
-        raise TrainingExecutionError("canonical execution inputs could not be snapshotted") from exc
+    (
+        manifest,
+        readiness,
+        launch_plan,
+        corpus_binding,
+        local_assets,
+        environment,
+    ) = _snapshot_execution_inputs(
+        manifest=manifest,
+        readiness=readiness,
+        launch_plan=launch_plan,
+        corpus_binding=corpus_binding,
+        local_assets=local_assets,
+        environment=environment,
+    )
 
     rebuilt_launch = _recompute_launch(
         manifest=manifest,
@@ -574,6 +582,85 @@ def execute_training(
         result_manifest_sha256=result_manifest_sha256,
         failure_reason=result.failure_reason,
     )
+
+
+def _snapshot_execution_inputs(
+    *,
+    manifest: TrainingReadinessManifest,
+    readiness: TrainingReadinessReport,
+    launch_plan: TrainingLaunchPlan,
+    corpus_binding: TrainingCorpusBindingReport,
+    local_assets: TrainingLocalAssetAttestationReport,
+    environment: TrainingExecutionEnvironment,
+) -> tuple[
+    TrainingReadinessManifest,
+    TrainingReadinessReport,
+    TrainingLaunchPlan,
+    TrainingCorpusBindingReport,
+    TrainingLocalAssetAttestationReport,
+    TrainingExecutionEnvironment,
+]:
+    _require_nested_canonical_types(manifest=manifest, launch_plan=launch_plan)
+    try:
+        compact_recipe = replace(
+            manifest.compact_recipe,
+            base=replace(manifest.compact_recipe.base),
+            dataset=replace(manifest.compact_recipe.dataset),
+        )
+        reasoner_recipe = replace(
+            manifest.reasoner_recipe,
+            base=replace(manifest.reasoner_recipe.base),
+            dataset=replace(manifest.reasoner_recipe.dataset),
+        )
+        manifest_snapshot = replace(
+            manifest,
+            compact_candidate=replace(manifest.compact_candidate),
+            reasoner_candidate=replace(manifest.reasoner_candidate),
+            compact_recipe=compact_recipe,
+            reasoner_recipe=reasoner_recipe,
+        )
+        launch_snapshot = replace(
+            launch_plan,
+            compact=replace(launch_plan.compact),
+            reasoner=replace(launch_plan.reasoner),
+        )
+        return (
+            manifest_snapshot,
+            replace(readiness),
+            launch_snapshot,
+            replace(corpus_binding),
+            replace(local_assets),
+            replace(environment),
+        )
+    except Exception as exc:
+        raise TrainingExecutionError(
+            "canonical execution inputs could not be reconstructed"
+        ) from exc
+
+
+def _require_nested_canonical_types(
+    *,
+    manifest: TrainingReadinessManifest,
+    launch_plan: TrainingLaunchPlan,
+) -> None:
+    checks: tuple[tuple[str, object, type[object]], ...] = (
+        ("manifest.compact_candidate", manifest.compact_candidate, TrainingCandidate),
+        ("manifest.reasoner_candidate", manifest.reasoner_candidate, TrainingCandidate),
+        ("manifest.compact_recipe", manifest.compact_recipe, TrainingRecipe),
+        ("manifest.reasoner_recipe", manifest.reasoner_recipe, TrainingRecipe),
+        ("launch_plan.compact", launch_plan.compact, TrainingRunPlan),
+        ("launch_plan.reasoner", launch_plan.reasoner, TrainingRunPlan),
+    )
+    for field, value, expected_type in checks:
+        _require_exact_input(value, expected_type, field=field)
+
+    for field, recipe in (
+        ("manifest.compact_recipe", manifest.compact_recipe),
+        ("manifest.reasoner_recipe", manifest.reasoner_recipe),
+    ):
+        _require_exact_input(recipe.base, ModelRef, field=f"{field}.base")
+        _require_exact_input(recipe.dataset, DatasetRef, field=f"{field}.dataset")
+        _require_exact_input(recipe.method, AdapterMethod, field=f"{field}.method")
 
 
 def _recompute_launch(
@@ -888,7 +975,7 @@ def _require_repository_relative_path(
     *,
     field: str,
 ) -> str:
-    if not isinstance(value, str) or not value or "\\" in value:
+    if not isinstance(value, str) or not value or "\\" in value or "\x00" in value:
         raise TrainingExecutionError(f"{field} must be a non-empty POSIX repository path")
     path = PurePosixPath(value)
     canonical = str(path)

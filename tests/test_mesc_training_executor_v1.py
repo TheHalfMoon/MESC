@@ -731,3 +731,60 @@ def test_caller_owned_launch_mutation_after_validation_is_isolated(
     assert receipt.model_id == "fixture/compact"
     assert backend.manifest is not None
     assert backend.manifest.model_id == "fixture/compact"
+
+
+def test_forged_nested_run_plan_is_rejected_before_backend() -> None:
+    manifest, readiness, launch, binding, assets, environment = _bundle()
+    backend = _SuccessBackend()
+
+    class ForgedRunPlan(TrainingRunPlan):
+        pass
+
+    forged = object.__new__(ForgedRunPlan)
+    for field_name in TrainingRunPlan.__dataclass_fields__:
+        object.__setattr__(forged, field_name, getattr(launch.compact, field_name))
+    forged_launch = replace(launch, compact=forged)
+
+    with pytest.raises(TrainingExecutionError, match=r"launch_plan[.]compact"):
+        execute_training(
+            manifest=manifest,
+            readiness=readiness,
+            launch_plan=forged_launch,
+            corpus_binding=binding,
+            local_assets=assets,
+            environment=environment,
+            role="compact",
+            backend=backend,
+        )
+    assert backend.manifest is None
+
+
+def test_mutated_exact_run_plan_is_revalidated_before_backend() -> None:
+    manifest, readiness, launch, binding, assets, environment = _bundle()
+    backend = _SuccessBackend()
+    object.__setattr__(launch.compact, "result_paths", ("../escape",))
+
+    with pytest.raises(
+        TrainingExecutionError,
+        match="canonical execution inputs could not be reconstructed",
+    ):
+        execute_training(
+            manifest=manifest,
+            readiness=readiness,
+            launch_plan=launch,
+            corpus_binding=binding,
+            local_assets=assets,
+            environment=environment,
+            role="compact",
+            backend=backend,
+        )
+    assert backend.manifest is None
+
+
+def test_result_artifact_path_rejects_nul() -> None:
+    with pytest.raises(TrainingExecutionError, match="POSIX repository path"):
+        TrainingResultArtifact(
+            path="experiments/compact/result\x00.json",
+            sha256="1" * 64,
+            byte_count=1,
+        )
