@@ -224,6 +224,32 @@ def test_descriptor_observer_rejects_symlink_without_caller_precheck(tmp_path: P
         attestation_mod._observe_file(link)
 
 
+def test_symlinked_assets_fail_closed_without_model_verification(tmp_path: Path) -> None:
+    raw = b'{"example":"one"}\n'
+    real_model, real_corpus = _paths(tmp_path, raw)
+    model_link = tmp_path / "model-link"
+    corpus_link = tmp_path / "corpus-link.jsonl"
+    try:
+        model_link.symlink_to(real_model, target_is_directory=True)
+        corpus_link.symlink_to(real_corpus)
+    except OSError:
+        pytest.skip("symlink creation is unavailable on this platform")
+
+    verifier = _Verifier()
+    report = attest_local_training_assets(
+        launch_plan=_launch(),
+        corpus_binding=_binding(raw),
+        role="compact",
+        model_root=model_link,
+        corpus_path=corpus_link,
+        verifier=verifier,
+    )
+    assert report.disposition == "BLOCKED"
+    assert verifier.calls == 0
+    assert "corpus path must not be a symlink" in report.blockers
+    assert "model root must not be a symlink" in report.blockers
+
+
 def test_missing_paths_fail_closed_without_model_verification(tmp_path: Path) -> None:
     raw = b'{"example":"one"}\n'
     verifier = _Verifier()
