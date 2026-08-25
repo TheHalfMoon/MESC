@@ -57,12 +57,12 @@ class TrainingCorpusBindingReport:
             ("canonical_jsonl_sha256", self.canonical_jsonl_sha256),
         ):
             _require_sha256(value, field=field)
-        for field, value in (
+        for count_field, count_value in (
             ("canonical_jsonl_byte_count", self.canonical_jsonl_byte_count),
             ("example_count", self.example_count),
         ):
-            if type(value) is not int or value < 0:
-                raise TrainingCorpusBindingError(f"{field} must be a non-negative int")
+            if type(count_value) is not int or count_value < 0:
+                raise TrainingCorpusBindingError(f"{count_field} must be a non-negative int")
         if not isinstance(self.blockers, tuple):
             raise TrainingCorpusBindingError("blockers must be an immutable tuple")
         if any(not isinstance(blocker, str) or not blocker for blocker in self.blockers):
