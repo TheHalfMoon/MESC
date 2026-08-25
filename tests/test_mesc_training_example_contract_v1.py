@@ -114,11 +114,15 @@ def test_completion_must_be_assistant() -> None:
         _example(completion=TrainingMessage(role="user", content="wrong role"))
 
 
-def test_evidence_refs_are_required_and_unique() -> None:
+def test_evidence_refs_are_required_unique_and_immutable() -> None:
     with pytest.raises(TrainingExampleContractError, match="evidence_refs must be non-empty"):
         _example(evidence_refs=())
     with pytest.raises(TrainingExampleContractError, match="must not contain duplicates"):
         _example(evidence_refs=("evidence-1", "evidence-1"))
+
+    mutable_refs: Any = ["evidence-1"]
+    with pytest.raises(TrainingExampleContractError, match="immutable tuple"):
+        _example(evidence_refs=mutable_refs)
 
 
 def test_source_sha_language_and_training_record_id_are_strict() -> None:
@@ -201,6 +205,20 @@ def test_build_corpus_sorts_examples_and_rejects_duplicates() -> None:
 
     with pytest.raises(TrainingExampleContractError, match="duplicate example_id"):
         build_training_corpus((_example(), _example()))
+
+
+def test_build_corpus_freezes_lists_and_rejects_forged_runtime_inputs() -> None:
+    valid_list = [_example()]
+    corpus = build_training_corpus(valid_list)
+    assert isinstance(corpus.examples, tuple)
+
+    wrong_member: Any = ["not-an-example"]
+    with pytest.raises(TrainingExampleContractError, match="only TrainingExampleV1"):
+        build_training_corpus(wrong_member)
+
+    wrong_container: Any = "example-1"
+    with pytest.raises(TrainingExampleContractError, match="sequence of TrainingExampleV1"):
+        build_training_corpus(wrong_container)
 
 
 def test_corpus_exposes_unique_sorted_t5_training_record_ids() -> None:
