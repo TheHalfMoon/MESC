@@ -39,12 +39,7 @@ jobs:
         run: uv run ruff check .
 
       - name: Ruff (format)
-        run: |
-          uv run ruff format --check . || {
-            uv run ruff format src/medscale/mesc/_training_example_contract_v1.py
-            git diff -- src/medscale/mesc/_training_example_contract_v1.py
-            exit 1
-          }
+        run: uv run ruff format --check .
 
       - name: Mypy (strict)
         run: uv run mypy
