@@ -1,4 +1,4 @@
-name: MESC Executor Hardening Commit
+name: MESC Executor Qodo Repair Commit
 
 on:
   pull_request:
@@ -7,7 +7,7 @@ permissions:
   contents: write
 
 jobs:
-  harden:
+  repair:
     runs-on: ubuntu-latest
     steps:
       - name: Check out exact executor branch
@@ -21,14 +21,14 @@ jobs:
         with:
           enable-cache: true
 
-      - name: Harden snapshots and qualification coverage
+      - name: Repair exact-head canonical input and path validation
         shell: bash
         run: |
           set -euo pipefail
-          expected_head="8bcac419d1337d71345863cb673af25b52cc973f"
+          expected_head="f009e5f75ad04698ee047f13885719214b81675e"
           current_head="$(git rev-parse HEAD)"
           if [[ "$current_head" != "$expected_head" ]]; then
-            echo "Executor branch moved from expected head; hardening helper is a no-op."
+            echo "Executor branch moved from expected head; repair helper is a no-op."
             exit 0
           fi
 
@@ -39,53 +39,62 @@ jobs:
 
           source_path = Path("src/medscale/mesc/_training_executor_v1.py")
           source = source_path.read_text(encoding="utf-8")
-          import_anchor = "from dataclasses import dataclass\n"
-          if import_anchor not in source:
-              raise SystemExit("source import anchor missing")
+
           source = source.replace(
-              import_anchor,
               "from copy import deepcopy\nfrom dataclasses import dataclass\n",
+              "from dataclasses import dataclass, replace\n",
+              1,
+          )
+          source = source.replace(
+              "from medscale.mesc._training_readiness_v1 import (\n"
+              "    TrainingReadinessManifest,\n",
+              "from medscale.mesc._training_readiness_v1 import (\n"
+              "    TrainingCandidate,\n"
+              "    TrainingReadinessManifest,\n",
+              1,
+          )
+          source = source.replace(
+              "from medscale.modelkit.manifests import RunnerClass\n",
+              "from medscale.modelkit.interfaces import ModelRef\n"
+              "from medscale.modelkit.manifests import RunnerClass\n"
+              "from medscale.modelkit.recipes import AdapterMethod, DatasetRef, TrainingRecipe\n",
               1,
           )
 
-          execution_anchor = '''    if backend is None:\n        raise TrainingExecutionError("an explicit training backend is required")\n\n    rebuilt_launch = _recompute_launch(\n'''
-          if execution_anchor not in source:
-              raise SystemExit("execution snapshot anchor missing")
-          execution_replacement = '''    if backend is None:\n        raise TrainingExecutionError("an explicit training backend is required")\n\n    try:\n        manifest = deepcopy(manifest)\n        readiness = deepcopy(readiness)\n        launch_plan = deepcopy(launch_plan)\n        corpus_binding = deepcopy(corpus_binding)\n        local_assets = deepcopy(local_assets)\n        environment = deepcopy(environment)\n    except Exception as exc:\n        raise TrainingExecutionError(\n            "canonical execution inputs could not be snapshotted"\n        ) from exc\n\n    rebuilt_launch = _recompute_launch(\n'''
-          source = source.replace(execution_anchor, execution_replacement, 1)
+          old_snapshot = '''    try:\n        manifest = deepcopy(manifest)\n        readiness = deepcopy(readiness)\n        launch_plan = deepcopy(launch_plan)\n        corpus_binding = deepcopy(corpus_binding)\n        local_assets = deepcopy(local_assets)\n        environment = deepcopy(environment)\n    except Exception as exc:\n        raise TrainingExecutionError(\n            "canonical execution inputs could not be snapshotted"\n        ) from exc\n\n'''
+          new_snapshot = '''    (\n        manifest,\n        readiness,\n        launch_plan,\n        corpus_binding,\n        local_assets,\n        environment,\n    ) = _snapshot_execution_inputs(\n        manifest=manifest,\n        readiness=readiness,\n        launch_plan=launch_plan,\n        corpus_binding=corpus_binding,\n        local_assets=local_assets,\n        environment=environment,\n    )\n\n'''
+          if old_snapshot not in source:
+              raise SystemExit("snapshot block anchor missing")
+          source = source.replace(old_snapshot, new_snapshot, 1)
+
+          helper_anchor = '''def _recompute_launch(\n    *,\n    manifest: TrainingReadinessManifest,\n'''
+          if helper_anchor not in source:
+              raise SystemExit("recompute helper anchor missing")
+          helper_code = '''def _snapshot_execution_inputs(\n    *,\n    manifest: TrainingReadinessManifest,\n    readiness: TrainingReadinessReport,\n    launch_plan: TrainingLaunchPlan,\n    corpus_binding: TrainingCorpusBindingReport,\n    local_assets: TrainingLocalAssetAttestationReport,\n    environment: TrainingExecutionEnvironment,\n) -> tuple[\n    TrainingReadinessManifest,\n    TrainingReadinessReport,\n    TrainingLaunchPlan,\n    TrainingCorpusBindingReport,\n    TrainingLocalAssetAttestationReport,\n    TrainingExecutionEnvironment,\n]:\n    _require_nested_canonical_types(\n        manifest=manifest,\n        launch_plan=launch_plan,\n    )\n    try:\n        compact_recipe = replace(\n            manifest.compact_recipe,\n            base=replace(manifest.compact_recipe.base),\n            dataset=replace(manifest.compact_recipe.dataset),\n        )\n        reasoner_recipe = replace(\n            manifest.reasoner_recipe,\n            base=replace(manifest.reasoner_recipe.base),\n            dataset=replace(manifest.reasoner_recipe.dataset),\n        )\n        manifest_snapshot = replace(\n            manifest,\n            compact_candidate=replace(manifest.compact_candidate),\n            reasoner_candidate=replace(manifest.reasoner_candidate),\n            compact_recipe=compact_recipe,\n            reasoner_recipe=reasoner_recipe,\n        )\n        launch_snapshot = replace(\n            launch_plan,\n            compact=replace(launch_plan.compact),\n            reasoner=replace(launch_plan.reasoner),\n        )\n        return (\n            manifest_snapshot,\n            replace(readiness),\n            launch_snapshot,\n            replace(corpus_binding),\n            replace(local_assets),\n            replace(environment),\n        )\n    except Exception as exc:\n        raise TrainingExecutionError(\n            "canonical execution inputs could not be reconstructed"\n        ) from exc\n\n\ndef _require_nested_canonical_types(\n    *,\n    manifest: TrainingReadinessManifest,\n    launch_plan: TrainingLaunchPlan,\n) -> None:\n    for field, value, expected_type in (\n        (\n            "manifest.compact_candidate",\n            manifest.compact_candidate,\n            TrainingCandidate,\n        ),\n        (\n            "manifest.reasoner_candidate",\n            manifest.reasoner_candidate,\n            TrainingCandidate,\n        ),\n        ("manifest.compact_recipe", manifest.compact_recipe, TrainingRecipe),\n        ("manifest.reasoner_recipe", manifest.reasoner_recipe, TrainingRecipe),\n        ("launch_plan.compact", launch_plan.compact, TrainingRunPlan),\n        ("launch_plan.reasoner", launch_plan.reasoner, TrainingRunPlan),\n    ):\n        _require_exact_input(value, expected_type, field=field)\n\n    for field, recipe in (\n        ("manifest.compact_recipe", manifest.compact_recipe),\n        ("manifest.reasoner_recipe", manifest.reasoner_recipe),\n    ):\n        _require_exact_input(recipe.base, ModelRef, field=f"{field}.base")\n        _require_exact_input(recipe.dataset, DatasetRef, field=f"{field}.dataset")\n        _require_exact_input(recipe.method, AdapterMethod, field=f"{field}.method")\n\n\n'''
+          source = source.replace(helper_anchor, helper_code + helper_anchor, 1)
+
+          path_anchor = '''    if not isinstance(value, str) or not value or "\\\\" in value:\n        raise TrainingExecutionError(f"{field} must be a non-empty POSIX repository path")\n'''
+          path_replacement = '''    if (\n        not isinstance(value, str)\n        or not value\n        or "\\\\" in value\n        or "\\x00" in value\n    ):\n        raise TrainingExecutionError(f"{field} must be a non-empty POSIX repository path")\n'''
+          if path_anchor not in source:
+              raise SystemExit("path validator anchor missing")
+          source = source.replace(path_anchor, path_replacement, 1)
           source_path.write_text(source, encoding="utf-8")
 
           test_path = Path("tests/test_mesc_training_executor_v1.py")
           tests = test_path.read_text(encoding="utf-8")
-          test_import_anchor = "import pytest\n\n"
-          if test_import_anchor not in tests:
-              raise SystemExit("test import anchor missing")
-          tests = tests.replace(
-              test_import_anchor,
-              "import pytest\n\nimport medscale.mesc._training_executor_v1 as executor_module\n\n",
-              1,
-          )
-          sentinel = "def test_reasoner_role_executes_end_to_end() -> None:"
+          sentinel = "def test_forged_nested_run_plan_is_rejected_before_backend() -> None:"
           if sentinel in tests:
-              raise SystemExit("qualification tests already appended")
-          tests += '''\n\n\ndef test_reasoner_role_executes_end_to_end() -> None:\n    backend = _SuccessBackend()\n    receipt = _execute(backend, role="reasoner")\n\n    assert receipt.disposition == "SUCCEEDED"\n    assert receipt.role == "reasoner"\n    assert receipt.model_id == "fixture/reasoner"\n    assert backend.manifest is not None\n    assert backend.manifest.role == "reasoner"\n    assert backend.manifest.model_id == "fixture/reasoner"\n\n\ndef test_aborted_backend_returns_canonical_terminal_receipt() -> None:\n    class AbortedBackend:\n        def execute(\n            self,\n            *,\n            manifest: TrainingExecutionManifest,\n        ) -> TrainingBackendResult:\n            del manifest\n            return TrainingBackendResult(\n                disposition="ABORTED",\n                backend_id="fixture-backend",\n                backend_version="v1",\n                started_at="2026-08-25T05:00:00Z",\n                finished_at="2026-08-25T05:00:15Z",\n                artifacts=(),\n                failure_reason="fixture operator abort",\n            )\n\n    receipt = _execute(AbortedBackend())\n    assert receipt.disposition == "ABORTED"\n    assert receipt.result_artifacts == ()\n    assert receipt.result_manifest_sha256 is None\n    assert receipt.failure_reason == "fixture operator abort"\n\n\ndef test_caller_owned_launch_mutation_after_validation_is_isolated(\n    monkeypatch: pytest.MonkeyPatch,\n) -> None:\n    manifest, readiness, launch, binding, assets, environment = _bundle()\n    backend = _SuccessBackend()\n    original_require_environment = executor_module._require_environment\n\n    def mutate_caller_after_validation(\n        observed_environment: TrainingExecutionEnvironment,\n        *,\n        run_plan: TrainingRunPlan,\n    ) -> None:\n        original_require_environment(\n            observed_environment,\n            run_plan=run_plan,\n        )\n        object.__setattr__(launch.compact, "model_id", "tampered/model")\n\n    monkeypatch.setattr(\n        executor_module,\n        "_require_environment",\n        mutate_caller_after_validation,\n    )\n\n    receipt = execute_training(\n        manifest=manifest,\n        readiness=readiness,\n        launch_plan=launch,\n        corpus_binding=binding,\n        local_assets=assets,\n        environment=environment,\n        role="compact",\n        backend=backend,\n    )\n\n    assert receipt.model_id == "fixture/compact"\n    assert backend.manifest is not None\n    assert backend.manifest.model_id == "fixture/compact"\n'''
+              raise SystemExit("Qodo repair tests already appended")
+          tests += '''\n\n\ndef test_forged_nested_run_plan_is_rejected_before_backend() -> None:\n    manifest, readiness, launch, binding, assets, environment = _bundle()\n    backend = _SuccessBackend()\n\n    class ForgedRunPlan(TrainingRunPlan):\n        pass\n\n    forged = object.__new__(ForgedRunPlan)\n    for field_name in TrainingRunPlan.__dataclass_fields__:\n        object.__setattr__(\n            forged,\n            field_name,\n            getattr(launch.compact, field_name),\n        )\n    forged_launch = replace(launch, compact=forged)\n\n    with pytest.raises(TrainingExecutionError, match="launch_plan.compact"):\n        execute_training(\n            manifest=manifest,\n            readiness=readiness,\n            launch_plan=forged_launch,\n            corpus_binding=binding,\n            local_assets=assets,\n            environment=environment,\n            role="compact",\n            backend=backend,\n        )\n    assert backend.manifest is None\n\n\ndef test_mutated_exact_run_plan_is_revalidated_before_backend() -> None:\n    manifest, readiness, launch, binding, assets, environment = _bundle()\n    backend = _SuccessBackend()\n    object.__setattr__(launch.compact, "result_paths", ("../escape",))\n\n    with pytest.raises(\n        TrainingExecutionError,\n        match="canonical execution inputs could not be reconstructed",\n    ):\n        execute_training(\n            manifest=manifest,\n            readiness=readiness,\n            launch_plan=launch,\n            corpus_binding=binding,\n            local_assets=assets,\n            environment=environment,\n            role="compact",\n            backend=backend,\n        )\n    assert backend.manifest is None\n\n\ndef test_result_artifact_path_rejects_nul() -> None:\n    with pytest.raises(TrainingExecutionError, match="POSIX repository path"):\n        TrainingResultArtifact(\n            path="experiments/compact/result\\x00.json",\n            sha256="1" * 64,\n            byte_count=1,\n        )\n'''
           test_path.write_text(tests, encoding="utf-8")
 
           readme_path = Path("specs/mesc-training-executor-v1/README.md")
           readme = readme_path.read_text(encoding="utf-8")
-          readme_anchor = "No backend means fail closed.\n\n## Independent upstream revalidation\n"
-          if readme_anchor not in readme:
-              raise SystemExit("README snapshot anchor missing")
-          readme = readme.replace(
-              readme_anchor,
-              "No backend means fail closed.\n\n"
-              "Before recomputation, the executor snapshots the exact canonical input objects "
-              "into core-owned copies. All subsequent authority checks and manifest construction "
-              "operate exclusively on those snapshots, so caller-side mutation after entry cannot "
-              "change the validated execution identity.\n\n"
-              "## Independent upstream revalidation\n",
-              1,
-          )
+          old_text = (\n              "Before recomputation, the executor snapshots the exact canonical input objects "\n              "into core-owned copies. All subsequent authority checks and manifest construction "\n              "operate exclusively on those snapshots, so caller-side mutation after entry cannot "\n              "change the validated execution identity."\n          )
+          new_text = (\n              "Before recomputation, the executor verifies nested canonical types and reconstructs "\n              "the exact canonical input objects through their dataclass constructors into "\n              "core-owned copies. Constructor revalidation prevents forged subclasses or mutated "\n              "exact objects from bypassing canonical invariants. All subsequent authority checks "\n              "and manifest construction operate exclusively on those snapshots, so caller-side "\n              "mutation after entry cannot change the validated execution identity."\n          )
+          if old_text not in readme:
+              raise SystemExit("README snapshot text missing")
+          readme = readme.replace(old_text, new_text, 1)
           readme_path.write_text(readme, encoding="utf-8")
           PY
 
@@ -117,5 +126,5 @@ jobs:
             specs/mesc-training-executor-v1/README.md \
             src/medscale/mesc/_training_executor_v1.py \
             tests/test_mesc_training_executor_v1.py
-          git commit -m 'fix(mesc): snapshot executor inputs before validation'
+          git commit -m 'fix(mesc): harden canonical executor inputs and paths'
           git push origin HEAD:feat/mesc-training-executor-v1
