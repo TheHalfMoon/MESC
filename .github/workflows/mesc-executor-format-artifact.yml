@@ -90,8 +90,20 @@ jobs:
 
           readme_path = Path("specs/mesc-training-executor-v1/README.md")
           readme = readme_path.read_text(encoding="utf-8")
-          old_text = (\n              "Before recomputation, the executor snapshots the exact canonical input objects "\n              "into core-owned copies. All subsequent authority checks and manifest construction "\n              "operate exclusively on those snapshots, so caller-side mutation after entry cannot "\n              "change the validated execution identity."\n          )
-          new_text = (\n              "Before recomputation, the executor verifies nested canonical types and reconstructs "\n              "the exact canonical input objects through their dataclass constructors into "\n              "core-owned copies. Constructor revalidation prevents forged subclasses or mutated "\n              "exact objects from bypassing canonical invariants. All subsequent authority checks "\n              "and manifest construction operate exclusively on those snapshots, so caller-side "\n              "mutation after entry cannot change the validated execution identity."\n          )
+          old_text = (
+              "Before recomputation, the executor snapshots the exact canonical input objects "
+              "into core-owned copies. All subsequent authority checks and manifest construction "
+              "operate exclusively on those snapshots, so caller-side mutation after entry cannot "
+              "change the validated execution identity."
+          )
+          new_text = (
+              "Before recomputation, the executor verifies nested canonical types and reconstructs "
+              "the exact canonical input objects through their dataclass constructors into "
+              "core-owned copies. Constructor revalidation prevents forged subclasses or mutated "
+              "exact objects from bypassing canonical invariants. All subsequent authority checks "
+              "and manifest construction operate exclusively on those snapshots, so caller-side "
+              "mutation after entry cannot change the validated execution identity."
+          )
           if old_text not in readme:
               raise SystemExit("README snapshot text missing")
           readme = readme.replace(old_text, new_text, 1)
