@@ -222,8 +222,8 @@ class HfLocalSftBackend:
                     raise HfLocalSftBackendError("model weight identity changed during training")
                 seed_observations.append(
                     {
-                        "metrics": {key: value for key, value in runtime_result.metrics},
-                        "packages": {key: value for key, value in runtime_result.packages},
+                        "metrics": dict(runtime_result.metrics),
+                        "packages": dict(runtime_result.packages),
                         "seed": seed,
                     }
                 )
@@ -255,7 +255,7 @@ class HfLocalSftBackend:
                 raise HfLocalSftBackendError(
                     "planned experiment result root appeared during training"
                 )
-            os.replace(staging, final_parent)
+            staging.replace(final_parent)
             staging = None
             return TrainingBackendResult(
                 disposition="SUCCEEDED",
