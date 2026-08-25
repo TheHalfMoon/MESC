@@ -18,7 +18,19 @@ _SHA_A = "a" * 64
 _SHA_B = "b" * 64
 
 
-def _example(**overrides: object) -> TrainingExampleV1:
+class _FakeMessage(TrainingMessage):
+    def to_dict(self) -> dict[str, str]:
+        return {"role": "assistant", "content": "forged"}
+
+
+class _FakeExample(TrainingExampleV1):
+    pass
+
+
+def _example(
+    example_type: type[TrainingExampleV1] = TrainingExampleV1,
+    **overrides: object,
+) -> TrainingExampleV1:
     values: dict[str, Any] = {
         "example_id": "example-1",
         "training_record_id": "record-1",
@@ -48,7 +60,7 @@ def _example(**overrides: object) -> TrainingExampleV1:
         "contamination_state": "CLEAR",
     }
     values.update(overrides)
-    return TrainingExampleV1(**values)
+    return example_type(**values)
 
 
 def test_valid_example_is_eligible_and_content_addressed() -> None:
@@ -60,6 +72,13 @@ def test_valid_example_is_eligible_and_content_addressed() -> None:
 
 def test_training_record_identity_participates_in_example_identity() -> None:
     assert _example().example_sha256 != _example(training_record_id="record-2").example_sha256
+
+
+def test_training_record_id_matches_upstream_freeze_identifier_domain() -> None:
+    assert _example(training_record_id="α-1").training_record_id == "α-1"
+    assert _example(training_record_id="Record 1").training_record_id == "Record 1"
+    with pytest.raises(TrainingExampleContractError, match="training_record_id must be a non-empty"):
+        _example(training_record_id="")
 
 
 def test_trl_projection_is_conversational_prompt_completion_only() -> None:
@@ -114,6 +133,16 @@ def test_completion_must_be_assistant() -> None:
         _example(completion=TrainingMessage(role="user", content="wrong role"))
 
 
+def test_message_subclasses_are_rejected_at_canonical_boundaries() -> None:
+    fake_user = _FakeMessage(role="user", content="Question")
+    with pytest.raises(TrainingExampleContractError, match="exact TrainingMessage"):
+        _example(prompt=(fake_user,))
+
+    fake_completion = _FakeMessage(role="assistant", content="Answer")
+    with pytest.raises(TrainingExampleContractError, match="exact TrainingMessage"):
+        _example(completion=fake_completion)
+
+
 def test_evidence_refs_are_required_unique_and_immutable() -> None:
     with pytest.raises(TrainingExampleContractError, match="evidence_refs must be non-empty"):
         _example(evidence_refs=())
@@ -125,13 +154,11 @@ def test_evidence_refs_are_required_unique_and_immutable() -> None:
         _example(evidence_refs=mutable_refs)
 
 
-def test_source_sha_language_and_training_record_id_are_strict() -> None:
+def test_source_sha_and_language_are_strict() -> None:
     with pytest.raises(TrainingExampleContractError, match="source_sha256"):
         _example(source_sha256="ABC")
     with pytest.raises(TrainingExampleContractError, match="language"):
         _example(language="english")
-    with pytest.raises(TrainingExampleContractError, match="training_record_id"):
-        _example(training_record_id="Record 1")
 
 
 def test_non_string_timestamp_fails_with_contract_error() -> None:
@@ -194,8 +221,16 @@ def test_corpus_direct_construction_rejects_mutable_or_wrong_member_container() 
         TrainingCorpusV1(examples=mutable_examples)
 
     wrong_member: Any = ("not-an-example",)
-    with pytest.raises(TrainingExampleContractError, match="members must be TrainingExampleV1"):
+    with pytest.raises(TrainingExampleContractError, match="members must be exact TrainingExampleV1"):
         TrainingCorpusV1(examples=wrong_member)
+
+
+def test_example_subclasses_are_rejected_by_corpus_and_builder() -> None:
+    forged = _example(_FakeExample)
+    with pytest.raises(TrainingExampleContractError, match="members must be exact TrainingExampleV1"):
+        TrainingCorpusV1(examples=(forged,))
+    with pytest.raises(TrainingExampleContractError, match="only exact TrainingExampleV1"):
+        build_training_corpus([forged])
 
 
 def test_build_corpus_sorts_examples_and_rejects_duplicates() -> None:
@@ -213,7 +248,7 @@ def test_build_corpus_freezes_lists_and_rejects_forged_runtime_inputs() -> None:
     assert isinstance(corpus.examples, tuple)
 
     wrong_member: Any = ["not-an-example"]
-    with pytest.raises(TrainingExampleContractError, match="only TrainingExampleV1"):
+    with pytest.raises(TrainingExampleContractError, match="only exact TrainingExampleV1"):
         build_training_corpus(wrong_member)
 
     wrong_container: Any = "example-1"
@@ -222,11 +257,11 @@ def test_build_corpus_freezes_lists_and_rejects_forged_runtime_inputs() -> None:
 
 
 def test_corpus_exposes_unique_sorted_t5_training_record_ids() -> None:
-    first = _example(example_id="example-1", training_record_id="record-2")
-    second = _example(example_id="example-2", training_record_id="record-1", source_sha256="c" * 64)
-    third = _example(example_id="example-3", training_record_id="record-2", source_sha256="d" * 64)
+    first = _example(example_id="example-1", training_record_id="β-2")
+    second = _example(example_id="example-2", training_record_id="α-1", source_sha256="c" * 64)
+    third = _example(example_id="example-3", training_record_id="β-2", source_sha256="d" * 64)
     corpus = build_training_corpus((third, first, second))
-    assert corpus.training_record_ids == ("record-1", "record-2")
+    assert corpus.training_record_ids == ("α-1", "β-2")
 
 
 def test_corpus_hash_and_jsonl_are_order_independent_at_builder_boundary() -> None:
