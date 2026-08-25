@@ -102,9 +102,7 @@ def test_single_identity_is_path_independent_and_content_addressed(
     assert first.layout == "single"
     assert first.files[0].path == "model.safetensors"
     assert first.files[0].kind == "weight"
-    assert first.files[0].sha256 == hashlib.sha256(
-        b"fixture-safetensors"
-    ).hexdigest()
+    assert first.files[0].sha256 == hashlib.sha256(b"fixture-safetensors").hexdigest()
     assert first.files[0].byte_count == len(b"fixture-safetensors")
     assert first.weights_sha256 == second.weights_sha256
     assert first.verifier_receipt_sha256 == second.verifier_receipt_sha256

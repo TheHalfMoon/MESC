@@ -91,19 +91,14 @@ class HfSafeTensorsArtifactIdentity:
                 f"identity_version must be exactly {_IDENTITY_VERSION}"
             )
         _require_text(self.model_id, field="model_id")
-        if (
-            not isinstance(self.revision, str)
-            or _GIT_SHA.fullmatch(self.revision) is None
-        ):
+        if not isinstance(self.revision, str) or _GIT_SHA.fullmatch(self.revision) is None:
             raise TrainingModelArtifactIdentityError(
                 "revision must be exactly 40 lowercase hex characters"
             )
         if self.layout not in ("single", "sharded"):
             raise TrainingModelArtifactIdentityError("layout must be single or sharded")
         if not isinstance(self.files, tuple) or not self.files:
-            raise TrainingModelArtifactIdentityError(
-                "files must be a non-empty immutable tuple"
-            )
+            raise TrainingModelArtifactIdentityError("files must be a non-empty immutable tuple")
         if any(type(item) is not HfArtifactFileIdentity for item in self.files):
             raise TrainingModelArtifactIdentityError(
                 "files must contain exact HfArtifactFileIdentity values"
@@ -290,9 +285,7 @@ def _parse_index(raw: bytes) -> tuple[str, ...]:
             "SafeTensors index must contain only metadata and weight_map"
         )
     if "metadata" in payload and not isinstance(payload["metadata"], dict):
-        raise TrainingModelArtifactIdentityError(
-            "SafeTensors index metadata must be an object"
-        )
+        raise TrainingModelArtifactIdentityError("SafeTensors index metadata must be an object")
     weight_map = payload.get("weight_map")
     if not isinstance(weight_map, dict) or not weight_map:
         raise TrainingModelArtifactIdentityError(
@@ -328,22 +321,16 @@ def _parse_index(raw: bytes) -> tuple[str, ...]:
 
 def _require_complete_shard_sequence(names: tuple[str, ...]) -> None:
     if not names:
-        raise TrainingModelArtifactIdentityError(
-            "sharded layout requires at least one shard"
-        )
+        raise TrainingModelArtifactIdentityError("sharded layout requires at least one shard")
     parsed: list[tuple[int, int]] = []
     for name in names:
         match = _SHARD.fullmatch(name)
         if match is None:
-            raise TrainingModelArtifactIdentityError(
-                "invalid canonical shard filename"
-            )
+            raise TrainingModelArtifactIdentityError("invalid canonical shard filename")
         parsed.append((int(match.group(1)), int(match.group(2))))
     totals = {total for _, total in parsed}
     if len(totals) != 1:
-        raise TrainingModelArtifactIdentityError(
-            "all shards must declare the same shard count"
-        )
+        raise TrainingModelArtifactIdentityError("all shards must declare the same shard count")
     total = next(iter(totals))
     expected = tuple(range(1, total + 1))
     if total != len(parsed) or tuple(index for index, _ in parsed) != expected:
@@ -354,22 +341,14 @@ def _require_complete_shard_sequence(names: tuple[str, ...]) -> None:
 
 def _require_model_root(model_root: Path) -> Path:
     if not isinstance(model_root, Path):
-        raise TrainingModelArtifactIdentityError(
-            "model_root must be a pathlib.Path"
-        )
+        raise TrainingModelArtifactIdentityError("model_root must be a pathlib.Path")
     if model_root.is_symlink():
-        raise TrainingModelArtifactIdentityError(
-            "model_root must not be a symlink"
-        )
+        raise TrainingModelArtifactIdentityError("model_root must not be a symlink")
     try:
         if not model_root.is_dir():
-            raise TrainingModelArtifactIdentityError(
-                "model_root must be an existing directory"
-            )
+            raise TrainingModelArtifactIdentityError("model_root must be an existing directory")
     except OSError as exc:
-        raise TrainingModelArtifactIdentityError(
-            "model_root could not be inspected"
-        ) from exc
+        raise TrainingModelArtifactIdentityError("model_root could not be inspected") from exc
     return model_root
 
 
@@ -377,9 +356,7 @@ def _reject_unsafe_weight_files(root: Path) -> None:
     try:
         names = tuple(entry.name for entry in os.scandir(root))
     except OSError as exc:
-        raise TrainingModelArtifactIdentityError(
-            "model_root could not be enumerated"
-        ) from exc
+        raise TrainingModelArtifactIdentityError("model_root could not be enumerated") from exc
     for name in names:
         if name.lower().endswith(_UNSAFE_WEIGHT_SUFFIXES):
             raise TrainingModelArtifactIdentityError(
@@ -390,15 +367,9 @@ def _reject_unsafe_weight_files(root: Path) -> None:
 
 def _root_safetensors_names(root: Path) -> set[str]:
     try:
-        return {
-            entry.name
-            for entry in os.scandir(root)
-            if entry.name.endswith(".safetensors")
-        }
+        return {entry.name for entry in os.scandir(root) if entry.name.endswith(".safetensors")}
     except OSError as exc:
-        raise TrainingModelArtifactIdentityError(
-            "model_root could not be enumerated"
-        ) from exc
+        raise TrainingModelArtifactIdentityError("model_root could not be enumerated") from exc
 
 
 def _hash_file_identity(
@@ -504,9 +475,7 @@ def _read_regular_file(
         after.st_size,
         after.st_mtime_ns,
     )
-    if not (
-        expected_identity == opened_identity == finished_identity == after_identity
-    ):
+    if not (expected_identity == opened_identity == finished_identity == after_identity):
         raise TrainingModelArtifactIdentityError(
             f"artifact file changed during verification: {path.name}"
         )
@@ -530,25 +499,11 @@ def _lexists(path: Path) -> bool:
 
 
 def _require_relative_basename(value: object, *, field: str) -> str:
-    if (
-        not isinstance(value, str)
-        or not value
-        or "\\" in value
-        or "\x00" in value
-    ):
-        raise TrainingModelArtifactIdentityError(
-            f"{field} must be one non-empty POSIX basename"
-        )
+    if not isinstance(value, str) or not value or "\\" in value or "\x00" in value:
+        raise TrainingModelArtifactIdentityError(f"{field} must be one non-empty POSIX basename")
     path = PurePosixPath(value)
-    if (
-        path.is_absolute()
-        or len(path.parts) != 1
-        or str(path) != value
-        or value in (".", "..")
-    ):
-        raise TrainingModelArtifactIdentityError(
-            f"{field} must be one canonical POSIX basename"
-        )
+    if path.is_absolute() or len(path.parts) != 1 or str(path) != value or value in (".", ".."):
+        raise TrainingModelArtifactIdentityError(f"{field} must be one canonical POSIX basename")
     return value
 
 
@@ -562,7 +517,5 @@ def _require_sha256(value: object, *, field: str) -> str:
 
 def _require_text(value: object, *, field: str) -> str:
     if not isinstance(value, str) or not value.strip() or "\x00" in value:
-        raise TrainingModelArtifactIdentityError(
-            f"{field} must be non-empty NUL-free text"
-        )
+        raise TrainingModelArtifactIdentityError(f"{field} must be non-empty NUL-free text")
     return value
