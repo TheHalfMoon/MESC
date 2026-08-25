@@ -10,7 +10,7 @@ from __future__ import annotations
 import re
 from collections.abc import Collection, Sequence
 from dataclasses import dataclass
-from typing import Final, Literal
+from typing import Final, Literal, overload
 
 from medscale.provenance import validate_timestamp
 from medscale.reproducibility import canonical_json, content_hash
@@ -313,13 +313,22 @@ class TrainingCorpusV1:
         return tuple(example.to_trl_prompt_completion() for example in self.examples)
 
 
-def build_training_corpus(examples: Sequence[TrainingExampleV1]) -> TrainingCorpusV1:
-    """Sort and freeze eligible examples into one deterministic corpus."""
+@overload
+def build_training_corpus(examples: Sequence[TrainingExampleV1]) -> TrainingCorpusV1: ...
+
+
+def build_training_corpus(examples: object) -> TrainingCorpusV1:
+    """Validate, sort, and freeze eligible examples into one deterministic corpus."""
     if isinstance(examples, (str, bytes)) or not isinstance(examples, Sequence):
         raise TrainingExampleContractError("examples must be a sequence of TrainingExampleV1")
-    if any(not isinstance(example, TrainingExampleV1) for example in examples):
-        raise TrainingExampleContractError("examples must contain only TrainingExampleV1 values")
-    ordered = tuple(sorted(examples, key=lambda example: example.example_id))
+
+    validated: list[TrainingExampleV1] = []
+    for example in examples:
+        if not isinstance(example, TrainingExampleV1):
+            raise TrainingExampleContractError("examples must contain only TrainingExampleV1 values")
+        validated.append(example)
+
+    ordered = tuple(sorted(validated, key=lambda example: example.example_id))
     return TrainingCorpusV1(examples=ordered)
 
 
