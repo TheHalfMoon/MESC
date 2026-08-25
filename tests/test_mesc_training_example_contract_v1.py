@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
 from typing import Any
 
 import pytest
@@ -111,7 +110,7 @@ def test_system_message_is_leading_and_unique() -> None:
 
 
 def test_completion_must_be_assistant() -> None:
-    with pytest.raises(TrainingExampleContractError, match="completion must be"):
+    with pytest.raises(TrainingExampleContractError, match="completion role"):
         _example(completion=TrainingMessage(role="user", content="wrong role"))
 
 
@@ -174,18 +173,15 @@ def test_unreviewed_unverified_or_contaminated_examples_are_not_eligible() -> No
     assert _example(contamination_state="BLOCKED").eligible_for_sft is False
 
 
-@pytest.mark.parametrize(
-    "field,value",
-    [
-        ("verification_state", "PENDING"),
-        ("clinician_review_state", "PENDING"),
-        ("contamination_state", "BLOCKED"),
-    ],
-)
-def test_corpus_rejects_ineligible_examples(field: str, value: str) -> None:
-    example = replace(_example(), **{field: value})
-    with pytest.raises(TrainingExampleContractError, match="every corpus example"):
-        TrainingCorpusV1(examples=(example,))
+def test_corpus_rejects_ineligible_examples() -> None:
+    ineligible = (
+        _example(verification_state="PENDING"),
+        _example(clinician_review_state="PENDING"),
+        _example(contamination_state="BLOCKED"),
+    )
+    for example in ineligible:
+        with pytest.raises(TrainingExampleContractError, match="every corpus example"):
+            TrainingCorpusV1(examples=(example,))
 
 
 def test_build_corpus_sorts_examples_and_rejects_duplicates() -> None:
