@@ -184,6 +184,16 @@ def test_corpus_rejects_ineligible_examples() -> None:
             TrainingCorpusV1(examples=(example,))
 
 
+def test_corpus_direct_construction_rejects_mutable_or_wrong_member_container() -> None:
+    mutable_examples: Any = [_example()]
+    with pytest.raises(TrainingExampleContractError, match="examples must be a tuple"):
+        TrainingCorpusV1(examples=mutable_examples)
+
+    wrong_member: Any = ("not-an-example",)
+    with pytest.raises(TrainingExampleContractError, match="members must be TrainingExampleV1"):
+        TrainingCorpusV1(examples=wrong_member)
+
+
 def test_build_corpus_sorts_examples_and_rejects_duplicates() -> None:
     second = _example(example_id="example-2", source_sha256="c" * 64)
     corpus = build_training_corpus((second, _example()))
