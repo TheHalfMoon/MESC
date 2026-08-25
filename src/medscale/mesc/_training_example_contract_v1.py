@@ -156,6 +156,8 @@ class TrainingExampleV1:
                 "hand-authored fixtures must not claim synthetic provenance"
             )
 
+        if not isinstance(self.evidence_refs, tuple):
+            raise TrainingExampleContractError("evidence_refs must be an immutable tuple")
         if not self.evidence_refs:
             raise TrainingExampleContractError("evidence_refs must be non-empty")
         for ref in self.evidence_refs:
@@ -313,6 +315,10 @@ class TrainingCorpusV1:
 
 def build_training_corpus(examples: Sequence[TrainingExampleV1]) -> TrainingCorpusV1:
     """Sort and freeze eligible examples into one deterministic corpus."""
+    if isinstance(examples, (str, bytes)) or not isinstance(examples, Sequence):
+        raise TrainingExampleContractError("examples must be a sequence of TrainingExampleV1")
+    if any(not isinstance(example, TrainingExampleV1) for example in examples):
+        raise TrainingExampleContractError("examples must contain only TrainingExampleV1 values")
     ordered = tuple(sorted(examples, key=lambda example: example.example_id))
     return TrainingCorpusV1(examples=ordered)
 
