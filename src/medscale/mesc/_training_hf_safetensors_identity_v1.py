@@ -311,8 +311,7 @@ def _parse_index(raw: bytes) -> tuple[str, ...]:
         _require_relative_basename(shard_name, field="SafeTensors shard filename")
         if _SHARD.fullmatch(shard_name) is None:
             raise TrainingModelArtifactIdentityError(
-                "SafeTensors shard filenames must use "
-                "model-NNNNN-of-NNNNN.safetensors"
+                "SafeTensors shard filenames must use model-NNNNN-of-NNNNN.safetensors"
             )
         shard_names.add(shard_name)
 
@@ -366,8 +365,7 @@ def _reject_unsafe_weight_files(root: Path) -> None:
     for name in names:
         if name.lower().endswith(_UNSAFE_WEIGHT_SUFFIXES):
             raise TrainingModelArtifactIdentityError(
-                "pickle-compatible weight files are forbidden by the "
-                "V1 SafeTensors contract"
+                "pickle-compatible weight files are forbidden by the V1 SafeTensors contract"
             )
 
 
@@ -412,9 +410,7 @@ def _read_regular_file(
             f"artifact file must be a non-symlink regular file: {path.name}"
         )
     if before.st_size <= 0:
-        raise TrainingModelArtifactIdentityError(
-            f"artifact file must be non-empty: {path.name}"
-        )
+        raise TrainingModelArtifactIdentityError(f"artifact file must be non-empty: {path.name}")
     if max_bytes is not None and before.st_size > max_bytes:
         raise TrainingModelArtifactIdentityError(
             f"artifact file exceeds the bounded read limit: {path.name}"
