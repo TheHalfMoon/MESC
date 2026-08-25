@@ -26,12 +26,7 @@ jobs:
         run: |
           set -euo pipefail
           expected_head="f009e5f75ad04698ee047f13885719214b81675e"
-          current_head="$(git rev-parse HEAD)"
-          if [[ "$current_head" != "$expected_head" ]]; then
-            echo "Executor branch moved from expected head; repair helper is a no-op."
-            exit 0
-          fi
-
+          test "$(git rev-parse HEAD)" = "$expected_head"
           uv sync --frozen
 
           python - <<'PY'
@@ -61,7 +56,7 @@ jobs:
               1,
           )
 
-          old_snapshot = '''    try:\n        manifest = deepcopy(manifest)\n        readiness = deepcopy(readiness)\n        launch_plan = deepcopy(launch_plan)\n        corpus_binding = deepcopy(corpus_binding)\n        local_assets = deepcopy(local_assets)\n        environment = deepcopy(environment)\n    except Exception as exc:\n        raise TrainingExecutionError(\n            "canonical execution inputs could not be snapshotted"\n        ) from exc\n\n'''
+          old_snapshot = '''    try:\n        manifest = deepcopy(manifest)\n        readiness = deepcopy(readiness)\n        launch_plan = deepcopy(launch_plan)\n        corpus_binding = deepcopy(corpus_binding)\n        local_assets = deepcopy(local_assets)\n        environment = deepcopy(environment)\n    except Exception as exc:\n        raise TrainingExecutionError("canonical execution inputs could not be snapshotted") from exc\n\n'''
           new_snapshot = '''    (\n        manifest,\n        readiness,\n        launch_plan,\n        corpus_binding,\n        local_assets,\n        environment,\n    ) = _snapshot_execution_inputs(\n        manifest=manifest,\n        readiness=readiness,\n        launch_plan=launch_plan,\n        corpus_binding=corpus_binding,\n        local_assets=local_assets,\n        environment=environment,\n    )\n\n'''
           if old_snapshot not in source:
               raise SystemExit("snapshot block anchor missing")
@@ -70,7 +65,7 @@ jobs:
           helper_anchor = '''def _recompute_launch(\n    *,\n    manifest: TrainingReadinessManifest,\n'''
           if helper_anchor not in source:
               raise SystemExit("recompute helper anchor missing")
-          helper_code = '''def _snapshot_execution_inputs(\n    *,\n    manifest: TrainingReadinessManifest,\n    readiness: TrainingReadinessReport,\n    launch_plan: TrainingLaunchPlan,\n    corpus_binding: TrainingCorpusBindingReport,\n    local_assets: TrainingLocalAssetAttestationReport,\n    environment: TrainingExecutionEnvironment,\n) -> tuple[\n    TrainingReadinessManifest,\n    TrainingReadinessReport,\n    TrainingLaunchPlan,\n    TrainingCorpusBindingReport,\n    TrainingLocalAssetAttestationReport,\n    TrainingExecutionEnvironment,\n]:\n    _require_nested_canonical_types(\n        manifest=manifest,\n        launch_plan=launch_plan,\n    )\n    try:\n        compact_recipe = replace(\n            manifest.compact_recipe,\n            base=replace(manifest.compact_recipe.base),\n            dataset=replace(manifest.compact_recipe.dataset),\n        )\n        reasoner_recipe = replace(\n            manifest.reasoner_recipe,\n            base=replace(manifest.reasoner_recipe.base),\n            dataset=replace(manifest.reasoner_recipe.dataset),\n        )\n        manifest_snapshot = replace(\n            manifest,\n            compact_candidate=replace(manifest.compact_candidate),\n            reasoner_candidate=replace(manifest.reasoner_candidate),\n            compact_recipe=compact_recipe,\n            reasoner_recipe=reasoner_recipe,\n        )\n        launch_snapshot = replace(\n            launch_plan,\n            compact=replace(launch_plan.compact),\n            reasoner=replace(launch_plan.reasoner),\n        )\n        return (\n            manifest_snapshot,\n            replace(readiness),\n            launch_snapshot,\n            replace(corpus_binding),\n            replace(local_assets),\n            replace(environment),\n        )\n    except Exception as exc:\n        raise TrainingExecutionError(\n            "canonical execution inputs could not be reconstructed"\n        ) from exc\n\n\ndef _require_nested_canonical_types(\n    *,\n    manifest: TrainingReadinessManifest,\n    launch_plan: TrainingLaunchPlan,\n) -> None:\n    for field, value, expected_type in (\n        (\n            "manifest.compact_candidate",\n            manifest.compact_candidate,\n            TrainingCandidate,\n        ),\n        (\n            "manifest.reasoner_candidate",\n            manifest.reasoner_candidate,\n            TrainingCandidate,\n        ),\n        ("manifest.compact_recipe", manifest.compact_recipe, TrainingRecipe),\n        ("manifest.reasoner_recipe", manifest.reasoner_recipe, TrainingRecipe),\n        ("launch_plan.compact", launch_plan.compact, TrainingRunPlan),\n        ("launch_plan.reasoner", launch_plan.reasoner, TrainingRunPlan),\n    ):\n        _require_exact_input(value, expected_type, field=field)\n\n    for field, recipe in (\n        ("manifest.compact_recipe", manifest.compact_recipe),\n        ("manifest.reasoner_recipe", manifest.reasoner_recipe),\n    ):\n        _require_exact_input(recipe.base, ModelRef, field=f"{field}.base")\n        _require_exact_input(recipe.dataset, DatasetRef, field=f"{field}.dataset")\n        _require_exact_input(recipe.method, AdapterMethod, field=f"{field}.method")\n\n\n'''
+          helper_code = '''def _snapshot_execution_inputs(\n    *,\n    manifest: TrainingReadinessManifest,\n    readiness: TrainingReadinessReport,\n    launch_plan: TrainingLaunchPlan,\n    corpus_binding: TrainingCorpusBindingReport,\n    local_assets: TrainingLocalAssetAttestationReport,\n    environment: TrainingExecutionEnvironment,\n) -> tuple[\n    TrainingReadinessManifest,\n    TrainingReadinessReport,\n    TrainingLaunchPlan,\n    TrainingCorpusBindingReport,\n    TrainingLocalAssetAttestationReport,\n    TrainingExecutionEnvironment,\n]:\n    _require_nested_canonical_types(manifest=manifest, launch_plan=launch_plan)\n    try:\n        compact_recipe = replace(\n            manifest.compact_recipe,\n            base=replace(manifest.compact_recipe.base),\n            dataset=replace(manifest.compact_recipe.dataset),\n        )\n        reasoner_recipe = replace(\n            manifest.reasoner_recipe,\n            base=replace(manifest.reasoner_recipe.base),\n            dataset=replace(manifest.reasoner_recipe.dataset),\n        )\n        manifest_snapshot = replace(\n            manifest,\n            compact_candidate=replace(manifest.compact_candidate),\n            reasoner_candidate=replace(manifest.reasoner_candidate),\n            compact_recipe=compact_recipe,\n            reasoner_recipe=reasoner_recipe,\n        )\n        launch_snapshot = replace(\n            launch_plan,\n            compact=replace(launch_plan.compact),\n            reasoner=replace(launch_plan.reasoner),\n        )\n        return (\n            manifest_snapshot,\n            replace(readiness),\n            launch_snapshot,\n            replace(corpus_binding),\n            replace(local_assets),\n            replace(environment),\n        )\n    except Exception as exc:\n        raise TrainingExecutionError(\n            "canonical execution inputs could not be reconstructed"\n        ) from exc\n\n\ndef _require_nested_canonical_types(\n    *,\n    manifest: TrainingReadinessManifest,\n    launch_plan: TrainingLaunchPlan,\n) -> None:\n    checks: tuple[tuple[str, object, type[object]], ...] = (\n        ("manifest.compact_candidate", manifest.compact_candidate, TrainingCandidate),\n        ("manifest.reasoner_candidate", manifest.reasoner_candidate, TrainingCandidate),\n        ("manifest.compact_recipe", manifest.compact_recipe, TrainingRecipe),\n        ("manifest.reasoner_recipe", manifest.reasoner_recipe, TrainingRecipe),\n        ("launch_plan.compact", launch_plan.compact, TrainingRunPlan),\n        ("launch_plan.reasoner", launch_plan.reasoner, TrainingRunPlan),\n    )\n    for field, value, expected_type in checks:\n        _require_exact_input(value, expected_type, field=field)\n\n    for field, recipe in (\n        ("manifest.compact_recipe", manifest.compact_recipe),\n        ("manifest.reasoner_recipe", manifest.reasoner_recipe),\n    ):\n        _require_exact_input(recipe.base, ModelRef, field=f"{field}.base")\n        _require_exact_input(recipe.dataset, DatasetRef, field=f"{field}.dataset")\n        _require_exact_input(recipe.method, AdapterMethod, field=f"{field}.method")\n\n\n'''
           source = source.replace(helper_anchor, helper_code + helper_anchor, 1)
 
           path_anchor = '''    if not isinstance(value, str) or not value or "\\\\" in value:\n        raise TrainingExecutionError(f"{field} must be a non-empty POSIX repository path")\n'''
@@ -85,29 +80,8 @@ jobs:
           sentinel = "def test_forged_nested_run_plan_is_rejected_before_backend() -> None:"
           if sentinel in tests:
               raise SystemExit("Qodo repair tests already appended")
-          tests += '''\n\n\ndef test_forged_nested_run_plan_is_rejected_before_backend() -> None:\n    manifest, readiness, launch, binding, assets, environment = _bundle()\n    backend = _SuccessBackend()\n\n    class ForgedRunPlan(TrainingRunPlan):\n        pass\n\n    forged = object.__new__(ForgedRunPlan)\n    for field_name in TrainingRunPlan.__dataclass_fields__:\n        object.__setattr__(\n            forged,\n            field_name,\n            getattr(launch.compact, field_name),\n        )\n    forged_launch = replace(launch, compact=forged)\n\n    with pytest.raises(TrainingExecutionError, match="launch_plan.compact"):\n        execute_training(\n            manifest=manifest,\n            readiness=readiness,\n            launch_plan=forged_launch,\n            corpus_binding=binding,\n            local_assets=assets,\n            environment=environment,\n            role="compact",\n            backend=backend,\n        )\n    assert backend.manifest is None\n\n\ndef test_mutated_exact_run_plan_is_revalidated_before_backend() -> None:\n    manifest, readiness, launch, binding, assets, environment = _bundle()\n    backend = _SuccessBackend()\n    object.__setattr__(launch.compact, "result_paths", ("../escape",))\n\n    with pytest.raises(\n        TrainingExecutionError,\n        match="canonical execution inputs could not be reconstructed",\n    ):\n        execute_training(\n            manifest=manifest,\n            readiness=readiness,\n            launch_plan=launch,\n            corpus_binding=binding,\n            local_assets=assets,\n            environment=environment,\n            role="compact",\n            backend=backend,\n        )\n    assert backend.manifest is None\n\n\ndef test_result_artifact_path_rejects_nul() -> None:\n    with pytest.raises(TrainingExecutionError, match="POSIX repository path"):\n        TrainingResultArtifact(\n            path="experiments/compact/result\\x00.json",\n            sha256="1" * 64,\n            byte_count=1,\n        )\n'''
+          tests += '''\n\n\ndef test_forged_nested_run_plan_is_rejected_before_backend() -> None:\n    manifest, readiness, launch, binding, assets, environment = _bundle()\n    backend = _SuccessBackend()\n\n    class ForgedRunPlan(TrainingRunPlan):\n        pass\n\n    forged = object.__new__(ForgedRunPlan)\n    for field_name in TrainingRunPlan.__dataclass_fields__:\n        object.__setattr__(forged, field_name, getattr(launch.compact, field_name))\n    forged_launch = replace(launch, compact=forged)\n\n    with pytest.raises(TrainingExecutionError, match="launch_plan.compact"):\n        execute_training(\n            manifest=manifest,\n            readiness=readiness,\n            launch_plan=forged_launch,\n            corpus_binding=binding,\n            local_assets=assets,\n            environment=environment,\n            role="compact",\n            backend=backend,\n        )\n    assert backend.manifest is None\n\n\ndef test_mutated_exact_run_plan_is_revalidated_before_backend() -> None:\n    manifest, readiness, launch, binding, assets, environment = _bundle()\n    backend = _SuccessBackend()\n    object.__setattr__(launch.compact, "result_paths", ("../escape",))\n\n    with pytest.raises(\n        TrainingExecutionError,\n        match="canonical execution inputs could not be reconstructed",\n    ):\n        execute_training(\n            manifest=manifest,\n            readiness=readiness,\n            launch_plan=launch,\n            corpus_binding=binding,\n            local_assets=assets,\n            environment=environment,\n            role="compact",\n            backend=backend,\n        )\n    assert backend.manifest is None\n\n\ndef test_result_artifact_path_rejects_nul() -> None:\n    with pytest.raises(TrainingExecutionError, match="POSIX repository path"):\n        TrainingResultArtifact(\n            path="experiments/compact/result\\x00.json",\n            sha256="1" * 64,\n            byte_count=1,\n        )\n'''
           test_path.write_text(tests, encoding="utf-8")
-
-          readme_path = Path("specs/mesc-training-executor-v1/README.md")
-          readme = readme_path.read_text(encoding="utf-8")
-          old_text = (
-              "Before recomputation, the executor snapshots the exact canonical input objects "
-              "into core-owned copies. All subsequent authority checks and manifest construction "
-              "operate exclusively on those snapshots, so caller-side mutation after entry cannot "
-              "change the validated execution identity."
-          )
-          new_text = (
-              "Before recomputation, the executor verifies nested canonical types and reconstructs "
-              "the exact canonical input objects through their dataclass constructors into "
-              "core-owned copies. Constructor revalidation prevents forged subclasses or mutated "
-              "exact objects from bypassing canonical invariants. All subsequent authority checks "
-              "and manifest construction operate exclusively on those snapshots, so caller-side "
-              "mutation after entry cannot change the validated execution identity."
-          )
-          if old_text not in readme:
-              raise SystemExit("README snapshot text missing")
-          readme = readme.replace(old_text, new_text, 1)
-          readme_path.write_text(readme, encoding="utf-8")
           PY
 
           uv run ruff check --fix \
@@ -127,15 +101,13 @@ jobs:
           git diff --check
 
           changed_count="$(git diff --name-only | wc -l | tr -d ' ')"
-          test "$changed_count" = "3"
-          git diff --name-only | grep -Fx 'specs/mesc-training-executor-v1/README.md'
+          test "$changed_count" = "2"
           git diff --name-only | grep -Fx 'src/medscale/mesc/_training_executor_v1.py'
           git diff --name-only | grep -Fx 'tests/test_mesc_training_executor_v1.py'
 
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -- \
-            specs/mesc-training-executor-v1/README.md \
             src/medscale/mesc/_training_executor_v1.py \
             tests/test_mesc_training_executor_v1.py
           git commit -m 'fix(mesc): harden canonical executor inputs and paths'
