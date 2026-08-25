@@ -58,6 +58,7 @@ fixtures must not claim synthetic provenance.
 and trainable uncertainty:
 
 - `example_id`;
+- `training_record_id`;
 - `source_id`;
 - `source_revision`;
 - `source_license`;
@@ -81,6 +82,25 @@ and trainable uncertainty:
 - contamination state.
 
 Every complete record has a deterministic `example_sha256`.
+
+### T5 membership identity
+
+`training_record_id` is not a second provenance field. It is the exact stable record id
+from the T5-qualified `SplitAssignmentFreeze.train` membership that authorized this
+example's source record for training.
+
+`source_id` remains the provenance/source identity and may differ from
+`training_record_id`.
+
+Multiple supervised examples may be derived from one qualified training record. The
+corpus therefore permits repeated `training_record_id` values while still requiring
+unique `example_id` values. `TrainingCorpusV1.training_record_ids` exposes the unique,
+sorted T5 record-id set represented by the corpus. The next binding gate must hash this
+set using the same T5 record-id identity algorithm and require exact equality with the
+qualified `training_record_ids_sha256`.
+
+No missing T5 record may be inferred from source metadata and no extra record may be
+admitted merely because its provenance is valid.
 
 ## Supervised stages
 
@@ -167,9 +187,9 @@ cannot silently change the content identity.
 ## Content addressing
 
 `TrainingCorpusV1.corpus_sha256` covers the full auditable records, not only the prompt
-and target text. A change to license, evidence references, source identity, provenance,
-review state, contamination state, uncertainty label, abstention target, prompt, or
-completion therefore changes the corpus identity.
+and target text. A change to T5 record identity, license, evidence references, source
+identity, provenance, review state, contamination state, uncertainty label, abstention
+target, prompt, or completion therefore changes the corpus identity.
 
 `canonical_jsonl()` emits sorted, canonical, LF-terminated full-fidelity JSONL.
 
@@ -213,7 +233,8 @@ Tests use hand-authored/synthetic contract objects only.
 After this contract is canonical, repository readiness still requires:
 
 1. **training corpus materialization/binding** — prove that the local canonical JSONL
-   exactly represents the T5-qualified training membership and freeze its file digest;
+   represents exactly the T5-qualified `training_record_id` membership, bind both the
+   T5 training-dataset identity and SFT corpus identity, and freeze the raw file digest;
 2. **fail-closed training executor** — consume the canonical launch plan and local
    attested assets, materialize the runtime `ExperimentManifest`, and call only an
    explicitly injected trainer backend; and
