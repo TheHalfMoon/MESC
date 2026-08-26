@@ -288,10 +288,7 @@ class ReleaseSemanticEvidenceBundle:
                 raise ReleaseSemanticEvidenceError(
                     "evidence documents disagree on asset_manifest_sha256"
                 )
-            if (
-                document.training_execution_receipt_sha256
-                != self.training_execution.receipt_sha256
-            ):
+            if document.training_execution_receipt_sha256 != self.training_execution.receipt_sha256:
                 raise ReleaseSemanticEvidenceError(
                     "evidence document training receipt identity does not match validated receipt"
                 )
@@ -395,27 +392,21 @@ def _validate_artifact_semantics(
     document = _parse_artifact_object(artifact_bytes, label=kind.lower())
     if kind == "SBOM":
         cyclonedx = document.get("bomFormat") == "CycloneDX"
-        spdx = (
-            isinstance(document.get("spdxVersion"), str)
-            and cast(str, document["spdxVersion"]).startswith("SPDX-")
-        )
+        spdx = isinstance(document.get("spdxVersion"), str) and cast(
+            str, document["spdxVersion"]
+        ).startswith("SPDX-")
         if not cyclonedx and not spdx:
-            raise ReleaseSemanticEvidenceError(
-                "SBOM artifact must identify CycloneDX or SPDX JSON"
-            )
+            raise ReleaseSemanticEvidenceError("SBOM artifact must identify CycloneDX or SPDX JSON")
         return
 
     if kind in ("RIGHTS", "EVALUATION") and document.get("disposition") != "PASS":
-        raise ReleaseSemanticEvidenceError(
-            f"{kind.lower()} artifact disposition must be PASS"
-        )
+        raise ReleaseSemanticEvidenceError(f"{kind.lower()} artifact disposition must be PASS")
     if document.get("asset_manifest_sha256") != asset_manifest_sha256:
         raise ReleaseSemanticEvidenceError(
             f"{kind.lower()} artifact is not bound to the release asset manifest"
         )
     if kind in ("PROVENANCE", "EVALUATION") and (
-        document.get("training_execution_receipt_sha256")
-        != training_execution_receipt_sha256
+        document.get("training_execution_receipt_sha256") != training_execution_receipt_sha256
     ):
         raise ReleaseSemanticEvidenceError(
             f"{kind.lower()} artifact is not bound to the training execution receipt"
@@ -436,17 +427,13 @@ def _require_text(value: object, *, field: str) -> str:
 
 def _require_sha256(value: object, *, field: str) -> str:
     if not isinstance(value, str) or _SHA256.fullmatch(value) is None:
-        raise ReleaseSemanticEvidenceError(
-            f"{field} must be exactly 64 lowercase hex characters"
-        )
+        raise ReleaseSemanticEvidenceError(f"{field} must be exactly 64 lowercase hex characters")
     return value
 
 
 def _require_git_sha(value: object, *, field: str) -> str:
     if not isinstance(value, str) or _GIT_SHA.fullmatch(value) is None:
-        raise ReleaseSemanticEvidenceError(
-            f"{field} must be exactly 40 lowercase hex characters"
-        )
+        raise ReleaseSemanticEvidenceError(f"{field} must be exactly 40 lowercase hex characters")
     return value
 
 

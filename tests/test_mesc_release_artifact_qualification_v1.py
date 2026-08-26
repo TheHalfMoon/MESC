@@ -324,9 +324,7 @@ def test_unbound_evidence_digests_remain_blocked() -> None:
         release_id=999,
         asset_manifest_sha256="0" * 64,
     )
-    report = qualify_release_artifact(
-        _observation(assets=assets, evidence_binding=mismatched)
-    )
+    report = qualify_release_artifact(_observation(assets=assets, evidence_binding=mismatched))
     assert report.disposition == "BLOCKED"
     assert "evidence_binding repository does not match observation" in report.blockers
     assert "evidence_binding tag_name does not match observation" in report.blockers
