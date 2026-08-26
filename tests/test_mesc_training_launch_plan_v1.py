@@ -9,7 +9,10 @@ import pytest
 
 from medscale.mesc._canonical_json_v1 import canonical_json_bytes
 from medscale.mesc._training_authorization_receipt_v1 import (
-    build_training_authorization_receipt,
+    TrainingAuthorizationReceipt,
+)
+from medscale.mesc._training_authorization_receipt_v1 import (
+    build_training_authorization_receipt as _build_training_authorization_receipt,
 )
 from medscale.mesc._training_launch_plan_v1 import (
     TrainingLaunchPlanError,
@@ -40,6 +43,41 @@ _LOCK_SHA = "c" * 64
 _PYTHON = "3.12.14"
 _OS = "linux"
 _GPU = "NVIDIA-H100-80GB-HBM3"
+
+
+def build_training_authorization_receipt(
+    *,
+    authorizer_id: str,
+    authorization_subject_sha256: str,
+    runtime_qualification_sha256: str,
+    corpus_binding_sha256: str,
+    authorization_statement: str,
+    authorize: bool,
+) -> TrainingAuthorizationReceipt:
+    """Build explicit canonical synthetic authorization evidence for this test module."""
+    artifact = None
+    if authorize:
+        artifact = canonical_json_bytes(
+            {
+                "authorization_scope": "TRAINING_EXECUTION",
+                "authorization_statement": authorization_statement,
+                "authorization_subject_sha256": authorization_subject_sha256,
+                "authorize": True,
+                "authorizer_id": authorizer_id,
+                "corpus_binding_sha256": corpus_binding_sha256,
+                "kind": "mesc.training_authorization.v1",
+                "runtime_qualification_sha256": runtime_qualification_sha256,
+            }
+        )
+    return _build_training_authorization_receipt(
+        authorizer_id=authorizer_id,
+        authorization_subject_sha256=authorization_subject_sha256,
+        runtime_qualification_sha256=runtime_qualification_sha256,
+        corpus_binding_sha256=corpus_binding_sha256,
+        authorization_statement=authorization_statement,
+        authorize=authorize,
+        authorization_artifact=artifact,
+    )
 
 
 def _candidate(*, role: TrainingRole) -> TrainingCandidate:
