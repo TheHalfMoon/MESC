@@ -15,9 +15,7 @@ def install_training_authorization_test_trust(artifact: bytes) -> None:
     trusted = authorization_trust.TRUSTED_TRAINING_AUTHORIZATION_ARTIFACT_SHA256 | frozenset(
         {digest}
     )
-    previous = authorization_trust._replace_training_authorization_trust_registry_for_tests(
-        trusted
-    )
+    previous = authorization_trust._replace_training_authorization_trust_registry_for_tests(trusted)
     _TRUST_CLEANUPS.append(previous)
 
 
