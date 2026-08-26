@@ -13,7 +13,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Final, Literal, cast
 
-from medscale.mesc._canonical_json_v1 import canonical_json_bytes
+from medscale.mesc._canonical_json_v1 import CanonicalContractError, canonical_json_bytes
 from medscale.mesc._training_executor_v1 import (
     TrainingExecutionDisposition,
     TrainingExecutionError,
@@ -375,25 +375,42 @@ def _parse_canonical_object(raw: bytes, *, label: str) -> dict[str, object]:
         raise ReleaseSemanticEvidenceError(f"{label} must be non-empty exact bytes")
     try:
         text = raw.decode("utf-8")
-        parsed = json.loads(text, object_pairs_hook=_unique_object)
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        parsed = json.loads(
+            text,
+            object_pairs_hook=_unique_object,
+            parse_constant=_reject_nonstandard_json_constant,
+        )
+        if type(parsed) is not dict:
+            raise ReleaseSemanticEvidenceError(f"{label} must be a JSON object")
+        payload = cast(dict[str, object], parsed)
+        canonical = canonical_json_bytes(payload)
+    except ReleaseSemanticEvidenceError:
+        raise
+    except (UnicodeDecodeError, ValueError, RecursionError, CanonicalContractError) as exc:
         raise ReleaseSemanticEvidenceError(f"{label} must be valid UTF-8 JSON") from exc
-    if type(parsed) is not dict:
-        raise ReleaseSemanticEvidenceError(f"{label} must be a JSON object")
-    payload = cast(dict[str, object], parsed)
-    if canonical_json_bytes(payload) != raw:
+    if canonical != raw:
         raise ReleaseSemanticEvidenceError(f"{label} bytes are not canonical JSON")
     return payload
 
 
 def _parse_artifact_object(raw: bytes, *, label: str) -> dict[str, object]:
     try:
-        parsed = json.loads(raw.decode("utf-8"), object_pairs_hook=_unique_object)
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        parsed = json.loads(
+            raw.decode("utf-8"),
+            object_pairs_hook=_unique_object,
+            parse_constant=_reject_nonstandard_json_constant,
+        )
+    except ReleaseSemanticEvidenceError:
+        raise
+    except (UnicodeDecodeError, ValueError, RecursionError) as exc:
         raise ReleaseSemanticEvidenceError(f"{label} artifact must be valid UTF-8 JSON") from exc
     if type(parsed) is not dict:
         raise ReleaseSemanticEvidenceError(f"{label} artifact must be a JSON object")
     return cast(dict[str, object], parsed)
+
+
+def _reject_nonstandard_json_constant(value: str) -> object:
+    raise ValueError(f"non-standard JSON constant is prohibited: {value}")
 
 
 def _unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:

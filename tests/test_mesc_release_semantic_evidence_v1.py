@@ -258,3 +258,57 @@ def test_training_receipt_rejects_noncanonical_artifact_path() -> None:
 
     with pytest.raises(ReleaseSemanticEvidenceError, match="canonical"):
         TrainingExecutionEvidence(canonical_json_bytes(payload))
+
+
+@pytest.mark.parametrize("constant", [b"NaN", b"Infinity", b"-Infinity"])
+def test_all_nonstandard_json_constants_fail_closed(constant: bytes) -> None:
+    training = _training_evidence()
+    artifact = b'{"bomFormat":"CycloneDX","value":' + constant + b"}"
+    envelope = {
+        "artifact_byte_count": len(artifact),
+        "artifact_sha256": hashlib.sha256(artifact).hexdigest(),
+        "asset_manifest_sha256": _ASSET_MANIFEST,
+        "disposition": "PASS",
+        "kind": "mesc.release.sbom.v1",
+        "release_id": _RELEASE_ID,
+        "repository": _REPOSITORY,
+        "tag_name": _TAG,
+        "training_execution_receipt_sha256": training.receipt_sha256,
+    }
+
+    with pytest.raises(ReleaseSemanticEvidenceError, match="valid UTF-8 JSON"):
+        ReleaseBoundEvidenceDocument(
+            kind="SBOM",
+            canonical_envelope_bytes=canonical_json_bytes(envelope),
+            artifact_bytes=artifact,
+        )
+
+
+def test_pathological_artifact_json_uses_domain_error() -> None:
+    training = _training_evidence()
+    artifact = b'{"bomFormat":"CycloneDX","value":' + (b"9" * 5000) + b"}"
+    envelope = {
+        "artifact_byte_count": len(artifact),
+        "artifact_sha256": hashlib.sha256(artifact).hexdigest(),
+        "asset_manifest_sha256": _ASSET_MANIFEST,
+        "disposition": "PASS",
+        "kind": "mesc.release.sbom.v1",
+        "release_id": _RELEASE_ID,
+        "repository": _REPOSITORY,
+        "tag_name": _TAG,
+        "training_execution_receipt_sha256": training.receipt_sha256,
+    }
+
+    with pytest.raises(ReleaseSemanticEvidenceError, match="valid UTF-8 JSON"):
+        ReleaseBoundEvidenceDocument(
+            kind="SBOM",
+            canonical_envelope_bytes=canonical_json_bytes(envelope),
+            artifact_bytes=artifact,
+        )
+
+
+def test_pathological_canonical_json_uses_domain_error() -> None:
+    raw = b'{"value":' + (b"9" * 5000) + b"}\n"
+
+    with pytest.raises(ReleaseSemanticEvidenceError, match="valid UTF-8 JSON"):
+        TrainingExecutionEvidence(raw)
