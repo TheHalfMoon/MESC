@@ -7,9 +7,16 @@ from dataclasses import replace
 import pytest
 
 import medscale.mesc._training_executor_v1 as executor_module
+from _training_authorization_test_support import (
+    install_training_authorization_test_trust,
+    restore_training_authorization_test_trust,
+)
 from medscale.mesc._canonical_json_v1 import canonical_json_bytes
 from medscale.mesc._training_authorization_receipt_v1 import (
-    build_training_authorization_receipt,
+    TrainingAuthorizationReceipt,
+)
+from medscale.mesc._training_authorization_receipt_v1 import (
+    build_training_authorization_receipt as _build_training_authorization_receipt,
 )
 from medscale.mesc._training_corpus_binding_v1 import TrainingCorpusBindingReport
 from medscale.mesc._training_executor_v1 import (
@@ -55,6 +62,52 @@ _VERIFIER_SHA = "5" * 64
 _PYTHON = "3.12.14"
 _OS = "linux"
 _GPU = "fixture-gpu"
+
+
+def build_training_authorization_receipt(
+    *,
+    authorizer_id: str,
+    authorization_subject_sha256: str,
+    runtime_qualification_sha256: str,
+    corpus_binding_sha256: str,
+    authorization_statement: str,
+    authorize: bool,
+) -> TrainingAuthorizationReceipt:
+    """Build explicit synthetic evidence under a test-only temporary trust registry."""
+    artifact = None
+    if authorize:
+        artifact = canonical_json_bytes(
+            {
+                "authorization_scope": "TRAINING_EXECUTION",
+                "authorization_statement": authorization_statement,
+                "authorization_subject_sha256": authorization_subject_sha256,
+                "authorize": True,
+                "authorizer_id": authorizer_id,
+                "corpus_binding_sha256": corpus_binding_sha256,
+                "kind": "mesc.training_authorization.v1",
+                "runtime_qualification_sha256": runtime_qualification_sha256,
+            }
+        )
+    if artifact is None:
+        return _build_training_authorization_receipt(
+            authorizer_id=authorizer_id,
+            authorization_subject_sha256=authorization_subject_sha256,
+            runtime_qualification_sha256=runtime_qualification_sha256,
+            corpus_binding_sha256=corpus_binding_sha256,
+            authorization_statement=authorization_statement,
+            authorize=authorize,
+            authorization_artifact=None,
+        )
+    install_training_authorization_test_trust(artifact)
+    return _build_training_authorization_receipt(
+        authorizer_id=authorizer_id,
+        authorization_subject_sha256=authorization_subject_sha256,
+        runtime_qualification_sha256=runtime_qualification_sha256,
+        corpus_binding_sha256=corpus_binding_sha256,
+        authorization_statement=authorization_statement,
+        authorize=authorize,
+        authorization_artifact=artifact,
+    )
 
 
 def _candidate(*, role: TrainingRole) -> TrainingCandidate:
@@ -857,3 +910,23 @@ def test_result_artifact_path_rejects_nul() -> None:
             sha256="1" * 64,
             byte_count=1,
         )
+
+
+def test_revoked_authorization_fails_before_backend_invocation() -> None:
+    manifest, readiness, launch, binding, assets, environment = _bundle()
+    backend = _SuccessBackend()
+    restore_training_authorization_test_trust()
+
+    with pytest.raises(TrainingExecutionError, match="recomputed readiness"):
+        execute_training(
+            manifest=manifest,
+            readiness=readiness,
+            launch_plan=launch,
+            corpus_binding=binding,
+            local_assets=assets,
+            environment=environment,
+            role="compact",
+            backend=backend,
+        )
+
+    assert backend.calls == 0
