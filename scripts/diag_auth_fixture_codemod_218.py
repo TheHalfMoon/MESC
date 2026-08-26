@@ -2,17 +2,35 @@ from __future__ import annotations
 
 from pathlib import Path
 
-SUPPORT = '''"""Synthetic MESC training-authorization evidence for repository tests only."""
+TARGET_FILES = (
+    "tests/test_mesc_training_readiness_v1.py",
+    "tests/test_mesc_training_launch_plan_v1.py",
+    "tests/test_mesc_training_executor_v1.py",
+    "tests/test_mesc_training_orchestrator_v1.py",
+    "tests/test_mesc_training_readiness_receipt_binding_v1.py",
+)
 
-from __future__ import annotations
-
-from medscale.mesc._canonical_json_v1 import canonical_json_bytes
-from medscale.mesc._training_authorization_receipt_v1 import (
-    AuthorizationScope,
+SIMPLE_IMPORT = """from medscale.mesc._training_authorization_receipt_v1 import (
+    build_training_authorization_receipt,
+)
+"""
+SIMPLE_REPLACEMENT = """from medscale.mesc._training_authorization_receipt_v1 import (
     TrainingAuthorizationReceipt,
     build_training_authorization_receipt as _build_training_authorization_receipt,
 )
+"""
+BINDING_IMPORT = """from medscale.mesc._training_authorization_receipt_v1 import (
+    TrainingAuthorizationReceipt,
+    build_training_authorization_receipt,
+)
+"""
+BINDING_REPLACEMENT = """from medscale.mesc._training_authorization_receipt_v1 import (
+    TrainingAuthorizationReceipt,
+    build_training_authorization_receipt as _build_training_authorization_receipt,
+)
+"""
 
+HELPER = '''
 
 def build_training_authorization_receipt(
     *,
@@ -21,15 +39,14 @@ def build_training_authorization_receipt(
     runtime_qualification_sha256: str,
     corpus_binding_sha256: str,
     authorization_statement: str,
-    authorization_scope: AuthorizationScope = "TRAINING_EXECUTION",
     authorize: bool,
 ) -> TrainingAuthorizationReceipt:
-    """Exercise positive paths with explicit canonical synthetic artifact bytes."""
+    """Build explicit canonical synthetic authorization evidence for this test module."""
     artifact = None
     if authorize:
         artifact = canonical_json_bytes(
             {
-                "authorization_scope": authorization_scope,
+                "authorization_scope": "TRAINING_EXECUTION",
                 "authorization_statement": authorization_statement,
                 "authorization_subject_sha256": authorization_subject_sha256,
                 "authorize": True,
@@ -45,57 +62,33 @@ def build_training_authorization_receipt(
         runtime_qualification_sha256=runtime_qualification_sha256,
         corpus_binding_sha256=corpus_binding_sha256,
         authorization_statement=authorization_statement,
-        authorization_scope=authorization_scope,
         authorize=authorize,
         authorization_artifact=artifact,
     )
 '''
 
-SIMPLE_FILES = (
-    "tests/test_mesc_training_readiness_v1.py",
-    "tests/test_mesc_training_launch_plan_v1.py",
-    "tests/test_mesc_training_executor_v1.py",
-    "tests/test_mesc_training_orchestrator_v1.py",
-)
-SIMPLE_OLD = """from medscale.mesc._training_authorization_receipt_v1 import (
-    build_training_authorization_receipt,
-)
-"""
-SIMPLE_NEW = """from test_support.mesc_training_authorization import (
-    build_training_authorization_receipt,
-)
-"""
-BINDING_FILE = "tests/test_mesc_training_readiness_receipt_binding_v1.py"
-BINDING_OLD = """from medscale.mesc._training_authorization_receipt_v1 import (
-    TrainingAuthorizationReceipt,
-    build_training_authorization_receipt,
-)
-"""
-BINDING_NEW = """from medscale.mesc._training_authorization_receipt_v1 import (
-    TrainingAuthorizationReceipt,
-)
-from test_support.mesc_training_authorization import (
-    build_training_authorization_receipt,
-)
-"""
 
-
-def replace_once(path: Path, old: str, new: str) -> None:
-    text = path.read_text(encoding="utf-8")
+def replace_once(text: str, old: str, new: str, *, label: str) -> str:
     count = text.count(old)
     if count != 1:
-        raise RuntimeError(f"expected exactly one import block in {path}; found {count}")
-    path.write_text(text.replace(old, new), encoding="utf-8")
+        raise RuntimeError(f"expected exactly one {label}; found {count}")
+    return text.replace(old, new, 1)
+
+
+def update_file(path: Path) -> None:
+    text = path.read_text(encoding="utf-8")
+    if path.name == "test_mesc_training_readiness_receipt_binding_v1.py":
+        text = replace_once(text, BINDING_IMPORT, BINDING_REPLACEMENT, label="binding import")
+    else:
+        text = replace_once(text, SIMPLE_IMPORT, SIMPLE_REPLACEMENT, label="simple import")
+    marker = "\n\ndef _candidate("
+    text = replace_once(text, marker, HELPER + marker, label="candidate insertion marker")
+    path.write_text(text, encoding="utf-8")
 
 
 def main() -> None:
-    support = Path("test_support")
-    support.mkdir(exist_ok=True)
-    (support / "__init__.py").write_text("", encoding="utf-8")
-    (support / "mesc_training_authorization.py").write_text(SUPPORT, encoding="utf-8")
-    for filename in SIMPLE_FILES:
-        replace_once(Path(filename), SIMPLE_OLD, SIMPLE_NEW)
-    replace_once(Path(BINDING_FILE), BINDING_OLD, BINDING_NEW)
+    for filename in TARGET_FILES:
+        update_file(Path(filename))
 
 
 if __name__ == "__main__":
