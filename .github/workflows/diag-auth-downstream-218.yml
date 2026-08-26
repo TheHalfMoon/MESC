@@ -1,0 +1,57 @@
+name: Auth downstream diagnostic
+
+on:
+  push:
+    branches:
+      - diag/mesc-auth-format-218
+
+permissions:
+  contents: read
+
+jobs:
+  downstream:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          enable-cache: false
+
+      - name: Install Python
+        run: uv python install 3.12
+
+      - name: Sync locked environment
+        run: uv sync --frozen
+
+      - name: Run authorization downstream tests
+        id: pytest
+        shell: bash
+        run: |
+          set +e
+          uv run pytest -q \
+            tests/test_mesc_training_authorization_receipt_v1.py \
+            tests/test_mesc_training_readiness_receipt_binding_v1.py \
+            tests/test_mesc_training_readiness_v1.py \
+            tests/test_mesc_training_launch_plan_v1.py \
+            tests/test_mesc_training_executor_v1.py \
+            tests/test_mesc_training_orchestrator_v1.py \
+            > downstream.log 2>&1
+          rc=$?
+          cat downstream.log
+          printf '%s' "$rc" > downstream.rc
+          exit 0
+
+      - name: Upload diagnostic log
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: auth-downstream-diagnostic
+          path: |
+            downstream.log
+            downstream.rc
+          retention-days: 1
+          if-no-files-found: error
