@@ -59,6 +59,7 @@ jobs:
           git fetch origin feat/mesc-hf-local-sft-backend-v1
           test "$(git rev-parse origin/feat/mesc-hf-local-sft-backend-v1)" = \
             "c1bd9415657dece4e5376db579a7d1693d6f3517"
+          git reset --hard
           git switch --detach c1bd9415657dece4e5376db579a7d1693d6f3517
           git apply --check /tmp/pr190-finished-at.patch
           git apply /tmp/pr190-finished-at.patch
