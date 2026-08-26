@@ -68,9 +68,7 @@ class TrainingAuthorizationArtifact:
                 f"authorization artifact kind must be exactly {_ARTIFACT_KIND}"
             )
         scope = _require_scope(payload["authorization_scope"])
-        authorizer_id = _require_artifact_text(
-            payload["authorizer_id"], field="authorizer_id"
-        )
+        authorizer_id = _require_artifact_text(payload["authorizer_id"], field="authorizer_id")
         statement = _require_artifact_text(
             payload["authorization_statement"], field="authorization_statement"
         )
@@ -82,9 +80,7 @@ class TrainingAuthorizationArtifact:
             payload["runtime_qualification_sha256"],
             field="runtime_qualification_sha256",
         )
-        corpus = _require_sha256(
-            payload["corpus_binding_sha256"], field="corpus_binding_sha256"
-        )
+        corpus = _require_sha256(payload["corpus_binding_sha256"], field="corpus_binding_sha256")
         authorize = payload["authorize"]
         if type(authorize) is not bool:
             raise TrainingAuthorizationReceiptError(
@@ -292,20 +288,14 @@ def build_training_authorization_receipt(
     the repository-controlled trust registry. ``authorize=False`` remains fail-closed.
     """
     normalized_authorizer = _require_text(authorizer_id, field="authorizer_id")
-    normalized_statement = _require_text(
-        authorization_statement, field="authorization_statement"
-    )
+    normalized_statement = _require_text(authorization_statement, field="authorization_statement")
     scope = _require_scope(authorization_scope)
     subject = _require_sha256(
         authorization_subject_sha256,
         field="authorization_subject_sha256",
     )
-    runtime = _require_sha256(
-        runtime_qualification_sha256, field="runtime_qualification_sha256"
-    )
-    corpus = _require_sha256(
-        corpus_binding_sha256, field="corpus_binding_sha256"
-    )
+    runtime = _require_sha256(runtime_qualification_sha256, field="runtime_qualification_sha256")
+    corpus = _require_sha256(corpus_binding_sha256, field="corpus_binding_sha256")
     if type(authorize) is not bool:
         raise TrainingAuthorizationReceiptError("authorize must be an exact bool")
 
@@ -416,13 +406,9 @@ def _parse_authorization_payload(payload_bytes: bytes) -> dict[str, object]:
     except TrainingAuthorizationReceiptError:
         raise
     except (json.JSONDecodeError, TypeError, ValueError, RecursionError) as exc:
-        raise TrainingAuthorizationReceiptError(
-            "authorization artifact is not valid JSON"
-        ) from exc
+        raise TrainingAuthorizationReceiptError("authorization artifact is not valid JSON") from exc
     if type(value) is not dict:
-        raise TrainingAuthorizationReceiptError(
-            "authorization artifact must be one JSON object"
-        )
+        raise TrainingAuthorizationReceiptError("authorization artifact must be one JSON object")
     if set(value) != _ARTIFACT_KEYS:
         raise TrainingAuthorizationReceiptError(
             "authorization artifact must contain exactly the canonical field set"
@@ -500,9 +486,7 @@ def _require_artifact_text(value: object, *, field: str) -> str:
 
 def _require_text(value: object, *, field: str) -> str:
     if type(value) is not str or not value.strip() or "\x00" in value:
-        raise TrainingAuthorizationReceiptError(
-            f"{field} must be exact non-empty NUL-free text"
-        )
+        raise TrainingAuthorizationReceiptError(f"{field} must be exact non-empty NUL-free text")
     return value.strip()
 
 

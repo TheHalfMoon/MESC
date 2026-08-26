@@ -277,9 +277,7 @@ class TrainingExecutionManifest:
             "runner_class": self.runner_class,
             "runtime_qualification_sha256": self.runtime_qualification_sha256,
             "seeds": list(self.seeds),
-            "training_authorization_receipt_sha256": (
-                self.training_authorization_receipt_sha256
-            ),
+            "training_authorization_receipt_sha256": (self.training_authorization_receipt_sha256),
             "training_dataset_sha256": self.training_dataset_sha256,
             "weights_sha256": self.weights_sha256,
         }
@@ -436,9 +434,7 @@ class TrainingExecutionReceipt:
             "run_plan_sha256": self.run_plan_sha256,
             "runtime_qualification_sha256": self.runtime_qualification_sha256,
             "started_at": self.started_at,
-            "training_authorization_receipt_sha256": (
-                self.training_authorization_receipt_sha256
-            ),
+            "training_authorization_receipt_sha256": (self.training_authorization_receipt_sha256),
             "training_dataset_sha256": self.training_dataset_sha256,
             "weights_sha256": self.weights_sha256,
         }
@@ -513,9 +509,7 @@ def execute_training(
         launch_plan=launch_plan,
     )
     if launch_plan != rebuilt_launch:
-        raise TrainingExecutionError(
-            "supplied launch plan does not match recomputed launch plan"
-        )
+        raise TrainingExecutionError("supplied launch plan does not match recomputed launch plan")
 
     run_plan = launch_plan.compact if role == "compact" else launch_plan.reasoner
     _require_corpus_binding(
@@ -741,9 +735,7 @@ def _recompute_launch(
     except TrainingExecutionError:
         raise
     except (TypeError, ValueError) as exc:
-        raise TrainingExecutionError(
-            "upstream readiness or launch recomputation failed"
-        ) from exc
+        raise TrainingExecutionError("upstream readiness or launch recomputation failed") from exc
 
 
 def _require_corpus_binding(
@@ -759,9 +751,7 @@ def _require_corpus_binding(
             "corpus binding identity does not match launch plan corpus_binding_sha256"
         )
     if binding.training_dataset_sha256 != run_plan.training_dataset_sha256:
-        raise TrainingExecutionError(
-            "corpus binding training dataset does not match selected run"
-        )
+        raise TrainingExecutionError("corpus binding training dataset does not match selected run")
     if binding.canonical_jsonl_byte_count <= 0:
         raise TrainingExecutionError("canonical corpus must be non-empty")
 
@@ -834,9 +824,7 @@ def _require_local_attestation(
     )
     for field, actual, wanted in expected:
         if actual != wanted:
-            raise TrainingExecutionError(
-                f"local asset attestation {field} does not match"
-            )
+            raise TrainingExecutionError(f"local asset attestation {field} does not match")
 
     if (
         attestation.model_network_accessed
@@ -847,9 +835,7 @@ def _require_local_attestation(
             "local asset attestation contains forbidden security observations"
         )
     if attestation.model_verifier_receipt_sha256 is None:
-        raise TrainingExecutionError(
-            "local asset attestation lacks model verifier receipt"
-        )
+        raise TrainingExecutionError("local asset attestation lacks model verifier receipt")
 
 
 def _require_environment(
@@ -897,9 +883,7 @@ def _build_execution_manifest(
 ) -> TrainingExecutionManifest:
     verifier_receipt = local_assets.model_verifier_receipt_sha256
     if verifier_receipt is None:
-        raise TrainingExecutionError(
-            "local asset attestation lacks model verifier receipt"
-        )
+        raise TrainingExecutionError("local asset attestation lacks model verifier receipt")
     return TrainingExecutionManifest(
         role=role,
         launch_plan_sha256=launch_plan.plan_sha256,
@@ -923,9 +907,7 @@ def _build_execution_manifest(
         repository_tree=run_plan.repository_tree,
         dependency_lock_sha256=run_plan.dependency_lock_sha256,
         runtime_qualification_sha256=launch_plan.runtime_qualification_sha256,
-        training_authorization_receipt_sha256=(
-            launch_plan.training_authorization_receipt_sha256
-        ),
+        training_authorization_receipt_sha256=(launch_plan.training_authorization_receipt_sha256),
         canonical_corpus_sha256=corpus_binding.canonical_jsonl_sha256,
         canonical_corpus_byte_count=corpus_binding.canonical_jsonl_byte_count,
         model_verifier_receipt_sha256=verifier_receipt,
@@ -955,16 +937,12 @@ def _snapshot_backend_result(
             failure_reason=result.failure_reason,
         )
     except (AttributeError, TypeError, TrainingExecutionError) as exc:
-        raise TrainingExecutionError(
-            "backend result could not be snapshotted canonically"
-        ) from exc
+        raise TrainingExecutionError("backend result could not be snapshotted canonically") from exc
 
 
 def _require_namespaces(namespaces: tuple[str, ...]) -> None:
     if not isinstance(namespaces, tuple) or not namespaces:
-        raise TrainingExecutionError(
-            "result_namespaces must be a non-empty immutable tuple"
-        )
+        raise TrainingExecutionError("result_namespaces must be a non-empty immutable tuple")
     if len(set(namespaces)) != len(namespaces):
         raise TrainingExecutionError("result_namespaces must be unique")
 
@@ -986,17 +964,12 @@ def _require_result_namespaces(
     artifact_paths = tuple(PurePosixPath(item.path) for item in artifacts)
 
     for path in artifact_paths:
-        if not any(
-            path == namespace or namespace in path.parents
-            for namespace in namespace_paths
-        ):
+        if not any(path == namespace or namespace in path.parents for namespace in namespace_paths):
             raise TrainingExecutionError(
                 "backend result artifact escapes planned result namespaces"
             )
     for namespace in namespace_paths:
-        if not any(
-            path == namespace or namespace in path.parents for path in artifact_paths
-        ):
+        if not any(path == namespace or namespace in path.parents for path in artifact_paths):
             raise TrainingExecutionError(
                 "backend result does not represent every planned result namespace"
             )
@@ -1021,9 +994,7 @@ def _require_artifact_tuple(
     if not isinstance(artifacts, tuple):
         raise TrainingExecutionError(f"{field} must be an immutable tuple")
     if any(type(item) is not TrainingResultArtifact for item in artifacts):
-        raise TrainingExecutionError(
-            f"{field} must contain exact TrainingResultArtifact values"
-        )
+        raise TrainingExecutionError(f"{field} must contain exact TrainingResultArtifact values")
 
 
 def _require_unique_artifact_paths(
@@ -1050,9 +1021,7 @@ def _require_exact_input(
     field: str,
 ) -> None:
     if type(value) is not expected_type:
-        raise TrainingExecutionError(
-            f"{field} must use its exact canonical type"
-        )
+        raise TrainingExecutionError(f"{field} must use its exact canonical type")
 
 
 def _require_repository_relative_path(
@@ -1060,52 +1029,35 @@ def _require_repository_relative_path(
     *,
     field: str,
 ) -> str:
-    if (
-        not isinstance(value, str)
-        or not value
-        or "\\" in value
-        or "\x00" in value
-    ):
-        raise TrainingExecutionError(
-            f"{field} must be a non-empty POSIX repository path"
-        )
+    if not isinstance(value, str) or not value or "\\" in value or "\x00" in value:
+        raise TrainingExecutionError(f"{field} must be a non-empty POSIX repository path")
     path = PurePosixPath(value)
     canonical = str(path)
     if path.is_absolute() or canonical == "." or ".." in path.parts:
         raise TrainingExecutionError(f"{field} must remain inside the repository")
     if canonical != value:
-        raise TrainingExecutionError(
-            f"{field} must use canonical POSIX spelling"
-        )
+        raise TrainingExecutionError(f"{field} must use canonical POSIX spelling")
     return value
 
 
 def _parse_timestamp(value: object, *, field: str) -> datetime:
     if not isinstance(value, str) or _TIMESTAMP.fullmatch(value) is None:
-        raise TrainingExecutionError(
-            f"{field} must be canonical UTC RFC3339 seconds"
-        )
+        raise TrainingExecutionError(f"{field} must be canonical UTC RFC3339 seconds")
     try:
         return datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ")
     except ValueError as exc:
-        raise TrainingExecutionError(
-            f"{field} must be a valid UTC timestamp"
-        ) from exc
+        raise TrainingExecutionError(f"{field} must be a valid UTC timestamp") from exc
 
 
 def _require_sha256(value: object, *, field: str) -> str:
     if not isinstance(value, str) or _SHA256.fullmatch(value) is None:
-        raise TrainingExecutionError(
-            f"{field} must be exactly 64 lowercase hex characters"
-        )
+        raise TrainingExecutionError(f"{field} must be exactly 64 lowercase hex characters")
     return value
 
 
 def _require_git_sha(value: object, *, field: str) -> str:
     if not isinstance(value, str) or _GIT_SHA.fullmatch(value) is None:
-        raise TrainingExecutionError(
-            f"{field} must be exactly 40 lowercase hex characters"
-        )
+        raise TrainingExecutionError(f"{field} must be exactly 40 lowercase hex characters")
     return value
 
 
