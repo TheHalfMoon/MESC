@@ -66,8 +66,8 @@ This package does not:
 
 ## Next gates (external / evidence)
 
-Receipt producers for runtime qualification and training authorization now exist in-repo.
-After an updated `TRAINING_CODE_READY` audit includes those producers, real training and a
+Receipt producers for runtime qualification and training authorization, plus the readiness
+receipt-binding construction helper, now exist in-repo. Real training and a
 MedScale-admissible release still require:
 
 - authorized local model assets with `weights_sha256`;
