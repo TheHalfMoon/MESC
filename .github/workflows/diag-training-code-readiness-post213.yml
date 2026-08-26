@@ -1,0 +1,90 @@
+name: Diagnostic Training Code Readiness Post-213
+
+on:
+  push:
+    branches:
+      - diag/mesc-training-code-readiness-post213
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact canonical main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 4b193c01f5f94447afd359b0420640647b449a69
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+        with:
+          enable-cache: true
+
+      - name: Install Python 3.12
+        run: uv python install 3.12
+
+      - name: Verify exact canonical identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "4b193c01f5f94447afd359b0420640647b449a69"
+          test "$(git rev-parse 'HEAD^{tree}')" = "3f48f3a9af89d8e82f04c0501019b09084ff860a"
+
+      - name: Sync locked default environment only
+        run: uv sync --frozen
+
+      - name: Check lock consistency
+        run: uv lock --check
+
+      - name: Audit canonical training code readiness
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run python - <<'PY'
+          from pathlib import Path
+          from medscale.mesc._training_code_readiness_v1 import audit_training_code_readiness
+
+          report = audit_training_code_readiness(repository_root=Path.cwd())
+          print(f"disposition={report.disposition}")
+          print(f"blockers={len(report.blockers)}")
+          print(f"missing_modules={len(report.missing_modules)}")
+          print(f"missing_specs={len(report.missing_specs)}")
+          print(f"dependency_lock_sha256={report.dependency_lock_sha256}")
+          print(f"audit_sha256={report.audit_sha256}")
+          print(f"real_training_authorized={str(report.real_training_authorized).lower()}")
+          print(
+              "medscale_spec_012_admission_readiness="
+              f"{report.medscale_spec_012_admission_readiness}"
+          )
+
+          assert report.disposition == "TRAINING_CODE_READY"
+          assert report.blockers == ()
+          assert report.missing_modules == ()
+          assert report.missing_specs == ()
+          assert report.real_training_authorized is False
+          assert report.medscale_spec_012_admission_readiness == "NOT_READY"
+          PY
+
+      - name: Prove no training stack selected
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run python - <<'PY'
+          import importlib.util
+
+          forbidden = (
+              "accelerate",
+              "bitsandbytes",
+              "datasets",
+              "peft",
+              "torch",
+              "transformers",
+              "trl",
+          )
+          leaked = [name for name in forbidden if importlib.util.find_spec(name) is not None]
+          assert not leaked, f"training packages leaked into default environment: {leaked}"
+          PY
