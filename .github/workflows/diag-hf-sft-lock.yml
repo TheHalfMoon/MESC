@@ -64,6 +64,7 @@ jobs:
       - name: Validate dependency-lock regression
         run: |
           set -euo pipefail
+          uv run ruff format tests/test_mesc_hf_sft_dependency_lock_v1.py
           uv run ruff check tests/test_mesc_hf_sft_dependency_lock_v1.py
           uv run ruff format --check tests/test_mesc_hf_sft_dependency_lock_v1.py
           uv run mypy tests/test_mesc_hf_sft_dependency_lock_v1.py
@@ -79,9 +80,11 @@ jobs:
       - name: Publish resolver-generated lock to target branch
         run: |
           set -euo pipefail
-          test "$(git diff --name-only)" = "uv.lock"
-          git diff --check -- uv.lock
-          git add uv.lock
+          changed="$(git diff --name-only)"
+          expected="$(printf '%s\n%s' 'tests/test_mesc_hf_sft_dependency_lock_v1.py' 'uv.lock')"
+          test "$changed" = "$expected"
+          git diff --check -- tests/test_mesc_hf_sft_dependency_lock_v1.py uv.lock
+          git add tests/test_mesc_hf_sft_dependency_lock_v1.py uv.lock
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "build(mesc): lock local HF SFT training stack"
