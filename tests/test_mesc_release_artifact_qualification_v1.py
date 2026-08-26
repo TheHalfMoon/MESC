@@ -9,6 +9,7 @@ import pytest
 from medscale.mesc._release_artifact_qualification_v1 import (
     ReleaseArtifactQualificationError,
     ReleaseAssetObservation,
+    ReleaseEvidenceBinding,
     ReleaseObservation,
     qualify_release_artifact,
 )
@@ -36,12 +37,22 @@ def _asset(
     )
 
 
-def _observation(**overrides: object) -> ReleaseObservation:
+def _binding(
+    observation_assets: tuple[ReleaseAssetObservation, ...],
+    **overrides: object,
+) -> ReleaseEvidenceBinding:
+    provisional = ReleaseObservation(
+        repository="TheHalfMoon/MESC",
+        tag_name="v0.1.1",
+        release_id=1,
+        assets=observation_assets,
+        evidence_binding=None,
+    )
     kwargs: dict[str, object] = {
         "repository": "TheHalfMoon/MESC",
         "tag_name": "v0.1.1",
         "release_id": 1,
-        "assets": (_asset(),),
+        "asset_manifest_sha256": provisional.asset_manifest_sha256,
         "provenance_sha256": _B,
         "rights_sha256": _C,
         "sbom_sha256": _D,
@@ -49,6 +60,19 @@ def _observation(**overrides: object) -> ReleaseObservation:
         "training_execution_receipt_sha256": _F,
         "independent_refetch_verified": True,
         "asset_hashes_verified": True,
+    }
+    kwargs.update(overrides)
+    return ReleaseEvidenceBinding(**kwargs)  # type: ignore[arg-type]
+
+
+def _observation(**overrides: object) -> ReleaseObservation:
+    assets = (_asset(),)
+    kwargs: dict[str, object] = {
+        "repository": "TheHalfMoon/MESC",
+        "tag_name": "v0.1.1",
+        "release_id": 1,
+        "assets": assets,
+        "evidence_binding": _binding(assets),
     }
     kwargs.update(overrides)
     return ReleaseObservation(**kwargs)  # type: ignore[arg-type]
@@ -67,32 +91,42 @@ def test_live_empty_v010_shape_is_blocked_and_not_ready() -> None:
         tag_name="v0.1.0",
         release_id=352847712,
         assets=(),
-        provenance_sha256=None,
-        rights_sha256=None,
-        sbom_sha256=None,
-        evaluation_report_sha256=None,
-        training_execution_receipt_sha256=None,
-        independent_refetch_verified=False,
-        asset_hashes_verified=False,
+        evidence_binding=None,
     )
     report = qualify_release_artifact(observation)
     assert report.disposition == "BLOCKED"
     assert report.asset_count == 0
     assert report.medscale_spec_012_admission_readiness == "NOT_READY"
     assert "release assets are empty" in report.blockers
-    assert "provenance_sha256 is absent" in report.blockers
-    assert "rights_sha256 is absent" in report.blockers
-    assert "sbom_sha256 is absent" in report.blockers
-    assert "evaluation_report_sha256 is absent" in report.blockers
-    assert "training_execution_receipt_sha256 is absent" in report.blockers
-    assert "independent re-fetch verification is false" in report.blockers
-    assert "asset hash verification is false" in report.blockers
+    assert "evidence_binding is absent" in report.blockers
 
 
-def test_refuses_unverified_hashes_even_with_assets() -> None:
-    report = qualify_release_artifact(
-        _observation(independent_refetch_verified=False, asset_hashes_verified=False)
+def test_unbound_evidence_digests_remain_blocked() -> None:
+    assets = (_asset(),)
+    mismatched = _binding(
+        assets,
+        repository="OtherOrg/OtherRepo",
+        tag_name="v9.9.9",
+        release_id=999,
+        asset_manifest_sha256="0" * 64,
     )
+    report = qualify_release_artifact(_observation(assets=assets, evidence_binding=mismatched))
+    assert report.disposition == "BLOCKED"
+    assert report.medscale_spec_012_admission_readiness == "NOT_READY"
+    assert "evidence_binding repository does not match observation" in report.blockers
+    assert "evidence_binding tag_name does not match observation" in report.blockers
+    assert "evidence_binding release_id does not match observation" in report.blockers
+    assert "evidence_binding asset_manifest_sha256 does not match assets" in report.blockers
+
+
+def test_refuses_unverified_hashes_even_with_bound_evidence() -> None:
+    assets = (_asset(),)
+    binding = _binding(
+        assets,
+        independent_refetch_verified=False,
+        asset_hashes_verified=False,
+    )
+    report = qualify_release_artifact(_observation(assets=assets, evidence_binding=binding))
     assert report.disposition == "BLOCKED"
     assert report.medscale_spec_012_admission_readiness == "NOT_READY"
     assert "independent re-fetch verification is false" in report.blockers
@@ -108,7 +142,14 @@ def test_deterministic_observation_identity() -> None:
     left = qualify_release_artifact(_observation())
     right = qualify_release_artifact(_observation())
     assert left.observation_sha256 == right.observation_sha256
-    changed = qualify_release_artifact(_observation(tag_name="v0.1.2"))
+    assets = (_asset(),)
+    changed = qualify_release_artifact(
+        _observation(
+            tag_name="v0.1.2",
+            assets=assets,
+            evidence_binding=_binding(assets, tag_name="v0.1.2"),
+        )
+    )
     assert changed.observation_sha256 != left.observation_sha256
 
 

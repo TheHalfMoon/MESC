@@ -53,6 +53,65 @@ class ReleaseAssetObservation:
 
 
 @dataclass(frozen=True, slots=True)
+class ReleaseEvidenceBinding:
+    """Evidence record that must bind exactly to one observed release identity."""
+
+    repository: str
+    tag_name: str
+    release_id: int
+    asset_manifest_sha256: str
+    provenance_sha256: str
+    rights_sha256: str
+    sbom_sha256: str
+    evaluation_report_sha256: str
+    training_execution_receipt_sha256: str
+    independent_refetch_verified: bool
+    asset_hashes_verified: bool
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.repository, str) or _REPO.fullmatch(self.repository) is None:
+            raise ReleaseArtifactQualificationError(
+                "repository must be exactly owner/name with no spaces"
+            )
+        if not isinstance(self.tag_name, str) or not self.tag_name.strip():
+            raise ReleaseArtifactQualificationError("tag_name must be a non-empty string")
+        if type(self.release_id) is not int or self.release_id <= 0:
+            raise ReleaseArtifactQualificationError("release_id must be a positive int")
+        for field, value in (
+            ("asset_manifest_sha256", self.asset_manifest_sha256),
+            ("provenance_sha256", self.provenance_sha256),
+            ("rights_sha256", self.rights_sha256),
+            ("sbom_sha256", self.sbom_sha256),
+            ("evaluation_report_sha256", self.evaluation_report_sha256),
+            ("training_execution_receipt_sha256", self.training_execution_receipt_sha256),
+        ):
+            _require_sha256(value, field=field)
+        if type(self.independent_refetch_verified) is not bool:
+            raise ReleaseArtifactQualificationError("independent_refetch_verified must be a bool")
+        if type(self.asset_hashes_verified) is not bool:
+            raise ReleaseArtifactQualificationError("asset_hashes_verified must be a bool")
+
+    @property
+    def binding_sha256(self) -> str:
+        return content_hash(self.to_dict())
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "asset_hashes_verified": self.asset_hashes_verified,
+            "asset_manifest_sha256": self.asset_manifest_sha256,
+            "evaluation_report_sha256": self.evaluation_report_sha256,
+            "independent_refetch_verified": self.independent_refetch_verified,
+            "provenance_sha256": self.provenance_sha256,
+            "release_id": self.release_id,
+            "repository": self.repository,
+            "rights_sha256": self.rights_sha256,
+            "sbom_sha256": self.sbom_sha256,
+            "tag_name": self.tag_name.strip(),
+            "training_execution_receipt_sha256": self.training_execution_receipt_sha256,
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class ReleaseObservation:
     """Observed GitHub Release facts supplied by an external observer."""
 
@@ -60,13 +119,7 @@ class ReleaseObservation:
     tag_name: str
     release_id: int
     assets: tuple[ReleaseAssetObservation, ...]
-    provenance_sha256: str | None
-    rights_sha256: str | None
-    sbom_sha256: str | None
-    evaluation_report_sha256: str | None
-    training_execution_receipt_sha256: str | None
-    independent_refetch_verified: bool
-    asset_hashes_verified: bool
+    evidence_binding: ReleaseEvidenceBinding | None
 
     def __post_init__(self) -> None:
         if not isinstance(self.repository, str) or _REPO.fullmatch(self.repository) is None:
@@ -87,33 +140,30 @@ class ReleaseObservation:
         names = [asset.name.strip() for asset in self.assets]
         if len(set(names)) != len(names):
             raise ReleaseArtifactQualificationError("asset names must be unique")
-        for field, value in (
-            ("provenance_sha256", self.provenance_sha256),
-            ("rights_sha256", self.rights_sha256),
-            ("sbom_sha256", self.sbom_sha256),
-            ("evaluation_report_sha256", self.evaluation_report_sha256),
-            ("training_execution_receipt_sha256", self.training_execution_receipt_sha256),
+        if (
+            self.evidence_binding is not None
+            and type(self.evidence_binding) is not ReleaseEvidenceBinding
         ):
-            if value is not None:
-                _require_sha256(value, field=field)
-        if type(self.independent_refetch_verified) is not bool:
-            raise ReleaseArtifactQualificationError("independent_refetch_verified must be a bool")
-        if type(self.asset_hashes_verified) is not bool:
-            raise ReleaseArtifactQualificationError("asset_hashes_verified must be a bool")
+            raise ReleaseArtifactQualificationError(
+                "evidence_binding must be exactly ReleaseEvidenceBinding when present"
+            )
+
+    @property
+    def asset_manifest_sha256(self) -> str:
+        """Return the content identity of the observed asset set."""
+        payload = [asset.to_dict() for asset in self.assets]
+        return content_hash(payload)
 
     def to_dict(self) -> dict[str, object]:
         return {
-            "asset_hashes_verified": self.asset_hashes_verified,
+            "asset_manifest_sha256": self.asset_manifest_sha256,
             "assets": [asset.to_dict() for asset in self.assets],
-            "evaluation_report_sha256": self.evaluation_report_sha256,
-            "independent_refetch_verified": self.independent_refetch_verified,
-            "provenance_sha256": self.provenance_sha256,
+            "evidence_binding": (
+                None if self.evidence_binding is None else self.evidence_binding.to_dict()
+            ),
             "release_id": self.release_id,
             "repository": self.repository,
-            "rights_sha256": self.rights_sha256,
-            "sbom_sha256": self.sbom_sha256,
             "tag_name": self.tag_name.strip(),
-            "training_execution_receipt_sha256": self.training_execution_receipt_sha256,
         }
 
 
@@ -182,20 +232,23 @@ def qualify_release_artifact(
     blockers: list[str] = []
     if not observation.assets:
         blockers.append("release assets are empty")
-    if observation.provenance_sha256 is None:
-        blockers.append("provenance_sha256 is absent")
-    if observation.rights_sha256 is None:
-        blockers.append("rights_sha256 is absent")
-    if observation.sbom_sha256 is None:
-        blockers.append("sbom_sha256 is absent")
-    if observation.evaluation_report_sha256 is None:
-        blockers.append("evaluation_report_sha256 is absent")
-    if observation.training_execution_receipt_sha256 is None:
-        blockers.append("training_execution_receipt_sha256 is absent")
-    if not observation.independent_refetch_verified:
-        blockers.append("independent re-fetch verification is false")
-    if not observation.asset_hashes_verified:
-        blockers.append("asset hash verification is false")
+
+    binding = observation.evidence_binding
+    if binding is None:
+        blockers.append("evidence_binding is absent")
+    else:
+        if binding.repository != observation.repository:
+            blockers.append("evidence_binding repository does not match observation")
+        if binding.tag_name.strip() != observation.tag_name.strip():
+            blockers.append("evidence_binding tag_name does not match observation")
+        if binding.release_id != observation.release_id:
+            blockers.append("evidence_binding release_id does not match observation")
+        if binding.asset_manifest_sha256 != observation.asset_manifest_sha256:
+            blockers.append("evidence_binding asset_manifest_sha256 does not match assets")
+        if not binding.independent_refetch_verified:
+            blockers.append("independent re-fetch verification is false")
+        if not binding.asset_hashes_verified:
+            blockers.append("asset hash verification is false")
 
     disposition: ReleaseQualificationDisposition = "BLOCKED" if blockers else "RELEASE_READY"
     return ReleaseArtifactQualificationReport(
@@ -220,6 +273,7 @@ __all__ = [
     "ReleaseArtifactQualificationError",
     "ReleaseArtifactQualificationReport",
     "ReleaseAssetObservation",
+    "ReleaseEvidenceBinding",
     "ReleaseObservation",
     "ReleaseQualificationDisposition",
     "qualify_release_artifact",

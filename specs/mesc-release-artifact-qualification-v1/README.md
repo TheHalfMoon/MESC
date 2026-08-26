@@ -13,9 +13,8 @@ PR_214 = CLOSED_CANONICAL
 ## Purpose
 
 Qualify an already-observed GitHub Release candidate for MedScale Spec 012
-`ARTIFACT_IMPORT` admission readiness. Empty assets, missing hashes, missing
-rights/SBOM/provenance/evaluation bindings, or unverified digests remain
-`BLOCKED` / `NOT_READY`.
+`ARTIFACT_IMPORT` admission readiness. Empty assets, missing evidence bindings,
+mismatched release identity, or unverified digests remain `BLOCKED` / `NOT_READY`.
 
 This package never invents release assets, never uploads artifacts, and never
 clears MedScale Spec 012 from incomplete evidence.
@@ -38,13 +37,16 @@ tests/test_mesc_release_artifact_qualification_v1.py
   - `size_bytes` (positive int)
   - `content_sha256` (64 lowercase hex)
   - `browser_download_url` (non-empty; observation only — this package does not fetch)
-- `provenance_sha256`
-- `rights_sha256`
-- `sbom_sha256`
-- `evaluation_report_sha256`
-- `training_execution_receipt_sha256`
-- `independent_refetch_verified` (must be `true` for PASS)
-- `asset_hashes_verified` (must be `true` for PASS)
+- `evidence_binding`: exact `ReleaseEvidenceBinding` that binds:
+  - the same `repository` / `tag_name` / `release_id`
+  - `asset_manifest_sha256` equal to the content hash of the observed asset set
+  - `provenance_sha256`, `rights_sha256`, `sbom_sha256`,
+    `evaluation_report_sha256`, `training_execution_receipt_sha256`
+  - `independent_refetch_verified=true`
+  - `asset_hashes_verified=true`
+
+Opaque digests that do not match the observed release identity/asset manifest are
+rejected even when syntactically valid.
 
 ## Dispositions
 
@@ -53,8 +55,9 @@ BLOCKED
 RELEASE_READY
 ```
 
-`RELEASE_READY` requires every required binding, at least one non-empty asset, and
-both independent re-fetch and hash verification flags true.
+`RELEASE_READY` requires every required binding, at least one non-empty asset, an
+exact-matching evidence binding, and both independent re-fetch and hash verification
+flags true.
 
 The report always records:
 
@@ -75,5 +78,6 @@ medscale_spec_012_admission_readiness =
 ## Next gates (external / evidence)
 
 Produce and independently re-fetch a GitHub Release whose assets are non-empty and
-hash-verified, with bound provenance/rights/SBOM/evaluation/training-execution
-identities derived from authorized training — not from this package alone.
+hash-verified, with a release-bound evidence record covering provenance/rights/SBOM/
+evaluation/training-execution identities derived from authorized training — not from
+this package alone.

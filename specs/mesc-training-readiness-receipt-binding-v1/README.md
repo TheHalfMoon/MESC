@@ -85,4 +85,5 @@ This package does not:
 - explicit founder/operator `authorize=true` authorization artifact;
 - authorized training, evaluation, rights/SBOM/provenance; and
 - a GitHub Release with non-empty immutable assets that survive independent re-fetch and
-  hash verification (assessed by `mesc-release-artifact-qualification-v1` once observed).
+  hash verification, assessed only through a release-bound evidence record in
+  `mesc-release-artifact-qualification-v1` (opaque unbound digests remain `NOT_READY`).
