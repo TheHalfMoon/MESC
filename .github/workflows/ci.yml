@@ -7,7 +7,7 @@ on:
     branches: [main]
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -34,6 +34,35 @@ jobs:
 
       - name: Sync (locked)
         run: uv sync --frozen
+
+      - name: Apply exact PR 190 Transformers dtype repair
+        if: matrix.python-version == '3.12'
+        env:
+          TARGET_BRANCH: feat/mesc-hf-local-sft-backend-v1
+        run: |
+          cp .github/pr190_transformers_dtype_repair.py /tmp/pr190_transformers_dtype_repair.py
+          git fetch origin "$TARGET_BRANCH"
+          git checkout "$TARGET_BRANCH"
+          python /tmp/pr190_transformers_dtype_repair.py
+          uv run ruff format \
+            src/medscale/mesc/_training_hf_local_sft_backend_v1.py \
+            tests/test_mesc_training_hf_local_sft_backend_v1.py
+          uv run ruff check \
+            src/medscale/mesc/_training_hf_local_sft_backend_v1.py \
+            tests/test_mesc_training_hf_local_sft_backend_v1.py
+          uv run mypy \
+            src/medscale/mesc/_training_hf_local_sft_backend_v1.py \
+            tests/test_mesc_training_hf_local_sft_backend_v1.py
+          uv run pytest -q tests/test_mesc_training_hf_local_sft_backend_v1.py
+          git diff --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            specs/mesc-hf-local-sft-backend-v1/README.md \
+            src/medscale/mesc/_training_hf_local_sft_backend_v1.py \
+            tests/test_mesc_training_hf_local_sft_backend_v1.py
+          git commit -m "fix(mesc): preserve Transformers 4.44 dtype compatibility"
+          git push origin "HEAD:$TARGET_BRANCH"
 
       - name: Ruff (lint)
         run: uv run ruff check .
