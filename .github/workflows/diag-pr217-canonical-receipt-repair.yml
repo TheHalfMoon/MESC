@@ -36,8 +36,12 @@ jobs:
       - name: Sync locked default environment
         run: uv sync --frozen
 
-      - name: Apply canonical receipt reconstruction repair
-        run: uv run python tools/diag_pr217_canonical_receipt_repair.py
+      - name: Load and apply canonical receipt reconstruction repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          git show origin/diag/pr217-canonical-receipt-repair:tools/diag_pr217_canonical_receipt_repair.py > /tmp/diag_pr217_repair.py
+          uv run python /tmp/diag_pr217_repair.py
 
       - name: Format and enforce mutation allowlist
         shell: bash
