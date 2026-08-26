@@ -1,0 +1,88 @@
+name: Diagnostic HF SFT dependency lock
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: diag-hf-sft-lock-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  resolve-lock:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/mesc-hf-sft-dependency-lock-v1
+          fetch-depth: 0
+
+      - name: Verify exact target head
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "2c73dc01a487467cacbc51bd4192e80b07ff536b"
+
+      - name: Install uv 0.12.6
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.12.6"
+          enable-cache: true
+
+      - name: Install Python 3.12
+        run: uv python install 3.12
+
+      - name: Resolve canonical lock
+        run: |
+          set -euo pipefail
+          uv lock
+          uv lock --check
+
+      - name: Prove default environment stays lean
+        run: |
+          set -euo pipefail
+          uv sync --frozen
+          uv run python - <<'PY'
+          import importlib.util
+
+          forbidden = (
+              "accelerate",
+              "bitsandbytes",
+              "datasets",
+              "peft",
+              "torch",
+              "transformers",
+              "trl",
+          )
+          present = [name for name in forbidden if importlib.util.find_spec(name) is not None]
+          if present:
+              raise SystemExit(f"training packages leaked into default environment: {present}")
+          PY
+
+      - name: Validate dependency-lock regression
+        run: |
+          set -euo pipefail
+          uv run ruff check tests/test_mesc_hf_sft_dependency_lock_v1.py
+          uv run ruff format --check tests/test_mesc_hf_sft_dependency_lock_v1.py
+          uv run mypy tests/test_mesc_hf_sft_dependency_lock_v1.py
+          uv run pytest tests/test_mesc_hf_sft_dependency_lock_v1.py
+
+      - name: Prove frozen training-extra resolution without installation
+        run: |
+          set -euo pipefail
+          uv sync --help | grep -q -- '--dry-run'
+          uv sync --frozen --extra training-hf-sft --dry-run
+          uv lock --check
+
+      - name: Publish resolver-generated lock to target branch
+        run: |
+          set -euo pipefail
+          test "$(git diff --name-only)" = "uv.lock"
+          git diff --check -- uv.lock
+          git add uv.lock
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "build(mesc): lock local HF SFT training stack"
+          git push origin HEAD:refs/heads/feat/mesc-hf-sft-dependency-lock-v1
