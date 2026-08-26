@@ -1,0 +1,143 @@
+name: Diagnostic MESC 218 Qodo Fixes
+
+on:
+  push:
+    branches:
+      - diag/mesc-218-qodo-fixes-151761d
+
+permissions:
+  contents: write
+
+jobs:
+  qualify:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: true
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+        with:
+          enable-cache: true
+      - name: Install Python 3.11
+        run: uv python install 3.11
+      - name: Sync locked environment
+        run: uv sync --frozen
+      - name: Apply bounded security repairs
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              target = Path(path)
+              text = target.read_text(encoding="utf-8")
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected exactly one replacement target, found {count}")
+              target.write_text(text.replace(old, new), encoding="utf-8")
+
+          trust = "src/medscale/mesc/_training_authorization_trust_v1.py"
+          replace_once(
+              trust,
+              '_REGISTRY_LOCK: Final = Lock()\n',
+              '_REGISTRY_LOCK: Final = Lock()\n_ACTIVE_BACKEND_ADMISSIONS = 0\n',
+          )
+          replace_once(
+              trust,
+              '''@contextmanager\ndef hold_training_authorization_trust(\n    *,\n    expected_registry_sha256: str,\n    artifact_sha256: str,\n) -> Iterator[TrainingAuthorizationTrustSnapshot]:\n    """Hold one valid admission snapshot stable across a backend admission boundary.\n\n    Canonical runtime code does not mutate trust in process. The lock additionally makes\n    the repository-supported test mutation path serialize with the final executor guard,\n    so a revocation cannot interleave between the last trust check and backend invocation.\n    """\n    with _REGISTRY_LOCK:\n        snapshot = _validated_registry_snapshot_unlocked()\n        _require_snapshot_admission(\n            snapshot,\n            expected_registry_sha256=expected_registry_sha256,\n            artifact_sha256=artifact_sha256,\n        )\n        yield snapshot\n''',
+              '''@contextmanager\ndef hold_training_authorization_trust(\n    *,\n    expected_registry_sha256: str,\n    artifact_sha256: str,\n) -> Iterator[TrainingAuthorizationTrustSnapshot]:\n    """Lease one valid admission snapshot across a backend admission boundary.\n\n    The registry lock protects only admission bookkeeping. It is released before\n    arbitrary backend code runs, so a backend may safely query the public trust API.\n    The repository-supported mutation path refuses to replace trust while any backend\n    admission lease is active, preventing revocation from interleaving with invocation.\n    """\n    global _ACTIVE_BACKEND_ADMISSIONS\n\n    with _REGISTRY_LOCK:\n        snapshot = _validated_registry_snapshot_unlocked()\n        _require_snapshot_admission(\n            snapshot,\n            expected_registry_sha256=expected_registry_sha256,\n            artifact_sha256=artifact_sha256,\n        )\n        _ACTIVE_BACKEND_ADMISSIONS += 1\n\n    try:\n        yield snapshot\n    finally:\n        with _REGISTRY_LOCK:\n            _ACTIVE_BACKEND_ADMISSIONS -= 1\n''',
+          )
+          replace_once(
+              trust,
+              '''    with _REGISTRY_LOCK:\n        previous = TRUSTED_TRAINING_AUTHORIZATION_ARTIFACT_SHA256\n        globals()["TRUSTED_TRAINING_AUTHORIZATION_ARTIFACT_SHA256"] = registry\n        return previous\n''',
+              '''    with _REGISTRY_LOCK:\n        if _ACTIVE_BACKEND_ADMISSIONS:\n            raise TrainingAuthorizationTrustError(\n                "training authorization trust registry cannot change during active "\n                "backend admission"\n            )\n        previous = TRUSTED_TRAINING_AUTHORIZATION_ARTIFACT_SHA256\n        globals()["TRUSTED_TRAINING_AUTHORIZATION_ARTIFACT_SHA256"] = registry\n        return previous\n''',
+          )
+
+          receipt = "src/medscale/mesc/_training_authorization_receipt_v1.py"
+          replace_once(
+              receipt,
+              '''    def validate_current_trust(self) -> None:\n        """Require this AUTHORIZED receipt to remain trusted by one current snapshot."""\n        if self.disposition != "AUTHORIZED" or not self.real_training_authorized:\n            raise TrainingAuthorizationReceiptError(\n                "current-trust validation requires an AUTHORIZED receipt"\n            )\n        artifact = self.authorization_artifact\n        if artifact is None:\n            raise TrainingAuthorizationReceiptError(\n                "AUTHORIZED receipt lacks validated authorization artifact bytes"\n            )\n        registry_sha256 = self.authorization_trust_registry_sha256\n        if registry_sha256 is None:\n            raise TrainingAuthorizationReceiptError(\n                "AUTHORIZED receipt lacks an authorization trust registry binding"\n            )\n        _validate_trust_admission(\n            expected_registry_sha256=registry_sha256,\n            artifact_sha256=artifact.artifact_sha256,\n            context="current authorization trust",\n        )\n''',
+              '''    def validated_current_trust_snapshot(self) -> TrainingAuthorizationReceipt:\n        """Return one local semantic snapshot admitted by the current trust registry."""\n        if type(self) is not TrainingAuthorizationReceipt:\n            raise TrainingAuthorizationReceiptError(\n                "current-trust validation requires an exact TrainingAuthorizationReceipt"\n            )\n\n        disposition = self.disposition\n        authorization_scope = self.authorization_scope\n        authorizer_id = self.authorizer_id\n        authorization_subject_sha256 = self.authorization_subject_sha256\n        runtime_qualification_sha256 = self.runtime_qualification_sha256\n        corpus_binding_sha256 = self.corpus_binding_sha256\n        authorization_statement = self.authorization_statement\n        real_training_authorized = self.real_training_authorized\n        blockers = self.blockers\n        registry_sha256 = self.authorization_trust_registry_sha256\n        artifact = self.authorization_artifact\n        program_version = self.program_version\n\n        if program_version != _PROGRAM_VERSION:\n            raise TrainingAuthorizationReceiptError(\n                f"program_version must be exactly {_PROGRAM_VERSION}"\n            )\n        if disposition != "AUTHORIZED" or type(real_training_authorized) is not bool or (\n            not real_training_authorized\n        ):\n            raise TrainingAuthorizationReceiptError(\n                "current-trust validation requires an AUTHORIZED receipt"\n            )\n        if type(blockers) is not tuple or blockers:\n            raise TrainingAuthorizationReceiptError(\n                "current-trust validation requires an exact empty blockers tuple"\n            )\n        _require_scope(authorization_scope)\n        _require_text(authorizer_id, field="authorizer_id")\n        _require_text(authorization_statement, field="authorization_statement")\n        _require_sha256(\n            authorization_subject_sha256,\n            field="authorization_subject_sha256",\n        )\n        _require_sha256(\n            runtime_qualification_sha256,\n            field="runtime_qualification_sha256",\n        )\n        _require_sha256(corpus_binding_sha256, field="corpus_binding_sha256")\n        if registry_sha256 is None:\n            raise TrainingAuthorizationReceiptError(\n                "AUTHORIZED receipt lacks an authorization trust registry binding"\n            )\n        _require_sha256(\n            registry_sha256,\n            field="authorization_trust_registry_sha256",\n        )\n        if type(artifact) is not TrainingAuthorizationArtifact:\n            raise TrainingAuthorizationReceiptError(\n                "AUTHORIZED receipt lacks exact validated authorization artifact bytes"\n            )\n        canonical_bytes = artifact.canonical_bytes\n        if type(canonical_bytes) is not bytes or not canonical_bytes:\n            raise TrainingAuthorizationReceiptError(\n                "authorization artifact must retain non-empty exact canonical bytes"\n            )\n        fresh_artifact = TrainingAuthorizationArtifact(canonical_bytes)\n        comparisons = (\n            (fresh_artifact.authorization_scope, authorization_scope),\n            (fresh_artifact.authorizer_id, authorizer_id),\n            (fresh_artifact.authorization_subject_sha256, authorization_subject_sha256),\n            (fresh_artifact.runtime_qualification_sha256, runtime_qualification_sha256),\n            (fresh_artifact.corpus_binding_sha256, corpus_binding_sha256),\n            (fresh_artifact.authorization_statement, authorization_statement),\n        )\n        if any(observed != required for observed, required in comparisons):\n            raise TrainingAuthorizationReceiptError(\n                "authorization artifact does not match receipt bindings"\n            )\n        if not fresh_artifact.authorize:\n            raise TrainingAuthorizationReceiptError(\n                "AUTHORIZED receipt artifact must carry authorize=true"\n            )\n        _validate_trust_admission(\n            expected_registry_sha256=registry_sha256,\n            artifact_sha256=fresh_artifact.artifact_sha256,\n            context="current authorization trust",\n        )\n\n        return TrainingAuthorizationReceipt(\n            disposition=disposition,\n            authorization_scope=authorization_scope,\n            authorizer_id=authorizer_id,\n            authorization_subject_sha256=authorization_subject_sha256,\n            runtime_qualification_sha256=runtime_qualification_sha256,\n            corpus_binding_sha256=corpus_binding_sha256,\n            authorization_statement=authorization_statement,\n            real_training_authorized=real_training_authorized,\n            blockers=blockers,\n            authorization_trust_registry_sha256=registry_sha256,\n            authorization_artifact=fresh_artifact,\n            program_version=program_version,\n        )\n\n    def validate_current_trust(self) -> None:\n        """Require this AUTHORIZED receipt to remain trusted by one current snapshot."""\n        self.validated_current_trust_snapshot()\n''',
+          )
+
+          readiness = "src/medscale/mesc/_training_readiness_v1.py"
+          replace_once(
+              readiness,
+              '''    receipt = manifest.training_authorization_receipt\n    if type(receipt) is not TrainingAuthorizationReceipt:\n        blockers.append("training authorization receipt is non-canonical")\n        return\n    if receipt.receipt_sha256 != manifest.training_authorization_receipt_sha256:\n        blockers.append("training authorization receipt hash does not match manifest")\n    if receipt.disposition != "AUTHORIZED" or not receipt.real_training_authorized:\n        blockers.append("training authorization receipt is not explicitly AUTHORIZED")\n    if receipt.blockers:\n        blockers.append("training authorization receipt retains blockers")\n    try:\n        receipt.validate_current_trust()\n    except TrainingAuthorizationReceiptError:\n        blockers.append(\n            "training authorization receipt is not trusted by the current canonical registry"\n        )\n    if receipt.authorization_subject_sha256 != manifest.authorization_subject_sha256:\n''',
+              '''    source_receipt = manifest.training_authorization_receipt\n    if type(source_receipt) is not TrainingAuthorizationReceipt:\n        blockers.append("training authorization receipt is non-canonical")\n        return\n    try:\n        receipt = source_receipt.validated_current_trust_snapshot()\n    except TrainingAuthorizationReceiptError:\n        blockers.append(\n            "training authorization receipt is not trusted by the current canonical registry"\n        )\n        return\n    if receipt.receipt_sha256 != manifest.training_authorization_receipt_sha256:\n        blockers.append("training authorization receipt hash does not match manifest")\n    if receipt.disposition != "AUTHORIZED" or not receipt.real_training_authorized:\n        blockers.append("training authorization receipt is not explicitly AUTHORIZED")\n    if receipt.blockers:\n        blockers.append("training authorization receipt retains blockers")\n    if receipt.authorization_subject_sha256 != manifest.authorization_subject_sha256:\n''',
+          )
+
+          binding = "src/medscale/mesc/_training_readiness_receipt_binding_v1.py"
+          replace_once(
+              binding,
+              '''    if receipt.disposition != "AUTHORIZED" or not receipt.real_training_authorized:\n        raise TrainingReadinessReceiptBindingError(\n            "authorization receipt must be AUTHORIZED with real_training_authorized=true"\n        )\n    try:\n        receipt.validate_current_trust()\n    except TrainingAuthorizationReceiptError as exc:\n        raise TrainingReadinessReceiptBindingError(\n            "authorization receipt is not trusted by the current canonical registry"\n        ) from exc\n    if receipt.authorization_subject_sha256 != manifest.authorization_subject_sha256:\n''',
+              '''    try:\n        receipt = receipt.validated_current_trust_snapshot()\n    except TrainingAuthorizationReceiptError as exc:\n        raise TrainingReadinessReceiptBindingError(\n            "authorization receipt is not trusted by the current canonical registry"\n        ) from exc\n    if receipt.disposition != "AUTHORIZED" or not receipt.real_training_authorized:\n        raise TrainingReadinessReceiptBindingError(\n            "authorization receipt must be AUTHORIZED with real_training_authorized=true"\n        )\n    if receipt.authorization_subject_sha256 != manifest.authorization_subject_sha256:\n''',
+          )
+
+          executor = "src/medscale/mesc/_training_executor_v1.py"
+          replace_once(
+              executor,
+              '''    receipt = manifest.training_authorization_receipt\n    if receipt is None:\n        raise TrainingExecutionError(\n            "readiness manifest lacks the bound training authorization receipt"\n        )\n    registry_sha256 = receipt.authorization_trust_registry_sha256\n    artifact_sha256 = receipt.authorization_artifact_sha256\n''',
+              '''    source_receipt = manifest.training_authorization_receipt\n    if type(source_receipt) is not TrainingAuthorizationReceipt:\n        raise TrainingExecutionError(\n            "readiness manifest lacks the exact bound training authorization receipt"\n        )\n    try:\n        receipt = source_receipt.validated_current_trust_snapshot()\n    except TrainingAuthorizationReceiptError as exc:\n        raise TrainingExecutionError(\n            "training authorization trust changed before backend invocation"\n        ) from exc\n    registry_sha256 = receipt.authorization_trust_registry_sha256\n    artifact_sha256 = receipt.authorization_artifact_sha256\n''',
+          )
+
+          receipt_tests = "tests/test_mesc_training_authorization_receipt_v1.py"
+          with Path(receipt_tests).open("a", encoding="utf-8") as handle:
+              handle.write(
+                  '''\n\ndef test_mutated_authorized_receipt_cannot_reuse_trusted_artifact() -> None:\n    receipt = _build(authorize=True)\n    object.__setattr__(receipt, "authorization_subject_sha256", "d" * 64)\n\n    with pytest.raises(\n        TrainingAuthorizationReceiptError,\n        match="authorization artifact does not match receipt bindings",\n    ):\n        receipt.validate_current_trust()\n'''
+              )
+
+          guard_tests = "tests/test_mesc_training_authorization_admission_guard_v1.py"
+          with Path(guard_tests).open("a", encoding="utf-8") as handle:
+              handle.write(
+                  '''\n\ndef test_backend_may_query_trust_without_deadlock() -> None:\n    manifest, readiness, launch, binding, assets, environment = (\n        executor_test_support._bundle()\n    )\n\n    class TrustQueryingBackend(executor_test_support._SuccessBackend):\n        def __init__(self) -> None:\n            super().__init__()\n            self.registry_sha256: str | None = None\n\n        def execute(\n            self,\n            *,\n            manifest: TrainingExecutionManifest,\n        ) -> executor_module.TrainingBackendResult:\n            self.registry_sha256 = (\n                authorization_trust.training_authorization_trust_registry_sha256()\n            )\n            return super().execute(manifest=manifest)\n\n    backend = TrustQueryingBackend()\n    receipt = execute_training(\n        manifest=manifest,\n        readiness=readiness,\n        launch_plan=launch,\n        corpus_binding=binding,\n        local_assets=assets,\n        environment=environment,\n        role="compact",\n        backend=backend,\n    )\n\n    assert receipt.disposition == "SUCCEEDED"\n    assert backend.calls == 1\n    assert backend.registry_sha256 is not None\n\n\ndef test_active_backend_admission_refuses_registry_replacement() -> None:\n    manifest, readiness, launch, binding, assets, environment = (\n        executor_test_support._bundle()\n    )\n\n    class RegistryMutationBackend(executor_test_support._SuccessBackend):\n        def execute(\n            self,\n            *,\n            manifest: TrainingExecutionManifest,\n        ) -> executor_module.TrainingBackendResult:\n            with pytest.raises(\n                authorization_trust.TrainingAuthorizationTrustError,\n                match="cannot change during active backend admission",\n            ):\n                authorization_trust._replace_training_authorization_trust_registry_for_tests(\n                    frozenset()\n                )\n            return super().execute(manifest=manifest)\n\n    backend = RegistryMutationBackend()\n    receipt = execute_training(\n        manifest=manifest,\n        readiness=readiness,\n        launch_plan=launch,\n        corpus_binding=binding,\n        local_assets=assets,\n        environment=environment,\n        role="compact",\n        backend=backend,\n    )\n\n    assert receipt.disposition == "SUCCEEDED"\n    assert backend.calls == 1\n'''
+              )
+
+          spec = "specs/mesc-training-authorization-receipt-v1/README.md"
+          replace_once(
+              spec,
+              '''The executor performs a final trust admission immediately around `backend.execute()`. The\nsame registry lock serializes that final admission with the repository-supported\nin-process test mutation path, so revocation cannot interleave between the final canonical\ntrust check and backend invocation. The lock establishes admission ordering only; it does\nnot create a training-cancellation authority or mint any real authorization digest.\n''',
+              '''Use-time validation reconstructs the authorization artifact from its immutable canonical\nbytes and creates a local validated receipt snapshot. Readiness, binding, and final executor\nadmission use that local snapshot rather than rereading caller-owned frozen dataclasses,\nwhich remain mutable through Python escape hatches such as `object.__setattr__`.\n\nThe executor performs a final trust admission immediately around `backend.execute()`. A\nshort registry lock validates admission and records an active backend-admission lease, then\nreleases the lock before arbitrary backend code runs. Public trust queries are therefore\nsafe from backend reentry deadlock. While a lease is active, the repository-supported\nin-process test mutation path refuses registry replacement, so revocation cannot\ninterleave between final canonical admission and backend invocation. This lease establishes\nadmission ordering only; it does not create training-cancellation authority or mint any\nreal authorization digest.\n''',
+          )
+          PY
+      - name: Format bounded repair
+        run: uv run ruff format src/medscale/mesc/_training_authorization_trust_v1.py src/medscale/mesc/_training_authorization_receipt_v1.py src/medscale/mesc/_training_readiness_v1.py src/medscale/mesc/_training_readiness_receipt_binding_v1.py src/medscale/mesc/_training_executor_v1.py tests/test_mesc_training_authorization_receipt_v1.py tests/test_mesc_training_authorization_admission_guard_v1.py
+      - name: Commit exact repair output
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          git add -- \
+            specs/mesc-training-authorization-receipt-v1/README.md \
+            src/medscale/mesc/_training_authorization_trust_v1.py \
+            src/medscale/mesc/_training_authorization_receipt_v1.py \
+            src/medscale/mesc/_training_readiness_v1.py \
+            src/medscale/mesc/_training_readiness_receipt_binding_v1.py \
+            src/medscale/mesc/_training_executor_v1.py \
+            tests/test_mesc_training_authorization_receipt_v1.py \
+            tests/test_mesc_training_authorization_admission_guard_v1.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "fix(mesc): harden authorization use-time admission"
+          git push origin HEAD:${GITHUB_REF_NAME}
+      - name: Ruff lint
+        run: uv run ruff check .
+      - name: Ruff format check
+        run: uv run ruff format --check .
+      - name: Strict mypy
+        run: uv run mypy --strict src
+      - name: Focused authorization tests
+        run: >-
+          uv run pytest -q
+          tests/test_mesc_training_authorization_receipt_v1.py
+          tests/test_mesc_training_authorization_admission_guard_v1.py
+          tests/test_mesc_training_readiness_receipt_binding_v1.py
+          tests/test_mesc_training_readiness_v1.py
+          tests/test_mesc_training_executor_v1.py
+          tests/test_mesc_training_code_readiness_v1.py
+      - name: Full pytest
+        run: uv run pytest -q
+      - name: medscale check
+        run: uv run medscale check
