@@ -141,6 +141,7 @@ class TrainingLaunchPlan:
     """Content-addressed pair of exact Compact and Reasoner run plans."""
 
     readiness_manifest_sha256: str
+    corpus_binding_sha256: str
     runtime_qualification_sha256: str
     training_authorization_receipt_sha256: str
     compact: TrainingRunPlan
@@ -151,6 +152,7 @@ class TrainingLaunchPlan:
         if self.plan_version != _PLAN_VERSION:
             raise TrainingLaunchPlanError(f"plan_version must be exactly {_PLAN_VERSION}")
         _require_sha256(self.readiness_manifest_sha256, field="readiness_manifest_sha256")
+        _require_sha256(self.corpus_binding_sha256, field="corpus_binding_sha256")
         _require_sha256(
             self.runtime_qualification_sha256,
             field="runtime_qualification_sha256",
@@ -184,6 +186,7 @@ class TrainingLaunchPlan:
     def to_dict(self) -> dict[str, object]:
         return {
             "compact": self.compact.to_dict(),
+            "corpus_binding_sha256": self.corpus_binding_sha256,
             "plan_version": self.plan_version,
             "readiness_manifest_sha256": self.readiness_manifest_sha256,
             "reasoner": self.reasoner.to_dict(),
@@ -211,6 +214,8 @@ def build_training_launch_plan(
         raise TrainingLaunchPlanError("launch-ready report must have no blockers or requirements")
     if readiness.manifest_sha256 != manifest.manifest_sha256:
         raise TrainingLaunchPlanError("readiness report is not bound to the supplied manifest")
+    if manifest.corpus_binding_sha256 is None:
+        raise TrainingLaunchPlanError("canonical corpus binding is absent")
     if manifest.runtime_qualification_sha256 is None:
         raise TrainingLaunchPlanError("runtime qualification receipt is absent")
     if manifest.training_authorization_receipt_sha256 is None:
@@ -242,6 +247,7 @@ def build_training_launch_plan(
 
     return TrainingLaunchPlan(
         readiness_manifest_sha256=manifest.manifest_sha256,
+        corpus_binding_sha256=manifest.corpus_binding_sha256,
         runtime_qualification_sha256=manifest.runtime_qualification_sha256,
         training_authorization_receipt_sha256=manifest.training_authorization_receipt_sha256,
         compact=compact,
