@@ -16,6 +16,7 @@ import hashlib
 import os
 import platform
 import re
+import stat
 import subprocess
 from collections.abc import Callable
 from pathlib import Path
@@ -25,14 +26,13 @@ from medscale.mesc._training_corpus_binding_v1 import TrainingCorpusBindingRepor
 from medscale.mesc._training_executor_v1 import (
     TrainingBackend,
     TrainingExecutionEnvironment,
+    TrainingExecutionError,
     TrainingExecutionReceipt,
     execute_training,
 )
 from medscale.mesc._training_hf_local_sft_backend_v1 import (
     HfLocalSftBackend,
-    HfLocalSftExecutionProfile,
     HfLocalSftRuntime,
-    HfSftRuntimeResult,
     build_hf_local_sft_runtime,
 )
 from medscale.mesc._training_hf_safetensors_identity_v1 import (
@@ -40,12 +40,14 @@ from medscale.mesc._training_hf_safetensors_identity_v1 import (
 )
 from medscale.mesc._training_launch_plan_v1 import (
     TrainingLaunchPlan,
+    TrainingLaunchPlanError,
     TrainingRole,
     TrainingRunPlan,
     build_training_launch_plan,
 )
 from medscale.mesc._training_local_asset_attestation_v1 import (
     LocalModelAssetVerifier,
+    TrainingLocalAssetAttestationError,
     attest_local_training_assets,
 )
 from medscale.mesc._training_readiness_v1 import (
@@ -61,10 +63,11 @@ _GIT_SHA: Final = re.compile(r"^[0-9a-f]{40}$", flags=re.ASCII)
 _SHA256_CHUNK: Final = 1024 * 1024
 _O_BINARY: Final = getattr(os, "O_BINARY", 0)
 _O_NOFOLLOW: Final = getattr(os, "O_NOFOLLOW", 0)
+_O_CLOEXEC: Final = getattr(os, "O_CLOEXEC", 0)
 
 GpuProbe = Callable[[], str]
 BackendFactory = Callable[
-    [TrainingRecipe, Path, Path, Path, HfLocalSftRuntime],
+    [TrainingRecipe, Path, Path, Path, HfLocalSftRuntime | None],
     TrainingBackend,
 ]
 
@@ -74,17 +77,31 @@ class TrainingOrchestratorError(ValueError):
 
 
 def hash_dependency_lock(lock_path: Path) -> str:
-    """Return the SHA-256 of the exact ``uv.lock`` bytes (no-follow)."""
+    """Return the SHA-256 of the exact ``uv.lock`` bytes (no-follow regular file)."""
     if not isinstance(lock_path, Path):
         raise TrainingOrchestratorError("lock_path must be an exact pathlib.Path")
-    if lock_path.is_symlink():
-        raise TrainingOrchestratorError("dependency lock path must not be a symlink")
     try:
-        flags = os.O_RDONLY | _O_BINARY | _O_NOFOLLOW
+        before = lock_path.stat(follow_symlinks=False)
+    except OSError as exc:
+        raise TrainingOrchestratorError("dependency lock cannot be statted") from exc
+    if stat.S_ISLNK(before.st_mode):
+        raise TrainingOrchestratorError("dependency lock path must not be a symlink")
+    if not stat.S_ISREG(before.st_mode):
+        raise TrainingOrchestratorError("dependency lock must be a regular file")
+    if before.st_size <= 0:
+        raise TrainingOrchestratorError("dependency lock must be non-empty")
+
+    flags = os.O_RDONLY | _O_BINARY | _O_NOFOLLOW | _O_CLOEXEC
+    try:
         fd = os.open(os.fspath(lock_path), flags)
     except OSError as exc:
         raise TrainingOrchestratorError("dependency lock cannot be opened") from exc
     try:
+        opened = os.fstat(fd)
+        if not stat.S_ISREG(opened.st_mode):
+            raise TrainingOrchestratorError("dependency lock must be a regular file")
+        if opened.st_size != before.st_size:
+            raise TrainingOrchestratorError("dependency lock changed during observation")
         digest = hashlib.sha256()
         total = 0
         while True:
@@ -95,6 +112,11 @@ def hash_dependency_lock(lock_path: Path) -> str:
             total += len(chunk)
         if total <= 0:
             raise TrainingOrchestratorError("dependency lock must be non-empty")
+        finished = os.fstat(fd)
+        if finished.st_size != opened.st_size:
+            raise TrainingOrchestratorError("dependency lock changed during observation")
+        if total != finished.st_size:
+            raise TrainingOrchestratorError("dependency lock size does not match bytes read")
         return digest.hexdigest()
     finally:
         os.close(fd)
@@ -211,12 +233,15 @@ def run_training_orchestrator(
             f"training readiness disposition is {assessed.disposition}, not READY_TO_LAUNCH"
         )
 
-    rebuilt = build_training_launch_plan(
-        manifest=manifest,
-        readiness=assessed,
-        compact=launch_plan.compact,
-        reasoner=launch_plan.reasoner,
-    )
+    try:
+        rebuilt = build_training_launch_plan(
+            manifest=manifest,
+            readiness=assessed,
+            compact=launch_plan.compact,
+            reasoner=launch_plan.reasoner,
+        )
+    except TrainingLaunchPlanError as exc:
+        raise TrainingOrchestratorError("launch plan reconstruction failed") from exc
     if rebuilt != launch_plan:
         raise TrainingOrchestratorError(
             "supplied launch plan does not match recomputed launch plan"
@@ -252,33 +277,29 @@ def run_training_orchestrator(
     selected_verifier: LocalModelAssetVerifier = (
         HfSafeTensorsLocalModelVerifier() if verifier is None else verifier
     )
-    local_assets = attest_local_training_assets(
-        launch_plan=launch_plan,
-        corpus_binding=corpus_binding,
-        role=role,
-        model_root=model_root,
-        corpus_path=corpus_path,
-        verifier=selected_verifier,
-    )
+    try:
+        local_assets = attest_local_training_assets(
+            launch_plan=launch_plan,
+            corpus_binding=corpus_binding,
+            role=role,
+            model_root=model_root,
+            corpus_path=corpus_path,
+            verifier=selected_verifier,
+        )
+    except TrainingLocalAssetAttestationError as exc:
+        raise TrainingOrchestratorError("local asset attestation failed") from exc
     if not local_assets.can_execute_training:
         blockers = ", ".join(local_assets.blockers) if local_assets.blockers else "unknown"
         raise TrainingOrchestratorError(f"local asset attestation blocked: {blockers}")
 
     factory = _default_backend_factory if backend_factory is None else backend_factory
-    if backend_factory is None:
-        selected_runtime = build_hf_local_sft_runtime() if runtime is None else runtime
-    elif runtime is None:
-        # Injected factories used by default CI never import the training stack.
-        selected_runtime = _UnusedRuntime()
-    else:
-        selected_runtime = runtime
     try:
         backend = factory(
             selected_recipe,
             model_root,
             corpus_path,
             repository_root,
-            selected_runtime,
+            runtime,
         )
     except TrainingOrchestratorError:
         raise
@@ -287,16 +308,19 @@ def run_training_orchestrator(
     if backend is None:
         raise TrainingOrchestratorError("an explicit training backend is required")
 
-    return execute_training(
-        manifest=manifest,
-        readiness=assessed,
-        launch_plan=launch_plan,
-        corpus_binding=corpus_binding,
-        local_assets=local_assets,
-        environment=observed_environment,
-        role=role,
-        backend=backend,
-    )
+    try:
+        return execute_training(
+            manifest=manifest,
+            readiness=assessed,
+            launch_plan=launch_plan,
+            corpus_binding=corpus_binding,
+            local_assets=local_assets,
+            environment=observed_environment,
+            role=role,
+            backend=backend,
+        )
+    except TrainingExecutionError as exc:
+        raise TrainingOrchestratorError("training executor refused execution") from exc
 
 
 def _default_backend_factory(
@@ -304,31 +328,16 @@ def _default_backend_factory(
     model_root: Path,
     corpus_path: Path,
     repository_root: Path,
-    runtime: HfLocalSftRuntime,
+    runtime: HfLocalSftRuntime | None,
 ) -> TrainingBackend:
+    selected_runtime = build_hf_local_sft_runtime() if runtime is None else runtime
     return HfLocalSftBackend(
         recipe=recipe,
         model_root=model_root,
         corpus_path=corpus_path,
         repository_root=repository_root,
-        runtime=runtime,
+        runtime=selected_runtime,
     )
-
-
-class _UnusedRuntime:
-    """Placeholder runtime for injected backend factories that ignore the runtime."""
-
-    def train_seed(
-        self,
-        *,
-        model_root: Path,
-        records: tuple[dict[str, object], ...],
-        recipe: TrainingRecipe,
-        seed: int,
-        output_dir: Path,
-        profile: HfLocalSftExecutionProfile,
-    ) -> HfSftRuntimeResult:
-        raise TrainingOrchestratorError("unused runtime must not execute training")
 
 
 def _default_gpu_probe() -> str:

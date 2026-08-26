@@ -30,6 +30,10 @@ src/medscale/mesc/_training_orchestrator_v1.py
 tests/test_mesc_training_orchestrator_v1.py
 ```
 
+Public `medscale mesc-train` CLI registration is intentionally deferred until typed
+manifest serialization exists. Reproduction commands must call the library orchestrator
+API; they must not advertise an unregistered CLI.
+
 It does not:
 
 - invent runtime-qualification or training-authorization receipts;

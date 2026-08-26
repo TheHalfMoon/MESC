@@ -154,7 +154,10 @@ def _run(
             f"experiments/{experiment_id}/outputs",
             f"experiments/{experiment_id}/results",
         ),
-        reproduction_command=(f"uv run medscale mesc-train --plan {experiment_id}.json"),
+        reproduction_command=(
+            'python -c "from medscale.mesc._training_orchestrator_v1 import '
+            f"run_training_orchestrator; run_training_orchestrator(role='{role}')\""
+        ),
     )
 
 
@@ -310,6 +313,13 @@ def test_hash_dependency_lock_matches_sha256(tmp_path: Path) -> None:
     payload = b"fixture-lock-bytes\n"
     lock.write_bytes(payload)
     assert hash_dependency_lock(lock) == hashlib.sha256(payload).hexdigest()
+
+
+def test_hash_dependency_lock_refuses_non_regular_file(tmp_path: Path) -> None:
+    directory = tmp_path / "not-a-file"
+    directory.mkdir()
+    with pytest.raises(TrainingOrchestratorError, match="regular file"):
+        hash_dependency_lock(directory)
 
 
 def test_hash_dependency_lock_refuses_symlink(tmp_path: Path) -> None:
