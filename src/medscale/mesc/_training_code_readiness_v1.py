@@ -7,7 +7,7 @@ download models, or claim MedScale Spec 012 admission readiness.
 
 from __future__ import annotations
 
-import importlib
+import re
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
@@ -19,6 +19,7 @@ from medscale.reproducibility import content_hash
 TrainingCodeReadinessDisposition = Literal["BLOCKED", "TRAINING_CODE_READY"]
 
 _AUDIT_VERSION: Final = "MESC-TRAINING-CODE-READINESS-V1"
+_SHA256: Final = re.compile(r"^[0-9a-f]{64}$", flags=re.ASCII)
 _REQUIRED_MODULES: Final = (
     "medscale.mesc._training_readiness_v1",
     "medscale.mesc._training_launch_plan_v1",
@@ -85,17 +86,40 @@ class TrainingCodeReadinessReport:
             raise TrainingCodeReadinessError("repository_root must be non-empty")
         if self.dependency_lock_sha256 is not None and (
             not isinstance(self.dependency_lock_sha256, str)
-            or len(self.dependency_lock_sha256) != 64
+            or _SHA256.fullmatch(self.dependency_lock_sha256) is None
         ):
-            raise TrainingCodeReadinessError("dependency_lock_sha256 must be 64 lowercase hex")
+            raise TrainingCodeReadinessError(
+                "dependency_lock_sha256 must be exactly 64 lowercase hex characters"
+            )
         if type(self.real_training_authorized) is not bool:
             raise TrainingCodeReadinessError("real_training_authorized must be a bool")
         if self.medscale_spec_012_admission_readiness != "NOT_READY":
             raise TrainingCodeReadinessError(
                 "medscale_spec_012_admission_readiness must remain NOT_READY in V1"
             )
-        if self.disposition == "TRAINING_CODE_READY" and self.blockers:
-            raise TrainingCodeReadinessError("TRAINING_CODE_READY cannot retain blockers")
+        if self.disposition == "TRAINING_CODE_READY":
+            if self.blockers:
+                raise TrainingCodeReadinessError("TRAINING_CODE_READY cannot retain blockers")
+            if self.missing_modules or self.missing_specs:
+                raise TrainingCodeReadinessError(
+                    "TRAINING_CODE_READY cannot retain missing modules or specs"
+                )
+            if self.present_modules != _REQUIRED_MODULES:
+                raise TrainingCodeReadinessError(
+                    "TRAINING_CODE_READY must present the exact required module set"
+                )
+            if self.present_specs != _REQUIRED_SPECS:
+                raise TrainingCodeReadinessError(
+                    "TRAINING_CODE_READY must present the exact required spec set"
+                )
+            if self.training_extra_pins != _EXPECTED_TRAINING_PINS:
+                raise TrainingCodeReadinessError(
+                    "TRAINING_CODE_READY must bind the exact training-hf-sft pins"
+                )
+            if self.dependency_lock_sha256 is None:
+                raise TrainingCodeReadinessError(
+                    "TRAINING_CODE_READY requires an observed dependency_lock_sha256"
+                )
         if self.disposition == "BLOCKED" and not self.blockers:
             raise TrainingCodeReadinessError("BLOCKED audits must record blockers")
         if self.real_training_authorized:
@@ -133,13 +157,12 @@ def audit_training_code_readiness(*, repository_root: Path) -> TrainingCodeReadi
     present_modules: list[str] = []
     missing_modules: list[str] = []
     for module_name in _REQUIRED_MODULES:
-        try:
-            importlib.import_module(module_name)
-        except Exception:
+        module_path = _module_source_path(repository_root, module_name)
+        if module_path.is_file() and not module_path.is_symlink():
+            present_modules.append(module_name)
+        else:
             missing_modules.append(module_name)
             blockers.append(f"missing module: {module_name}")
-        else:
-            present_modules.append(module_name)
 
     present_specs: list[str] = []
     missing_specs: list[str] = []
@@ -181,20 +204,30 @@ def audit_training_code_readiness(*, repository_root: Path) -> TrainingCodeReadi
     )
 
 
+def _module_source_path(repository_root: Path, module_name: str) -> Path:
+    relative = Path("src", *module_name.split(".")).with_suffix(".py")
+    return repository_root / relative
+
+
 def _read_training_extra_pins(pyproject_path: Path) -> tuple[str, ...]:
-    if pyproject_path.is_symlink() or not pyproject_path.is_file():
-        raise TrainingCodeReadinessError("pyproject.toml must be a regular file")
-    with pyproject_path.open("rb") as handle:
-        document = cast(dict[str, object], tomllib.load(handle))
-    project = cast(dict[str, object], document["project"])
-    dependencies = cast(list[object], project.get("dependencies", []))
-    if dependencies:
-        raise TrainingCodeReadinessError("default project.dependencies must remain empty")
-    optional = cast(dict[str, object], project.get("optional-dependencies", {}))
-    training = cast(list[str], optional.get("training-hf-sft", []))
-    if not training:
-        raise TrainingCodeReadinessError("training-hf-sft optional extra is missing")
-    return tuple(training)
+    try:
+        if pyproject_path.is_symlink() or not pyproject_path.is_file():
+            raise TrainingCodeReadinessError("pyproject.toml must be a regular file")
+        with pyproject_path.open("rb") as handle:
+            document = cast(dict[str, object], tomllib.load(handle))
+        project = cast(dict[str, object], document["project"])
+        dependencies = cast(list[object], project.get("dependencies", []))
+        if dependencies:
+            raise TrainingCodeReadinessError("default project.dependencies must remain empty")
+        optional = cast(dict[str, object], project.get("optional-dependencies", {}))
+        training = cast(list[str], optional.get("training-hf-sft", []))
+        if not training:
+            raise TrainingCodeReadinessError("training-hf-sft optional extra is missing")
+        return tuple(training)
+    except TrainingCodeReadinessError:
+        raise
+    except (OSError, tomllib.TOMLDecodeError, KeyError, TypeError, AttributeError) as exc:
+        raise TrainingCodeReadinessError("pyproject.toml is invalid") from exc
 
 
 __all__ = [
