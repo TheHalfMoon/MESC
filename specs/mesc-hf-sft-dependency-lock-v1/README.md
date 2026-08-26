@@ -62,7 +62,11 @@ gate was constructed:
 - bitsandbytes 0.50.1 requires Torch >=2.4,<3 and publishes Linux x86-64 wheels for the
   Python versions used by the repository;
 - Transformers 5.15.1 supports Python 3.10+ and PyTorch 2.5+; and
-- the selected Torch 2.13.0 provides CPython 3.11 and 3.12 Linux x86-64 wheels.
+- the selected Torch 2.13.0 publishes PyPI wheels through CPython 3.14 but no
+  source distribution, so the project metadata is explicitly bounded to Python
+  `>=3.11,<3.15`; and
+- repository CI continues to qualify Python 3.11 and 3.12, while the dependency
+  resolver gate separately proves the frozen training extra resolves at Python 3.14.
 
 Those upstream ranges are evidence for candidate compatibility, not the final authority.
 The final authority for this repository is successful `uv` resolution into the exact
@@ -131,18 +135,21 @@ the exact dependency-lock PR head after this reconciliation.
 
 This gate is complete only when exact-head evidence proves all of the following:
 
-1. `training-hf-sft` contains exactly the seven pinned top-level packages above;
-2. `uv lock` resolves the complete project without dependency conflicts;
-3. `uv lock --check` accepts the generated lock as current;
-4. the exact top-level versions appear in `uv.lock`;
-5. `uv sync --frozen` succeeds without selecting the training extra;
-6. a dry-run sync of `training-hf-sft` resolves from the frozen lock without modifying it;
-7. the repository dependency-lock regression tests pass;
-8. normal Ruff, formatter, strict mypy, full pytest, and `medscale check` remain green on
+1. project metadata declares Python `>=3.11,<3.15`, matching the locked Torch
+   artifact ceiling rather than advertising an unsupported future interpreter;
+2. `training-hf-sft` contains exactly the seven pinned top-level packages above;
+3. `uv lock` resolves the complete project without dependency conflicts;
+4. `uv lock --check` accepts the generated lock as current;
+5. the exact top-level versions appear in `uv.lock`;
+6. `uv sync --frozen` succeeds without selecting the training extra;
+7. dry-run syncs of `training-hf-sft` resolve from the frozen lock without
+   installation, including a Python 3.14 edge-of-range check;
+8. the repository dependency-lock regression tests pass;
+9. normal Ruff, formatter, strict mypy, full pytest, and `medscale check` remain green on
    Python 3.11 and 3.12;
-9. the dedicated P01-04B publication qualification remains green on every supported
+10. the dedicated P01-04B publication qualification remains green on every supported
    OS/Python matrix entry after historical dependency-baseline reconciliation; and
-10. CodeQL and material review findings are clean on the exact PR head.
+11. CodeQL and material review findings are clean on the exact PR head.
 
 ## Non-claims
 

@@ -30,6 +30,7 @@ def test_training_extra_is_exact_and_default_dependencies_stay_empty() -> None:
     training_extra = cast(list[str], optional_dependencies["training-hf-sft"])
 
     assert project["dependencies"] == []
+    assert project["requires-python"] == ">=3.11,<3.15"
     assert tuple(training_extra) == _EXPECTED_TRAINING_PINS
 
 

@@ -11,7 +11,7 @@ name = "medscale"
 dynamic = ["version"]
 description = "An open research platform for verifiable clinical AI: FHIR-native, grammar-constrained, validator-grounded, reproducible."
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.15"
 license = "Apache-2.0"
 authors = [{ name = "Abdulaziz Alshehri" }]
 keywords = [
