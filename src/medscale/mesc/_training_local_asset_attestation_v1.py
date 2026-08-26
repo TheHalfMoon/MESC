@@ -262,6 +262,8 @@ def attest_local_training_assets(
     blockers: list[str] = []
     if not corpus_binding.can_attest_local_artifact:
         blockers.append("corpus binding is not PASS")
+    if corpus_binding.binding_sha256 != launch_plan.corpus_binding_sha256:
+        blockers.append("corpus binding identity does not match launch plan")
     if run_plan.training_dataset_sha256 != corpus_binding.training_dataset_sha256:
         blockers.append("launch run training dataset does not match corpus binding")
 

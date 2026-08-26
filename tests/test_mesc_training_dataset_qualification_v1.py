@@ -329,7 +329,10 @@ def test_pass_t5_report_builds_readiness_manifest_without_launch_authority() -> 
     assert manifest.license_review_sha256 == qualification.license_review_sha256
     assert readiness.disposition == "READY_FOR_AUTHORIZATION"
     assert not readiness.can_launch_training
-    assert len(readiness.launch_requirements) == 2
+    assert len(readiness.launch_requirements) == 3
+    assert "canonical corpus binding is required" in readiness.launch_requirements
+    assert "runtime qualification receipt is required" in readiness.launch_requirements
+    assert "training authorization receipt is required" in readiness.launch_requirements
 
 
 def test_blocked_t5_report_cannot_bind_to_readiness() -> None:

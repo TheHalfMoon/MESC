@@ -1,8 +1,8 @@
 """Fail-closed binding of receipt objects into training readiness manifests.
 
 Consumes already-produced runtime-qualification and training-authorization receipts and
-writes only their content-addressed digests into a scientific readiness manifest. Opaque
-forged digests are not accepted as PASS/AUTHORIZED proof.
+writes both typed objects and their digests into a scientific readiness manifest. Opaque
+forged digests alone are not accepted as PASS/AUTHORIZED proof.
 """
 
 from __future__ import annotations
@@ -37,9 +37,12 @@ def bind_runtime_qualification_to_readiness(
         raise TrainingReadinessReceiptBindingError(
             "receipt must be exactly TrainingRuntimeQualificationReceipt"
         )
-    if manifest.training_authorization_receipt_sha256 is not None:
+    if (
+        manifest.training_authorization_receipt_sha256 is not None
+        or manifest.training_authorization_receipt is not None
+    ):
         raise TrainingReadinessReceiptBindingError(
-            "manifest must not already bind training_authorization_receipt_sha256; "
+            "manifest must not already bind training authorization; "
             "bind runtime before authorization"
         )
 
@@ -47,7 +50,9 @@ def bind_runtime_qualification_to_readiness(
         replace(
             manifest,
             runtime_qualification_sha256=None,
+            runtime_qualification_receipt=None,
             training_authorization_receipt_sha256=None,
+            training_authorization_receipt=None,
         )
     )
     if scientific.disposition == "BLOCKED":
@@ -65,10 +70,16 @@ def bind_runtime_qualification_to_readiness(
         raise TrainingReadinessReceiptBindingError(
             "manifest already binds a different runtime_qualification_sha256"
         )
+    existing_receipt = manifest.runtime_qualification_receipt
+    if existing_receipt is not None and existing_receipt.receipt_sha256 != digest:
+        raise TrainingReadinessReceiptBindingError(
+            "manifest already binds a different runtime_qualification_receipt"
+        )
 
     return replace(
         manifest,
         runtime_qualification_sha256=digest,
+        runtime_qualification_receipt=receipt,
     )
 
 
@@ -81,7 +92,7 @@ def bind_training_authorization_to_readiness(
     """Bind one AUTHORIZED training-authorization receipt into a readiness manifest.
 
     Requires the exact runtime receipt object that produced the bound runtime digest.
-    Authorization subject identity is the pre-authorization readiness manifest.
+    Authorization subject identity is ``manifest.authorization_subject_sha256``.
     """
     if type(manifest) is not TrainingReadinessManifest:
         raise TrainingReadinessReceiptBindingError(
@@ -95,10 +106,14 @@ def bind_training_authorization_to_readiness(
         raise TrainingReadinessReceiptBindingError(
             "runtime_qualification must be exactly TrainingRuntimeQualificationReceipt"
         )
-    if manifest.runtime_qualification_sha256 is None:
+    if manifest.runtime_qualification_sha256 is None or (
+        manifest.runtime_qualification_receipt is None
+    ):
         raise TrainingReadinessReceiptBindingError(
-            "runtime_qualification_sha256 must already be bound"
+            "runtime qualification digest and typed receipt must already be bound"
         )
+    if manifest.corpus_binding_sha256 is None:
+        raise TrainingReadinessReceiptBindingError("corpus_binding_sha256 must already be bound")
     if runtime_qualification.disposition != "PASS" or not runtime_qualification.platform_qualified:
         raise TrainingReadinessReceiptBindingError(
             "runtime receipt must be PASS with platform_qualified=true"
@@ -111,16 +126,17 @@ def bind_training_authorization_to_readiness(
         raise TrainingReadinessReceiptBindingError(
             "authorization receipt must be AUTHORIZED with real_training_authorized=true"
         )
-
-    pre_authorization = replace(manifest, training_authorization_receipt_sha256=None)
-    if receipt.subject_readiness_manifest_sha256 != pre_authorization.manifest_sha256:
+    if receipt.authorization_subject_sha256 != manifest.authorization_subject_sha256:
         raise TrainingReadinessReceiptBindingError(
-            "authorization subject_readiness_manifest_sha256 must match the current "
-            "pre-authorization readiness manifest"
+            "authorization_subject_sha256 must match the current readiness authorization subject"
         )
     if receipt.runtime_qualification_sha256 != manifest.runtime_qualification_sha256:
         raise TrainingReadinessReceiptBindingError(
             "authorization runtime_qualification_sha256 must match the bound runtime receipt"
+        )
+    if receipt.corpus_binding_sha256 != manifest.corpus_binding_sha256:
+        raise TrainingReadinessReceiptBindingError(
+            "authorization corpus_binding_sha256 must match the bound corpus identity"
         )
 
     digest = receipt.receipt_sha256
@@ -129,10 +145,16 @@ def bind_training_authorization_to_readiness(
         raise TrainingReadinessReceiptBindingError(
             "manifest already binds a different training_authorization_receipt_sha256"
         )
+    existing_receipt = manifest.training_authorization_receipt
+    if existing_receipt is not None and existing_receipt.receipt_sha256 != digest:
+        raise TrainingReadinessReceiptBindingError(
+            "manifest already binds a different training_authorization_receipt"
+        )
 
     return replace(
         manifest,
         training_authorization_receipt_sha256=digest,
+        training_authorization_receipt=receipt,
     )
 
 
@@ -142,18 +164,20 @@ def construct_ready_to_launch_readiness(
     runtime_qualification: TrainingRuntimeQualificationReceipt,
     training_authorization: TrainingAuthorizationReceipt,
 ) -> tuple[TrainingReadinessManifest, TrainingReadinessReport]:
-    """Bind runtime then authorization and require READY_TO_LAUNCH.
-
-    ``training_authorization.subject_readiness_manifest_sha256`` must equal the
-    intermediate manifest identity after runtime binding (pre-authorization subject).
-    """
-    if scientific_manifest.runtime_qualification_sha256 is not None:
+    """Bind runtime then authorization and require READY_TO_LAUNCH."""
+    if (
+        scientific_manifest.runtime_qualification_sha256 is not None
+        or scientific_manifest.runtime_qualification_receipt is not None
+    ):
         raise TrainingReadinessReceiptBindingError(
-            "scientific_manifest must not already bind runtime_qualification_sha256"
+            "scientific_manifest must not already bind runtime qualification"
         )
-    if scientific_manifest.training_authorization_receipt_sha256 is not None:
+    if (
+        scientific_manifest.training_authorization_receipt_sha256 is not None
+        or scientific_manifest.training_authorization_receipt is not None
+    ):
         raise TrainingReadinessReceiptBindingError(
-            "scientific_manifest must not already bind training_authorization_receipt_sha256"
+            "scientific_manifest must not already bind training authorization"
         )
 
     with_runtime = bind_runtime_qualification_to_readiness(

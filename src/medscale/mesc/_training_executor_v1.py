@@ -511,7 +511,11 @@ def execute_training(
         raise TrainingExecutionError("supplied launch plan does not match recomputed launch plan")
 
     run_plan = launch_plan.compact if role == "compact" else launch_plan.reasoner
-    _require_corpus_binding(corpus_binding, run_plan=run_plan)
+    _require_corpus_binding(
+        corpus_binding,
+        launch_plan=launch_plan,
+        run_plan=run_plan,
+    )
     _require_local_attestation(
         local_assets,
         launch_plan=launch_plan,
@@ -692,10 +696,15 @@ def _recompute_launch(
 def _require_corpus_binding(
     binding: TrainingCorpusBindingReport,
     *,
+    launch_plan: TrainingLaunchPlan,
     run_plan: TrainingRunPlan,
 ) -> None:
     if binding.disposition != "PASS" or not binding.can_attest_local_artifact:
         raise TrainingExecutionError("corpus binding is not canonical PASS")
+    if binding.binding_sha256 != launch_plan.corpus_binding_sha256:
+        raise TrainingExecutionError(
+            "corpus binding identity does not match launch plan corpus_binding_sha256"
+        )
     if binding.training_dataset_sha256 != run_plan.training_dataset_sha256:
         raise TrainingExecutionError("corpus binding training dataset does not match selected run")
     if binding.canonical_jsonl_byte_count <= 0:

@@ -59,9 +59,10 @@ def _run(role: TrainingRole) -> TrainingRunPlan:
     )
 
 
-def _launch() -> TrainingLaunchPlan:
+def _launch(binding: TrainingCorpusBindingReport) -> TrainingLaunchPlan:
     return TrainingLaunchPlan(
         readiness_manifest_sha256=_SHA_A,
+        corpus_binding_sha256=binding.binding_sha256,
         runtime_qualification_sha256=_SHA_B,
         training_authorization_receipt_sha256=_SHA_C,
         compact=_run("compact"),
@@ -141,9 +142,10 @@ def _attest(
     verifier: _Verifier | None = None,
 ) -> TrainingLocalAssetAttestationReport:
     model_root, corpus_path = _paths(tmp_path, raw)
+    binding = _binding(raw)
     return attest_local_training_assets(
-        launch_plan=_launch(),
-        corpus_binding=_binding(raw),
+        launch_plan=_launch(binding),
+        corpus_binding=binding,
         role="compact",
         model_root=model_root,
         corpus_path=corpus_path,
@@ -174,7 +176,7 @@ def test_corpus_content_and_size_mismatch_block(tmp_path: Path) -> None:
     actual = b'{"example":"tampered"}\n'
     model_root, corpus_path = _paths(tmp_path, actual)
     report = attest_local_training_assets(
-        launch_plan=_launch(),
+        launch_plan=_launch(_binding(expected)),
         corpus_binding=_binding(expected),
         role="compact",
         model_root=model_root,
@@ -198,7 +200,7 @@ def test_corpus_read_failure_blocks_instead_of_raising(
 
     monkeypatch.setattr(attestation_mod, "_observe_file", fail_read)
     report = attest_local_training_assets(
-        launch_plan=_launch(),
+        launch_plan=_launch(_binding(raw)),
         corpus_binding=_binding(raw),
         role="compact",
         model_root=model_root,
@@ -237,7 +239,7 @@ def test_symlinked_assets_fail_closed_without_model_verification(tmp_path: Path)
 
     verifier = _Verifier()
     report = attest_local_training_assets(
-        launch_plan=_launch(),
+        launch_plan=_launch(_binding(raw)),
         corpus_binding=_binding(raw),
         role="compact",
         model_root=model_link,
@@ -254,7 +256,7 @@ def test_missing_paths_fail_closed_without_model_verification(tmp_path: Path) ->
     raw = b'{"example":"one"}\n'
     verifier = _Verifier()
     report = attest_local_training_assets(
-        launch_plan=_launch(),
+        launch_plan=_launch(_binding(raw)),
         corpus_binding=_binding(raw),
         role="compact",
         model_root=tmp_path / "missing-model",
@@ -271,7 +273,7 @@ def test_blocked_binding_and_dataset_mismatch_cannot_pass(tmp_path: Path) -> Non
     raw = b'{"example":"one"}\n'
     model_root, corpus_path = _paths(tmp_path, raw)
     blocked = attest_local_training_assets(
-        launch_plan=_launch(),
+        launch_plan=_launch(_binding(raw, disposition="BLOCKED")),
         corpus_binding=_binding(raw, disposition="BLOCKED"),
         role="compact",
         model_root=model_root,
@@ -283,7 +285,7 @@ def test_blocked_binding_and_dataset_mismatch_cannot_pass(tmp_path: Path) -> Non
 
     mismatch_binding = replace(_binding(raw), training_dataset_sha256=_SHA_A)
     mismatch = attest_local_training_assets(
-        launch_plan=_launch(),
+        launch_plan=_launch(mismatch_binding),
         corpus_binding=mismatch_binding,
         role="compact",
         model_root=model_root,
@@ -391,7 +393,7 @@ def test_verifier_exception_and_subclass_observation_fail_closed(tmp_path: Path)
             raise RuntimeError("boom")
 
     broken = attest_local_training_assets(
-        launch_plan=_launch(),
+        launch_plan=_launch(_binding(raw)),
         corpus_binding=_binding(raw),
         role="compact",
         model_root=model_root,
@@ -426,7 +428,7 @@ def test_verifier_exception_and_subclass_observation_fail_closed(tmp_path: Path)
             )
 
     forged = attest_local_training_assets(
-        launch_plan=_launch(),
+        launch_plan=_launch(_binding(raw)),
         corpus_binding=_binding(raw),
         role="compact",
         model_root=model_root,
@@ -478,6 +480,23 @@ def test_direct_pass_report_rejects_forged_content(tmp_path: Path) -> None:
         replace(report, model_network_accessed=True)
 
 
+def test_corpus_binding_identity_must_match_launch_plan(tmp_path: Path) -> None:
+    raw = b'{"example":"one"}\n'
+    model_root, corpus_path = _paths(tmp_path, raw)
+    binding = _binding(raw)
+    mismatched_launch = _launch(_binding(b'{"example":"other"}\n'))
+    report = attest_local_training_assets(
+        launch_plan=mismatched_launch,
+        corpus_binding=binding,
+        role="compact",
+        model_root=model_root,
+        corpus_path=corpus_path,
+        verifier=_Verifier(),
+    )
+    assert report.disposition == "BLOCKED"
+    assert "corpus binding identity does not match launch plan" in report.blockers
+
+
 def test_rejects_subclassed_canonical_plan_and_binding(tmp_path: Path) -> None:
     raw = b'{"example":"one"}\n'
     model_root, corpus_path = _paths(tmp_path, raw)
@@ -488,9 +507,11 @@ def test_rejects_subclassed_canonical_plan_and_binding(tmp_path: Path) -> None:
     class FakeBinding(TrainingCorpusBindingReport):
         pass
 
-    launch = _launch()
+    binding = _binding(raw)
+    launch = _launch(binding)
     fake_launch: Any = FakeLaunch(
         readiness_manifest_sha256=launch.readiness_manifest_sha256,
+        corpus_binding_sha256=launch.corpus_binding_sha256,
         runtime_qualification_sha256=launch.runtime_qualification_sha256,
         training_authorization_receipt_sha256=launch.training_authorization_receipt_sha256,
         compact=launch.compact,

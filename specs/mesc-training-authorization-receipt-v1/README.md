@@ -5,14 +5,19 @@ Status: **IMPLEMENTATION / FAIL-CLOSED VALIDATOR / NO AUTHORITY MINTED**
 Canonical base:
 
 ```text
-BASE_MAIN_SHA = 35f7069af39e550270e749e46f2d8ef8346bc963
-BASE_MAIN_TREE = bc12c85116fd7c985b11705d285663f9f709acf4
+BASE_MAIN_SHA = 1cb02d0b5f47b0fc070d597dae54d6f7de704e82
+BASE_MAIN_TREE = 9f503da71ec75398707f8f91a272529376051783
 ```
 
 ## Purpose
 
 Emit `training_authorization_receipt_sha256` only by validating an already-supplied
 founder/operator authorization artifact. Empty defaults never become AUTHORIZED.
+
+Authorization binds a **stable pre-authorization subject identity**
+(`authorization_subject_sha256`) so the receipt is not circular with the final
+readiness manifest that will later include this receipt digest. Post-launch local-asset
+attestation is deliberately **not** an authorization input.
 
 ## Scope
 
@@ -26,10 +31,9 @@ tests/test_mesc_training_authorization_receipt_v1.py
 
 - `authorization_scope = TRAINING_EXECUTION`
 - `authorizer_id`
-- `subject_readiness_manifest_sha256`
+- `authorization_subject_sha256` (from `TrainingReadinessManifest.authorization_subject_sha256`)
 - `runtime_qualification_sha256`
 - `corpus_binding_sha256`
-- `local_asset_attestation_sha256`
 - `authorization_statement`
 - explicit `authorize=true` for `AUTHORIZED`
 
@@ -42,6 +46,7 @@ tests/test_mesc_training_authorization_receipt_v1.py
 - Does not execute training.
 - Does not download models or accept gated terms.
 - Does not clear MedScale Spec 012.
+- Does not bind post-launch `local_asset_attestation_sha256`.
 - Fixture/CI paths must call `authorize=false` unless a real authorization artifact is supplied out-of-band.
 
 ## Next gate

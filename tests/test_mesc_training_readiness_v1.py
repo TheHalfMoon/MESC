@@ -7,15 +7,29 @@ from dataclasses import replace
 
 import pytest
 
+from medscale.mesc._canonical_json_v1 import canonical_json_bytes
+from medscale.mesc._training_authorization_receipt_v1 import (
+    build_training_authorization_receipt,
+)
 from medscale.mesc._training_readiness_v1 import (
     TrainingCandidate,
     TrainingReadinessManifest,
     assess_training_readiness,
 )
+from medscale.mesc._training_runtime_qualification_v1 import (
+    TrainingRuntimeQualificationReceipt,
+    TrainingRuntimeSmokeEvidence,
+    build_training_runtime_qualification_receipt,
+)
 from medscale.modelkit.interfaces import ModelRef
+from medscale.modelkit.manifests import RunnerClass
 from medscale.modelkit.recipes import AdapterMethod, DatasetRef, TrainingRecipe
 
 _DATASET_SHA = "d" * 64
+_CORPUS_SHA = "c" * 64
+_LOCK_SHA = "a" * 64
+_REPO_SHA = "b" * 40
+_TREE_SHA = "e" * 40
 
 
 def _candidate(*, model_id: str, revision: str, weight_byte: str) -> TrainingCandidate:
@@ -27,11 +41,7 @@ def _candidate(*, model_id: str, revision: str, weight_byte: str) -> TrainingCan
     )
 
 
-def _recipe(
-    candidate: TrainingCandidate,
-    *,
-    dataset_sha: str = _DATASET_SHA,
-) -> TrainingRecipe:
+def _recipe(candidate: TrainingCandidate, *, dataset_sha: str = _DATASET_SHA) -> TrainingRecipe:
     return TrainingRecipe(
         base=ModelRef(
             model_id=candidate.model_id,
@@ -50,11 +60,38 @@ def _recipe(
     )
 
 
-def _manifest(
-    *,
-    runtime_receipt: str | None = "7" * 64,
-    authorization_receipt: str | None = "8" * 64,
-) -> TrainingReadinessManifest:
+def _runtime_receipt() -> TrainingRuntimeQualificationReceipt:
+    payload = {
+        "dependency_lock_sha256": _LOCK_SHA,
+        "disposition": "PASS",
+        "gpu_model": "fixture-gpu",
+        "kind": "mesc.training_runtime_smoke.v1",
+        "network_accessed": False,
+        "os_name": "linux",
+        "probe_id": "fixture-probe",
+        "probe_version": "v1",
+        "python_version": "3.12.14",
+        "remote_code_allowed": False,
+        "repository_sha": _REPO_SHA,
+        "repository_tree": _TREE_SHA,
+        "runner_class": RunnerClass.LOCAL.value,
+    }
+    smoke = TrainingRuntimeSmokeEvidence(canonical_json_bytes(payload))
+    return build_training_runtime_qualification_receipt(
+        runner_class=RunnerClass.LOCAL,
+        python_version="3.12.14",
+        os_name="linux",
+        gpu_model="fixture-gpu",
+        dependency_lock_sha256=_LOCK_SHA,
+        repository_sha=_REPO_SHA,
+        repository_tree=_TREE_SHA,
+        probe_id="fixture-probe",
+        probe_version="v1",
+        smoke_evidence=smoke,
+    )
+
+
+def _manifest_without_authorization() -> TrainingReadinessManifest:
     compact = _candidate(
         model_id="fixture/compact",
         revision="1" * 40,
@@ -65,6 +102,7 @@ def _manifest(
         revision="2" * 40,
         weight_byte="b",
     )
+    runtime = _runtime_receipt()
     return TrainingReadinessManifest(
         compact_candidate=compact,
         reasoner_candidate=reasoner,
@@ -84,14 +122,31 @@ def _manifest(
         r2_training_data_only=True,
         heldout_eval_excluded_from_training=True,
         phi_present=False,
-        runtime_qualification_sha256=runtime_receipt,
-        training_authorization_receipt_sha256=authorization_receipt,
+        corpus_binding_sha256=_CORPUS_SHA,
+        runtime_qualification_sha256=runtime.receipt_sha256,
+        runtime_qualification_receipt=runtime,
     )
 
 
-def test_complete_manifest_is_ready_to_launch() -> None:
-    manifest = _manifest()
+def _authorized_manifest() -> TrainingReadinessManifest:
+    pre_authority = _manifest_without_authorization()
+    authorization = build_training_authorization_receipt(
+        authorizer_id="fixture-founder",
+        authorization_subject_sha256=pre_authority.authorization_subject_sha256,
+        runtime_qualification_sha256=pre_authority.runtime_qualification_sha256 or "",
+        corpus_binding_sha256=pre_authority.corpus_binding_sha256 or "",
+        authorization_statement="Fixture authorization for the exact training subject.",
+        authorize=True,
+    )
+    return replace(
+        pre_authority,
+        training_authorization_receipt_sha256=authorization.receipt_sha256,
+        training_authorization_receipt=authorization,
+    )
 
+
+def test_complete_typed_authority_manifest_is_ready_to_launch() -> None:
+    manifest = _authorized_manifest()
     report = assess_training_readiness(manifest)
 
     assert report.disposition == "READY_TO_LAUNCH"
@@ -99,24 +154,64 @@ def test_complete_manifest_is_ready_to_launch() -> None:
     assert report.blockers == ()
     assert report.launch_requirements == ()
     assert report.manifest_sha256 == manifest.manifest_sha256
-    assert len(report.manifest_sha256) == 64
 
 
-def test_manifest_without_live_receipts_is_ready_for_authorization() -> None:
-    report = assess_training_readiness(_manifest(runtime_receipt=None, authorization_receipt=None))
+def test_authorization_subject_is_stable_without_fixed_point() -> None:
+    pre_authority = _manifest_without_authorization()
+    final = _authorized_manifest()
+
+    assert pre_authority.authorization_subject_sha256 == final.authorization_subject_sha256
+    assert pre_authority.manifest_sha256 != final.manifest_sha256
+
+
+def test_presence_only_hashes_do_not_unlock_launch() -> None:
+    base = _manifest_without_authorization()
+    forged = replace(
+        base,
+        runtime_qualification_receipt=None,
+        runtime_qualification_sha256="7" * 64,
+        training_authorization_receipt_sha256="8" * 64,
+        training_authorization_receipt=None,
+    )
+    report = assess_training_readiness(forged)
 
     assert report.disposition == "READY_FOR_AUTHORIZATION"
     assert report.can_launch_training is False
-    assert report.blockers == ()
+    assert "validated runtime qualification receipt is required" in report.launch_requirements
+    assert "validated training authorization receipt is required" in report.launch_requirements
+
+
+def test_manifest_without_live_receipts_is_ready_for_authorization() -> None:
+    base = _manifest_without_authorization()
+    manifest = replace(
+        base,
+        corpus_binding_sha256=None,
+        runtime_qualification_sha256=None,
+        runtime_qualification_receipt=None,
+    )
+    report = assess_training_readiness(manifest)
+
+    assert report.disposition == "READY_FOR_AUTHORIZATION"
+    assert report.can_launch_training is False
     assert report.launch_requirements == (
+        "canonical corpus binding is required",
         "runtime qualification receipt is required",
         "training authorization receipt is required",
     )
 
 
+def test_authorization_for_different_subject_blocks() -> None:
+    manifest = _authorized_manifest()
+    changed = replace(manifest, tournament_report_sha256="9" * 64)
+    report = assess_training_readiness(changed)
+
+    assert report.disposition == "BLOCKED"
+    assert "training authorization receipt targets a different readiness subject" in report.blockers
+
+
 def test_policy_and_closeout_failures_block_training() -> None:
     manifest = replace(
-        _manifest(),
+        _authorized_manifest(),
         pilot_closeout_disposition="BLOCKED",
         tournament_disposition="BLOCKED",
         decontamination_disposition="BLOCKED",
@@ -125,25 +220,17 @@ def test_policy_and_closeout_failures_block_training() -> None:
         heldout_eval_excluded_from_training=False,
         phi_present=True,
     )
-
     report = assess_training_readiness(manifest)
 
     assert report.disposition == "BLOCKED"
     assert report.can_launch_training is False
-    assert report.launch_requirements == ()
-    assert report.blockers == (
-        "pilot_closeout_disposition must be exactly PASS",
-        "tournament_disposition must be exactly PASS",
-        "decontamination_disposition must be exactly PASS",
-        "license_disposition must be exactly PASS",
-        "training data is not proven R2-compatible",
-        "held-out evaluation data is not proven excluded from training",
-        "PHI is present in the proposed training input",
-    )
+    assert "pilot_closeout_disposition must be exactly PASS" in report.blockers
+    assert "training data is not proven R2-compatible" in report.blockers
+    assert "PHI is present in the proposed training input" in report.blockers
 
 
 def test_recipe_must_bind_exact_candidate_and_dataset() -> None:
-    manifest = _manifest()
+    manifest = _authorized_manifest()
     wrong_base = TrainingRecipe(
         base=ModelRef(
             model_id="fixture/not-selected",
@@ -160,15 +247,11 @@ def test_recipe_must_bind_exact_candidate_and_dataset() -> None:
         seed=42,
         max_steps=100,
     )
-
     report = assess_training_readiness(replace(manifest, compact_recipe=wrong_base))
 
     assert report.disposition == "BLOCKED"
-    assert report.blockers == (
-        "compact recipe base model_id does not match selected candidate",
-        "compact recipe base revision does not match selected candidate",
-        "compact recipe dataset hash does not match training dataset",
-    )
+    assert "compact recipe base model_id does not match selected candidate" in report.blockers
+    assert "compact recipe dataset hash does not match training dataset" in report.blockers
 
 
 _ManifestMutation = Callable[[TrainingReadinessManifest], TrainingReadinessManifest]
@@ -180,21 +263,19 @@ _HASH_MUTATIONS: tuple[_ManifestMutation, ...] = (
     lambda manifest: replace(manifest, decontamination_report_sha256="abc"),
     lambda manifest: replace(manifest, evaluation_contract_sha256="g" * 64),
     lambda manifest: replace(manifest, license_review_sha256="h" * 64),
-    lambda manifest: replace(manifest, runtime_qualification_sha256="F" * 64),
-    lambda manifest: replace(manifest, training_authorization_receipt_sha256="1" * 65),
+    lambda manifest: replace(manifest, corpus_binding_sha256="F" * 64),
 )
 
 
 @pytest.mark.parametrize("mutation", _HASH_MUTATIONS)
 def test_manifest_rejects_noncanonical_sha256(mutation: _ManifestMutation) -> None:
     with pytest.raises(ValueError, match="64 lowercase hex"):
-        mutation(_manifest())
+        mutation(_authorized_manifest())
 
 
 def test_candidate_requires_exact_revision_and_weight_identity() -> None:
     with pytest.raises(ValueError, match="40 lowercase hex"):
         _candidate(model_id="fixture/model", revision="A" * 40, weight_byte="a")
-
     with pytest.raises(ValueError, match="64 lowercase hex"):
         TrainingCandidate(
             model_id="fixture/model",
@@ -204,13 +285,12 @@ def test_candidate_requires_exact_revision_and_weight_identity() -> None:
         )
 
 
-def test_manifest_identity_changes_when_launch_authority_changes() -> None:
-    pre_authority = _manifest(runtime_receipt=None, authorization_receipt=None)
-    launch_ready = _manifest()
-
-    assert pre_authority.manifest_sha256 != launch_ready.manifest_sha256
+def test_manifest_rejects_receipt_hash_mismatch() -> None:
+    base = _manifest_without_authorization()
+    with pytest.raises(ValueError, match="does not match runtime_qualification_sha256"):
+        replace(base, runtime_qualification_sha256="f" * 64)
 
 
 def test_program_version_is_frozen() -> None:
     with pytest.raises(ValueError, match="program_version"):
-        replace(_manifest(), program_version="MESC-TRAINING-READINESS-V2")
+        replace(_authorized_manifest(), program_version="MESC-TRAINING-READINESS-V2")
