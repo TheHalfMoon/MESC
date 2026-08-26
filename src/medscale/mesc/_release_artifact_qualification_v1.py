@@ -150,8 +150,9 @@ class ReleaseObservation:
 
     @property
     def asset_manifest_sha256(self) -> str:
-        """Return the content identity of the observed asset set."""
-        payload = [asset.to_dict() for asset in self.assets]
+        """Return the content identity of the observed asset set (name-ordered)."""
+        ordered = sorted(self.assets, key=lambda asset: asset.name.strip())
+        payload = [asset.to_dict() for asset in ordered]
         return content_hash(payload)
 
     def to_dict(self) -> dict[str, object]:

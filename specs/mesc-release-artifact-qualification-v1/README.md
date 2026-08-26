@@ -40,6 +40,8 @@ tests/test_mesc_release_artifact_qualification_v1.py
 - `evidence_binding`: exact `ReleaseEvidenceBinding` that binds:
   - the same `repository` / `tag_name` / `release_id`
   - `asset_manifest_sha256` equal to the content hash of the observed asset set
+    (assets are ordered by exact `name` before hashing so tuple order cannot forge
+    a different manifest identity)
   - `provenance_sha256`, `rights_sha256`, `sbom_sha256`,
     `evaluation_report_sha256`, `training_execution_receipt_sha256`
   - `independent_refetch_verified=true`

@@ -133,6 +133,30 @@ def test_refuses_unverified_hashes_even_with_bound_evidence() -> None:
     assert "asset hash verification is false" in report.blockers
 
 
+def test_asset_manifest_hash_is_order_independent() -> None:
+    first = _asset(name="a-adapter.safetensors", content_sha256=_A)
+    second = _asset(
+        name="b-adapter.safetensors",
+        content_sha256=_B,
+        browser_download_url="https://example.invalid/b-adapter.safetensors",
+    )
+    left = ReleaseObservation(
+        repository="TheHalfMoon/MESC",
+        tag_name="v0.1.1",
+        release_id=1,
+        assets=(first, second),
+        evidence_binding=None,
+    )
+    right = ReleaseObservation(
+        repository="TheHalfMoon/MESC",
+        tag_name="v0.1.1",
+        release_id=1,
+        assets=(second, first),
+        evidence_binding=None,
+    )
+    assert left.asset_manifest_sha256 == right.asset_manifest_sha256
+
+
 def test_refuses_zero_size_asset() -> None:
     with pytest.raises(ReleaseArtifactQualificationError, match="size_bytes"):
         _asset(size_bytes=0)
