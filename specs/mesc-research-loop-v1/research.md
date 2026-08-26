@@ -27,7 +27,9 @@ reimplemented under a new agent framework:
 - Backbone Tournament protocol freeze before model output;
 - MCRL design for typed clinical state, evidence, verification, uncertainty, recovery,
   and completion contracts;
-- explicit separation between planning/readiness and real execution authority.
+- explicit separation between planning/readiness and real execution authority;
+- canonical ADR-0033 deferral of model-promotion ownership/evidence to a later dedicated
+  ADR.
 
 The primary gap is therefore **research orchestration and research learning**, not basic
 provenance or experiment logging.
@@ -51,14 +53,15 @@ Adopt for MESC:
 
 - bounded mutation surfaces;
 - explicit compute/token/time budgets;
+- frozen adaptive-query and result-exposure budgets;
 - rapid experiment iteration after all safety/evaluation controls exist;
-- structured keep/reject/replicate decisions;
+- structured reject/replicate/retain/evidence-candidate decisions;
 - optimization for validated gain per unit of research compute.
 
 Do not copy directly:
 
 - one scalar metric as the complete objective;
-- repeated exposure of the final promotion holdout;
+- repeated exposure of a final sealed evaluation surface;
 - agent control over evaluation code;
 - raw untrusted logs as direct agent context;
 - unrestricted self-modification;
@@ -95,8 +98,9 @@ Adopt for MESC:
 Medical/research strengthening required by MESC:
 
 A repeated workflow must not become canonical merely because it succeeded several times.
-Procedure admission requires replay, transfer testing, negative/failure controls,
-applicability bounds, and review.
+Procedure admission requires replay, representative transfer testing, negative/failure
+controls, typed applicability bounds, and an independent immutable review receipt. The
+research agent cannot self-admit the procedure.
 
 Proposed lifecycle:
 
@@ -112,7 +116,7 @@ DISCOVERED
 ## External research directions reviewed
 
 The following research families materially support the proposed direction and should be
-tracked as design references, not copied blindly:
+tracked as design references, not copied blindly.
 
 ### Autonomous scientific search
 
@@ -134,7 +138,8 @@ procedures from trajectories.
 Implication for MESC:
 
 Research memory should store validated abstractions, not a bag of raw conversations.
-Canonical memory should be typed, content-addressed, reviewable, and reconstructible.
+Canonical memory should be typed, content-addressed, reviewable, reconstructible, and
+admission-gated. Derived indexes remain rebuildable and non-authoritative.
 
 ### Adaptive holdout risk
 
@@ -144,8 +149,10 @@ research process to the holdout even when the holdout is not directly trained on
 Implication for MESC:
 
 The existing train/dev/test rule is necessary but insufficient for high-volume autonomous
-experimentation. MRL requires separate search, replication, sealed promotion, and
-external/clinician assurance tiers.
+experimentation. MRL requires separate search, replication, sealed evaluation, and
+external/clinician assurance tiers. Each adaptive tier needs a frozen query budget, exact
+result-exposure policy, and fail-closed exhaustion rule. Tier 3 must not become an
+iterative agent-consumable result stream.
 
 ### Medical evaluation breadth
 
@@ -168,6 +175,49 @@ Implication for MESC:
 MESC should eventually generate or author sealed, R2-compatible synthetic/fixture cases
 after each training/data freeze and prohibit their use as training/search material.
 
+## Live-governance reconciliation from exact-head review
+
+The exact-head review of this planning package against canonical `main` produced several
+important strengthening decisions.
+
+### Promotion ownership is outside MRL V1
+
+ADR-0033 explicitly prohibits placeholder `PromotionDecision` schemas and requires a
+later dedicated ADR for promotion ownership and evidence. Therefore MRL V1 stops at
+non-authoritative `EVIDENCE_CANDIDATE` plus sealed evaluation evidence. It has no
+`PROMOTED` state and cannot silently become a parallel promotion system.
+
+### Content identity must not be self-referential
+
+A generic `content_sha256` field listed inside the payload it hashes would leave the
+contract ambiguous. MRL now treats the digest as a derived identity computed over
+canonical semantic bytes that exclude that digest from the preimage.
+
+### MRL/MCRL separation needs a typed admission boundary
+
+Prose separation is insufficient. MRL needs an explicit research-input admission
+contract and negative tests proving PHI, product telemetry, and clinical-runtime state do
+not enter observation, campaign history, procedure extraction, or search indexes as
+learning signals.
+
+### Procedure admission requires independent review authority
+
+`REVIEWED` and `ADMITTED` cannot be agent-written labels. Admission requires replay,
+representative transfer evidence, negative controls, typed applicability bounds, and an
+independent reviewer/operator receipt. Later failure evidence must support append-only
+invalidation/supersession.
+
+### Real experimentation cannot bypass contamination lineage
+
+MRL-6 is mandatory before `MRL_REAL_EXPERIMENT_READY`; there is no undefined
+"applicable" escape path.
+
+### Machine-readable status is derived, not authority
+
+Project-state projections must be deterministic, bind the exact repository commit and
+source artifact hashes, fail when stale or manually edited, and never override live
+canonical gate evidence.
+
 ## Gap register
 
 ### G1 — Canonical hypothesis-to-decision graph
@@ -183,29 +233,30 @@ or retained, and what should follow.
 State: **MISSING**
 
 Current held-out discipline does not fully address hundreds of adaptive search cycles
-against the same visible validation feedback.
+against the same visible validation feedback. Query and result-exposure budgets must be
+frozen and enforced, not merely counted.
 
 ### G3 — Immutable evaluator / restricted mutation boundary
 
 State: **PARTIAL**
 
 MESC has frozen protocols in important areas, but MRL needs a general research-agent
-contract that makes evaluator, sealed data, governance, authorization, trust, and
-canonical history explicitly non-mutable.
+contract that makes evaluator, sealed data, governance, authorization, trust, canonical
+history, and self-certifying state generators explicitly non-mutable.
 
 ### G4 — Research procedure memory
 
 State: **MISSING**
 
-There is no canonical lifecycle for extracting, validating, and admitting reusable
-research procedures from prior campaigns.
+There is no canonical lifecycle for extracting, validating, independently reviewing, and
+admitting reusable research procedures from prior campaigns.
 
 ### G5 — Campaign portfolio / tree search
 
 State: **MISSING**
 
 There is no canonical research campaign graph that preserves alternative hypotheses,
-failed branches, replications, and promotion candidates.
+failed branches, replications, and non-authoritative evidence candidates.
 
 ### G6 — Research-agent evaluation
 
@@ -220,7 +271,8 @@ State: **PARTIAL / EXPANSION NEEDED**
 
 Exact split/hash contamination controls are strong. Future synthetic-teacher and
 high-volume research workflows require provenance through transformations, prompts,
-teachers, paraphrases, and benchmark-derived generations.
+teachers, paraphrases, and benchmark-derived generations. MRL-6 becomes a mandatory real
+preflight dependency.
 
 ### G8 — Temporal canary evaluation
 
@@ -242,7 +294,22 @@ multimodality, AMGE, and Medical Omni.
 State: **NEEDS RECONCILIATION**
 
 The legacy roadmap and the newer live capability/spec state can diverge. Autonomous
-research must not rely on stale narrative status.
+research must not rely on stale narrative status. Machine projections must be derived
+from live canonical state, not become another competing source of truth.
+
+### G11 — Research-input admission boundary
+
+State: **MISSING / REQUIRED BEFORE LOOP IMPLEMENTATION**
+
+MRL/MCRL separation and the no-PHI/no-product-learning rule need a typed admission
+contract enforced at every observation/history/procedure/index boundary.
+
+### G12 — Promotion-governance ownership
+
+State: **DEFERRED BY CANONICAL ADR-0033 / OUTSIDE MRL V1**
+
+MRL must not fill this gap by inventing a placeholder promotion schema. A future dedicated
+ADR owns that work.
 
 ## Recommended strategic outcome
 
@@ -251,8 +318,9 @@ Add a new MESC moat:
 **Governed Self-Improving Research**
 
 This means MESC can conduct, remember, critique, reproduce, and improve medical-AI
-research while preserving independent evaluation, sealed promotion evidence, safety
-floors, provenance, and human/governance authority.
+research while preserving independent evaluation, sealed evidence, safety floors,
+provenance, typed data admission, immutable authority boundaries, and human/governance
+control.
 
-It does **not** mean autonomous clinical authority, autonomous production deployment, or
-unrestricted recursive self-training.
+It does **not** mean autonomous clinical authority, autonomous production deployment,
+autonomous model promotion, or unrestricted recursive self-training.
