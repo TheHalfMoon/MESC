@@ -118,5 +118,3 @@ contamination/lineage gate, and anti-stale machine-state projections. Only after
 layers are independently qualified should a separately authorized real experiment runner
 be considered. Model promotion remains outside MRL V1 until the dedicated ADR required
 by ADR-0033 is separately accepted.
-
-<!-- CI_TRIGGER_TEMP: remove immediately -->
