@@ -24,7 +24,7 @@ AuthorizationScope = Literal["TRAINING_EXECUTION"]
 _PROGRAM_VERSION: Final = "MESC-TRAINING-AUTHORIZATION-RECEIPT-V1"
 _ARTIFACT_KIND: Final = "mesc.training_authorization.v1"
 _SHA256: Final = re.compile(r"^[0-9a-f]{64}$", flags=re.ASCII)
-_SCOPE: Final = "TRAINING_EXECUTION"
+_SCOPE: Final[AuthorizationScope] = "TRAINING_EXECUTION"
 _ARTIFACT_KEYS: Final = frozenset(
     {
         "authorization_scope",
@@ -77,9 +77,7 @@ class TrainingAuthorizationArtifact:
         runtime = _require_sha256(
             payload["runtime_qualification_sha256"], field="runtime_qualification_sha256"
         )
-        corpus = _require_sha256(
-            payload["corpus_binding_sha256"], field="corpus_binding_sha256"
-        )
+        corpus = _require_sha256(payload["corpus_binding_sha256"], field="corpus_binding_sha256")
         authorize = payload["authorize"]
         if type(authorize) is not bool:
             raise TrainingAuthorizationReceiptError(
@@ -243,17 +241,13 @@ def build_training_authorization_receipt(
     fail-closed fixture/negative path and may omit the artifact entirely.
     """
     normalized_authorizer = _require_text(authorizer_id, field="authorizer_id")
-    normalized_statement = _require_text(
-        authorization_statement, field="authorization_statement"
-    )
+    normalized_statement = _require_text(authorization_statement, field="authorization_statement")
     scope = _require_scope(authorization_scope)
     subject = _require_sha256(
         authorization_subject_sha256,
         field="authorization_subject_sha256",
     )
-    runtime = _require_sha256(
-        runtime_qualification_sha256, field="runtime_qualification_sha256"
-    )
+    runtime = _require_sha256(runtime_qualification_sha256, field="runtime_qualification_sha256")
     corpus = _require_sha256(corpus_binding_sha256, field="corpus_binding_sha256")
     if type(authorize) is not bool:
         raise TrainingAuthorizationReceiptError("authorize must be an exact bool")
@@ -332,13 +326,9 @@ def _parse_authorization_payload(payload_bytes: bytes) -> dict[str, object]:
     except TrainingAuthorizationReceiptError:
         raise
     except (json.JSONDecodeError, TypeError, ValueError, RecursionError) as exc:
-        raise TrainingAuthorizationReceiptError(
-            "authorization artifact is not valid JSON"
-        ) from exc
+        raise TrainingAuthorizationReceiptError("authorization artifact is not valid JSON") from exc
     if type(value) is not dict:
-        raise TrainingAuthorizationReceiptError(
-            "authorization artifact must be one JSON object"
-        )
+        raise TrainingAuthorizationReceiptError("authorization artifact must be one JSON object")
     if set(value) != _ARTIFACT_KEYS:
         raise TrainingAuthorizationReceiptError(
             "authorization artifact must contain exactly the canonical field set"

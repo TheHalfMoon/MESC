@@ -117,8 +117,7 @@ def test_noncanonical_artifact_bytes_are_rejected() -> None:
 
 def test_duplicate_or_nonstandard_json_is_rejected() -> None:
     duplicate = (
-        b'{"authorization_scope":"TRAINING_EXECUTION",'
-        b'"authorization_scope":"TRAINING_EXECUTION"}\n'
+        b'{"authorization_scope":"TRAINING_EXECUTION","authorization_scope":"TRAINING_EXECUTION"}\n'
     )
     with pytest.raises(TrainingAuthorizationReceiptError, match="duplicate key"):
         build_training_authorization_receipt(
