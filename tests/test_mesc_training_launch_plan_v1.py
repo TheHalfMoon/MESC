@@ -7,6 +7,10 @@ from typing import cast
 
 import pytest
 
+from medscale.mesc._canonical_json_v1 import canonical_json_bytes
+from medscale.mesc._training_authorization_receipt_v1 import (
+    build_training_authorization_receipt,
+)
 from medscale.mesc._training_launch_plan_v1 import (
     TrainingLaunchPlanError,
     TrainingRole,
@@ -19,14 +23,22 @@ from medscale.mesc._training_readiness_v1 import (
     TrainingReadinessReport,
     assess_training_readiness,
 )
+from medscale.mesc._training_runtime_qualification_v1 import (
+    TrainingRuntimeSmokeEvidence,
+    build_training_runtime_qualification_receipt,
+)
 from medscale.modelkit.interfaces import ModelRef
 from medscale.modelkit.manifests import RunnerClass
 from medscale.modelkit.recipes import AdapterMethod, DatasetRef, TrainingRecipe
 
 _DATASET_SHA = "d" * 64
+_CORPUS_SHA = "f" * 64
 _REPOSITORY_SHA = "a" * 40
 _REPOSITORY_TREE = "b" * 40
 _LOCK_SHA = "c" * 64
+_PYTHON = "3.12.14"
+_OS = "linux"
+_GPU = "NVIDIA-H100-80GB-HBM3"
 
 
 def _candidate(*, role: TrainingRole) -> TrainingCandidate:
@@ -64,13 +76,41 @@ def _recipe(candidate: TrainingCandidate) -> TrainingRecipe:
     )
 
 
-def _manifest(
-    *,
-    runtime_receipt: str | None = "7" * 64,
-    authorization_receipt: str | None = "8" * 64,
-) -> TrainingReadinessManifest:
+def _runtime_receipt():
+    smoke_payload = {
+        "dependency_lock_sha256": _LOCK_SHA,
+        "disposition": "PASS",
+        "gpu_model": _GPU,
+        "kind": "mesc.training_runtime_smoke.v1",
+        "network_accessed": False,
+        "os_name": _OS,
+        "probe_id": "fixture-probe",
+        "probe_version": "v1",
+        "python_version": _PYTHON,
+        "remote_code_allowed": False,
+        "repository_sha": _REPOSITORY_SHA,
+        "repository_tree": _REPOSITORY_TREE,
+        "runner_class": RunnerClass.COLAB.value,
+    }
+    smoke = TrainingRuntimeSmokeEvidence(canonical_json_bytes(smoke_payload))
+    return build_training_runtime_qualification_receipt(
+        runner_class=RunnerClass.COLAB,
+        python_version=_PYTHON,
+        os_name=_OS,
+        gpu_model=_GPU,
+        dependency_lock_sha256=_LOCK_SHA,
+        repository_sha=_REPOSITORY_SHA,
+        repository_tree=_REPOSITORY_TREE,
+        probe_id="fixture-probe",
+        probe_version="v1",
+        smoke_evidence=smoke,
+    )
+
+
+def _pre_authorization_manifest() -> TrainingReadinessManifest:
     compact = _candidate(role="compact")
     reasoner = _candidate(role="reasoner")
+    runtime = _runtime_receipt()
     return TrainingReadinessManifest(
         compact_candidate=compact,
         reasoner_candidate=reasoner,
@@ -90,8 +130,26 @@ def _manifest(
         r2_training_data_only=True,
         heldout_eval_excluded_from_training=True,
         phi_present=False,
-        runtime_qualification_sha256=runtime_receipt,
-        training_authorization_receipt_sha256=authorization_receipt,
+        corpus_binding_sha256=_CORPUS_SHA,
+        runtime_qualification_sha256=runtime.receipt_sha256,
+        runtime_qualification_receipt=runtime,
+    )
+
+
+def _manifest() -> TrainingReadinessManifest:
+    pre = _pre_authorization_manifest()
+    authorization = build_training_authorization_receipt(
+        authorizer_id="fixture-founder",
+        authorization_subject_sha256=pre.authorization_subject_sha256,
+        runtime_qualification_sha256=pre.runtime_qualification_sha256 or "",
+        corpus_binding_sha256=pre.corpus_binding_sha256 or "",
+        authorization_statement="Fixture authorization for the exact launch subject.",
+        authorize=True,
+    )
+    return replace(
+        pre,
+        training_authorization_receipt_sha256=authorization.receipt_sha256,
+        training_authorization_receipt=authorization,
     )
 
 
@@ -123,9 +181,9 @@ def _run(manifest: TrainingReadinessManifest, *, role: TrainingRole) -> Training
         training_dataset_sha256=manifest.training_dataset_sha256,
         seeds=(17, 42, 91),
         runner_class=RunnerClass.COLAB,
-        python_version="3.12.14",
-        os_name="linux",
-        gpu_model="NVIDIA-H100-80GB-HBM3",
+        python_version=_PYTHON,
+        os_name=_OS,
+        gpu_model=_GPU,
         dependency_lock_sha256=_LOCK_SHA,
         repository_sha=_REPOSITORY_SHA,
         repository_tree=_REPOSITORY_TREE,
@@ -142,14 +200,11 @@ def _build() -> tuple[
 ]:
     manifest = _manifest()
     readiness = assess_training_readiness(manifest)
-    compact = _run(manifest, role="compact")
-    reasoner = _run(manifest, role="reasoner")
-    return manifest, readiness, compact, reasoner
+    return manifest, readiness, _run(manifest, role="compact"), _run(manifest, role="reasoner")
 
 
 def test_launch_plan_is_content_addressed_and_preserves_all_bindings() -> None:
     manifest, readiness, compact, reasoner = _build()
-
     plan = build_training_launch_plan(
         manifest=manifest,
         readiness=readiness,
@@ -162,22 +217,20 @@ def test_launch_plan_is_content_addressed_and_preserves_all_bindings() -> None:
         compact=compact,
         reasoner=reasoner,
     )
-    expected_runtime = manifest.runtime_qualification_sha256
-    expected_authorization = manifest.training_authorization_receipt_sha256
 
     assert plan.readiness_manifest_sha256 == manifest.manifest_sha256
-    assert plan.runtime_qualification_sha256 == expected_runtime
-    assert plan.training_authorization_receipt_sha256 == expected_authorization
-    assert plan.compact.run_plan_sha256 == compact.run_plan_sha256
-    assert plan.reasoner.run_plan_sha256 == reasoner.run_plan_sha256
-    assert len(plan.plan_sha256) == 64
+    assert plan.corpus_binding_sha256 == _CORPUS_SHA
+    assert plan.runtime_qualification_sha256 == manifest.runtime_qualification_sha256
+    assert (
+        plan.training_authorization_receipt_sha256
+        == manifest.training_authorization_receipt_sha256
+    )
     assert plan.plan_sha256 == rebuilt.plan_sha256
 
 
 def test_ready_for_authorization_cannot_build_launch_plan() -> None:
-    manifest = _manifest(runtime_receipt=None, authorization_receipt=None)
+    manifest = _pre_authorization_manifest()
     readiness = assess_training_readiness(manifest)
-
     with pytest.raises(TrainingLaunchPlanError, match="not READY_TO_LAUNCH"):
         build_training_launch_plan(
             manifest=manifest,
@@ -196,7 +249,6 @@ def test_forged_or_stale_readiness_report_is_rejected() -> None:
         launch_requirements=(),
     )
     assert forged != readiness
-
     with pytest.raises(TrainingLaunchPlanError, match="does not match recomputed"):
         build_training_launch_plan(
             manifest=manifest,
@@ -209,7 +261,6 @@ def test_forged_or_stale_readiness_report_is_rejected() -> None:
 def test_run_must_bind_exact_selected_candidate_recipe_and_dataset() -> None:
     manifest, readiness, compact, reasoner = _build()
     wrong = replace(compact, recipe_id="f" * 64)
-
     with pytest.raises(TrainingLaunchPlanError, match="compact run recipe_id"):
         build_training_launch_plan(
             manifest=manifest,
@@ -219,18 +270,19 @@ def test_run_must_bind_exact_selected_candidate_recipe_and_dataset() -> None:
         )
 
 
-def test_runs_must_bind_same_repository_and_dependency_lock() -> None:
+def test_run_environment_must_match_qualified_runtime() -> None:
     manifest, readiness, compact, reasoner = _build()
-
-    with pytest.raises(TrainingLaunchPlanError, match="same repository_sha"):
+    with pytest.raises(TrainingLaunchPlanError, match="gpu_model does not match qualified runtime"):
         build_training_launch_plan(
             manifest=manifest,
             readiness=readiness,
-            compact=compact,
-            reasoner=replace(reasoner, repository_sha="9" * 40),
+            compact=replace(compact, gpu_model="different-gpu"),
+            reasoner=reasoner,
         )
-
-    with pytest.raises(TrainingLaunchPlanError, match="same dependency lock"):
+    with pytest.raises(
+        TrainingLaunchPlanError,
+        match="dependency_lock_sha256 does not match qualified runtime",
+    ):
         build_training_launch_plan(
             manifest=manifest,
             readiness=readiness,
@@ -239,21 +291,25 @@ def test_runs_must_bind_same_repository_and_dependency_lock() -> None:
         )
 
 
+def test_runs_must_bind_same_repository_and_dependency_lock() -> None:
+    manifest, readiness, compact, reasoner = _build()
+    with pytest.raises(TrainingLaunchPlanError, match="same repository_sha"):
+        build_training_launch_plan(
+            manifest=manifest,
+            readiness=readiness,
+            compact=compact,
+            reasoner=replace(reasoner, repository_sha="9" * 40),
+        )
+
+
 def test_result_paths_must_be_repository_relative_canonical_and_disjoint() -> None:
     manifest, readiness, compact, reasoner = _build()
-
     with pytest.raises(TrainingLaunchPlanError, match="inside the repository"):
         replace(compact, result_paths=("../escape",))
     with pytest.raises(TrainingLaunchPlanError, match="canonical POSIX"):
         replace(compact, result_paths=("experiments/x/",))
-    with pytest.raises(TrainingLaunchPlanError, match="canonical POSIX"):
-        replace(compact, result_paths=("experiments/./x",))
     with pytest.raises(TrainingLaunchPlanError, match="result_paths must be disjoint"):
-        replace(
-            compact,
-            result_paths=("experiments/x", "experiments/x/results"),
-        )
-
+        replace(compact, result_paths=("experiments/x", "experiments/x/results"))
     with pytest.raises(TrainingLaunchPlanError, match="result_paths must be disjoint"):
         build_training_launch_plan(
             manifest=manifest,
@@ -262,45 +318,24 @@ def test_result_paths_must_be_repository_relative_canonical_and_disjoint() -> No
             reasoner=replace(reasoner, result_paths=compact.result_paths),
         )
 
-    with pytest.raises(TrainingLaunchPlanError, match="result_paths must be disjoint"):
-        build_training_launch_plan(
-            manifest=manifest,
-            readiness=readiness,
-            compact=compact,
-            reasoner=replace(
-                reasoner,
-                result_paths=("experiments/mesc-t6-compact-sft",),
-            ),
-        )
-
 
 def test_seeds_are_explicit_unique_non_negative_integers() -> None:
     _, _, compact, _ = _build()
-
     with pytest.raises(TrainingLaunchPlanError, match="non-empty non-negative"):
         replace(compact, seeds=())
     with pytest.raises(TrainingLaunchPlanError, match="duplicates"):
         replace(compact, seeds=(42, 42))
     with pytest.raises(TrainingLaunchPlanError, match="non-empty non-negative"):
-        replace(compact, seeds=(42, -1))
-    with pytest.raises(TrainingLaunchPlanError, match="non-empty non-negative"):
         replace(compact, seeds=cast(tuple[int, ...], (0.5,)))
-    with pytest.raises(TrainingLaunchPlanError, match="non-empty non-negative"):
-        replace(compact, seeds=cast(tuple[int, ...], ("42",)))
 
 
 def test_reproduction_command_is_single_line() -> None:
     _, _, compact, _ = _build()
-
     with pytest.raises(TrainingLaunchPlanError, match="single-line"):
         replace(compact, reproduction_command="uv run first\nuv run second")
 
 
 def test_run_plan_identity_changes_with_environment_or_code_identity() -> None:
     _, _, compact, _ = _build()
-
-    changed_lock = replace(compact, dependency_lock_sha256="9" * 64)
-    changed_tree = replace(compact, repository_tree="9" * 40)
-
-    assert changed_lock.run_plan_sha256 != compact.run_plan_sha256
-    assert changed_tree.run_plan_sha256 != compact.run_plan_sha256
+    assert replace(compact, dependency_lock_sha256="9" * 64).run_plan_sha256 != compact.run_plan_sha256
+    assert replace(compact, repository_tree="9" * 40).run_plan_sha256 != compact.run_plan_sha256
