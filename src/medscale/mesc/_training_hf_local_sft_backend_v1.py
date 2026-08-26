@@ -7,6 +7,8 @@ already-local SafeTensors model roots and an already-attested canonical JSONL co
 
 from __future__ import annotations
 
+import ctypes
+import errno
 import hashlib
 import importlib
 import importlib.metadata
@@ -42,6 +44,7 @@ _SHA256_CHUNK: Final = 1024 * 1024
 _O_BINARY: Final = getattr(os, "O_BINARY", 0)
 _O_DIRECTORY: Final = getattr(os, "O_DIRECTORY", 0)
 _O_NOFOLLOW: Final = getattr(os, "O_NOFOLLOW", 0)
+_RENAME_NOREPLACE: Final = 1
 _REQUIRED_RUNTIME_MODULES: Final = (
     "torch",
     "transformers",
@@ -242,17 +245,22 @@ class HfLocalSftBackend:
                     }
                 )
 
+            finished_at = _utc_now()
             summary = {
                 "backend_id": _BACKEND_ID,
                 "backend_version": _BACKEND_VERSION,
+                "disposition": "SUCCEEDED",
                 "execution_manifest_sha256": manifest.execution_manifest_sha256,
                 "experiment_id": manifest.experiment_id,
+                "finished_at": finished_at,
                 "model_id": manifest.model_id,
                 "profile": self._profile.to_dict(),
                 "recipe_id": manifest.recipe_id,
+                "result_parent": final_parent_relative,
                 "revision": manifest.revision,
                 "role": manifest.role,
                 "seed_runs": seed_observations,
+                "started_at": started_at,
                 "training_dataset_sha256": manifest.training_dataset_sha256,
                 "weights_sha256": manifest.weights_sha256,
             }
@@ -285,24 +293,19 @@ class HfLocalSftBackend:
                 raise HfLocalSftBackendError(
                     "planned experiment result root appeared during training"
                 )
-            try:
-                os.replace(
-                    staging.name,
-                    final_parent.name,
-                    src_dir_fd=repository_fd,
-                    dst_dir_fd=publication_fd,
-                )
-            except OSError as exc:
-                raise HfLocalSftBackendError(
-                    "staged experiment root could not be published atomically"
-                ) from exc
+            _rename_no_replace(
+                source_name=staging.name,
+                destination_name=final_parent.name,
+                source_dir_fd=repository_fd,
+                destination_dir_fd=publication_fd,
+            )
             staging = None
             return TrainingBackendResult(
                 disposition="SUCCEEDED",
                 backend_id=_BACKEND_ID,
                 backend_version=_BACKEND_VERSION,
                 started_at=started_at,
-                finished_at=_utc_now(),
+                finished_at=finished_at,
                 artifacts=staged_artifacts,
             )
         except Exception as exc:
@@ -530,6 +533,61 @@ def build_hf_local_sft_runtime(
                 "required Hugging Face SFT runtime package is unavailable"
             ) from exc
     return _RealHfLocalSftRuntime(modules, version_loader=version_loader)
+
+
+def _rename_no_replace(
+    *,
+    source_name: str,
+    destination_name: str,
+    source_dir_fd: int,
+    destination_dir_fd: int,
+) -> None:
+    """Atomically publish one directory without replacing an existing destination."""
+    if os.name != "posix":
+        raise HfLocalSftBackendError("platform cannot enforce atomic no-replace publication")
+    try:
+        libc: Any = ctypes.CDLL(None, use_errno=True)
+        renameat2: Any = libc.renameat2
+    except (AttributeError, OSError) as exc:
+        raise HfLocalSftBackendError(
+            "platform cannot enforce atomic no-replace publication"
+        ) from exc
+
+    renameat2.argtypes = [
+        ctypes.c_int,
+        ctypes.c_char_p,
+        ctypes.c_int,
+        ctypes.c_char_p,
+        ctypes.c_uint,
+    ]
+    renameat2.restype = ctypes.c_int
+    ctypes.set_errno(0)
+    result = renameat2(
+        source_dir_fd,
+        os.fsencode(source_name),
+        destination_dir_fd,
+        os.fsencode(destination_name),
+        _RENAME_NOREPLACE,
+    )
+    if result == 0:
+        return
+
+    error_number = ctypes.get_errno()
+    if error_number == errno.EEXIST:
+        raise HfLocalSftBackendError("planned experiment result root appeared during publication")
+
+    unsupported_errors = {errno.EINVAL, errno.ENOSYS}
+    for name in ("ENOTSUP", "EOPNOTSUPP"):
+        value = getattr(errno, name, None)
+        if isinstance(value, int):
+            unsupported_errors.add(value)
+    if error_number in unsupported_errors:
+        raise HfLocalSftBackendError("filesystem cannot enforce atomic no-replace publication")
+
+    cause = OSError(error_number, os.strerror(error_number))
+    raise HfLocalSftBackendError(
+        "staged experiment root could not be published atomically"
+    ) from cause
 
 
 def _resolve_result_parent(

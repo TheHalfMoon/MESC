@@ -327,8 +327,10 @@ The summary binds at least:
 - recipe id;
 - fixed execution profile;
 - every seed;
-- normalized runtime metrics; and
-- observed runtime package versions.
+- normalized runtime metrics;
+- observed runtime package versions;
+- backend success disposition and exact start/finish timestamps; and
+- the repository-relative result parent committed by the backend.
 
 ## Atomic publication
 
@@ -349,14 +351,26 @@ The backend:
 7. revalidates publication ancestors and pinned directory identities and rechecks that the
    final result root still does not exist; and
 8. atomically renames the complete staged experiment root with pinned source and
-   destination directory descriptors.
+   destination directory descriptors using an operating-system no-replace primitive; if
+   the primitive or filesystem guarantee is unavailable, publication fails closed.
 
 Any ordinary exception before publication deletes staging and returns a canonical
 `FAILED` `TrainingBackendResult` with no result artifacts. `KeyboardInterrupt`,
 `SystemExit`, and other `BaseException` subclasses also delete staging, but are re-raised
 instead of being converted into canonical failure results.
 
-The backend never overwrites a prior experiment result root.
+The backend never overwrites a prior experiment result root, including one that
+appears after the final existence check but before the atomic rename.
+
+The successful no-replace rename is the backend publication commit point. Before that
+commit, `training-summary.json` already binds `disposition = SUCCEEDED`, the exact backend
+start/finish timestamps, and the repository-relative result parent. If an asynchronous
+interrupt is delivered after the commit but before the caller receives the returned
+`TrainingBackendResult`, the complete backend-published root may remain with that
+self-contained completion evidence, while the core `TrainingExecutionReceipt` can still
+be absent. Such a root is a reconciliation state and must not be interpreted as complete
+core-executor success without the separately constructed core receipt. The backend does
+not attempt a racy post-commit rollback.
 
 ## Timestamp and failure behavior
 
@@ -423,7 +437,9 @@ This backend gate is complete only when exact-head CI, CodeQL, and review prove 
 - QLoRA is exact NF4 and LoRA is exact unquantized base identity;
 - local-only/no-auth/no-remote-code model and tokenizer calls;
 - no implicit reporting, Hub push, or distributed launch;
-- no existing result overwrite;
+- atomic no-replace publication prevents an existing or concurrently appearing
+  result root from being overwritten and fails closed if the platform/filesystem cannot
+  enforce that guarantee;
 - publication ancestors cannot redirect writes through symlinks or another filesystem;
 - runtime artifact hashing is no-follow, single-link, and descriptor-stable;
 - failed or interrupted execution leaves no staged canonical artifacts;

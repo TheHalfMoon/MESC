@@ -11,6 +11,7 @@ from typing import cast
 
 import pytest
 
+import medscale.mesc._training_hf_local_sft_backend_v1 as backend_module
 from medscale.mesc._training_executor_v1 import TrainingExecutionManifest
 from medscale.mesc._training_hf_local_sft_backend_v1 import (
     HfLocalSftBackend,
@@ -268,6 +269,47 @@ def test_success_runs_all_seeds_and_atomically_publishes_namespaces(tmp_path: Pa
     final_root = tmp_path / "repo" / "experiments" / "mesc-t6-compact-sft"
     assert (final_root / "outputs").is_dir()
     assert (final_root / "results").is_dir()
+    summary = json.loads((final_root / "results" / "training-summary.json").read_text())
+    assert summary["disposition"] == "SUCCEEDED"
+    assert summary["started_at"] == result.started_at
+    assert summary["finished_at"] == result.finished_at
+    assert summary["result_parent"] == "experiments/mesc-t6-compact-sft"
+    assert not tuple((tmp_path / "repo").glob(".mesc-t6-compact-sft.mesc-sft-*"))
+
+
+def test_publication_race_never_overwrites_existing_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runtime = _FakeRuntime()
+    backend, manifest = _backend(tmp_path, runtime)
+    final_root = tmp_path / "repo" / "experiments" / "mesc-t6-compact-sft"
+    original_publish = backend_module._rename_no_replace
+
+    def raced_publish(
+        *,
+        source_name: str,
+        destination_name: str,
+        source_dir_fd: int,
+        destination_dir_fd: int,
+    ) -> None:
+        final_root.mkdir(parents=True)
+        original_publish(
+            source_name=source_name,
+            destination_name=destination_name,
+            source_dir_fd=source_dir_fd,
+            destination_dir_fd=destination_dir_fd,
+        )
+
+    monkeypatch.setattr(backend_module, "_rename_no_replace", raced_publish)
+    result = backend.execute(manifest=manifest)
+
+    assert result.disposition == "FAILED"
+    assert runtime.calls == [17, 42]
+    assert result.artifacts == ()
+    assert "appeared during publication" in (result.failure_reason or "")
+    assert final_root.is_dir()
+    assert not tuple(final_root.iterdir())
     assert not tuple((tmp_path / "repo").glob(".mesc-t6-compact-sft.mesc-sft-*"))
 
 
