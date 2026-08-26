@@ -35,7 +35,7 @@ jobs:
           uv run ruff check . --exclude scripts/diag_auth_trust_registry_218.py --exclude scripts/run_diag_auth_trust_registry_218.py
           uv run ruff format --check . --exclude scripts/diag_auth_trust_registry_218.py --exclude scripts/run_diag_auth_trust_registry_218.py
       - name: Mypy strict
-        run: uv run mypy
+        run: uv run mypy src tests scripts --exclude '^scripts/(diag_auth_trust_registry_218|run_diag_auth_trust_registry_218)\.py$'
       - name: Targeted authorization tests
         run: uv run pytest -q tests/test_mesc_training_authorization_receipt_v1.py tests/test_mesc_training_readiness_receipt_binding_v1.py tests/test_mesc_training_readiness_v1.py tests/test_mesc_training_launch_plan_v1.py tests/test_mesc_training_executor_v1.py tests/test_mesc_training_orchestrator_v1.py
       - name: Full pytest
