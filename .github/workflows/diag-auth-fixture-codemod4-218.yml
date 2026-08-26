@@ -1,0 +1,115 @@
+name: Auth fixture codemod diagnostic 4
+
+on:
+  push:
+    branches: [diag/mesc-auth-format-218]
+    paths: [.github/workflows/diag-auth-fixture-codemod4-218.yml]
+
+permissions:
+  contents: write
+
+jobs:
+  codemod:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: true
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+        with:
+          enable-cache: false
+      - run: uv python install 3.12
+      - run: uv sync --frozen
+      - name: Materialize explicit synthetic authorization support
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p test_support
+          : > test_support/__init__.py
+          cat > test_support/mesc_training_authorization.py <<'PY'
+          """Synthetic MESC training-authorization evidence for repository tests only."""
+
+          from __future__ import annotations
+
+          from medscale.mesc._canonical_json_v1 import canonical_json_bytes
+          from medscale.mesc._training_authorization_receipt_v1 import (
+              AuthorizationScope,
+              TrainingAuthorizationReceipt,
+              build_training_authorization_receipt as _build_training_authorization_receipt,
+          )
+
+
+          def build_training_authorization_receipt(
+              *,
+              authorizer_id: str,
+              authorization_subject_sha256: str,
+              runtime_qualification_sha256: str,
+              corpus_binding_sha256: str,
+              authorization_statement: str,
+              authorization_scope: AuthorizationScope = "TRAINING_EXECUTION",
+              authorize: bool,
+          ) -> TrainingAuthorizationReceipt:
+              """Exercise positive paths with explicit canonical synthetic artifact bytes."""
+              artifact = None
+              if authorize:
+                  artifact = canonical_json_bytes(
+                      {
+                          "authorization_scope": authorization_scope,
+                          "authorization_statement": authorization_statement,
+                          "authorization_subject_sha256": authorization_subject_sha256,
+                          "authorize": True,
+                          "authorizer_id": authorizer_id,
+                          "corpus_binding_sha256": corpus_binding_sha256,
+                          "kind": "mesc.training_authorization.v1",
+                          "runtime_qualification_sha256": runtime_qualification_sha256,
+                      }
+                  )
+              return _build_training_authorization_receipt(
+                  authorizer_id=authorizer_id,
+                  authorization_subject_sha256=authorization_subject_sha256,
+                  runtime_qualification_sha256=runtime_qualification_sha256,
+                  corpus_binding_sha256=corpus_binding_sha256,
+                  authorization_statement=authorization_statement,
+                  authorization_scope=authorization_scope,
+                  authorize=authorize,
+                  authorization_artifact=artifact,
+              )
+          PY
+          python - <<'PY'
+          from pathlib import Path
+
+          simple = (
+              "tests/test_mesc_training_readiness_v1.py",
+              "tests/test_mesc_training_launch_plan_v1.py",
+              "tests/test_mesc_training_executor_v1.py",
+              "tests/test_mesc_training_orchestrator_v1.py",
+          )
+          old = """from medscale.mesc._training_authorization_receipt_v1 import (\n    build_training_authorization_receipt,\n)\n"""
+          new = """from test_support.mesc_training_authorization import (\n    build_training_authorization_receipt,\n)\n"""
+          for name in simple:
+              path = Path(name)
+              text = path.read_text(encoding="utf-8")
+              if text.count(old) != 1:
+                  raise SystemExit(f"unexpected import shape: {name}")
+              path.write_text(text.replace(old, new), encoding="utf-8")
+
+          path = Path("tests/test_mesc_training_readiness_receipt_binding_v1.py")
+          text = path.read_text(encoding="utf-8")
+          old = """from medscale.mesc._training_authorization_receipt_v1 import (\n    TrainingAuthorizationReceipt,\n    build_training_authorization_receipt,\n)\n"""
+          new = """from medscale.mesc._training_authorization_receipt_v1 import (\n    TrainingAuthorizationReceipt,\n)\nfrom test_support.mesc_training_authorization import (\n    build_training_authorization_receipt,\n)\n"""
+          if text.count(old) != 1:
+              raise SystemExit("unexpected readiness binding import shape")
+          path.write_text(text.replace(old, new), encoding="utf-8")
+          PY
+          files=(test_support/__init__.py test_support/mesc_training_authorization.py tests/test_mesc_training_readiness_receipt_binding_v1.py tests/test_mesc_training_readiness_v1.py tests/test_mesc_training_launch_plan_v1.py tests/test_mesc_training_executor_v1.py tests/test_mesc_training_orchestrator_v1.py)
+          uv run ruff check --fix "${files[@]}"
+          uv run ruff format "${files[@]}"
+          uv run ruff check "${files[@]}"
+          uv run pytest -q tests/test_mesc_training_authorization_receipt_v1.py tests/test_mesc_training_readiness_receipt_binding_v1.py tests/test_mesc_training_readiness_v1.py tests/test_mesc_training_launch_plan_v1.py tests/test_mesc_training_executor_v1.py tests/test_mesc_training_orchestrator_v1.py
+          git config user.name "MESC diagnostic bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add "${files[@]}"
+          git diff --cached --check
+          git commit -m "test(mesc): require explicit authorization artifacts in fixtures"
+          git push origin HEAD:diag/mesc-auth-format-218
