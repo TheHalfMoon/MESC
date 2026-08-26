@@ -1,4 +1,4 @@
-name: Diagnostic PR 217 Full Mypy Fixture Repair
+name: Diagnostic PR 217 Strict JSON Review Repair
 
 on:
   push:
@@ -23,7 +23,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "c89c1f34ce9f77459ceaf6961e427c0038a769d2"
+          test "$(git rev-parse HEAD)" = "df7ea93afcd37f2333192475b725bf38d4ade173"
 
       - name: Install uv
         uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
@@ -36,66 +36,177 @@ jobs:
       - name: Sync locked default environment
         run: uv sync --frozen
 
-      - name: Repair typed fixture calls
+      - name: Repair strict JSON parsing and domain errors
         shell: bash
         run: |
           set -euo pipefail
           uv run python - <<'PY'
           from pathlib import Path
 
-          path = Path("tests/test_mesc_release_artifact_qualification_v1.py")
-          text = path.read_text(encoding="utf-8")
-          semantic_start = text.index("def _semantic(")
-          start = text.index("    common = {", semantic_start)
-          end = text.index("\n\n\ndef _binding(", start)
-          replacement = '''    return ReleaseSemanticEvidenceBundle(
-              training_execution=training,
-              provenance=_document(
-                  "PROVENANCE",
-                  repository=repository,
-                  tag_name=tag_name,
-                  release_id=release_id,
-                  asset_manifest=asset_manifest,
-                  training_sha=training.receipt_sha256,
-              ),
-              rights=_document(
-                  "RIGHTS",
-                  repository=repository,
-                  tag_name=tag_name,
-                  release_id=release_id,
-                  asset_manifest=asset_manifest,
-                  training_sha=training.receipt_sha256,
-              ),
-              sbom=_document(
-                  "SBOM",
-                  repository=repository,
-                  tag_name=tag_name,
-                  release_id=release_id,
-                  asset_manifest=asset_manifest,
-                  training_sha=training.receipt_sha256,
-              ),
-              evaluation=_document(
-                  "EVALUATION",
-                  repository=repository,
-                  tag_name=tag_name,
-                  release_id=release_id,
-                  asset_manifest=asset_manifest,
-                  training_sha=training.receipt_sha256,
-              ),
-          )'''
-          path.write_text(text[:start] + replacement + text[end:], encoding="utf-8")
+          source = Path("src/medscale/mesc/_release_semantic_evidence_v1.py")
+          text = source.read_text(encoding="utf-8")
+
+          old_import = "from medscale.mesc._canonical_json_v1 import canonical_json_bytes"
+          new_import = (
+              "from medscale.mesc._canonical_json_v1 import "
+              "CanonicalContractError, canonical_json_bytes"
+          )
+          if text.count(old_import) != 1:
+              raise SystemExit("canonical JSON import anchor mismatch")
+          text = text.replace(old_import, new_import, 1)
+
+          start = text.index("def _parse_canonical_object(")
+          end = text.index("\n\n\ndef _unique_object(", start)
+          replacement = '''def _parse_canonical_object(raw: bytes, *, label: str) -> dict[str, object]:
+              if type(raw) is not bytes or not raw:
+                  raise ReleaseSemanticEvidenceError(f"{label} must be non-empty exact bytes")
+              try:
+                  text = raw.decode("utf-8")
+                  parsed = json.loads(
+                      text,
+                      object_pairs_hook=_unique_object,
+                      parse_constant=_reject_nonstandard_json_constant,
+                  )
+                  if type(parsed) is not dict:
+                      raise ReleaseSemanticEvidenceError(f"{label} must be a JSON object")
+                  payload = cast(dict[str, object], parsed)
+                  canonical = canonical_json_bytes(payload)
+              except ReleaseSemanticEvidenceError:
+                  raise
+              except (UnicodeDecodeError, ValueError, RecursionError, CanonicalContractError) as exc:
+                  raise ReleaseSemanticEvidenceError(f"{label} must be valid UTF-8 JSON") from exc
+              if canonical != raw:
+                  raise ReleaseSemanticEvidenceError(f"{label} bytes are not canonical JSON")
+              return payload
+
+
+          def _parse_artifact_object(raw: bytes, *, label: str) -> dict[str, object]:
+              try:
+                  parsed = json.loads(
+                      raw.decode("utf-8"),
+                      object_pairs_hook=_unique_object,
+                      parse_constant=_reject_nonstandard_json_constant,
+                  )
+              except ReleaseSemanticEvidenceError:
+                  raise
+              except (UnicodeDecodeError, ValueError, RecursionError) as exc:
+                  raise ReleaseSemanticEvidenceError(
+                      f"{label} artifact must be valid UTF-8 JSON"
+                  ) from exc
+              if type(parsed) is not dict:
+                  raise ReleaseSemanticEvidenceError(f"{label} artifact must be a JSON object")
+              return cast(dict[str, object], parsed)
+
+
+          def _reject_nonstandard_json_constant(value: str) -> object:
+              raise ValueError(f"non-standard JSON constant is prohibited: {value}")'''
+          # Dedent the embedded source while keeping this workflow's Python block readable.
+          import textwrap
+
+          replacement = textwrap.dedent(replacement)
+          source.write_text(text[:start] + replacement + text[end:], encoding="utf-8")
+
+          tests = Path("tests/test_mesc_release_semantic_evidence_v1.py")
+          test_text = tests.read_text(encoding="utf-8")
+          marker = "def test_nonstandard_json_constants_are_rejected() -> None:"
+          if marker in test_text:
+              raise SystemExit("strict JSON regression tests already present")
+          addition = r'''
+
+
+def test_nonstandard_json_constants_are_rejected() -> None:
+    training = _training_evidence()
+    artifact = b'{"bomFormat":"CycloneDX","value":NaN}'
+    envelope = {
+        "artifact_byte_count": len(artifact),
+        "artifact_sha256": hashlib.sha256(artifact).hexdigest(),
+        "asset_manifest_sha256": _ASSET_MANIFEST,
+        "disposition": "PASS",
+        "kind": "mesc.release.sbom.v1",
+        "release_id": _RELEASE_ID,
+        "repository": _REPOSITORY,
+        "tag_name": _TAG,
+        "training_execution_receipt_sha256": training.receipt_sha256,
+    }
+
+    with pytest.raises(ReleaseSemanticEvidenceError, match="valid UTF-8 JSON"):
+        ReleaseBoundEvidenceDocument(
+            kind="SBOM",
+            canonical_envelope_bytes=canonical_json_bytes(envelope),
+            artifact_bytes=artifact,
+        )
+
+
+@pytest.mark.parametrize("constant", [b"NaN", b"Infinity", b"-Infinity"])
+def test_all_nonstandard_json_constants_fail_closed(constant: bytes) -> None:
+    training = _training_evidence()
+    artifact = b'{"bomFormat":"CycloneDX","value":' + constant + b"}"
+    envelope = {
+        "artifact_byte_count": len(artifact),
+        "artifact_sha256": hashlib.sha256(artifact).hexdigest(),
+        "asset_manifest_sha256": _ASSET_MANIFEST,
+        "disposition": "PASS",
+        "kind": "mesc.release.sbom.v1",
+        "release_id": _RELEASE_ID,
+        "repository": _REPOSITORY,
+        "tag_name": _TAG,
+        "training_execution_receipt_sha256": training.receipt_sha256,
+    }
+
+    with pytest.raises(ReleaseSemanticEvidenceError, match="valid UTF-8 JSON"):
+        ReleaseBoundEvidenceDocument(
+            kind="SBOM",
+            canonical_envelope_bytes=canonical_json_bytes(envelope),
+            artifact_bytes=artifact,
+        )
+
+
+def test_pathological_artifact_json_uses_domain_error() -> None:
+    training = _training_evidence()
+    artifact = b'{"bomFormat":"CycloneDX","value":' + (b"9" * 5000) + b"}"
+    envelope = {
+        "artifact_byte_count": len(artifact),
+        "artifact_sha256": hashlib.sha256(artifact).hexdigest(),
+        "asset_manifest_sha256": _ASSET_MANIFEST,
+        "disposition": "PASS",
+        "kind": "mesc.release.sbom.v1",
+        "release_id": _RELEASE_ID,
+        "repository": _REPOSITORY,
+        "tag_name": _TAG,
+        "training_execution_receipt_sha256": training.receipt_sha256,
+    }
+
+    with pytest.raises(ReleaseSemanticEvidenceError, match="valid UTF-8 JSON"):
+        ReleaseBoundEvidenceDocument(
+            kind="SBOM",
+            canonical_envelope_bytes=canonical_json_bytes(envelope),
+            artifact_bytes=artifact,
+        )
+
+
+def test_pathological_canonical_json_uses_domain_error() -> None:
+    raw = b'{"value":' + (b"9" * 5000) + b"}\n"
+
+    with pytest.raises(ReleaseSemanticEvidenceError, match="valid UTF-8 JSON"):
+        TrainingExecutionEvidence(raw)
+'''
+          tests.write_text(test_text.rstrip() + addition + "\n", encoding="utf-8")
           PY
 
       - name: Format and enforce mutation allowlist
         shell: bash
         run: |
           set -euo pipefail
-          uv run ruff format tests/test_mesc_release_artifact_qualification_v1.py
-          changed="$(git diff --name-only)"
-          printf '%s\n' "$changed"
-          test "$changed" = "tests/test_mesc_release_artifact_qualification_v1.py"
+          uv run ruff format \
+            src/medscale/mesc/_release_semantic_evidence_v1.py \
+            tests/test_mesc_release_semantic_evidence_v1.py
+          mapfile -t changed < <(git diff --name-only)
+          printf '%s\n' "${changed[@]}"
+          test "${#changed[@]}" -eq 2
+          test "${changed[0]}" = "src/medscale/mesc/_release_semantic_evidence_v1.py"
+          test "${changed[1]}" = "tests/test_mesc_release_semantic_evidence_v1.py"
 
-      - name: Qualify full typing repair
+      - name: Qualify review repair
         shell: bash
         run: |
           set -euo pipefail
@@ -111,6 +222,8 @@ jobs:
           set -euo pipefail
           git config user.name "TheHalfMoon"
           git config user.email "alshehriofficial@gmail.com"
-          git add tests/test_mesc_release_artifact_qualification_v1.py
-          git commit -m "test(mesc): preserve release evidence fixture types"
+          git add \
+            src/medscale/mesc/_release_semantic_evidence_v1.py \
+            tests/test_mesc_release_semantic_evidence_v1.py
+          git commit -m "fix(mesc): reject malformed release evidence JSON"
           git push origin HEAD:fix/mesc-release-semantic-evidence-v1
