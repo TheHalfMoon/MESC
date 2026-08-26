@@ -1,0 +1,64 @@
+name: Diagnostic MESC training-code readiness main proof
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/diag-mesc-training-code-readiness-main-proof-20260826.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  prove:
+    name: prove canonical main training-code readiness
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact canonical main
+        uses: actions/checkout@v4
+        with:
+          ref: 35f7069af39e550270e749e46f2d8ef8346bc963
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: false
+
+      - name: Install Python 3.12
+        run: uv python install 3.12
+
+      - name: Sync canonical default environment
+        run: uv sync --frozen
+
+      - name: Verify exact canonical identity
+        shell: bash
+        run: |
+          test "$(git rev-parse HEAD)" = "35f7069af39e550270e749e46f2d8ef8346bc963"
+          test "$(git rev-parse HEAD^{tree})" = "bc12c85116fd7c985b11705d285663f9f709acf4"
+          uv lock --check
+
+      - name: Audit training-code readiness
+        shell: bash
+        run: |
+          uv run python - <<'PY'
+          import json
+          from pathlib import Path
+
+          from medscale.mesc._training_code_readiness_v1 import audit_training_code_readiness
+
+          report = audit_training_code_readiness(repository_root=Path.cwd())
+          assert report.disposition == "TRAINING_CODE_READY", report.blockers
+          assert report.blockers == ()
+          assert report.missing_modules == ()
+          assert report.missing_specs == ()
+          assert report.dependency_lock_sha256 is not None
+          assert report.real_training_authorized is False
+          assert report.medscale_spec_012_admission_readiness == "NOT_READY"
+          print(json.dumps(report.to_dict(), sort_keys=True, separators=(",", ":")))
+          print(f"audit_sha256={report.audit_sha256}")
+          PY
+
+      - name: Prove audit did not mutate repository
+        run: git diff --exit-code
