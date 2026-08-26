@@ -44,16 +44,20 @@ treated as platform-qualified.
 
 ### Training authorization
 
-`bind_training_authorization_to_readiness(manifest, receipt)` may set
-`training_authorization_receipt_sha256` only when:
+`bind_training_authorization_to_readiness(manifest, receipt, *, runtime_qualification)`
+may set `training_authorization_receipt_sha256` only when:
 
 - the manifest already binds a runtime qualification digest;
+- the supplied `runtime_qualification` receipt is exact-type `PASS` with
+  `platform_qualified=true` and its digest equals the bound runtime digest;
 - `receipt.disposition == AUTHORIZED` and `receipt.real_training_authorized is True`;
-- `receipt.subject_readiness_manifest_sha256 == manifest.manifest_sha256`
-  (the authorization subject is the pre-authorization readiness identity);
+- `receipt.subject_readiness_manifest_sha256` equals the **pre-authorization**
+  readiness identity (`training_authorization_receipt_sha256=None`);
 - `receipt.runtime_qualification_sha256 == manifest.runtime_qualification_sha256`;
 - the manifest does not already bind a different authorization receipt digest.
 
+Runtime binding refuses manifests that already carry an authorization digest.
+Both binders require exact dataclass types (`type(x) is ...`), not subclasses.
 `authorize=false` / `BLOCKED` receipts are refused. This helper never calls the
 authorization builder with `authorize=True`.
 

@@ -7,6 +7,7 @@ from dataclasses import replace
 import pytest
 
 from medscale.mesc._training_authorization_receipt_v1 import (
+    TrainingAuthorizationReceipt,
     build_training_authorization_receipt,
 )
 from medscale.mesc._training_readiness_receipt_binding_v1 import (
@@ -132,10 +133,46 @@ def test_binds_pass_runtime_and_authorized_receipt_to_ready_to_launch() -> None:
     assert final.runtime_qualification_sha256 == runtime.receipt_sha256
     assert final.training_authorization_receipt_sha256 == auth.receipt_sha256
 
+    rebound = bind_training_authorization_to_readiness(
+        final,
+        auth,
+        runtime_qualification=runtime,
+    )
+    assert rebound.training_authorization_receipt_sha256 == auth.receipt_sha256
+
 
 def test_refuses_observed_runtime_without_smoke() -> None:
     with pytest.raises(TrainingReadinessReceiptBindingError, match="platform_qualified"):
         bind_runtime_qualification_to_readiness(_scientific_manifest(), _runtime(smoke=False))
+
+
+def test_refuses_prebound_authorization_on_runtime_bind() -> None:
+    forged = _scientific_manifest(training_authorization_receipt_sha256="9" * 64)
+    with pytest.raises(
+        TrainingReadinessReceiptBindingError,
+        match="training_authorization_receipt_sha256",
+    ):
+        bind_runtime_qualification_to_readiness(forged, _runtime(smoke=True))
+
+
+def test_refuses_forged_runtime_digest_without_receipt_object() -> None:
+    scientific = _scientific_manifest(runtime_qualification_sha256="a" * 64)
+    runtime = _runtime(smoke=True)
+    auth = build_training_authorization_receipt(
+        authorizer_id="founder",
+        subject_readiness_manifest_sha256=scientific.manifest_sha256,
+        runtime_qualification_sha256="a" * 64,
+        corpus_binding_sha256=_CORPUS,
+        local_asset_attestation_sha256=_ATTEST,
+        authorization_statement="Authorize TRAINING_EXECUTION.",
+        authorize=True,
+    )
+    with pytest.raises(TrainingReadinessReceiptBindingError, match="must match bound"):
+        bind_training_authorization_to_readiness(
+            scientific,
+            auth,
+            runtime_qualification=runtime,
+        )
 
 
 def test_refuses_blocked_authorization() -> None:
@@ -152,7 +189,11 @@ def test_refuses_blocked_authorization() -> None:
         authorize=False,
     )
     with pytest.raises(TrainingReadinessReceiptBindingError, match="AUTHORIZED"):
-        bind_training_authorization_to_readiness(with_runtime, blocked)
+        bind_training_authorization_to_readiness(
+            with_runtime,
+            blocked,
+            runtime_qualification=runtime,
+        )
 
 
 def test_refuses_authorization_subject_mismatch() -> None:
@@ -169,22 +210,58 @@ def test_refuses_authorization_subject_mismatch() -> None:
         authorize=True,
     )
     with pytest.raises(TrainingReadinessReceiptBindingError, match="subject_readiness"):
-        bind_training_authorization_to_readiness(with_runtime, auth)
+        bind_training_authorization_to_readiness(
+            with_runtime,
+            auth,
+            runtime_qualification=runtime,
+        )
 
 
 def test_refuses_authorization_without_runtime() -> None:
     scientific = _scientific_manifest()
+    runtime = _runtime(smoke=True)
     auth = build_training_authorization_receipt(
         authorizer_id="founder",
         subject_readiness_manifest_sha256=scientific.manifest_sha256,
-        runtime_qualification_sha256="a" * 64,
+        runtime_qualification_sha256=runtime.receipt_sha256,
         corpus_binding_sha256=_CORPUS,
         local_asset_attestation_sha256=_ATTEST,
         authorization_statement="Authorize TRAINING_EXECUTION.",
         authorize=True,
     )
     with pytest.raises(TrainingReadinessReceiptBindingError, match="runtime_qualification"):
-        bind_training_authorization_to_readiness(scientific, auth)
+        bind_training_authorization_to_readiness(
+            scientific,
+            auth,
+            runtime_qualification=runtime,
+        )
+
+
+def test_refuses_receipt_subclasses() -> None:
+    scientific = _scientific_manifest()
+    with pytest.raises(TrainingReadinessReceiptBindingError, match="exactly"):
+        bind_runtime_qualification_to_readiness(
+            scientific,
+            object(),  # type: ignore[arg-type]
+        )
+    runtime = _runtime(smoke=True)
+    with_runtime = bind_runtime_qualification_to_readiness(scientific, runtime)
+    auth = build_training_authorization_receipt(
+        authorizer_id="founder",
+        subject_readiness_manifest_sha256=with_runtime.manifest_sha256,
+        runtime_qualification_sha256=runtime.receipt_sha256,
+        corpus_binding_sha256=_CORPUS,
+        local_asset_attestation_sha256=_ATTEST,
+        authorization_statement="Authorize TRAINING_EXECUTION.",
+        authorize=True,
+    )
+    with pytest.raises(TrainingReadinessReceiptBindingError, match="exactly"):
+        bind_training_authorization_to_readiness(
+            with_runtime,
+            object(),  # type: ignore[arg-type]
+            runtime_qualification=runtime,
+        )
+    assert type(auth) is TrainingAuthorizationReceipt
 
 
 def test_refuses_scientific_blocker() -> None:
