@@ -8,7 +8,7 @@ on:
       - .github/workflows/diag-auth-fixture-codemod7-218.yml
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   codemod:
@@ -16,6 +16,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: true
       - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
         with:
           enable-cache: false
@@ -30,15 +32,12 @@ jobs:
           uv run ruff check tests/test_mesc_training_readiness_receipt_binding_v1.py tests/test_mesc_training_readiness_v1.py tests/test_mesc_training_launch_plan_v1.py tests/test_mesc_training_executor_v1.py tests/test_mesc_training_orchestrator_v1.py
       - name: Run downstream tests
         run: uv run pytest -q tests/test_mesc_training_authorization_receipt_v1.py tests/test_mesc_training_readiness_receipt_binding_v1.py tests/test_mesc_training_readiness_v1.py tests/test_mesc_training_launch_plan_v1.py tests/test_mesc_training_executor_v1.py tests/test_mesc_training_orchestrator_v1.py
-      - name: Upload validated fixture bytes
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        with:
-          name: auth-fixture-validated-bytes
-          path: |
-            tests/test_mesc_training_readiness_receipt_binding_v1.py
-            tests/test_mesc_training_readiness_v1.py
-            tests/test_mesc_training_launch_plan_v1.py
-            tests/test_mesc_training_executor_v1.py
-            tests/test_mesc_training_orchestrator_v1.py
-          retention-days: 1
-          if-no-files-found: error
+      - name: Commit exact validated fixture bytes
+        run: |
+          set -euo pipefail
+          git config user.name "MESC diagnostic bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add tests/test_mesc_training_readiness_receipt_binding_v1.py tests/test_mesc_training_readiness_v1.py tests/test_mesc_training_launch_plan_v1.py tests/test_mesc_training_executor_v1.py tests/test_mesc_training_orchestrator_v1.py
+          git diff --cached --check
+          git commit -m "test(mesc): materialize validated authorization fixture bytes"
+          git push origin HEAD:diag/mesc-auth-format-218
