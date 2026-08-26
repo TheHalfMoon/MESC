@@ -6,6 +6,7 @@ import hashlib
 import json
 from dataclasses import replace
 from pathlib import Path
+from typing import cast
 
 import pytest
 
@@ -229,6 +230,25 @@ def _backend(
         runtime=runtime,
     )
     return backend, manifest
+
+
+def test_constructor_accepts_platform_path_and_rejects_non_path(tmp_path: Path) -> None:
+    runtime = _FakeRuntime()
+    backend, _ = _backend(tmp_path, runtime)
+    assert isinstance(backend, HfLocalSftBackend)
+
+    recipe = _recipe()
+    with pytest.raises(
+        HfLocalSftBackendError,
+        match=r"model_root must be an exact pathlib[.]Path",
+    ):
+        HfLocalSftBackend(
+            recipe=recipe,
+            model_root=cast(Path, "not-a-path"),
+            corpus_path=tmp_path / "corpus.jsonl",
+            repository_root=tmp_path / "repo",
+            runtime=runtime,
+        )
 
 
 def test_success_runs_all_seeds_and_atomically_publishes_namespaces(tmp_path: Path) -> None:

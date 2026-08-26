@@ -159,7 +159,7 @@ class HfLocalSftBackend:
             ("corpus_path", corpus_path),
             ("repository_root", repository_root),
         ):
-            if type(value) is not Path:
+            if not isinstance(value, Path):
                 raise HfLocalSftBackendError(f"{field} must be an exact pathlib.Path")
         self._recipe = recipe
         self._model_root = model_root
@@ -536,7 +536,7 @@ def _resolve_result_parent(
     *,
     repository_root: Path,
 ) -> tuple[Path, str]:
-    if type(repository_root) is not Path:
+    if not isinstance(repository_root, Path):
         raise HfLocalSftBackendError("repository_root must be an exact pathlib.Path")
     if repository_root.is_symlink() or not repository_root.is_dir():
         raise HfLocalSftBackendError("repository_root must be an existing non-symlink directory")
@@ -682,7 +682,7 @@ def _walk_publication_parent(
 
 
 def _read_attested_file(path: Path) -> bytes:
-    if type(path) is not Path:
+    if not isinstance(path, Path):
         raise HfLocalSftBackendError("corpus_path must be an exact pathlib.Path")
     flags = os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
     try:
