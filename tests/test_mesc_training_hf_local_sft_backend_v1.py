@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from dataclasses import replace
 from pathlib import Path
 from typing import cast
@@ -465,8 +466,18 @@ def test_result_namespaces_must_be_outputs_and_results_siblings(tmp_path: Path) 
     assert "share one experiment parent" in (result.failure_reason or "")
 
 
-def test_runtime_builder_imports_training_stack_only_when_called() -> None:
+def test_runtime_builder_imports_training_stack_only_when_called(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     imported: list[str] = []
+    offline_env = {
+        "HF_DATASETS_OFFLINE": "1",
+        "HF_HUB_OFFLINE": "1",
+        "TRANSFORMERS_OFFLINE": "1",
+        "WANDB_DISABLED": "true",
+    }
+    for name in offline_env:
+        monkeypatch.delenv(name, raising=False)
 
     class _Cuda:
         pass
@@ -484,6 +495,7 @@ def test_runtime_builder_imports_training_stack_only_when_called() -> None:
     }
 
     def loader(name: str) -> object:
+        assert {key: os.environ.get(key) for key in offline_env} == offline_env
         imported.append(name)
         return modules[name]
 
@@ -494,6 +506,7 @@ def test_runtime_builder_imports_training_stack_only_when_called() -> None:
 
     assert runtime is not None
     assert imported == ["torch", "transformers", "trl", "peft", "datasets", "accelerate"]
+    assert all(os.environ.get(name) is None for name in offline_env)
 
 
 def test_runtime_builder_fails_closed_when_training_stack_is_missing() -> None:

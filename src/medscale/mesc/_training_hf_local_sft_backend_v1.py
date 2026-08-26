@@ -521,13 +521,14 @@ def build_hf_local_sft_runtime(
 ) -> HfLocalSftRuntime:
     """Import the production training stack lazily and return the real local runtime."""
     modules: dict[str, Any] = {}
-    try:
-        for name in _REQUIRED_RUNTIME_MODULES:
-            modules[name] = module_loader(name)
-    except Exception as exc:
-        raise HfLocalSftBackendError(
-            "required Hugging Face SFT runtime package is unavailable"
-        ) from exc
+    with _offline_hf_environment():
+        try:
+            for name in _REQUIRED_RUNTIME_MODULES:
+                modules[name] = module_loader(name)
+        except Exception as exc:
+            raise HfLocalSftBackendError(
+                "required Hugging Face SFT runtime package is unavailable"
+            ) from exc
     return _RealHfLocalSftRuntime(modules, version_loader=version_loader)
 
 
