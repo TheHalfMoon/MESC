@@ -58,7 +58,9 @@ The required API choices are:
 - `trust_remote_code=False`;
 - `token=False`, preventing use of a token saved by `hf auth login`;
 - `use_safetensors=True` for model loading;
-- Transformers `dtype=` for the current model-loading API;
+- Transformers `torch_dtype=` for compatibility with the repository's current
+  `transformers>=4.44` surface; the later dependency-lock gate may narrow this to the
+  pinned current-major API;
 - `BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_quant_type="nf4",
   bnb_4bit_use_double_quant=True, bnb_4bit_compute_dtype=torch.bfloat16)` for QLoRA;
 - `prepare_model_for_kbit_training(...)` before QLoRA adapter construction;

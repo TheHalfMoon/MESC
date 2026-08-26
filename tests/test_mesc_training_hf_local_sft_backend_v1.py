@@ -738,6 +738,8 @@ def test_real_runtime_uses_local_only_no_auth_hf_calls(
     assert model_kwargs["trust_remote_code"] is False
     assert model_kwargs["token"] is False
     assert model_kwargs["use_safetensors"] is True
+    assert model_kwargs["torch_dtype"] == "bf16"
+    assert "dtype" not in model_kwargs
     assert sft_config["report_to"] == "none"
     assert sft_config["push_to_hub"] is False
     assert sft_config["completion_only_loss"] is True

@@ -430,7 +430,7 @@ class _RealHfLocalSftRuntime:
                         bnb_4bit_compute_dtype=torch_module.bfloat16,
                     )
                 model_kwargs: dict[str, Any] = {
-                    "dtype": torch_module.bfloat16,
+                    "torch_dtype": torch_module.bfloat16,
                     "local_files_only": True,
                     "token": False,
                     "trust_remote_code": False,
