@@ -14,6 +14,13 @@ from dataclasses import dataclass, field
 from typing import Final, Literal, cast
 
 from medscale.mesc._canonical_json_v1 import canonical_json_bytes
+from medscale.mesc._training_executor_v1 import (
+    TrainingExecutionDisposition,
+    TrainingExecutionError,
+    TrainingExecutionReceipt,
+    TrainingResultArtifact,
+)
+from medscale.mesc._training_launch_plan_v1 import TrainingRole
 from medscale.reproducibility import content_hash
 
 ReleaseEvidenceKind = Literal["PROVENANCE", "RIGHTS", "SBOM", "EVALUATION"]
@@ -94,59 +101,98 @@ class TrainingExecutionEvidence:
             raise ReleaseSemanticEvidenceError(
                 "training receipt must contain the exact canonical executor receipt keys"
             )
-        if payload["executor_version"] != _EXECUTOR_VERSION:
-            raise ReleaseSemanticEvidenceError("training receipt executor_version is invalid")
-        if payload["disposition"] != "SUCCEEDED":
+        receipt = _rebuild_training_receipt(payload)
+        if receipt.disposition != "SUCCEEDED":
             raise ReleaseSemanticEvidenceError("training receipt disposition must be SUCCEEDED")
-        if payload["failure_reason"] is not None:
+        if receipt.to_dict() != payload:
             raise ReleaseSemanticEvidenceError(
-                "successful training receipt cannot retain failure_reason"
+                "training receipt payload does not reproduce the canonical receipt"
+            )
+        if receipt.result_manifest_sha256 is None:
+            raise ReleaseSemanticEvidenceError(
+                "successful training receipt requires result_manifest_sha256"
             )
 
-        for field_name in (
-            "corpus_binding_sha256",
-            "dependency_lock_sha256",
-            "environment_sha256",
-            "execution_manifest_sha256",
-            "launch_plan_sha256",
-            "local_asset_attestation_sha256",
-            "readiness_manifest_sha256",
+        object.__setattr__(self, "receipt_sha256", receipt.receipt_sha256)
+        object.__setattr__(
+            self,
             "result_manifest_sha256",
-            "run_plan_sha256",
-            "runtime_qualification_sha256",
-            "training_authorization_receipt_sha256",
-            "training_dataset_sha256",
-            "weights_sha256",
-        ):
-            _require_sha256(payload[field_name], field=field_name)
-        for field_name in ("repository_sha", "repository_tree", "revision"):
-            _require_git_sha(payload[field_name], field=field_name)
-        for field_name in (
-            "backend_id",
-            "backend_version",
-            "experiment_id",
-            "finished_at",
-            "model_id",
-            "role",
-            "started_at",
-        ):
-            _require_text(payload[field_name], field=field_name)
-
-        artifacts = _require_result_artifacts(payload["result_artifacts"])
-        expected_manifest = content_hash(
-            {
-                "artifacts": artifacts,
-                "kind": _RESULT_MANIFEST_KIND,
-            }
+            receipt.result_manifest_sha256,
         )
-        result_manifest = cast(str, payload["result_manifest_sha256"])
-        if result_manifest != expected_manifest:
-            raise ReleaseSemanticEvidenceError(
-                "training receipt result_manifest_sha256 does not match result_artifacts"
-            )
 
-        object.__setattr__(self, "receipt_sha256", content_hash(payload))
-        object.__setattr__(self, "result_manifest_sha256", result_manifest)
+
+def _rebuild_training_receipt(payload: dict[str, object]) -> TrainingExecutionReceipt:
+    raw_artifacts = payload.get("result_artifacts")
+    if type(raw_artifacts) is not list:
+        raise ReleaseSemanticEvidenceError(
+            "training receipt result_artifacts must be an exact list"
+        )
+
+    artifacts: list[TrainingResultArtifact] = []
+    for raw_item in raw_artifacts:
+        if type(raw_item) is not dict:
+            raise ReleaseSemanticEvidenceError(
+                "training receipt result artifact must be an exact object"
+            )
+        item = cast(dict[str, object], raw_item)
+        if frozenset(item) != {"byte_count", "path", "sha256"}:
+            raise ReleaseSemanticEvidenceError("training receipt result artifact keys are invalid")
+        try:
+            artifacts.append(
+                TrainingResultArtifact(
+                    path=cast(str, item["path"]),
+                    sha256=cast(str, item["sha256"]),
+                    byte_count=cast(int, item["byte_count"]),
+                )
+            )
+        except (KeyError, TypeError, TrainingExecutionError) as exc:
+            raise ReleaseSemanticEvidenceError(
+                "training receipt result artifact is not canonical"
+            ) from exc
+
+    try:
+        return TrainingExecutionReceipt(
+            disposition=cast(TrainingExecutionDisposition, payload["disposition"]),
+            launch_plan_sha256=cast(str, payload["launch_plan_sha256"]),
+            run_plan_sha256=cast(str, payload["run_plan_sha256"]),
+            readiness_manifest_sha256=cast(str, payload["readiness_manifest_sha256"]),
+            corpus_binding_sha256=cast(str, payload["corpus_binding_sha256"]),
+            local_asset_attestation_sha256=cast(
+                str,
+                payload["local_asset_attestation_sha256"],
+            ),
+            execution_manifest_sha256=cast(str, payload["execution_manifest_sha256"]),
+            environment_sha256=cast(str, payload["environment_sha256"]),
+            role=cast(TrainingRole, payload["role"]),
+            experiment_id=cast(str, payload["experiment_id"]),
+            model_id=cast(str, payload["model_id"]),
+            revision=cast(str, payload["revision"]),
+            weights_sha256=cast(str, payload["weights_sha256"]),
+            training_dataset_sha256=cast(str, payload["training_dataset_sha256"]),
+            repository_sha=cast(str, payload["repository_sha"]),
+            repository_tree=cast(str, payload["repository_tree"]),
+            dependency_lock_sha256=cast(str, payload["dependency_lock_sha256"]),
+            runtime_qualification_sha256=cast(
+                str,
+                payload["runtime_qualification_sha256"],
+            ),
+            training_authorization_receipt_sha256=cast(
+                str,
+                payload["training_authorization_receipt_sha256"],
+            ),
+            backend_id=cast(str, payload["backend_id"]),
+            backend_version=cast(str, payload["backend_version"]),
+            started_at=cast(str, payload["started_at"]),
+            finished_at=cast(str, payload["finished_at"]),
+            result_artifacts=tuple(artifacts),
+            result_manifest_sha256=cast(str | None, payload["result_manifest_sha256"]),
+            failure_reason=cast(str | None, payload["failure_reason"]),
+            executor_version=cast(str, payload["executor_version"]),
+        )
+    except (KeyError, TypeError, TrainingExecutionError) as exc:
+        raise ReleaseSemanticEvidenceError(
+            "training receipt does not satisfy canonical executor invariants"
+        ) from exc
 
 
 @dataclass(frozen=True, slots=True)

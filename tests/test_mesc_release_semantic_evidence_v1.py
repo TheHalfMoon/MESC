@@ -152,7 +152,10 @@ def test_failed_training_receipt_is_rejected() -> None:
     payload["disposition"] = "FAILED"
     payload["failure_reason"] = "fixture failure"
 
-    with pytest.raises(ReleaseSemanticEvidenceError, match="SUCCEEDED"):
+    with pytest.raises(
+        ReleaseSemanticEvidenceError,
+        match="canonical executor invariants",
+    ):
         TrainingExecutionEvidence(canonical_json_bytes(payload))
 
 
@@ -160,7 +163,10 @@ def test_training_result_manifest_must_match_artifacts() -> None:
     payload = _training_payload()
     payload["result_manifest_sha256"] = "0" * 64
 
-    with pytest.raises(ReleaseSemanticEvidenceError, match="result_manifest_sha256"):
+    with pytest.raises(
+        ReleaseSemanticEvidenceError,
+        match="canonical executor invariants",
+    ):
         TrainingExecutionEvidence(canonical_json_bytes(payload))
 
 
@@ -232,3 +238,23 @@ def test_noncanonical_or_duplicate_envelope_is_rejected() -> None:
             canonical_envelope_bytes=duplicate,
             artifact_bytes=artifact,
         )
+
+
+def test_training_receipt_rejects_invalid_timestamp() -> None:
+    payload = _training_payload()
+    payload["started_at"] = "not-a-timestamp"
+
+    with pytest.raises(ReleaseSemanticEvidenceError, match="canonical executor invariants"):
+        TrainingExecutionEvidence(canonical_json_bytes(payload))
+
+
+def test_training_receipt_rejects_noncanonical_artifact_path() -> None:
+    payload = _training_payload()
+    artifacts = payload["result_artifacts"]
+    assert isinstance(artifacts, list)
+    first = artifacts[0]
+    assert isinstance(first, dict)
+    first["path"] = "../escape.safetensors"
+
+    with pytest.raises(ReleaseSemanticEvidenceError, match="canonical"):
+        TrainingExecutionEvidence(canonical_json_bytes(payload))
