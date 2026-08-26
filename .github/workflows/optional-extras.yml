@@ -5,6 +5,7 @@ on:
     branches: [main]
   pull_request:
     paths:
+      - '.github/workflows/optional-extras.yml'
       - 'src/medscale/backends/**'
       - 'pyproject.toml'
       - 'tests/test_modelkit_backends.py'
