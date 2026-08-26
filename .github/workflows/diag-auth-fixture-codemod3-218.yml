@@ -1,0 +1,75 @@
+name: Auth fixture codemod diagnostic 3
+
+on:
+  push:
+    branches: [diag/mesc-auth-format-218]
+    paths: [.github/workflows/diag-auth-fixture-codemod3-218.yml]
+
+permissions:
+  contents: write
+
+jobs:
+  codemod:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: true
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+        with:
+          enable-cache: false
+      - run: uv python install 3.12
+      - run: uv sync --frozen
+      - name: Build fixture update
+        shell: bash
+        run: |
+          cat > tests/_mesc_training_authorization_fixture.py <<'PY'
+          """Synthetic authorization evidence for repository tests only."""
+          from __future__ import annotations
+          from medscale.mesc._canonical_json_v1 import canonical_json_bytes
+          from medscale.mesc._training_authorization_receipt_v1 import AuthorizationScope, TrainingAuthorizationReceipt, build_training_authorization_receipt as _build
+
+          def build_training_authorization_receipt(*, authorizer_id: str, authorization_subject_sha256: str, runtime_qualification_sha256: str, corpus_binding_sha256: str, authorization_statement: str, authorization_scope: AuthorizationScope = "TRAINING_EXECUTION", authorize: bool) -> TrainingAuthorizationReceipt:
+              artifact = None
+              if authorize:
+                  artifact = canonical_json_bytes({
+                      "authorization_scope": authorization_scope,
+                      "authorization_statement": authorization_statement,
+                      "authorization_subject_sha256": authorization_subject_sha256,
+                      "authorize": True,
+                      "authorizer_id": authorizer_id,
+                      "corpus_binding_sha256": corpus_binding_sha256,
+                      "kind": "mesc.training_authorization.v1",
+                      "runtime_qualification_sha256": runtime_qualification_sha256,
+                  })
+              return _build(authorizer_id=authorizer_id, authorization_subject_sha256=authorization_subject_sha256, runtime_qualification_sha256=runtime_qualification_sha256, corpus_binding_sha256=corpus_binding_sha256, authorization_statement=authorization_statement, authorization_scope=authorization_scope, authorize=authorize, authorization_artifact=artifact)
+          PY
+          python - <<'PY'
+          from pathlib import Path
+          simple = [
+            "tests/test_mesc_training_readiness_v1.py",
+            "tests/test_mesc_training_launch_plan_v1.py",
+            "tests/test_mesc_training_executor_v1.py",
+            "tests/test_mesc_training_orchestrator_v1.py",
+          ]
+          old = "from medscale.mesc._training_authorization_receipt_v1 import (\n    build_training_authorization_receipt,\n)\n"
+          new = "from _mesc_training_authorization_fixture import build_training_authorization_receipt\n"
+          for name in simple:
+              p=Path(name); t=p.read_text(); assert t.count(old)==1, name; p.write_text(t.replace(old,new))
+          p=Path("tests/test_mesc_training_readiness_receipt_binding_v1.py"); t=p.read_text()
+          old2="from medscale.mesc._training_authorization_receipt_v1 import (\n    TrainingAuthorizationReceipt,\n    build_training_authorization_receipt,\n)\n"
+          new2="from medscale.mesc._training_authorization_receipt_v1 import TrainingAuthorizationReceipt\nfrom _mesc_training_authorization_fixture import build_training_authorization_receipt\n"
+          assert t.count(old2)==1; p.write_text(t.replace(old2,new2))
+          PY
+          files=(tests/_mesc_training_authorization_fixture.py tests/test_mesc_training_readiness_receipt_binding_v1.py tests/test_mesc_training_readiness_v1.py tests/test_mesc_training_launch_plan_v1.py tests/test_mesc_training_executor_v1.py tests/test_mesc_training_orchestrator_v1.py)
+          uv run ruff check --fix "${files[@]}"
+          uv run ruff format "${files[@]}"
+          uv run ruff check "${files[@]}"
+          uv run pytest -q "${files[@]}"
+          git config user.name "MESC diagnostic bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add "${files[@]}"
+          git diff --cached --check
+          git commit -m "test(mesc): require explicit authorization artifacts in fixtures"
+          git push origin HEAD:diag/mesc-auth-format-218
