@@ -1,0 +1,112 @@
+name: Diagnostic PR 208 pinned action runtime qualification
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/diag-pr208-actions-runtime-qualification-v2.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  core:
+    name: core with pinned Node 24 action stack
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: 9654f1b6fbb253f360e4a4ce94ed38931605d212
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: '0.12.6'
+          enable-cache: false
+      - run: uv python install 3.12
+      - run: uv sync --frozen
+      - run: uv lock --check
+      - run: uv run ruff check .
+      - run: uv run mypy src tests
+
+  transformers:
+    name: transformers extra with pinned action stack
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: 9654f1b6fbb253f360e4a4ce94ed38931605d212
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: '0.12.6'
+          enable-cache: false
+      - run: uv python install 3.12
+      - run: uv sync --extra backends-transformers --frozen
+      - run: uv run pytest tests/test_modelkit_backends.py -q --no-header
+
+  llamacpp:
+    name: llama.cpp extra with pinned action stack
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: 9654f1b6fbb253f360e4a4ce94ed38931605d212
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: '0.12.6'
+          enable-cache: false
+      - run: uv python install 3.12
+      - run: uv sync --extra backends-llamacpp --frozen
+      - run: uv run pytest tests/test_modelkit_backends.py -k 'llamacpp or llamacpp_skip' -q --no-header
+
+  artifact-build:
+    name: build and upload artifact with pinned v7
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: 9654f1b6fbb253f360e4a4ce94ed38931605d212
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: '0.12.6'
+          enable-cache: false
+      - run: uv python install 3.12
+      - run: uv sync --frozen
+      - run: uv build
+      - name: Prepare byte-identity payload
+        shell: bash
+        run: |
+          mkdir payload
+          cp dist/* payload/
+          (cd payload && sha256sum *.whl *.tar.gz > SHA256SUMS)
+      - name: Upload artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: diag-pr208-dist-v2
+          path: payload/
+          retention-days: 1
+
+  artifact-roundtrip:
+    name: pinned download v8 and verify artifact bytes
+    needs: artifact-build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Download artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: diag-pr208-dist-v2
+          path: roundtrip
+      - name: Verify byte identity
+        shell: bash
+        run: |
+          cd roundtrip
+          sha256sum -c SHA256SUMS
+          test "$(find . -maxdepth 1 -type f -name '*.whl' | wc -l)" -ge 1
+          test "$(find . -maxdepth 1 -type f -name '*.tar.gz' | wc -l)" -ge 1
