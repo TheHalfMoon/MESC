@@ -6,6 +6,7 @@ from dataclasses import replace
 
 import pytest
 
+from medscale.mesc._canonical_json_v1 import canonical_json_bytes
 from medscale.mesc._training_authorization_receipt_v1 import (
     TrainingAuthorizationReceipt,
     build_training_authorization_receipt,
@@ -23,6 +24,7 @@ from medscale.mesc._training_readiness_v1 import (
 )
 from medscale.mesc._training_runtime_qualification_v1 import (
     TrainingRuntimeQualificationReceipt,
+    TrainingRuntimeSmokeEvidence,
     build_training_runtime_qualification_receipt,
 )
 from medscale.modelkit.interfaces import ModelRef
@@ -31,8 +33,9 @@ from medscale.modelkit.recipes import AdapterMethod, DatasetRef, TrainingRecipe
 
 _DATASET_SHA = "d" * 64
 _CORPUS = "c" * 64
-_ATTEST = "e" * 64
-_SMOKE = "f" * 64
+_LOCK = "a" * 64
+_SHA = "b" * 40
+_TREE = "e" * 40
 
 
 def _candidate(*, model_id: str, revision: str, weight_byte: str) -> TrainingCandidate:
@@ -85,26 +88,49 @@ def _scientific_manifest(**overrides: object) -> TrainingReadinessManifest:
         "r2_training_data_only": True,
         "heldout_eval_excluded_from_training": True,
         "phi_present": False,
+        "corpus_binding_sha256": _CORPUS,
         "runtime_qualification_sha256": None,
         "training_authorization_receipt_sha256": None,
+        "runtime_qualification_receipt": None,
+        "training_authorization_receipt": None,
     }
     kwargs.update(overrides)
     return TrainingReadinessManifest(**kwargs)  # type: ignore[arg-type]
 
 
 def _runtime(*, smoke: bool = True) -> TrainingRuntimeQualificationReceipt:
+    smoke_evidence = None
+    if smoke:
+        smoke_evidence = TrainingRuntimeSmokeEvidence(
+            canonical_json_bytes(
+                {
+                    "dependency_lock_sha256": _LOCK,
+                    "disposition": "PASS",
+                    "gpu_model": "fixture-gpu",
+                    "kind": "mesc.training_runtime_smoke.v1",
+                    "network_accessed": False,
+                    "os_name": "linux",
+                    "probe_id": "fixture-probe",
+                    "probe_version": "v1",
+                    "python_version": "3.12.14",
+                    "remote_code_allowed": False,
+                    "repository_sha": _SHA,
+                    "repository_tree": _TREE,
+                    "runner_class": RunnerClass.LOCAL.value,
+                }
+            )
+        )
     return build_training_runtime_qualification_receipt(
         runner_class=RunnerClass.LOCAL,
         python_version="3.12.14",
         os_name="linux",
         gpu_model="fixture-gpu",
-        dependency_lock_sha256="a" * 64,
-        repository_sha="b" * 40,
-        repository_tree="c" * 40,
+        dependency_lock_sha256=_LOCK,
+        repository_sha=_SHA,
+        repository_tree=_TREE,
         probe_id="fixture-probe",
         probe_version="v1",
-        smoke_disposition="PASS" if smoke else "SKIPPED",
-        smoke_receipt_sha256=_SMOKE if smoke else None,
+        smoke_evidence=smoke_evidence,
     )
 
 
@@ -113,14 +139,14 @@ def test_binds_pass_runtime_and_authorized_receipt_to_ready_to_launch() -> None:
     runtime = _runtime(smoke=True)
     with_runtime = bind_runtime_qualification_to_readiness(scientific, runtime)
     assert with_runtime.runtime_qualification_sha256 == runtime.receipt_sha256
+    assert with_runtime.runtime_qualification_receipt is runtime
     assert assess_training_readiness(with_runtime).disposition == "READY_FOR_AUTHORIZATION"
 
     auth = build_training_authorization_receipt(
         authorizer_id="founder",
-        subject_readiness_manifest_sha256=with_runtime.manifest_sha256,
+        authorization_subject_sha256=with_runtime.authorization_subject_sha256,
         runtime_qualification_sha256=runtime.receipt_sha256,
         corpus_binding_sha256=_CORPUS,
-        local_asset_attestation_sha256=_ATTEST,
         authorization_statement="Authorize TRAINING_EXECUTION for the bound subject.",
         authorize=True,
     )
@@ -132,6 +158,7 @@ def test_binds_pass_runtime_and_authorized_receipt_to_ready_to_launch() -> None:
     assert report.disposition == "READY_TO_LAUNCH"
     assert final.runtime_qualification_sha256 == runtime.receipt_sha256
     assert final.training_authorization_receipt_sha256 == auth.receipt_sha256
+    assert final.training_authorization_receipt is auth
 
     rebound = bind_training_authorization_to_readiness(
         final,
@@ -148,10 +175,7 @@ def test_refuses_observed_runtime_without_smoke() -> None:
 
 def test_refuses_prebound_authorization_on_runtime_bind() -> None:
     forged = _scientific_manifest(training_authorization_receipt_sha256="9" * 64)
-    with pytest.raises(
-        TrainingReadinessReceiptBindingError,
-        match="training_authorization_receipt_sha256",
-    ):
+    with pytest.raises(TrainingReadinessReceiptBindingError, match="authorization"):
         bind_runtime_qualification_to_readiness(forged, _runtime(smoke=True))
 
 
@@ -160,14 +184,13 @@ def test_refuses_forged_runtime_digest_without_receipt_object() -> None:
     runtime = _runtime(smoke=True)
     auth = build_training_authorization_receipt(
         authorizer_id="founder",
-        subject_readiness_manifest_sha256=scientific.manifest_sha256,
+        authorization_subject_sha256=scientific.authorization_subject_sha256,
         runtime_qualification_sha256="a" * 64,
         corpus_binding_sha256=_CORPUS,
-        local_asset_attestation_sha256=_ATTEST,
         authorization_statement="Authorize TRAINING_EXECUTION.",
         authorize=True,
     )
-    with pytest.raises(TrainingReadinessReceiptBindingError, match="must match bound"):
+    with pytest.raises(TrainingReadinessReceiptBindingError, match="typed receipt"):
         bind_training_authorization_to_readiness(
             scientific,
             auth,
@@ -181,10 +204,9 @@ def test_refuses_blocked_authorization() -> None:
     with_runtime = bind_runtime_qualification_to_readiness(scientific, runtime)
     blocked = build_training_authorization_receipt(
         authorizer_id="founder",
-        subject_readiness_manifest_sha256=with_runtime.manifest_sha256,
+        authorization_subject_sha256=with_runtime.authorization_subject_sha256,
         runtime_qualification_sha256=runtime.receipt_sha256,
         corpus_binding_sha256=_CORPUS,
-        local_asset_attestation_sha256=_ATTEST,
         authorization_statement="Refuse TRAINING_EXECUTION.",
         authorize=False,
     )
@@ -202,14 +224,13 @@ def test_refuses_authorization_subject_mismatch() -> None:
     with_runtime = bind_runtime_qualification_to_readiness(scientific, runtime)
     auth = build_training_authorization_receipt(
         authorizer_id="founder",
-        subject_readiness_manifest_sha256="0" * 64,
+        authorization_subject_sha256="0" * 64,
         runtime_qualification_sha256=runtime.receipt_sha256,
         corpus_binding_sha256=_CORPUS,
-        local_asset_attestation_sha256=_ATTEST,
         authorization_statement="Authorize TRAINING_EXECUTION.",
         authorize=True,
     )
-    with pytest.raises(TrainingReadinessReceiptBindingError, match="subject_readiness"):
+    with pytest.raises(TrainingReadinessReceiptBindingError, match="authorization_subject"):
         bind_training_authorization_to_readiness(
             with_runtime,
             auth,
@@ -222,14 +243,13 @@ def test_refuses_authorization_without_runtime() -> None:
     runtime = _runtime(smoke=True)
     auth = build_training_authorization_receipt(
         authorizer_id="founder",
-        subject_readiness_manifest_sha256=scientific.manifest_sha256,
+        authorization_subject_sha256=scientific.authorization_subject_sha256,
         runtime_qualification_sha256=runtime.receipt_sha256,
         corpus_binding_sha256=_CORPUS,
-        local_asset_attestation_sha256=_ATTEST,
         authorization_statement="Authorize TRAINING_EXECUTION.",
         authorize=True,
     )
-    with pytest.raises(TrainingReadinessReceiptBindingError, match="runtime_qualification"):
+    with pytest.raises(TrainingReadinessReceiptBindingError, match="runtime qualification"):
         bind_training_authorization_to_readiness(
             scientific,
             auth,
@@ -248,10 +268,9 @@ def test_refuses_receipt_subclasses() -> None:
     with_runtime = bind_runtime_qualification_to_readiness(scientific, runtime)
     auth = build_training_authorization_receipt(
         authorizer_id="founder",
-        subject_readiness_manifest_sha256=with_runtime.manifest_sha256,
+        authorization_subject_sha256=with_runtime.authorization_subject_sha256,
         runtime_qualification_sha256=runtime.receipt_sha256,
         corpus_binding_sha256=_CORPUS,
-        local_asset_attestation_sha256=_ATTEST,
         authorization_statement="Authorize TRAINING_EXECUTION.",
         authorize=True,
     )

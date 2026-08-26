@@ -83,9 +83,7 @@ class TrainingAuthorizationReceipt:
                 )
         else:
             if not self.blockers:
-                raise TrainingAuthorizationReceiptError(
-                    "BLOCKED receipts must record blockers"
-                )
+                raise TrainingAuthorizationReceiptError("BLOCKED receipts must record blockers")
             if self.real_training_authorized:
                 raise TrainingAuthorizationReceiptError(
                     "BLOCKED receipts forbid real_training_authorized=true"
@@ -163,9 +161,7 @@ def build_training_authorization_receipt(
 
 def _require_text(value: object, *, field: str) -> str:
     if type(value) is not str or not value.strip() or "\x00" in value:
-        raise TrainingAuthorizationReceiptError(
-            f"{field} must be exact non-empty NUL-free text"
-        )
+        raise TrainingAuthorizationReceiptError(f"{field} must be exact non-empty NUL-free text")
     return value.strip()
 
 

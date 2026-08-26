@@ -222,8 +222,7 @@ def test_launch_plan_is_content_addressed_and_preserves_all_bindings() -> None:
     assert plan.corpus_binding_sha256 == _CORPUS_SHA
     assert plan.runtime_qualification_sha256 == manifest.runtime_qualification_sha256
     assert (
-        plan.training_authorization_receipt_sha256
-        == manifest.training_authorization_receipt_sha256
+        plan.training_authorization_receipt_sha256 == manifest.training_authorization_receipt_sha256
     )
     assert plan.plan_sha256 == rebuilt.plan_sha256
 
@@ -293,7 +292,10 @@ def test_run_environment_must_match_qualified_runtime() -> None:
 
 def test_runs_must_bind_same_repository_and_dependency_lock() -> None:
     manifest, readiness, compact, reasoner = _build()
-    with pytest.raises(TrainingLaunchPlanError, match="same repository_sha"):
+    with pytest.raises(
+        TrainingLaunchPlanError,
+        match="repository_sha does not match qualified runtime",
+    ):
         build_training_launch_plan(
             manifest=manifest,
             readiness=readiness,
@@ -337,5 +339,7 @@ def test_reproduction_command_is_single_line() -> None:
 
 def test_run_plan_identity_changes_with_environment_or_code_identity() -> None:
     _, _, compact, _ = _build()
-    assert replace(compact, dependency_lock_sha256="9" * 64).run_plan_sha256 != compact.run_plan_sha256
+    assert (
+        replace(compact, dependency_lock_sha256="9" * 64).run_plan_sha256 != compact.run_plan_sha256
+    )
     assert replace(compact, repository_tree="9" * 40).run_plan_sha256 != compact.run_plan_sha256

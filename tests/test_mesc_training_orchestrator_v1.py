@@ -10,6 +10,10 @@ from pathlib import Path
 import pytest
 
 import medscale.mesc._training_orchestrator_v1 as orchestrator_module
+from medscale.mesc._canonical_json_v1 import canonical_json_bytes
+from medscale.mesc._training_authorization_receipt_v1 import (
+    build_training_authorization_receipt,
+)
 from medscale.mesc._training_corpus_binding_v1 import TrainingCorpusBindingReport
 from medscale.mesc._training_executor_v1 import (
     TrainingBackendResult,
@@ -37,6 +41,10 @@ from medscale.mesc._training_readiness_v1 import (
     TrainingReadinessManifest,
     assess_training_readiness,
 )
+from medscale.mesc._training_runtime_qualification_v1 import (
+    TrainingRuntimeSmokeEvidence,
+    build_training_runtime_qualification_receipt,
+)
 from medscale.modelkit.interfaces import ModelRef
 from medscale.modelkit.manifests import RunnerClass
 from medscale.modelkit.recipes import AdapterMethod, DatasetRef, TrainingRecipe
@@ -45,10 +53,12 @@ _DATASET_SHA = "d" * 64
 _REPOSITORY_SHA = "a" * 40
 _REPOSITORY_TREE = "b" * 40
 _LOCK_SHA = "c" * 64
-_RUNTIME_SHA = "7" * 64
-_AUTH_SHA = "8" * 64
+_CORPUS_SHA = "f" * 64
 _CORPUS_RAW_SHA = "6" * 64
 _VERIFIER_SHA = "5" * 64
+_PYTHON = "3.12.14"
+_OS = "linux"
+_GPU = "fixture-gpu"
 
 
 def _candidate(*, role: TrainingRole) -> TrainingCandidate:
@@ -86,10 +96,45 @@ def _recipe(candidate: TrainingCandidate) -> TrainingRecipe:
     )
 
 
-def _readiness_manifest() -> TrainingReadinessManifest:
+def _runtime_receipt(*, dependency_lock_sha256: str = _LOCK_SHA):
+    smoke = TrainingRuntimeSmokeEvidence(
+        canonical_json_bytes(
+            {
+                "dependency_lock_sha256": dependency_lock_sha256,
+                "disposition": "PASS",
+                "gpu_model": _GPU,
+                "kind": "mesc.training_runtime_smoke.v1",
+                "network_accessed": False,
+                "os_name": _OS,
+                "probe_id": "fixture-probe",
+                "probe_version": "v1",
+                "python_version": _PYTHON,
+                "remote_code_allowed": False,
+                "repository_sha": _REPOSITORY_SHA,
+                "repository_tree": _REPOSITORY_TREE,
+                "runner_class": RunnerClass.LOCAL.value,
+            }
+        )
+    )
+    return build_training_runtime_qualification_receipt(
+        runner_class=RunnerClass.LOCAL,
+        python_version=_PYTHON,
+        os_name=_OS,
+        gpu_model=_GPU,
+        dependency_lock_sha256=dependency_lock_sha256,
+        repository_sha=_REPOSITORY_SHA,
+        repository_tree=_REPOSITORY_TREE,
+        probe_id="fixture-probe",
+        probe_version="v1",
+        smoke_evidence=smoke,
+    )
+
+
+def _readiness_manifest(*, dependency_lock_sha256: str = _LOCK_SHA) -> TrainingReadinessManifest:
     compact = _candidate(role="compact")
     reasoner = _candidate(role="reasoner")
-    return TrainingReadinessManifest(
+    runtime = _runtime_receipt(dependency_lock_sha256=dependency_lock_sha256)
+    pre = TrainingReadinessManifest(
         compact_candidate=compact,
         reasoner_candidate=reasoner,
         compact_recipe=_recipe(compact),
@@ -108,8 +153,22 @@ def _readiness_manifest() -> TrainingReadinessManifest:
         r2_training_data_only=True,
         heldout_eval_excluded_from_training=True,
         phi_present=False,
-        runtime_qualification_sha256=_RUNTIME_SHA,
-        training_authorization_receipt_sha256=_AUTH_SHA,
+        corpus_binding_sha256=_CORPUS_SHA,
+        runtime_qualification_sha256=runtime.receipt_sha256,
+        runtime_qualification_receipt=runtime,
+    )
+    authorization = build_training_authorization_receipt(
+        authorizer_id="fixture-founder",
+        authorization_subject_sha256=pre.authorization_subject_sha256,
+        runtime_qualification_sha256=runtime.receipt_sha256,
+        corpus_binding_sha256=_CORPUS_SHA,
+        authorization_statement="Fixture authorization for the exact launch subject.",
+        authorize=True,
+    )
+    return replace(
+        pre,
+        training_authorization_receipt_sha256=authorization.receipt_sha256,
+        training_authorization_receipt=authorization,
     )
 
 
@@ -120,9 +179,9 @@ def _run(
     repository_sha: str = _REPOSITORY_SHA,
     repository_tree: str = _REPOSITORY_TREE,
     dependency_lock_sha256: str = _LOCK_SHA,
-    python_version: str = "3.12.14",
-    os_name: str = "linux",
-    gpu_model: str = "fixture-gpu",
+    python_version: str = _PYTHON,
+    os_name: str = _OS,
+    gpu_model: str = _GPU,
 ) -> TrainingRunPlan:
     if role == "compact":
         candidate = manifest.compact_candidate
@@ -377,7 +436,7 @@ def test_orchestrator_invokes_executor_when_authority_matches(tmp_path: Path) ->
     lock.write_bytes(b"orchestrator-lock\n")
     lock_sha = hash_dependency_lock(lock)
 
-    manifest = _readiness_manifest()
+    manifest = _readiness_manifest(dependency_lock_sha256=lock_sha)
     launch = _launch(manifest, dependency_lock_sha256=lock_sha)
     run = launch.compact
     environment = TrainingExecutionEnvironment(

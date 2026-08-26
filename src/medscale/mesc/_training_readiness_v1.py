@@ -84,7 +84,7 @@ class TrainingReadinessManifest:
     def __post_init__(self) -> None:
         if self.program_version != _PROGRAM_VERSION:
             raise ValueError(f"program_version must be exactly {_PROGRAM_VERSION}")
-        for field_name, value in (
+        for field_name, required_sha in (
             ("pilot_closeout_sha256", self.pilot_closeout_sha256),
             ("tournament_report_sha256", self.tournament_report_sha256),
             ("training_dataset_sha256", self.training_dataset_sha256),
@@ -93,35 +93,41 @@ class TrainingReadinessManifest:
             ("evaluation_contract_sha256", self.evaluation_contract_sha256),
             ("license_review_sha256", self.license_review_sha256),
         ):
-            _require_sha256(value, field=field_name)
-        for field_name, value in (
+            _require_sha256(required_sha, field=field_name)
+        optional_shas: tuple[tuple[str, str | None], ...] = (
             ("corpus_binding_sha256", self.corpus_binding_sha256),
             ("runtime_qualification_sha256", self.runtime_qualification_sha256),
             (
                 "training_authorization_receipt_sha256",
                 self.training_authorization_receipt_sha256,
             ),
-        ):
-            if value is not None:
-                _require_sha256(value, field=field_name)
-        for field_name, value in (
+        )
+        for field_name, optional_sha in optional_shas:
+            if optional_sha is not None:
+                _require_sha256(optional_sha, field=field_name)
+        bool_fields: tuple[tuple[str, bool], ...] = (
             ("r2_training_data_only", self.r2_training_data_only),
             ("heldout_eval_excluded_from_training", self.heldout_eval_excluded_from_training),
             ("phi_present", self.phi_present),
-        ):
-            if type(value) is not bool:
+        )
+        for field_name, flag in bool_fields:
+            if type(flag) is not bool:
                 raise ValueError(f"{field_name} must be an exact bool")
 
         if self.runtime_qualification_receipt is not None:
             if type(self.runtime_qualification_receipt) is not TrainingRuntimeQualificationReceipt:
                 raise ValueError(
-                    "runtime_qualification_receipt must be an exact TrainingRuntimeQualificationReceipt"
+                    "runtime_qualification_receipt must be an exact "
+                    "TrainingRuntimeQualificationReceipt"
                 )
             if self.runtime_qualification_sha256 is None:
                 raise ValueError(
                     "runtime_qualification_receipt requires runtime_qualification_sha256"
                 )
-            if self.runtime_qualification_receipt.receipt_sha256 != self.runtime_qualification_sha256:
+            if (
+                self.runtime_qualification_receipt.receipt_sha256
+                != self.runtime_qualification_sha256
+            ):
                 raise ValueError(
                     "runtime_qualification_receipt does not match runtime_qualification_sha256"
                 )
@@ -138,9 +144,7 @@ class TrainingReadinessManifest:
                 self.training_authorization_receipt.receipt_sha256
                 != self.training_authorization_receipt_sha256
             ):
-                raise ValueError(
-                    "training_authorization_receipt does not match its manifest SHA"
-                )
+                raise ValueError("training_authorization_receipt does not match its manifest SHA")
 
     @property
     def manifest_sha256(self) -> str:

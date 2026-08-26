@@ -98,9 +98,7 @@ class TrainingRuntimeSmokeEvidence:
             payload["dependency_lock_sha256"], field="dependency_lock_sha256"
         )
         repository_sha = _require_git_sha(payload["repository_sha"], field="repository_sha")
-        repository_tree = _require_git_sha(
-            payload["repository_tree"], field="repository_tree"
-        )
+        repository_tree = _require_git_sha(payload["repository_tree"], field="repository_tree")
         probe_id = _require_exact_text(payload["probe_id"], field="probe_id")
         probe_version = _require_exact_text(payload["probe_version"], field="probe_version")
         network_accessed = _require_exact_bool(
@@ -189,7 +187,10 @@ class TrainingRuntimeQualificationReceipt:
         _require_git_sha(self.repository_tree, field="repository_tree")
         _require_exact_bool(self.network_accessed, field="network_accessed")
         _require_exact_bool(self.remote_code_allowed, field="remote_code_allowed")
-        if self.smoke_evidence is not None and type(self.smoke_evidence) is not TrainingRuntimeSmokeEvidence:
+        if (
+            self.smoke_evidence is not None
+            and type(self.smoke_evidence) is not TrainingRuntimeSmokeEvidence
+        ):
             raise TrainingRuntimeQualificationError(
                 "smoke_evidence must be an exact TrainingRuntimeSmokeEvidence"
             )
@@ -377,21 +378,15 @@ def _parse_smoke_payload(payload_bytes: bytes) -> dict[str, object]:
     except (json.JSONDecodeError, TrainingRuntimeQualificationError) as exc:
         if isinstance(exc, TrainingRuntimeQualificationError):
             raise
-        raise TrainingRuntimeQualificationError(
-            "runtime smoke evidence is not valid JSON"
-        ) from exc
+        raise TrainingRuntimeQualificationError("runtime smoke evidence is not valid JSON") from exc
     if type(value) is not dict:
-        raise TrainingRuntimeQualificationError(
-            "runtime smoke evidence must be one JSON object"
-        )
+        raise TrainingRuntimeQualificationError("runtime smoke evidence must be one JSON object")
     if set(value) != _SMOKE_KEYS:
         raise TrainingRuntimeQualificationError(
             "runtime smoke evidence must contain exactly the canonical field set"
         )
     if value.get("kind") != _SMOKE_KIND:
-        raise TrainingRuntimeQualificationError(
-            f"runtime smoke kind must be exactly {_SMOKE_KIND}"
-        )
+        raise TrainingRuntimeQualificationError(f"runtime smoke kind must be exactly {_SMOKE_KIND}")
     return value
 
 
@@ -454,14 +449,14 @@ def _smoke_binding_mismatches_from_values(
         ("network_accessed", evidence.network_accessed, network_accessed),
         ("remote_code_allowed", evidence.remote_code_allowed, remote_code_allowed),
     )
-    return tuple(field_name for field_name, observed, expected in comparisons if observed != expected)
+    return tuple(
+        field_name for field_name, observed, expected in comparisons if observed != expected
+    )
 
 
 def _require_exact_text(value: object, *, field: str) -> str:
     if type(value) is not str or not value.strip() or "\x00" in value:
-        raise TrainingRuntimeQualificationError(
-            f"{field} must be exact non-empty NUL-free text"
-        )
+        raise TrainingRuntimeQualificationError(f"{field} must be exact non-empty NUL-free text")
     return value.strip()
 
 
