@@ -21,6 +21,12 @@ def append_once(path: str, marker: str, addition: str) -> None:
 
 
 def main() -> None:
+    append_once(
+        "specs/mesc-training-authorization-receipt-v1/README.md",
+        "## Use-time trust and revocation",
+        '''## Use-time trust and revocation\n\nTrust admission is not a one-time construction check. Every `AUTHORIZED` receipt must still match the exact current repository-controlled trust-registry identity, and its authorization-artifact digest must remain admitted, whenever the receipt is bound into readiness or used to recompute launch authority.\n\nAny trust-registry mutation therefore invalidates previously admitted receipts fail-closed, including explicit digest removal. A caller must obtain a newly admitted receipt under the new canonical registry snapshot before training can become `READY_TO_LAUNCH` again. Executor and orchestrator paths recompute readiness before backend invocation, so revoked authority cannot be grandfathered into a live training run. This rule does not provision any real authorization digest or grant current training authority.''',
+    )
+
     install_only = '''from _training_authorization_test_support import (\n    install_training_authorization_test_trust,\n)\n'''
     install_and_restore = '''from _training_authorization_test_support import (\n    install_training_authorization_test_trust,\n    restore_training_authorization_test_trust,\n)\n'''
     for path in (
