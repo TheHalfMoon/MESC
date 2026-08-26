@@ -8,7 +8,7 @@ on:
       - .github/workflows/diag-auth-fixture-codemod7-218.yml
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   codemod:
@@ -16,8 +16,6 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          persist-credentials: true
       - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
         with:
           enable-cache: false
@@ -30,33 +28,18 @@ jobs:
           uv run ruff check --fix test_support tests/test_mesc_training_readiness_receipt_binding_v1.py tests/test_mesc_training_readiness_v1.py tests/test_mesc_training_launch_plan_v1.py tests/test_mesc_training_executor_v1.py tests/test_mesc_training_orchestrator_v1.py
           uv run ruff format test_support tests/test_mesc_training_readiness_receipt_binding_v1.py tests/test_mesc_training_readiness_v1.py tests/test_mesc_training_launch_plan_v1.py tests/test_mesc_training_executor_v1.py tests/test_mesc_training_orchestrator_v1.py
           uv run ruff check test_support tests/test_mesc_training_readiness_receipt_binding_v1.py tests/test_mesc_training_readiness_v1.py tests/test_mesc_training_launch_plan_v1.py tests/test_mesc_training_executor_v1.py tests/test_mesc_training_orchestrator_v1.py
-      - name: Run downstream tests and capture output
-        shell: bash
-        run: |
-          set +e
-          uv run pytest -q tests/test_mesc_training_authorization_receipt_v1.py tests/test_mesc_training_readiness_receipt_binding_v1.py tests/test_mesc_training_readiness_v1.py tests/test_mesc_training_launch_plan_v1.py tests/test_mesc_training_executor_v1.py tests/test_mesc_training_orchestrator_v1.py > pytest.log 2>&1
-          rc=$?
-          cat pytest.log
-          printf '%s' "$rc" > pytest.rc
-          exit 0
-      - name: Upload pytest diagnostics
-        if: always()
+      - name: Run downstream tests
+        run: uv run pytest -q tests/test_mesc_training_authorization_receipt_v1.py tests/test_mesc_training_readiness_receipt_binding_v1.py tests/test_mesc_training_readiness_v1.py tests/test_mesc_training_launch_plan_v1.py tests/test_mesc_training_executor_v1.py tests/test_mesc_training_orchestrator_v1.py
+      - name: Upload validated fixture bytes
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: auth-fixture-pytest-diagnostic
+          name: auth-fixture-validated-bytes
           path: |
-            pytest.log
-            pytest.rc
+            test_support
+            tests/test_mesc_training_readiness_receipt_binding_v1.py
+            tests/test_mesc_training_readiness_v1.py
+            tests/test_mesc_training_launch_plan_v1.py
+            tests/test_mesc_training_executor_v1.py
+            tests/test_mesc_training_orchestrator_v1.py
           retention-days: 1
           if-no-files-found: error
-      - name: Commit validated fixture updates
-        shell: bash
-        run: |
-          set -euo pipefail
-          test "$(cat pytest.rc)" = "0"
-          git config user.name "MESC diagnostic bot"
-          git config user.email "actions@users.noreply.github.com"
-          git add test_support tests/test_mesc_training_readiness_receipt_binding_v1.py tests/test_mesc_training_readiness_v1.py tests/test_mesc_training_launch_plan_v1.py tests/test_mesc_training_executor_v1.py tests/test_mesc_training_orchestrator_v1.py
-          git diff --cached --check
-          git commit -m "test(mesc): require explicit authorization artifacts in fixtures"
-          git push origin HEAD:diag/mesc-auth-format-218
