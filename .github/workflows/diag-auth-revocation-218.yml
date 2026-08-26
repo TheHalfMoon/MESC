@@ -22,6 +22,7 @@ jobs:
         run: uv run python scripts/diag_auth_revocation_218.py
       - name: Ruff
         run: |
+          uv run ruff format src/medscale/mesc/_training_authorization_receipt_v1.py src/medscale/mesc/_training_readiness_v1.py src/medscale/mesc/_training_readiness_receipt_binding_v1.py
           uv run ruff check src/medscale/mesc/_training_authorization_receipt_v1.py src/medscale/mesc/_training_readiness_v1.py src/medscale/mesc/_training_readiness_receipt_binding_v1.py
           uv run ruff format --check src/medscale/mesc/_training_authorization_receipt_v1.py src/medscale/mesc/_training_readiness_v1.py src/medscale/mesc/_training_readiness_receipt_binding_v1.py
       - name: Mypy
