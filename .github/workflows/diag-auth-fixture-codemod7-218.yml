@@ -25,9 +25,9 @@ jobs:
         run: uv run python scripts/diag_auth_fixture_codemod_218.py
       - name: Format and lint fixture updates
         run: |
-          uv run ruff check --fix test_support tests/test_mesc_training_readiness_receipt_binding_v1.py tests/test_mesc_training_readiness_v1.py tests/test_mesc_training_launch_plan_v1.py tests/test_mesc_training_executor_v1.py tests/test_mesc_training_orchestrator_v1.py
-          uv run ruff format test_support tests/test_mesc_training_readiness_receipt_binding_v1.py tests/test_mesc_training_readiness_v1.py tests/test_mesc_training_launch_plan_v1.py tests/test_mesc_training_executor_v1.py tests/test_mesc_training_orchestrator_v1.py
-          uv run ruff check test_support tests/test_mesc_training_readiness_receipt_binding_v1.py tests/test_mesc_training_readiness_v1.py tests/test_mesc_training_launch_plan_v1.py tests/test_mesc_training_executor_v1.py tests/test_mesc_training_orchestrator_v1.py
+          uv run ruff check --fix tests/test_mesc_training_readiness_receipt_binding_v1.py tests/test_mesc_training_readiness_v1.py tests/test_mesc_training_launch_plan_v1.py tests/test_mesc_training_executor_v1.py tests/test_mesc_training_orchestrator_v1.py
+          uv run ruff format tests/test_mesc_training_readiness_receipt_binding_v1.py tests/test_mesc_training_readiness_v1.py tests/test_mesc_training_launch_plan_v1.py tests/test_mesc_training_executor_v1.py tests/test_mesc_training_orchestrator_v1.py
+          uv run ruff check tests/test_mesc_training_readiness_receipt_binding_v1.py tests/test_mesc_training_readiness_v1.py tests/test_mesc_training_launch_plan_v1.py tests/test_mesc_training_executor_v1.py tests/test_mesc_training_orchestrator_v1.py
       - name: Run downstream tests
         run: uv run pytest -q tests/test_mesc_training_authorization_receipt_v1.py tests/test_mesc_training_readiness_receipt_binding_v1.py tests/test_mesc_training_readiness_v1.py tests/test_mesc_training_launch_plan_v1.py tests/test_mesc_training_executor_v1.py tests/test_mesc_training_orchestrator_v1.py
       - name: Upload validated fixture bytes
@@ -35,7 +35,6 @@ jobs:
         with:
           name: auth-fixture-validated-bytes
           path: |
-            test_support
             tests/test_mesc_training_readiness_receipt_binding_v1.py
             tests/test_mesc_training_readiness_v1.py
             tests/test_mesc_training_launch_plan_v1.py
