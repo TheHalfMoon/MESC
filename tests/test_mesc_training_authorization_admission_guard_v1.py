@@ -26,9 +26,7 @@ from medscale.mesc._training_readiness_v1 import assess_training_readiness
 def test_revocation_after_launch_recompute_blocks_backend_invocation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    manifest, readiness, launch, binding, assets, environment = (
-        executor_test_support._bundle()
-    )
+    manifest, readiness, launch, binding, assets, environment = executor_test_support._bundle()
     backend = executor_test_support._SuccessBackend()
     original = executor_module._build_execution_manifest
 
