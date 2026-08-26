@@ -33,6 +33,7 @@ _REQUIRED_MODULES: Final = (
     "medscale.mesc._training_orchestrator_v1",
     "medscale.mesc._training_runtime_qualification_v1",
     "medscale.mesc._training_authorization_receipt_v1",
+    "medscale.mesc._training_readiness_receipt_binding_v1",
 )
 _REQUIRED_SPECS: Final = (
     "specs/mesc-training-readiness-v1/README.md",
@@ -48,6 +49,7 @@ _REQUIRED_SPECS: Final = (
     "specs/mesc-training-orchestrator-v1/README.md",
     "specs/mesc-training-runtime-qualification-v1/README.md",
     "specs/mesc-training-authorization-receipt-v1/README.md",
+    "specs/mesc-training-readiness-receipt-binding-v1/README.md",
 )
 _EXPECTED_TRAINING_PINS: Final = (
     "accelerate==1.14.0",

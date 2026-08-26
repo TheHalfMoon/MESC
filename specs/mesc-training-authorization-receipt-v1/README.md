@@ -46,5 +46,7 @@ tests/test_mesc_training_authorization_receipt_v1.py
 
 ## Next gate
 
-Bind these receipt producers into readiness construction helpers and continue corpus/model
-asset evidence acquisition. Real training remains externally gated.
+Receipt producers bind through `mesc-training-readiness-receipt-binding-v1`. Remaining
+work is external/evidence: authorized local model assets, qualified corpus bytes,
+platform-qualified runtime smoke, explicit `authorize=true`, training/evaluation,
+rights/SBOM/provenance, and a non-empty qualifying GitHub Release.
