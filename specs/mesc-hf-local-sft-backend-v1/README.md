@@ -331,7 +331,8 @@ The summary binds at least:
 - every seed;
 - normalized runtime metrics;
 - observed runtime package versions;
-- backend success disposition and exact start/finish timestamps; and
+- backend success disposition, exact start timestamp, and pre-publication
+  `publication_ready_at` timestamp; and
 - the repository-relative result parent committed by the backend.
 
 ## Atomic publication
@@ -366,7 +367,9 @@ appears after the final existence check but before the atomic rename.
 
 The successful no-replace rename is the backend publication commit point. Before that
 commit, `training-summary.json` already binds `disposition = SUCCEEDED`, the exact backend
-start/finish timestamps, and the repository-relative result parent. If an asynchronous
+start timestamp, the pre-publication `publication_ready_at` timestamp, and the
+repository-relative result parent. The returned `TrainingBackendResult.finished_at` is
+captured only after the no-replace publication commit succeeds. If an asynchronous
 interrupt is delivered after the commit but before the caller receives the returned
 `TrainingBackendResult`, the complete backend-published root may remain with that
 self-contained completion evidence, while the core `TrainingExecutionReceipt` can still
@@ -376,7 +379,9 @@ not attempt a racy post-commit rollback.
 
 ## Timestamp and failure behavior
 
-The backend records actual UTC whole-second start/finish timestamps.
+The backend records actual UTC whole-second timestamps. `started_at` marks backend entry,
+`publication_ready_at` in the immutable summary marks the last pre-publication completion
+point, and returned `finished_at` is captured only after atomic publication succeeds.
 
 Expected runtime/backend failures become:
 

@@ -245,14 +245,14 @@ class HfLocalSftBackend:
                     }
                 )
 
-            finished_at = _utc_now()
+            publication_ready_at = _utc_now()
             summary = {
                 "backend_id": _BACKEND_ID,
                 "backend_version": _BACKEND_VERSION,
                 "disposition": "SUCCEEDED",
                 "execution_manifest_sha256": manifest.execution_manifest_sha256,
                 "experiment_id": manifest.experiment_id,
-                "finished_at": finished_at,
+                "publication_ready_at": publication_ready_at,
                 "model_id": manifest.model_id,
                 "profile": self._profile.to_dict(),
                 "recipe_id": manifest.recipe_id,
@@ -300,6 +300,7 @@ class HfLocalSftBackend:
                 destination_dir_fd=publication_fd,
             )
             staging = None
+            finished_at = _utc_now()
             return TrainingBackendResult(
                 disposition="SUCCEEDED",
                 backend_id=_BACKEND_ID,

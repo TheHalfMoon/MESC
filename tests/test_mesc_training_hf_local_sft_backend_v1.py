@@ -272,7 +272,9 @@ def test_success_runs_all_seeds_and_atomically_publishes_namespaces(tmp_path: Pa
     summary = json.loads((final_root / "results" / "training-summary.json").read_text())
     assert summary["disposition"] == "SUCCEEDED"
     assert summary["started_at"] == result.started_at
-    assert summary["finished_at"] == result.finished_at
+    assert "finished_at" not in summary
+    assert summary["publication_ready_at"] >= result.started_at
+    assert result.finished_at >= summary["publication_ready_at"]
     assert summary["result_parent"] == "experiments/mesc-t6-compact-sft"
     assert not tuple((tmp_path / "repo").glob(".mesc-t6-compact-sft.mesc-sft-*"))
 
