@@ -39,7 +39,10 @@ def test_constructor_accepts_platform_path_and_rejects_non_path(tmp_path: Path) 
     assert isinstance(backend, HfLocalSftBackend)
 
     recipe = _recipe()
-    with pytest.raises(HfLocalSftBackendError, match="model_root must be an exact pathlib.Path"):
+    with pytest.raises(
+        HfLocalSftBackendError,
+        match=r"model_root must be an exact pathlib\.Path",
+    ):
         HfLocalSftBackend(
             recipe=recipe,
             model_root=cast(Path, "not-a-path"),
