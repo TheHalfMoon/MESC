@@ -9,7 +9,10 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from medscale.mesc._training_authorization_receipt_v1 import TrainingAuthorizationReceipt
+from medscale.mesc._training_authorization_receipt_v1 import (
+    TrainingAuthorizationReceipt,
+    TrainingAuthorizationReceiptError,
+)
 from medscale.mesc._training_readiness_v1 import (
     TrainingReadinessManifest,
     TrainingReadinessReport,
@@ -126,6 +129,12 @@ def bind_training_authorization_to_readiness(
         raise TrainingReadinessReceiptBindingError(
             "authorization receipt must be AUTHORIZED with real_training_authorized=true"
         )
+    try:
+        receipt.validate_current_trust()
+    except TrainingAuthorizationReceiptError as exc:
+        raise TrainingReadinessReceiptBindingError(
+            "authorization receipt is not trusted by the current canonical registry"
+        ) from exc
     if receipt.authorization_subject_sha256 != manifest.authorization_subject_sha256:
         raise TrainingReadinessReceiptBindingError(
             "authorization_subject_sha256 must match the current readiness authorization subject"

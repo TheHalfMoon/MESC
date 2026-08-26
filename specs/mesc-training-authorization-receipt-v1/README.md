@@ -123,3 +123,10 @@ An `AUTHORIZED` receipt content-addresses the exact trust-registry identity used
 artifact was admitted. Missing, malformed, or unregistered authority evidence fails
 closed. This package does not provision a Founder key, fabricate a Founder attestation,
 or grant current real-world training authority.
+
+
+## Use-time trust and revocation
+
+Trust admission is not a one-time construction check. Every `AUTHORIZED` receipt must still match the exact current repository-controlled trust-registry identity, and its authorization-artifact digest must remain admitted, whenever the receipt is bound into readiness or used to recompute launch authority.
+
+Any trust-registry mutation therefore invalidates previously admitted receipts fail-closed, including explicit digest removal. A caller must obtain a newly admitted receipt under the new canonical registry snapshot before training can become `READY_TO_LAUNCH` again. Executor and orchestrator paths recompute readiness before backend invocation, so revoked authority cannot be grandfathered into a live training run. This rule does not provision any real authorization digest or grant current training authority.

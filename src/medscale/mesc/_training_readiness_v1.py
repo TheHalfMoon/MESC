@@ -15,7 +15,10 @@ import re
 from dataclasses import dataclass
 from typing import Final, Literal
 
-from medscale.mesc._training_authorization_receipt_v1 import TrainingAuthorizationReceipt
+from medscale.mesc._training_authorization_receipt_v1 import (
+    TrainingAuthorizationReceipt,
+    TrainingAuthorizationReceiptError,
+)
 from medscale.mesc._training_runtime_qualification_v1 import (
     TrainingRuntimeQualificationReceipt,
 )
@@ -328,6 +331,12 @@ def _validate_authorization_receipt(
         blockers.append("training authorization receipt is not explicitly AUTHORIZED")
     if receipt.blockers:
         blockers.append("training authorization receipt retains blockers")
+    try:
+        receipt.validate_current_trust()
+    except TrainingAuthorizationReceiptError:
+        blockers.append(
+            "training authorization receipt is not trusted by the current canonical registry"
+        )
     if receipt.authorization_subject_sha256 != manifest.authorization_subject_sha256:
         blockers.append("training authorization receipt targets a different readiness subject")
     if receipt.runtime_qualification_sha256 != manifest.runtime_qualification_sha256:

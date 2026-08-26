@@ -235,3 +235,13 @@ def test_deterministic_identity() -> None:
     right = _build(authorize=True)
     assert left.receipt_sha256 == right.receipt_sha256
     assert _build(authorize=False).receipt_sha256 != left.receipt_sha256
+
+
+def test_authorized_receipt_rejects_current_trust_after_registry_revocation() -> None:
+    receipt = _build(authorize=True)
+
+    with pytest.raises(
+        TrainingAuthorizationReceiptError,
+        match=r"trust registry changed|no longer trusted",
+    ):
+        receipt.validate_current_trust()
