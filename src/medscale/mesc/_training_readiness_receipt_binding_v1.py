@@ -125,16 +125,16 @@ def bind_training_authorization_to_readiness(
         raise TrainingReadinessReceiptBindingError(
             "runtime_qualification receipt digest must match bound runtime_qualification_sha256"
         )
-    if receipt.disposition != "AUTHORIZED" or not receipt.real_training_authorized:
-        raise TrainingReadinessReceiptBindingError(
-            "authorization receipt must be AUTHORIZED with real_training_authorized=true"
-        )
     try:
-        receipt.validate_current_trust()
+        receipt = receipt.validated_current_trust_snapshot()
     except TrainingAuthorizationReceiptError as exc:
         raise TrainingReadinessReceiptBindingError(
             "authorization receipt is not trusted by the current canonical registry"
         ) from exc
+    if receipt.disposition != "AUTHORIZED" or not receipt.real_training_authorized:
+        raise TrainingReadinessReceiptBindingError(
+            "authorization receipt must be AUTHORIZED with real_training_authorized=true"
+        )
     if receipt.authorization_subject_sha256 != manifest.authorization_subject_sha256:
         raise TrainingReadinessReceiptBindingError(
             "authorization_subject_sha256 must match the current readiness authorization subject"

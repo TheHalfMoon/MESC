@@ -219,27 +219,112 @@ class TrainingAuthorizationReceipt:
                         "BLOCKED receipt cannot bind an authorize=true artifact"
                     )
 
-    def validate_current_trust(self) -> None:
-        """Require this AUTHORIZED receipt to remain trusted by one current snapshot."""
-        if self.disposition != "AUTHORIZED" or not self.real_training_authorized:
+    def validated_current_trust_snapshot(self) -> TrainingAuthorizationReceipt:
+        """Return one local semantic snapshot admitted by the current trust registry."""
+        if type(self) is not TrainingAuthorizationReceipt:
+            raise TrainingAuthorizationReceiptError(
+                "current-trust validation requires an exact TrainingAuthorizationReceipt"
+            )
+
+        disposition = self.disposition
+        authorization_scope = self.authorization_scope
+        authorizer_id = self.authorizer_id
+        authorization_subject_sha256 = self.authorization_subject_sha256
+        runtime_qualification_sha256 = self.runtime_qualification_sha256
+        corpus_binding_sha256 = self.corpus_binding_sha256
+        authorization_statement = self.authorization_statement
+        real_training_authorized = self.real_training_authorized
+        blockers = self.blockers
+        registry_sha256 = self.authorization_trust_registry_sha256
+        artifact = self.authorization_artifact
+        program_version = self.program_version
+
+        if program_version != _PROGRAM_VERSION:
+            raise TrainingAuthorizationReceiptError(
+                f"program_version must be exactly {_PROGRAM_VERSION}"
+            )
+        if (
+            disposition != "AUTHORIZED"
+            or type(real_training_authorized) is not bool
+            or (not real_training_authorized)
+        ):
             raise TrainingAuthorizationReceiptError(
                 "current-trust validation requires an AUTHORIZED receipt"
             )
-        artifact = self.authorization_artifact
-        if artifact is None:
+        if type(blockers) is not tuple or blockers:
             raise TrainingAuthorizationReceiptError(
-                "AUTHORIZED receipt lacks validated authorization artifact bytes"
+                "current-trust validation requires an exact empty blockers tuple"
             )
-        registry_sha256 = self.authorization_trust_registry_sha256
+        _require_scope(authorization_scope)
+        _require_text(authorizer_id, field="authorizer_id")
+        _require_text(authorization_statement, field="authorization_statement")
+        _require_sha256(
+            authorization_subject_sha256,
+            field="authorization_subject_sha256",
+        )
+        _require_sha256(
+            runtime_qualification_sha256,
+            field="runtime_qualification_sha256",
+        )
+        _require_sha256(corpus_binding_sha256, field="corpus_binding_sha256")
         if registry_sha256 is None:
             raise TrainingAuthorizationReceiptError(
                 "AUTHORIZED receipt lacks an authorization trust registry binding"
             )
+        _require_sha256(
+            registry_sha256,
+            field="authorization_trust_registry_sha256",
+        )
+        if type(artifact) is not TrainingAuthorizationArtifact:
+            raise TrainingAuthorizationReceiptError(
+                "AUTHORIZED receipt lacks exact validated authorization artifact bytes"
+            )
+        canonical_bytes = artifact.canonical_bytes
+        if type(canonical_bytes) is not bytes or not canonical_bytes:
+            raise TrainingAuthorizationReceiptError(
+                "authorization artifact must retain non-empty exact canonical bytes"
+            )
+        fresh_artifact = TrainingAuthorizationArtifact(canonical_bytes)
+        comparisons = (
+            (fresh_artifact.authorization_scope, authorization_scope),
+            (fresh_artifact.authorizer_id, authorizer_id),
+            (fresh_artifact.authorization_subject_sha256, authorization_subject_sha256),
+            (fresh_artifact.runtime_qualification_sha256, runtime_qualification_sha256),
+            (fresh_artifact.corpus_binding_sha256, corpus_binding_sha256),
+            (fresh_artifact.authorization_statement, authorization_statement),
+        )
+        if any(observed != required for observed, required in comparisons):
+            raise TrainingAuthorizationReceiptError(
+                "authorization artifact does not match receipt bindings"
+            )
+        if not fresh_artifact.authorize:
+            raise TrainingAuthorizationReceiptError(
+                "AUTHORIZED receipt artifact must carry authorize=true"
+            )
         _validate_trust_admission(
             expected_registry_sha256=registry_sha256,
-            artifact_sha256=artifact.artifact_sha256,
+            artifact_sha256=fresh_artifact.artifact_sha256,
             context="current authorization trust",
         )
+
+        return TrainingAuthorizationReceipt(
+            disposition=disposition,
+            authorization_scope=authorization_scope,
+            authorizer_id=authorizer_id,
+            authorization_subject_sha256=authorization_subject_sha256,
+            runtime_qualification_sha256=runtime_qualification_sha256,
+            corpus_binding_sha256=corpus_binding_sha256,
+            authorization_statement=authorization_statement,
+            real_training_authorized=real_training_authorized,
+            blockers=blockers,
+            authorization_trust_registry_sha256=registry_sha256,
+            authorization_artifact=fresh_artifact,
+            program_version=program_version,
+        )
+
+    def validate_current_trust(self) -> None:
+        """Require this AUTHORIZED receipt to remain trusted by one current snapshot."""
+        self.validated_current_trust_snapshot()
 
     @property
     def authorization_artifact_sha256(self) -> str | None:

@@ -29,6 +29,7 @@ TRUSTED_TRAINING_AUTHORIZATION_ARTIFACT_SHA256: frozenset[str] = frozenset()
 _SHA256: Final = re.compile(r"^[0-9a-f]{64}$", flags=re.ASCII)
 _REGISTRY_KIND: Final = "mesc.training_authorization.trust_registry.v1"
 _REGISTRY_LOCK: Final = Lock()
+_ACTIVE_BACKEND_ADMISSIONS = 0
 
 
 class TrainingAuthorizationTrustError(RuntimeError):
@@ -87,12 +88,15 @@ def hold_training_authorization_trust(
     expected_registry_sha256: str,
     artifact_sha256: str,
 ) -> Iterator[TrainingAuthorizationTrustSnapshot]:
-    """Hold one valid admission snapshot stable across a backend admission boundary.
+    """Lease one valid admission snapshot across a backend admission boundary.
 
-    Canonical runtime code does not mutate trust in process. The lock additionally makes
-    the repository-supported test mutation path serialize with the final executor guard,
-    so a revocation cannot interleave between the last trust check and backend invocation.
+    The registry lock protects only admission bookkeeping. It is released before
+    arbitrary backend code runs, so a backend may safely query the public trust API.
+    The repository-supported mutation path refuses to replace trust while any backend
+    admission lease is active, preventing revocation from interleaving with invocation.
     """
+    global _ACTIVE_BACKEND_ADMISSIONS
+
     with _REGISTRY_LOCK:
         snapshot = _validated_registry_snapshot_unlocked()
         _require_snapshot_admission(
@@ -100,7 +104,13 @@ def hold_training_authorization_trust(
             expected_registry_sha256=expected_registry_sha256,
             artifact_sha256=artifact_sha256,
         )
+        _ACTIVE_BACKEND_ADMISSIONS += 1
+
+    try:
         yield snapshot
+    finally:
+        with _REGISTRY_LOCK:
+            _ACTIVE_BACKEND_ADMISSIONS -= 1
 
 
 def _require_snapshot_admission(
@@ -167,6 +177,11 @@ def _replace_training_authorization_trust_registry_for_tests(
                 "64 lowercase hex characters"
             )
     with _REGISTRY_LOCK:
+        if _ACTIVE_BACKEND_ADMISSIONS:
+            raise TrainingAuthorizationTrustError(
+                "training authorization trust registry cannot change during active "
+                "backend admission"
+            )
         previous = TRUSTED_TRAINING_AUTHORIZATION_ARTIFACT_SHA256
         globals()["TRUSTED_TRAINING_AUTHORIZATION_ARTIFACT_SHA256"] = registry
         return previous

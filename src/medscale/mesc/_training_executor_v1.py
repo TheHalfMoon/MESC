@@ -596,11 +596,17 @@ def _execute_backend_with_current_authorization(
     manifest: TrainingReadinessManifest,
     execution_manifest: TrainingExecutionManifest,
 ) -> TrainingBackendResult:
-    receipt = manifest.training_authorization_receipt
-    if receipt is None:
+    source_receipt = manifest.training_authorization_receipt
+    if type(source_receipt) is not TrainingAuthorizationReceipt:
         raise TrainingExecutionError(
-            "readiness manifest lacks the bound training authorization receipt"
+            "readiness manifest lacks the exact bound training authorization receipt"
         )
+    try:
+        receipt = source_receipt.validated_current_trust_snapshot()
+    except TrainingAuthorizationReceiptError as exc:
+        raise TrainingExecutionError(
+            "training authorization trust changed before backend invocation"
+        ) from exc
     registry_sha256 = receipt.authorization_trust_registry_sha256
     artifact_sha256 = receipt.authorization_artifact_sha256
     if registry_sha256 is None or artifact_sha256 is None:

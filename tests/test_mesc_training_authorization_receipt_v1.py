@@ -248,3 +248,14 @@ def test_authorized_receipt_rejects_current_trust_after_registry_revocation() ->
         ),
     ):
         receipt.validate_current_trust()
+
+
+def test_mutated_authorized_receipt_cannot_reuse_trusted_artifact() -> None:
+    receipt = _build(authorize=True)
+    object.__setattr__(receipt, "authorization_subject_sha256", "d" * 64)
+
+    with pytest.raises(
+        TrainingAuthorizationReceiptError,
+        match="authorization artifact does not match receipt bindings",
+    ):
+        receipt.validate_current_trust()
