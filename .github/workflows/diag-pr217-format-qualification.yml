@@ -1,0 +1,81 @@
+name: Diagnostic PR 217 Format Qualification
+
+on:
+  push:
+    branches:
+      - diag/pr217-format-qualification
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact target branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: fix/mesc-release-semantic-evidence-v1
+          persist-credentials: true
+          fetch-depth: 0
+
+      - name: Assert exact target head
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "7e1d173d6c332aac216a0eb0e72692fa966915ee"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+        with:
+          enable-cache: true
+
+      - name: Install Python 3.12
+        run: uv python install 3.12
+
+      - name: Sync locked default environment
+        run: uv sync --frozen
+
+      - name: Format exact failing paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run ruff format \
+            src/medscale/mesc/_release_semantic_evidence_v1.py \
+            tests/test_mesc_release_artifact_qualification_v1.py
+
+      - name: Enforce mutation allowlist
+        shell: bash
+        run: |
+          set -euo pipefail
+          changed="$(git diff --name-only)"
+          printf '%s\n' "$changed"
+          test -n "$changed"
+          while IFS= read -r path; do
+            case "$path" in
+              src/medscale/mesc/_release_semantic_evidence_v1.py|tests/test_mesc_release_artifact_qualification_v1.py) ;;
+              *) echo "unexpected mutation: $path" >&2; exit 1 ;;
+            esac
+          done <<< "$changed"
+
+      - name: Qualify formatted target
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run ruff format --check .
+          uv run ruff check .
+          uv run mypy src/medscale/mesc/_release_artifact_qualification_v1.py src/medscale/mesc/_release_semantic_evidence_v1.py
+          uv run pytest -q tests/test_mesc_release_artifact_qualification_v1.py tests/test_mesc_release_semantic_evidence_v1.py
+          uv lock --check
+
+      - name: Commit and push formatting repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "TheHalfMoon"
+          git config user.email "alshehriofficial@gmail.com"
+          git add \
+            src/medscale/mesc/_release_semantic_evidence_v1.py \
+            tests/test_mesc_release_artifact_qualification_v1.py
+          git commit -m "style(mesc): format semantic release evidence"
+          git push origin HEAD:fix/mesc-release-semantic-evidence-v1
