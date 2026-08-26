@@ -10,6 +10,7 @@ import re
 from dataclasses import dataclass
 from typing import Final, Literal
 
+from medscale.mesc._release_semantic_evidence_v1 import ReleaseSemanticEvidenceBundle
 from medscale.reproducibility import content_hash
 
 ReleaseQualificationDisposition = Literal["BLOCKED", "RELEASE_READY"]
@@ -54,7 +55,7 @@ class ReleaseAssetObservation:
 
 @dataclass(frozen=True, slots=True)
 class ReleaseEvidenceBinding:
-    """Evidence record that must bind exactly to one observed release identity."""
+    """Evidence identities that must match one typed semantic evidence bundle."""
 
     repository: str
     tag_name: str
@@ -113,13 +114,14 @@ class ReleaseEvidenceBinding:
 
 @dataclass(frozen=True, slots=True)
 class ReleaseObservation:
-    """Observed GitHub Release facts supplied by an external observer."""
+    """Observed GitHub Release facts plus independently supplied semantic evidence."""
 
     repository: str
     tag_name: str
     release_id: int
     assets: tuple[ReleaseAssetObservation, ...]
     evidence_binding: ReleaseEvidenceBinding | None
+    semantic_evidence: ReleaseSemanticEvidenceBundle | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.repository, str) or _REPO.fullmatch(self.repository) is None:
@@ -147,6 +149,13 @@ class ReleaseObservation:
             raise ReleaseArtifactQualificationError(
                 "evidence_binding must be exactly ReleaseEvidenceBinding when present"
             )
+        if (
+            self.semantic_evidence is not None
+            and type(self.semantic_evidence) is not ReleaseSemanticEvidenceBundle
+        ):
+            raise ReleaseArtifactQualificationError(
+                "semantic_evidence must be exactly ReleaseSemanticEvidenceBundle when present"
+            )
 
     @property
     def asset_manifest_sha256(self) -> str:
@@ -164,6 +173,9 @@ class ReleaseObservation:
             ),
             "release_id": self.release_id,
             "repository": self.repository,
+            "semantic_evidence": (
+                None if self.semantic_evidence is None else self.semantic_evidence.to_dict()
+            ),
             "tag_name": self.tag_name.strip(),
         }
 
@@ -251,6 +263,14 @@ def qualify_release_artifact(
         if not binding.asset_hashes_verified:
             blockers.append("asset hash verification is false")
 
+    semantic = observation.semantic_evidence
+    if semantic is None:
+        blockers.append("semantic release evidence is absent")
+    else:
+        _check_semantic_identity(observation=observation, semantic=semantic, blockers=blockers)
+        if binding is not None:
+            _check_semantic_binding(binding=binding, semantic=semantic, blockers=blockers)
+
     disposition: ReleaseQualificationDisposition = "BLOCKED" if blockers else "RELEASE_READY"
     return ReleaseArtifactQualificationReport(
         disposition=disposition,
@@ -261,6 +281,52 @@ def qualify_release_artifact(
             "READY" if disposition == "RELEASE_READY" else "NOT_READY"
         ),
     )
+
+
+def _check_semantic_identity(
+    *,
+    observation: ReleaseObservation,
+    semantic: ReleaseSemanticEvidenceBundle,
+    blockers: list[str],
+) -> None:
+    if semantic.repository != observation.repository:
+        blockers.append("semantic evidence repository does not match observation")
+    if semantic.tag_name != observation.tag_name.strip():
+        blockers.append("semantic evidence tag_name does not match observation")
+    if semantic.release_id != observation.release_id:
+        blockers.append("semantic evidence release_id does not match observation")
+    if semantic.asset_manifest_sha256 != observation.asset_manifest_sha256:
+        blockers.append("semantic evidence asset_manifest_sha256 does not match assets")
+
+
+def _check_semantic_binding(
+    *,
+    binding: ReleaseEvidenceBinding,
+    semantic: ReleaseSemanticEvidenceBundle,
+    blockers: list[str],
+) -> None:
+    expected: tuple[tuple[str, str, str], ...] = (
+        (
+            "provenance_sha256",
+            binding.provenance_sha256,
+            semantic.provenance.document_sha256,
+        ),
+        ("rights_sha256", binding.rights_sha256, semantic.rights.document_sha256),
+        ("sbom_sha256", binding.sbom_sha256, semantic.sbom.document_sha256),
+        (
+            "evaluation_report_sha256",
+            binding.evaluation_report_sha256,
+            semantic.evaluation.document_sha256,
+        ),
+        (
+            "training_execution_receipt_sha256",
+            binding.training_execution_receipt_sha256,
+            semantic.training_execution.receipt_sha256,
+        ),
+    )
+    for field_name, observed, wanted in expected:
+        if observed != wanted:
+            blockers.append(f"evidence_binding {field_name} does not match semantic evidence")
 
 
 def _require_sha256(value: str, *, field: str) -> None:
