@@ -1,0 +1,37 @@
+name: Auth revocation diagnostic
+
+on:
+  push:
+    branches:
+      - diag/mesc-auth-revocation-218
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+        with:
+          enable-cache: false
+      - run: uv python install 3.12
+      - run: uv sync --frozen
+      - name: Apply current-trust repair
+        run: uv run python scripts/diag_auth_revocation_218.py
+      - name: Ruff
+        run: |
+          uv run ruff check src/medscale/mesc/_training_authorization_receipt_v1.py src/medscale/mesc/_training_readiness_v1.py src/medscale/mesc/_training_readiness_receipt_binding_v1.py
+          uv run ruff format --check src/medscale/mesc/_training_authorization_receipt_v1.py src/medscale/mesc/_training_readiness_v1.py src/medscale/mesc/_training_readiness_receipt_binding_v1.py
+      - name: Mypy
+        run: uv run mypy src
+      - name: Targeted revocation qualification
+        run: |
+          uv run pytest -q \
+            tests/test_mesc_training_authorization_receipt_v1.py \
+            tests/test_mesc_training_readiness_receipt_binding_v1.py \
+            tests/test_mesc_training_readiness_v1.py \
+            tests/test_mesc_training_launch_plan_v1.py \
+            tests/test_mesc_training_executor_v1.py \
+            tests/test_mesc_training_orchestrator_v1.py
