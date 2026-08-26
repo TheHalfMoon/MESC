@@ -2,8 +2,9 @@
 
 This module does not re-test the publisher's behaviour; that is
 ``tests/test_mesc_fixture_publication_v1.py``.  It independently enforces the
-*boundary* the adopted contract fixes: the exact four-path scope, the protected
-paths, the absence of any public or CLI surface, the exact literals, and the
+*boundary* the adopted contract fixes: the exact four-path implementation scope,
+the continuing protected runtime paths, the recorded adoption-baseline dependency
+identities, the absence of any public or CLI surface, the exact literals, and the
 continuing prohibitions.
 
 Success here is qualification-harness evidence only.  It is never scientific,
@@ -35,9 +36,10 @@ ALLOWLISTED_PATHS = (
     ".github/workflows/mesc-p01-04b-publication-qualification.yml",
 )
 
-#: SHA-256 of every protected path at the adopting canonical main. ``.gitattributes``
-#: pins ``eol=lf`` repository-wide, so these digests are stable on every platform.
-PROTECTED_PATH_DIGESTS = {
+#: SHA-256 of continuing publication-boundary runtime paths. These paths remain
+#: byte-identical after adoption. Repository packaging may evolve under later,
+#: independently qualified gates without rewriting this implementation identity.
+CONTINUING_PROTECTED_PATH_DIGESTS = {
     "src/medscale/mesc/__init__.py": (
         "35c5d49d5117178d9da6f01e042d3285949d0bfd5912b50db51cbc546cc5cc7c"
     ),
@@ -62,8 +64,14 @@ PROTECTED_PATH_DIGESTS = {
     "tests/_mesc_p01_04b2d_fixtures_v1.py": (
         "f9e805cf8e5dada8ad86b41a199001ddb1dc1d033aa550246d399d3ff27a9bb3"
     ),
-    "pyproject.toml": ("da80ead771a81685f36d3e537fb3cee5f43624eb9e3917456ad02beb1471585e"),
-    "uv.lock": ("a5a91ffad1aab490080b96d7edc440d07417e06481ce8e0fc7e3c7ffb099c07d"),
+}
+
+#: Historical packaging identities recorded at the publication implementation
+#: adoption baseline. They are evidence about that historical increment, not a
+#: permanent prohibition on independently authorized repository packaging changes.
+ADOPTION_BASELINE_DEPENDENCY_DIGESTS = {
+    "pyproject.toml": "da80ead771a81685f36d3e537fb3cee5f43624eb9e3917456ad02beb1471585e",
+    "uv.lock": "a5a91ffad1aab490080b96d7edc440d07417e06481ce8e0fc7e3c7ffb099c07d",
 }
 
 PAYLOAD_FILENAMES = (
@@ -115,10 +123,17 @@ def test_no_fifth_publication_path_was_added() -> None:
             assert candidate in allowed, str(candidate)
 
 
-def test_protected_paths_are_byte_identical() -> None:
-    for relative, expected in PROTECTED_PATH_DIGESTS.items():
+def test_continuing_protected_paths_are_byte_identical() -> None:
+    for relative, expected in CONTINUING_PROTECTED_PATH_DIGESTS.items():
         payload = (REPOSITORY_ROOT / relative).read_bytes()
         assert hashlib.sha256(payload).hexdigest() == expected, relative
+
+
+def test_adoption_baseline_dependency_digests_remain_recorded() -> None:
+    assert ADOPTION_BASELINE_DEPENDENCY_DIGESTS == {
+        "pyproject.toml": "da80ead771a81685f36d3e537fb3cee5f43624eb9e3917456ad02beb1471585e",
+        "uv.lock": "a5a91ffad1aab490080b96d7edc440d07417e06481ce8e0fc7e3c7ffb099c07d",
+    }
 
 
 def test_no_governance_package_was_modified() -> None:
@@ -134,7 +149,7 @@ def test_no_governance_package_was_modified() -> None:
         assert (package / name).is_file()
 
 
-def test_no_dependency_or_lockfile_change() -> None:
+def test_dependency_evolution_does_not_expose_publisher() -> None:
     manifest = tomllib.loads((REPOSITORY_ROOT / "pyproject.toml").read_text("utf-8"))
     assert "ctypes" not in manifest["project"].get("dependencies", [])
     for entry_points in manifest["project"].get("scripts", {}).values():
@@ -315,10 +330,14 @@ def test_no_network_subprocess_clock_randomness_or_environment() -> None:
 def test_no_real_data_model_or_evidence_surface() -> None:
     source = _source().lower()
     for forbidden in (
+        "accelerate",
+        "bitsandbytes",
         "datasets",
         "huggingface",
+        "peft",
         "transformers",
         "torch",
+        "trl",
         "tokenizer",
         "inference",
         "retrieval",

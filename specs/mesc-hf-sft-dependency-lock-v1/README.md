@@ -110,6 +110,23 @@ no-replace result publication and separately requires a BF16-capable CUDA runtim
 training. Those runtime facts remain enforced by the backend and the later orchestrator;
 they are not weakened by cross-platform package metadata.
 
+## Historical publication-boundary reconciliation
+
+The P01-04B publication implementation qualification recorded `pyproject.toml` and
+`uv.lock` byte digests as part of the exact adoption identity of that historical
+four-path implementation increment. Its continuously executed test originally
+treated those historical packaging bytes as if they could never change again.
+
+This gate does not rewrite those historical digests. It keeps them recorded as
+adoption-baseline evidence, while continuing byte-identity enforcement remains on
+the P01-04B runtime/split paths that are still required to be immutable. The
+publication harness also explicitly prohibits the new training packages from
+appearing in the private fixture publisher. This preserves the original publication
+boundary while allowing a separately specified and qualified dependency-lock gate.
+
+The dedicated cross-platform P01-04B publication qualification must return green on
+the exact dependency-lock PR head after this reconciliation.
+
 ## Acceptance
 
 This gate is complete only when exact-head evidence proves all of the following:
@@ -122,8 +139,10 @@ This gate is complete only when exact-head evidence proves all of the following:
 6. a dry-run sync of `training-hf-sft` resolves from the frozen lock without modifying it;
 7. the repository dependency-lock regression tests pass;
 8. normal Ruff, formatter, strict mypy, full pytest, and `medscale check` remain green on
-   Python 3.11 and 3.12; and
-9. CodeQL and material review findings are clean on the exact PR head.
+   Python 3.11 and 3.12;
+9. the dedicated P01-04B publication qualification remains green on every supported
+   OS/Python matrix entry after historical dependency-baseline reconciliation; and
+10. CodeQL and material review findings are clean on the exact PR head.
 
 ## Non-claims
 
