@@ -1,0 +1,77 @@
+name: Diagnostic PR 200 Python range lock
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: diag-pr200-python-range-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install uv 0.12.6
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.12.6"
+          enable-cache: true
+
+      - name: Install Python 3.12 and 3.14
+        run: |
+          uv python install 3.12
+          uv python install 3.14
+
+      - name: Repair Python range and regenerate lock
+        run: |
+          set -euo pipefail
+          cp scripts/_diag_pr200_python_range_lock.py /tmp/repair.py
+          git fetch origin feat/mesc-hf-sft-dependency-lock-v1
+          test "$(git rev-parse origin/feat/mesc-hf-sft-dependency-lock-v1)" = \
+            "58ee2c3cc2910f2817fd8ff7dd2b1ce94aaeb22b"
+          git switch --detach 58ee2c3cc2910f2817fd8ff7dd2b1ce94aaeb22b
+          python /tmp/repair.py
+          uv lock
+          uv lock --check
+          uv sync --python 3.12 --frozen
+          uv run --python 3.12 ruff format tests/test_mesc_hf_sft_dependency_lock_v1.py
+          uv run --python 3.12 ruff check \
+            tests/test_mesc_hf_sft_dependency_lock_v1.py \
+            tests/test_mesc_p01_04b_publication_qualification_v1.py
+          uv run --python 3.12 ruff format --check \
+            tests/test_mesc_hf_sft_dependency_lock_v1.py \
+            tests/test_mesc_p01_04b_publication_qualification_v1.py
+          uv run --python 3.12 mypy \
+            tests/test_mesc_hf_sft_dependency_lock_v1.py \
+            tests/test_mesc_p01_04b_publication_qualification_v1.py
+          uv run --python 3.12 pytest \
+            tests/test_mesc_hf_sft_dependency_lock_v1.py \
+            tests/test_mesc_p01_04b_publication_qualification_v1.py
+          uv sync --python 3.14 --frozen --extra training-hf-sft --dry-run
+          uv lock --check
+          git diff --check
+          changed="$(git diff --name-only)"
+          expected="$(printf '%s\n%s\n%s\n%s' \
+            'pyproject.toml' \
+            'specs/mesc-hf-sft-dependency-lock-v1/README.md' \
+            'tests/test_mesc_hf_sft_dependency_lock_v1.py' \
+            'uv.lock')"
+          test "$changed" = "$expected"
+          git add \
+            pyproject.toml \
+            specs/mesc-hf-sft-dependency-lock-v1/README.md \
+            tests/test_mesc_hf_sft_dependency_lock_v1.py \
+            uv.lock
+          git diff --cached --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "build(mesc): bound Python to locked SFT runtime support"
+          git push origin HEAD:refs/heads/feat/mesc-hf-sft-dependency-lock-v1
