@@ -358,7 +358,8 @@ def build_training_authorization_receipt(
             ) from exc
         if not snapshot.admits(artifact.artifact_sha256):
             raise TrainingAuthorizationReceiptError(
-                "authorization artifact is not present in the canonical trusted authorization registry"
+                "authorization artifact is not present in the canonical trusted "
+                "authorization registry"
             )
         registry_sha256 = snapshot.registry_sha256
 
