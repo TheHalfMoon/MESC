@@ -73,10 +73,17 @@ class TrainingRuntimeSmokeEvidence:
                 "runtime smoke evidence must be non-empty exact bytes"
             )
         payload = _parse_smoke_payload(self.canonical_bytes)
-        if canonical_json_bytes(payload) != self.canonical_bytes:
+        try:
+            if canonical_json_bytes(payload) != self.canonical_bytes:
+                raise TrainingRuntimeQualificationError(
+                    "runtime smoke evidence bytes are not canonical JSON"
+                )
+        except TrainingRuntimeQualificationError:
+            raise
+        except (TypeError, ValueError, RecursionError) as exc:
             raise TrainingRuntimeQualificationError(
-                "runtime smoke evidence bytes are not canonical JSON"
-            )
+                "runtime smoke evidence cannot be canonicalized"
+            ) from exc
 
         disposition = _require_exact_text(payload["disposition"], field="disposition")
         if disposition not in ("PASS", "FAIL"):
@@ -375,9 +382,9 @@ def _parse_smoke_payload(payload_bytes: bytes) -> dict[str, object]:
         ) from exc
     try:
         value = json.loads(text, object_pairs_hook=_reject_duplicate_pairs)
-    except (json.JSONDecodeError, TrainingRuntimeQualificationError) as exc:
-        if isinstance(exc, TrainingRuntimeQualificationError):
-            raise
+    except TrainingRuntimeQualificationError:
+        raise
+    except (json.JSONDecodeError, ValueError, RecursionError, TypeError) as exc:
         raise TrainingRuntimeQualificationError("runtime smoke evidence is not valid JSON") from exc
     if type(value) is not dict:
         raise TrainingRuntimeQualificationError("runtime smoke evidence must be one JSON object")
@@ -387,6 +394,11 @@ def _parse_smoke_payload(payload_bytes: bytes) -> dict[str, object]:
         )
     if value.get("kind") != _SMOKE_KIND:
         raise TrainingRuntimeQualificationError(f"runtime smoke kind must be exactly {_SMOKE_KIND}")
+    for key, item in value.items():
+        if type(item) is float:
+            raise TrainingRuntimeQualificationError(
+                f"runtime smoke field {key} must not use JSON float encoding"
+            )
     return value
 
 

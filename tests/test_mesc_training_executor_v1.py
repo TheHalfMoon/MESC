@@ -7,6 +7,10 @@ from dataclasses import replace
 import pytest
 
 import medscale.mesc._training_executor_v1 as executor_module
+from medscale.mesc._canonical_json_v1 import canonical_json_bytes
+from medscale.mesc._training_authorization_receipt_v1 import (
+    build_training_authorization_receipt,
+)
 from medscale.mesc._training_corpus_binding_v1 import TrainingCorpusBindingReport
 from medscale.mesc._training_executor_v1 import (
     TrainingBackend,
@@ -33,6 +37,11 @@ from medscale.mesc._training_readiness_v1 import (
     TrainingReadinessReport,
     assess_training_readiness,
 )
+from medscale.mesc._training_runtime_qualification_v1 import (
+    TrainingRuntimeQualificationReceipt,
+    TrainingRuntimeSmokeEvidence,
+    build_training_runtime_qualification_receipt,
+)
 from medscale.modelkit.interfaces import ModelRef
 from medscale.modelkit.manifests import RunnerClass
 from medscale.modelkit.recipes import AdapterMethod, DatasetRef, TrainingRecipe
@@ -41,10 +50,11 @@ _DATASET_SHA = "d" * 64
 _REPOSITORY_SHA = "a" * 40
 _REPOSITORY_TREE = "b" * 40
 _LOCK_SHA = "c" * 64
-_RUNTIME_SHA = "7" * 64
-_AUTH_SHA = "8" * 64
 _CORPUS_RAW_SHA = "6" * 64
 _VERIFIER_SHA = "5" * 64
+_PYTHON = "3.12.14"
+_OS = "linux"
+_GPU = "fixture-gpu"
 
 
 def _candidate(*, role: TrainingRole) -> TrainingCandidate:
@@ -82,10 +92,64 @@ def _recipe(candidate: TrainingCandidate) -> TrainingRecipe:
     )
 
 
-def _readiness_manifest() -> TrainingReadinessManifest:
+def _runtime_receipt() -> TrainingRuntimeQualificationReceipt:
+    smoke = TrainingRuntimeSmokeEvidence(
+        canonical_json_bytes(
+            {
+                "dependency_lock_sha256": _LOCK_SHA,
+                "disposition": "PASS",
+                "gpu_model": _GPU,
+                "kind": "mesc.training_runtime_smoke.v1",
+                "network_accessed": False,
+                "os_name": _OS,
+                "probe_id": "fixture-probe",
+                "probe_version": "v1",
+                "python_version": _PYTHON,
+                "remote_code_allowed": False,
+                "repository_sha": _REPOSITORY_SHA,
+                "repository_tree": _REPOSITORY_TREE,
+                "runner_class": RunnerClass.LOCAL.value,
+            }
+        )
+    )
+    return build_training_runtime_qualification_receipt(
+        runner_class=RunnerClass.LOCAL,
+        python_version=_PYTHON,
+        os_name=_OS,
+        gpu_model=_GPU,
+        dependency_lock_sha256=_LOCK_SHA,
+        repository_sha=_REPOSITORY_SHA,
+        repository_tree=_REPOSITORY_TREE,
+        probe_id="fixture-probe",
+        probe_version="v1",
+        smoke_evidence=smoke,
+    )
+
+
+def _binding() -> TrainingCorpusBindingReport:
+    return TrainingCorpusBindingReport(
+        disposition="PASS",
+        qualification_sha256="1" * 64,
+        training_dataset_sha256=_DATASET_SHA,
+        qualified_training_record_ids_sha256="2" * 64,
+        corpus_sha256="3" * 64,
+        corpus_training_record_ids_sha256="2" * 64,
+        canonical_jsonl_sha256=_CORPUS_RAW_SHA,
+        canonical_jsonl_byte_count=128,
+        example_count=2,
+        blockers=(),
+    )
+
+
+def _readiness_manifest(
+    *,
+    corpus_binding_sha256: str | None = None,
+) -> TrainingReadinessManifest:
     compact = _candidate(role="compact")
     reasoner = _candidate(role="reasoner")
-    return TrainingReadinessManifest(
+    runtime = _runtime_receipt()
+    corpus_sha = corpus_binding_sha256 or _binding().binding_sha256
+    pre = TrainingReadinessManifest(
         compact_candidate=compact,
         reasoner_candidate=reasoner,
         compact_recipe=_recipe(compact),
@@ -104,8 +168,22 @@ def _readiness_manifest() -> TrainingReadinessManifest:
         r2_training_data_only=True,
         heldout_eval_excluded_from_training=True,
         phi_present=False,
-        runtime_qualification_sha256=_RUNTIME_SHA,
-        training_authorization_receipt_sha256=_AUTH_SHA,
+        corpus_binding_sha256=corpus_sha,
+        runtime_qualification_sha256=runtime.receipt_sha256,
+        runtime_qualification_receipt=runtime,
+    )
+    authorization = build_training_authorization_receipt(
+        authorizer_id="fixture-founder",
+        authorization_subject_sha256=pre.authorization_subject_sha256,
+        runtime_qualification_sha256=runtime.receipt_sha256,
+        corpus_binding_sha256=corpus_sha,
+        authorization_statement="Fixture authorization for the exact launch subject.",
+        authorize=True,
+    )
+    return replace(
+        pre,
+        training_authorization_receipt_sha256=authorization.receipt_sha256,
+        training_authorization_receipt=authorization,
     )
 
 
@@ -134,9 +212,9 @@ def _run(
         training_dataset_sha256=manifest.training_dataset_sha256,
         seeds=(17, 42, 91),
         runner_class=RunnerClass.LOCAL,
-        python_version="3.12.14",
-        os_name="linux",
-        gpu_model="fixture-gpu",
+        python_version=_PYTHON,
+        os_name=_OS,
+        gpu_model=_GPU,
         dependency_lock_sha256=_LOCK_SHA,
         repository_sha=_REPOSITORY_SHA,
         repository_tree=_REPOSITORY_TREE,
@@ -157,21 +235,6 @@ def _launch(
         readiness=readiness,
         compact=_run(manifest, role="compact"),
         reasoner=_run(manifest, role="reasoner"),
-    )
-
-
-def _binding() -> TrainingCorpusBindingReport:
-    return TrainingCorpusBindingReport(
-        disposition="PASS",
-        qualification_sha256="1" * 64,
-        training_dataset_sha256=_DATASET_SHA,
-        qualified_training_record_ids_sha256="2" * 64,
-        corpus_sha256="3" * 64,
-        corpus_training_record_ids_sha256="2" * 64,
-        canonical_jsonl_sha256=_CORPUS_RAW_SHA,
-        canonical_jsonl_byte_count=128,
-        example_count=2,
-        blockers=(),
     )
 
 
@@ -319,8 +382,11 @@ def test_success_receipt_binds_all_authority_and_results() -> None:
     assert receipt.corpus_binding_sha256 == binding.binding_sha256
     assert receipt.local_asset_attestation_sha256 == assets.attestation_sha256
     assert receipt.environment_sha256 == environment.environment_sha256
-    assert receipt.runtime_qualification_sha256 == _RUNTIME_SHA
-    assert receipt.training_authorization_receipt_sha256 == _AUTH_SHA
+    assert receipt.runtime_qualification_sha256 == manifest.runtime_qualification_sha256
+    assert (
+        receipt.training_authorization_receipt_sha256
+        == manifest.training_authorization_receipt_sha256
+    )
     assert receipt.result_manifest_sha256 is not None
     assert tuple(item.path for item in receipt.result_artifacts) == tuple(
         sorted(item.path for item in receipt.result_artifacts)
@@ -371,7 +437,10 @@ def test_corpus_binding_must_match_selected_dataset() -> None:
     mismatched = replace(binding, training_dataset_sha256="f" * 64)
     backend = _SuccessBackend()
 
-    with pytest.raises(TrainingExecutionError, match="training dataset"):
+    with pytest.raises(
+        TrainingExecutionError,
+        match="corpus binding identity does not match launch plan",
+    ):
         execute_training(
             manifest=manifest,
             readiness=readiness,

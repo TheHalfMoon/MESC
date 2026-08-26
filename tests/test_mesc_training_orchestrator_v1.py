@@ -133,7 +133,11 @@ def _runtime_receipt(
     )
 
 
-def _readiness_manifest(*, dependency_lock_sha256: str = _LOCK_SHA) -> TrainingReadinessManifest:
+def _readiness_manifest(
+    *,
+    dependency_lock_sha256: str = _LOCK_SHA,
+    corpus_binding_sha256: str = _CORPUS_SHA,
+) -> TrainingReadinessManifest:
     compact = _candidate(role="compact")
     reasoner = _candidate(role="reasoner")
     runtime = _runtime_receipt(dependency_lock_sha256=dependency_lock_sha256)
@@ -156,7 +160,7 @@ def _readiness_manifest(*, dependency_lock_sha256: str = _LOCK_SHA) -> TrainingR
         r2_training_data_only=True,
         heldout_eval_excluded_from_training=True,
         phi_present=False,
-        corpus_binding_sha256=_CORPUS_SHA,
+        corpus_binding_sha256=corpus_binding_sha256,
         runtime_qualification_sha256=runtime.receipt_sha256,
         runtime_qualification_receipt=runtime,
     )
@@ -164,7 +168,7 @@ def _readiness_manifest(*, dependency_lock_sha256: str = _LOCK_SHA) -> TrainingR
         authorizer_id="fixture-founder",
         authorization_subject_sha256=pre.authorization_subject_sha256,
         runtime_qualification_sha256=runtime.receipt_sha256,
-        corpus_binding_sha256=_CORPUS_SHA,
+        corpus_binding_sha256=corpus_binding_sha256,
         authorization_statement="Fixture authorization for the exact launch subject.",
         authorize=True,
     )
@@ -438,8 +442,12 @@ def test_orchestrator_invokes_executor_when_authority_matches(tmp_path: Path) ->
     lock = repository_root / "uv.lock"
     lock.write_bytes(b"orchestrator-lock\n")
     lock_sha = hash_dependency_lock(lock)
+    binding = _binding(raw)
 
-    manifest = _readiness_manifest(dependency_lock_sha256=lock_sha)
+    manifest = _readiness_manifest(
+        dependency_lock_sha256=lock_sha,
+        corpus_binding_sha256=binding.binding_sha256,
+    )
     launch = _launch(manifest, dependency_lock_sha256=lock_sha)
     run = launch.compact
     environment = TrainingExecutionEnvironment(
@@ -457,7 +465,7 @@ def test_orchestrator_invokes_executor_when_authority_matches(tmp_path: Path) ->
     receipt = run_training_orchestrator(
         manifest=manifest,
         launch_plan=launch,
-        corpus_binding=_binding(raw),
+        corpus_binding=binding,
         role="compact",
         model_root=model_root,
         corpus_path=corpus_path,
@@ -483,7 +491,8 @@ def test_orchestrator_refuses_environment_mismatch(tmp_path: Path) -> None:
     repository_root = tmp_path / "repo"
     repository_root.mkdir()
 
-    manifest = _readiness_manifest()
+    binding = _binding(raw)
+    manifest = _readiness_manifest(corpus_binding_sha256=binding.binding_sha256)
     launch = _launch(manifest)
     run = launch.compact
     environment = TrainingExecutionEnvironment(
@@ -500,7 +509,7 @@ def test_orchestrator_refuses_environment_mismatch(tmp_path: Path) -> None:
         run_training_orchestrator(
             manifest=manifest,
             launch_plan=launch,
-            corpus_binding=_binding(raw),
+            corpus_binding=binding,
             role="compact",
             model_root=model_root,
             corpus_path=corpus_path,
@@ -520,7 +529,9 @@ def test_orchestrator_refuses_blocked_readiness(tmp_path: Path) -> None:
     repository_root = tmp_path / "repo"
     repository_root.mkdir()
 
-    manifest = replace(_readiness_manifest(), pilot_closeout_disposition="FAIL")
+    binding = _binding(raw)
+    good = _readiness_manifest(corpus_binding_sha256=binding.binding_sha256)
+    manifest = replace(good, pilot_closeout_disposition="FAIL")
     readiness = assess_training_readiness(manifest)
     assert readiness.disposition == "BLOCKED"
 
@@ -530,8 +541,8 @@ def test_orchestrator_refuses_blocked_readiness(tmp_path: Path) -> None:
         run_training_orchestrator(
             manifest=manifest,
             readiness=readiness,
-            launch_plan=_launch(_readiness_manifest()),
-            corpus_binding=_binding(raw),
+            launch_plan=_launch(good),
+            corpus_binding=binding,
             role="compact",
             model_root=model_root,
             corpus_path=corpus_path,
@@ -559,7 +570,8 @@ def test_orchestrator_refuses_launch_plan_drift(tmp_path: Path) -> None:
     repository_root = tmp_path / "repo"
     repository_root.mkdir()
 
-    manifest = _readiness_manifest()
+    binding = _binding(raw)
+    manifest = _readiness_manifest(corpus_binding_sha256=binding.binding_sha256)
     launch = _launch(manifest)
     drifted = replace(launch, readiness_manifest_sha256="0" * 64)
 
@@ -567,7 +579,7 @@ def test_orchestrator_refuses_launch_plan_drift(tmp_path: Path) -> None:
         run_training_orchestrator(
             manifest=manifest,
             launch_plan=drifted,
-            corpus_binding=_binding(raw),
+            corpus_binding=binding,
             role="compact",
             model_root=model_root,
             corpus_path=corpus_path,
