@@ -1,8 +1,8 @@
 """Deterministic pre-execution MESC training launch-plan construction.
 
 A launch plan is an immutable, content-addressed bridge between a fully qualified
-``READY_TO_LAUNCH`` readiness manifest and a later training executor. This module
-never accesses providers, model weights, datasets, credentials, GPUs, or trainers.
+``READY_TO_LAUNCH`` readiness manifest and a later training executor. This module never
+accesses providers, model weights, datasets, credentials, GPUs, or trainers.
 """
 
 from __future__ import annotations
@@ -16,6 +16,9 @@ from medscale.mesc._training_readiness_v1 import (
     TrainingReadinessManifest,
     TrainingReadinessReport,
     assess_training_readiness,
+)
+from medscale.mesc._training_runtime_qualification_v1 import (
+    TrainingRuntimeQualificationReceipt,
 )
 from medscale.modelkit.manifests import RunnerClass
 from medscale.reproducibility import content_hash
@@ -196,7 +199,7 @@ def build_training_launch_plan(
     compact: TrainingRunPlan,
     reasoner: TrainingRunPlan,
 ) -> TrainingLaunchPlan:
-    """Build a plan only from an exact, independently recomputable launch-ready manifest."""
+    """Build a plan only from exact semantic authority and exact runtime bindings."""
     recomputed = assess_training_readiness(manifest)
     if readiness != recomputed:
         raise TrainingLaunchPlanError(
@@ -212,6 +215,9 @@ def build_training_launch_plan(
         raise TrainingLaunchPlanError("runtime qualification receipt is absent")
     if manifest.training_authorization_receipt_sha256 is None:
         raise TrainingLaunchPlanError("training authorization receipt is absent")
+    runtime = manifest.runtime_qualification_receipt
+    if type(runtime) is not TrainingRuntimeQualificationReceipt:
+        raise TrainingLaunchPlanError("validated runtime qualification receipt is absent")
 
     _require_run_binding(
         role="compact",
@@ -231,6 +237,8 @@ def build_training_launch_plan(
         recipe_id=manifest.reasoner_recipe.recipe_id,
         training_dataset_sha256=manifest.training_dataset_sha256,
     )
+    _require_runtime_binding(role="compact", run=compact, runtime=runtime)
+    _require_runtime_binding(role="reasoner", run=reasoner, runtime=runtime)
 
     return TrainingLaunchPlan(
         readiness_manifest_sha256=manifest.manifest_sha256,
@@ -259,9 +267,37 @@ def _require_run_binding(
         ("recipe_id", run.recipe_id, recipe_id),
         ("training_dataset_sha256", run.training_dataset_sha256, training_dataset_sha256),
     )
-    for field, actual, wanted in expected:
+    for field_name, actual, wanted in expected:
         if actual != wanted:
-            raise TrainingLaunchPlanError(f"{role} run {field} does not match readiness manifest")
+            raise TrainingLaunchPlanError(
+                f"{role} run {field_name} does not match readiness manifest"
+            )
+
+
+def _require_runtime_binding(
+    *,
+    role: TrainingRole,
+    run: TrainingRunPlan,
+    runtime: TrainingRuntimeQualificationReceipt,
+) -> None:
+    expected: tuple[tuple[str, object, object], ...] = (
+        ("runner_class", run.runner_class, runtime.runner_class),
+        ("python_version", run.python_version, runtime.python_version),
+        ("os_name", run.os_name, runtime.os_name),
+        ("gpu_model", run.gpu_model, runtime.gpu_model),
+        (
+            "dependency_lock_sha256",
+            run.dependency_lock_sha256,
+            runtime.dependency_lock_sha256,
+        ),
+        ("repository_sha", run.repository_sha, runtime.repository_sha),
+        ("repository_tree", run.repository_tree, runtime.repository_tree),
+    )
+    for field_name, actual, wanted in expected:
+        if actual != wanted:
+            raise TrainingLaunchPlanError(
+                f"{role} run {field_name} does not match qualified runtime"
+            )
 
 
 def _require_sha256(value: str, *, field: str) -> None:
