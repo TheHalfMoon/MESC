@@ -68,17 +68,23 @@ class TrainingAuthorizationArtifact:
                 f"authorization artifact kind must be exactly {_ARTIFACT_KIND}"
             )
         scope = _require_scope(payload["authorization_scope"])
-        authorizer_id = _require_artifact_text(payload["authorizer_id"], field="authorizer_id")
+        authorizer_id = _require_artifact_text(
+            payload["authorizer_id"], field="authorizer_id"
+        )
         statement = _require_artifact_text(
             payload["authorization_statement"], field="authorization_statement"
         )
         subject = _require_sha256(
-            payload["authorization_subject_sha256"], field="authorization_subject_sha256"
+            payload["authorization_subject_sha256"],
+            field="authorization_subject_sha256",
         )
         runtime = _require_sha256(
-            payload["runtime_qualification_sha256"], field="runtime_qualification_sha256"
+            payload["runtime_qualification_sha256"],
+            field="runtime_qualification_sha256",
         )
-        corpus = _require_sha256(payload["corpus_binding_sha256"], field="corpus_binding_sha256")
+        corpus = _require_sha256(
+            payload["corpus_binding_sha256"], field="corpus_binding_sha256"
+        )
         authorize = payload["authorize"]
         if type(authorize) is not bool:
             raise TrainingAuthorizationReceiptError(
@@ -179,28 +185,26 @@ class TrainingAuthorizationReceipt:
                 raise TrainingAuthorizationReceiptError(
                     "AUTHORIZED receipts require real_training_authorized=true"
                 )
-            if self.authorization_artifact is None:
+            artifact = self.authorization_artifact
+            if artifact is None:
                 raise TrainingAuthorizationReceiptError(
                     "AUTHORIZED receipts require validated authorization artifact bytes"
                 )
-            _require_artifact_matches_receipt(self.authorization_artifact, self)
-            if not self.authorization_artifact.authorize:
+            _require_artifact_matches_receipt(artifact, self)
+            if not artifact.authorize:
                 raise TrainingAuthorizationReceiptError(
                     "AUTHORIZED receipt artifact must carry authorize=true"
                 )
-            expected_registry_sha256 = (
-                authorization_trust.training_authorization_trust_registry_sha256()
+            registry_sha256 = self.authorization_trust_registry_sha256
+            if registry_sha256 is None:
+                raise TrainingAuthorizationReceiptError(
+                    "AUTHORIZED receipt must bind an authorization trust registry"
+                )
+            _validate_trust_admission(
+                expected_registry_sha256=registry_sha256,
+                artifact_sha256=artifact.artifact_sha256,
+                context="AUTHORIZED receipt",
             )
-            if self.authorization_trust_registry_sha256 != expected_registry_sha256:
-                raise TrainingAuthorizationReceiptError(
-                    "AUTHORIZED receipt does not bind the canonical authorization trust registry"
-                )
-            if not authorization_trust.is_trusted_training_authorization_artifact_sha256(
-                self.authorization_artifact.artifact_sha256
-            ):
-                raise TrainingAuthorizationReceiptError(
-                    "AUTHORIZED receipt artifact is not present in the canonical trust registry"
-                )
         else:
             if not self.blockers:
                 raise TrainingAuthorizationReceiptError("BLOCKED receipts must record blockers")
@@ -220,7 +224,7 @@ class TrainingAuthorizationReceipt:
                     )
 
     def validate_current_trust(self) -> None:
-        """Require this AUTHORIZED receipt to remain trusted by the current registry."""
+        """Require this AUTHORIZED receipt to remain trusted by one current snapshot."""
         if self.disposition != "AUTHORIZED" or not self.real_training_authorized:
             raise TrainingAuthorizationReceiptError(
                 "current-trust validation requires an AUTHORIZED receipt"
@@ -230,17 +234,16 @@ class TrainingAuthorizationReceipt:
             raise TrainingAuthorizationReceiptError(
                 "AUTHORIZED receipt lacks validated authorization artifact bytes"
             )
-        current_registry_sha256 = authorization_trust.training_authorization_trust_registry_sha256()
-        if self.authorization_trust_registry_sha256 != current_registry_sha256:
+        registry_sha256 = self.authorization_trust_registry_sha256
+        if registry_sha256 is None:
             raise TrainingAuthorizationReceiptError(
-                "authorization trust registry changed after receipt admission"
+                "AUTHORIZED receipt lacks an authorization trust registry binding"
             )
-        if not authorization_trust.is_trusted_training_authorization_artifact_sha256(
-            artifact.artifact_sha256
-        ):
-            raise TrainingAuthorizationReceiptError(
-                "authorization artifact is no longer trusted by the canonical registry"
-            )
+        _validate_trust_admission(
+            expected_registry_sha256=registry_sha256,
+            artifact_sha256=artifact.artifact_sha256,
+            context="current authorization trust",
+        )
 
     @property
     def authorization_artifact_sha256(self) -> str | None:
@@ -259,7 +262,7 @@ class TrainingAuthorizationReceipt:
             "authorization_scope": self.authorization_scope,
             "authorization_statement": self.authorization_statement,
             "authorization_subject_sha256": self.authorization_subject_sha256,
-            "authorization_trust_registry_sha256": (self.authorization_trust_registry_sha256),
+            "authorization_trust_registry_sha256": self.authorization_trust_registry_sha256,
             "authorizer_id": self.authorizer_id,
             "blockers": list(self.blockers),
             "corpus_binding_sha256": self.corpus_binding_sha256,
@@ -289,14 +292,20 @@ def build_training_authorization_receipt(
     the repository-controlled trust registry. ``authorize=False`` remains fail-closed.
     """
     normalized_authorizer = _require_text(authorizer_id, field="authorizer_id")
-    normalized_statement = _require_text(authorization_statement, field="authorization_statement")
+    normalized_statement = _require_text(
+        authorization_statement, field="authorization_statement"
+    )
     scope = _require_scope(authorization_scope)
     subject = _require_sha256(
         authorization_subject_sha256,
         field="authorization_subject_sha256",
     )
-    runtime = _require_sha256(runtime_qualification_sha256, field="runtime_qualification_sha256")
-    corpus = _require_sha256(corpus_binding_sha256, field="corpus_binding_sha256")
+    runtime = _require_sha256(
+        runtime_qualification_sha256, field="runtime_qualification_sha256"
+    )
+    corpus = _require_sha256(
+        corpus_binding_sha256, field="corpus_binding_sha256"
+    )
     if type(authorize) is not bool:
         raise TrainingAuthorizationReceiptError("authorize must be an exact bool")
 
@@ -338,16 +347,20 @@ def build_training_authorization_receipt(
         raise TrainingAuthorizationReceiptError(
             "authorize=true requires validated authorization_artifact bytes"
         )
-    if (
-        authorize
-        and artifact is not None
-        and not authorization_trust.is_trusted_training_authorization_artifact_sha256(
-            artifact.artifact_sha256
-        )
-    ):
-        raise TrainingAuthorizationReceiptError(
-            "authorization artifact is not present in the canonical trusted authorization registry"
-        )
+
+    registry_sha256: str | None = None
+    if authorize and artifact is not None:
+        try:
+            snapshot = authorization_trust.training_authorization_trust_snapshot()
+        except authorization_trust.TrainingAuthorizationTrustError as exc:
+            raise TrainingAuthorizationReceiptError(
+                "canonical authorization trust registry is malformed"
+            ) from exc
+        if not snapshot.admits(artifact.artifact_sha256):
+            raise TrainingAuthorizationReceiptError(
+                "authorization artifact is not present in the canonical trusted authorization registry"
+            )
+        registry_sha256 = snapshot.registry_sha256
 
     blockers: list[str] = []
     if not authorize:
@@ -364,13 +377,26 @@ def build_training_authorization_receipt(
         authorization_statement=normalized_statement,
         real_training_authorized=disposition == "AUTHORIZED",
         blockers=tuple(blockers),
-        authorization_trust_registry_sha256=(
-            authorization_trust.training_authorization_trust_registry_sha256()
-            if disposition == "AUTHORIZED"
-            else None
-        ),
+        authorization_trust_registry_sha256=registry_sha256,
         authorization_artifact=artifact,
     )
+
+
+def _validate_trust_admission(
+    *,
+    expected_registry_sha256: str,
+    artifact_sha256: str,
+    context: str,
+) -> None:
+    try:
+        authorization_trust.validate_training_authorization_trust(
+            expected_registry_sha256=expected_registry_sha256,
+            artifact_sha256=artifact_sha256,
+        )
+    except authorization_trust.TrainingAuthorizationTrustError as exc:
+        raise TrainingAuthorizationReceiptError(
+            f"{context} is not admitted by the canonical authorization trust registry"
+        ) from exc
 
 
 def _parse_authorization_payload(payload_bytes: bytes) -> dict[str, object]:
@@ -389,9 +415,13 @@ def _parse_authorization_payload(payload_bytes: bytes) -> dict[str, object]:
     except TrainingAuthorizationReceiptError:
         raise
     except (json.JSONDecodeError, TypeError, ValueError, RecursionError) as exc:
-        raise TrainingAuthorizationReceiptError("authorization artifact is not valid JSON") from exc
+        raise TrainingAuthorizationReceiptError(
+            "authorization artifact is not valid JSON"
+        ) from exc
     if type(value) is not dict:
-        raise TrainingAuthorizationReceiptError("authorization artifact must be one JSON object")
+        raise TrainingAuthorizationReceiptError(
+            "authorization artifact must be one JSON object"
+        )
     if set(value) != _ARTIFACT_KEYS:
         raise TrainingAuthorizationReceiptError(
             "authorization artifact must contain exactly the canonical field set"
@@ -433,8 +463,14 @@ def _require_artifact_matches_receipt(
     comparisons = (
         (artifact.authorization_scope, receipt.authorization_scope),
         (artifact.authorizer_id, receipt.authorizer_id),
-        (artifact.authorization_subject_sha256, receipt.authorization_subject_sha256),
-        (artifact.runtime_qualification_sha256, receipt.runtime_qualification_sha256),
+        (
+            artifact.authorization_subject_sha256,
+            receipt.authorization_subject_sha256,
+        ),
+        (
+            artifact.runtime_qualification_sha256,
+            receipt.runtime_qualification_sha256,
+        ),
         (artifact.corpus_binding_sha256, receipt.corpus_binding_sha256),
         (artifact.authorization_statement, receipt.authorization_statement),
     )
@@ -463,7 +499,9 @@ def _require_artifact_text(value: object, *, field: str) -> str:
 
 def _require_text(value: object, *, field: str) -> str:
     if type(value) is not str or not value.strip() or "\x00" in value:
-        raise TrainingAuthorizationReceiptError(f"{field} must be exact non-empty NUL-free text")
+        raise TrainingAuthorizationReceiptError(
+            f"{field} must be exact non-empty NUL-free text"
+        )
     return value.strip()
 
 
