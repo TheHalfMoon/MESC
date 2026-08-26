@@ -407,37 +407,51 @@ gates are satisfied by live repository truth.
 ## MRL-8 — Real autonomous research preflight
 
 All MRL repository-side gates below are mandatory. There is no optional MRL-6 bypass.
+No task that reads, verifies, or accesses real model, corpus, runtime, GPU, sandbox, or
+training-authorization evidence may begin before MRL-0800 is `CLOSED_CANONICAL`.
+
+- [ ] **MRL-0800 — Enter real autonomous research preflight**
+  - Depends on: MRL-0299, MRL-0399, MRL-0499, MRL-0599, MRL-0699, MRL-0799, and current
+    training/runtime governance.
+  - Acceptance: `MRL_FIXTURE_LOOP_PROVEN`, `MRL_EVALUATION_CONTROL_READY`,
+    `MRL_PROCEDURE_MEMORY_READY`, `MRL_RESEARCHER_EVAL_READY`,
+    `MRL_CONTAMINATION_V2_READY`, and `MESC_MACHINE_STATE_READY` are all proven by live
+    canonical exact-head evidence.
+  - Acceptance: this entry gate grants no model/data/runtime/GPU/training authority by
+    itself; each later task still requires its own external evidence/authority.
+  - Exit: `MRL_REAL_PREFLIGHT_ENTERED`.
 
 - [ ] **MRL-0801 — Verify exact model/weights evidence**
-  - Depends on: separate real-asset authorization/evidence and MRL-0599.
+  - Depends on: MRL-0800 and separate real-asset authorization/evidence.
 
 - [ ] **MRL-0802 — Verify corpus rights and exact identity**
-  - Depends on: separate real-asset authorization/evidence and MRL-0599.
+  - Depends on: MRL-0800 and separate real-asset authorization/evidence.
 
 - [ ] **MRL-0803 — Verify contamination and held-out isolation evidence**
-  - Depends on: MRL-0699 and actual corpus/evaluation evidence.
+  - Depends on: MRL-0800, MRL-0699, and actual corpus/evaluation evidence.
 
 - [ ] **MRL-0804 — Verify runtime/GPU qualification**
-  - Depends on: real runtime evidence and MRL-0299.
+  - Depends on: MRL-0800 and real runtime evidence.
 
 - [ ] **MRL-0805 — Verify applicable training authorization**
-  - Depends on: independent authority artifact/trust path and current training governance.
+  - Depends on: MRL-0800, independent authority artifact/trust path, and current training
+    governance.
 
 - [ ] **MRL-0806 — Freeze real research objective and all budgets**
-  - Depends on: MRL-0599 plus selected real experiment.
+  - Depends on: MRL-0800 plus selected real experiment.
   - Acceptance: compute/resource/adaptive-query/result-exposure budgets are exact and
     externally frozen.
 
 - [ ] **MRL-0807 — Freeze evaluator and sealed Tier 3 identities**
-  - Depends on: MRL-0399 plus real evaluation assets.
+  - Depends on: MRL-0800 plus real evaluation assets.
   - Acceptance: evidence contract remains non-promotional; model promotion is outside MRL
     pending the dedicated ADR required by ADR-0033.
 
 - [ ] **MRL-0808 — Verify real execution sandbox**
-  - Depends on: MRL-0299 and runtime evidence.
+  - Depends on: MRL-0800 and real runtime/sandbox evidence.
 
 - [ ] **MRL-0809 — Exact-head preflight qualification**
-  - Depends on: MRL-0801..0808, MRL-0399, MRL-0499, MRL-0599, MRL-0699, MRL-0799.
+  - Depends on: MRL-0801..0808 and MRL-0800.
   - Acceptance: current machine-state projection is bound to the exact candidate commit
     and cannot substitute for underlying canonical gate evidence.
 
@@ -463,6 +477,7 @@ MRL_PROCEDURE_MEMORY_READY
 MRL_RESEARCHER_EVAL_READY
 MRL_CONTAMINATION_V2_READY
 MESC_MACHINE_STATE_READY
+MRL_REAL_PREFLIGHT_ENTERED
 MRL_REAL_EXPERIMENT_READY
 TRAINING_CODE_READY
 TRAINING_READY
@@ -474,6 +489,7 @@ Also permanent:
 
 ```text
 EVIDENCE_CANDIDATE != PROMOTED
+MRL_REAL_PREFLIGHT_ENTERED != MRL_REAL_EXPERIMENT_READY
 MRL_REAL_EXPERIMENT_READY != TRAINING_READY
 ```
 
