@@ -143,8 +143,16 @@ fail-closed, including explicit digest removal. A caller must obtain a newly adm
 receipt under the new canonical registry snapshot before training can become
 `READY_TO_LAUNCH` again.
 
-The executor performs a final trust admission immediately around `backend.execute()`. The
-same registry lock serializes that final admission with the repository-supported
-in-process test mutation path, so revocation cannot interleave between the final canonical
-trust check and backend invocation. The lock establishes admission ordering only; it does
-not create a training-cancellation authority or mint any real authorization digest.
+Use-time validation reconstructs the authorization artifact from its immutable canonical
+bytes and creates a local validated receipt snapshot. Readiness, binding, and final executor
+admission use that local snapshot rather than rereading caller-owned frozen dataclasses,
+which remain mutable through Python escape hatches such as `object.__setattr__`.
+
+The executor performs a final trust admission immediately around `backend.execute()`. A
+short registry lock validates admission and records an active backend-admission lease, then
+releases the lock before arbitrary backend code runs. Public trust queries are therefore
+safe from backend reentry deadlock. While a lease is active, the repository-supported
+in-process test mutation path refuses registry replacement, so revocation cannot
+interleave between final canonical admission and backend invocation. This lease establishes
+admission ordering only; it does not create training-cancellation authority or mint any
+real authorization digest.

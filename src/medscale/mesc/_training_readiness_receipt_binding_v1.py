@@ -130,7 +130,7 @@ def bind_training_authorization_to_readiness(
             "authorization receipt must be AUTHORIZED with real_training_authorized=true"
         )
     try:
-        receipt.validate_current_trust()
+        receipt = receipt.validated_current_trust_snapshot()
     except TrainingAuthorizationReceiptError as exc:
         raise TrainingReadinessReceiptBindingError(
             "authorization receipt is not trusted by the current canonical registry"

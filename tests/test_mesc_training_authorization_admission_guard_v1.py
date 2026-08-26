@@ -84,3 +84,72 @@ def test_malformed_registry_is_domain_fail_closed(
         "training authorization receipt is not trusted by the current canonical registry"
         in report.blockers
     )
+
+
+def test_backend_may_query_trust_without_deadlock() -> None:
+    manifest, readiness, launch, binding, assets, environment = executor_test_support._bundle()
+
+    class TrustQueryingBackend(executor_test_support._SuccessBackend):
+        def __init__(self) -> None:
+            super().__init__()
+            self.registry_sha256: str | None = None
+
+        def execute(
+            self,
+            *,
+            manifest: TrainingExecutionManifest,
+        ) -> executor_module.TrainingBackendResult:
+            self.registry_sha256 = (
+                authorization_trust.training_authorization_trust_registry_sha256()
+            )
+            return super().execute(manifest=manifest)
+
+    backend = TrustQueryingBackend()
+    receipt = execute_training(
+        manifest=manifest,
+        readiness=readiness,
+        launch_plan=launch,
+        corpus_binding=binding,
+        local_assets=assets,
+        environment=environment,
+        role="compact",
+        backend=backend,
+    )
+
+    assert receipt.disposition == "SUCCEEDED"
+    assert backend.calls == 1
+    assert backend.registry_sha256 is not None
+
+
+def test_active_backend_admission_refuses_registry_replacement() -> None:
+    manifest, readiness, launch, binding, assets, environment = executor_test_support._bundle()
+
+    class RegistryMutationBackend(executor_test_support._SuccessBackend):
+        def execute(
+            self,
+            *,
+            manifest: TrainingExecutionManifest,
+        ) -> executor_module.TrainingBackendResult:
+            with pytest.raises(
+                authorization_trust.TrainingAuthorizationTrustError,
+                match="cannot change during active backend admission",
+            ):
+                authorization_trust._replace_training_authorization_trust_registry_for_tests(
+                    frozenset()
+                )
+            return super().execute(manifest=manifest)
+
+    backend = RegistryMutationBackend()
+    receipt = execute_training(
+        manifest=manifest,
+        readiness=readiness,
+        launch_plan=launch,
+        corpus_binding=binding,
+        local_assets=assets,
+        environment=environment,
+        role="compact",
+        backend=backend,
+    )
+
+    assert receipt.disposition == "SUCCEEDED"
+    assert backend.calls == 1

@@ -210,7 +210,8 @@ def test_binds_pass_runtime_and_authorized_receipt_to_ready_to_launch() -> None:
     assert report.disposition == "READY_TO_LAUNCH"
     assert final.runtime_qualification_sha256 == runtime.receipt_sha256
     assert final.training_authorization_receipt_sha256 == auth.receipt_sha256
-    assert final.training_authorization_receipt is auth
+    assert final.training_authorization_receipt == auth
+    assert final.training_authorization_receipt is not auth
 
     rebound = bind_training_authorization_to_readiness(
         final,

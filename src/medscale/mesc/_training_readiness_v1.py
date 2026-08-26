@@ -321,9 +321,16 @@ def _validate_authorization_receipt(
     *,
     blockers: list[str],
 ) -> None:
-    receipt = manifest.training_authorization_receipt
-    if type(receipt) is not TrainingAuthorizationReceipt:
+    source_receipt = manifest.training_authorization_receipt
+    if type(source_receipt) is not TrainingAuthorizationReceipt:
         blockers.append("training authorization receipt is non-canonical")
+        return
+    try:
+        receipt = source_receipt.validated_current_trust_snapshot()
+    except TrainingAuthorizationReceiptError:
+        blockers.append(
+            "training authorization receipt is not trusted by the current canonical registry"
+        )
         return
     if receipt.receipt_sha256 != manifest.training_authorization_receipt_sha256:
         blockers.append("training authorization receipt hash does not match manifest")
@@ -331,12 +338,6 @@ def _validate_authorization_receipt(
         blockers.append("training authorization receipt is not explicitly AUTHORIZED")
     if receipt.blockers:
         blockers.append("training authorization receipt retains blockers")
-    try:
-        receipt.validate_current_trust()
-    except TrainingAuthorizationReceiptError:
-        blockers.append(
-            "training authorization receipt is not trusted by the current canonical registry"
-        )
     if receipt.authorization_subject_sha256 != manifest.authorization_subject_sha256:
         blockers.append("training authorization receipt targets a different readiness subject")
     if receipt.runtime_qualification_sha256 != manifest.runtime_qualification_sha256:
