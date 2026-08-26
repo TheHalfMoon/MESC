@@ -109,7 +109,10 @@ def _require_snapshot_admission(
     expected_registry_sha256: str,
     artifact_sha256: str,
 ) -> None:
-    if type(expected_registry_sha256) is not str or _SHA256.fullmatch(expected_registry_sha256) is None:
+    if (
+        type(expected_registry_sha256) is not str
+        or _SHA256.fullmatch(expected_registry_sha256) is None
+    ):
         raise TrainingAuthorizationTrustError(
             "expected authorization trust registry identity must be 64 lowercase hex characters"
         )
@@ -160,7 +163,8 @@ def _replace_training_authorization_trust_registry_for_tests(
     for value in registry:
         if type(value) is not str or _SHA256.fullmatch(value) is None:
             raise ValueError(
-                "test training authorization trust registry entries must be 64 lowercase hex characters"
+                "test training authorization trust registry entries must be "
+                "64 lowercase hex characters"
             )
     with _REGISTRY_LOCK:
         previous = TRUSTED_TRAINING_AUTHORIZATION_ARTIFACT_SHA256
