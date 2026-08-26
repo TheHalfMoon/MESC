@@ -242,6 +242,9 @@ def test_authorized_receipt_rejects_current_trust_after_registry_revocation() ->
 
     with pytest.raises(
         TrainingAuthorizationReceiptError,
-        match=r"current authorization trust is not admitted by the canonical authorization trust registry",
+        match=(
+            r"current authorization trust is not admitted by the canonical "
+            r"authorization trust registry"
+        ),
     ):
         receipt.validate_current_trust()
