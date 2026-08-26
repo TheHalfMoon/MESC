@@ -9,7 +9,9 @@ import pytest
 from medscale.mesc._canonical_json_v1 import canonical_json_bytes
 from medscale.mesc._training_authorization_receipt_v1 import (
     TrainingAuthorizationReceipt,
-    build_training_authorization_receipt,
+)
+from medscale.mesc._training_authorization_receipt_v1 import (
+    build_training_authorization_receipt as _build_training_authorization_receipt,
 )
 from medscale.mesc._training_readiness_receipt_binding_v1 import (
     TrainingReadinessReceiptBindingError,
@@ -36,6 +38,41 @@ _CORPUS = "c" * 64
 _LOCK = "a" * 64
 _SHA = "b" * 40
 _TREE = "e" * 40
+
+
+def build_training_authorization_receipt(
+    *,
+    authorizer_id: str,
+    authorization_subject_sha256: str,
+    runtime_qualification_sha256: str,
+    corpus_binding_sha256: str,
+    authorization_statement: str,
+    authorize: bool,
+) -> TrainingAuthorizationReceipt:
+    """Build explicit canonical synthetic authorization evidence for this test module."""
+    artifact = None
+    if authorize:
+        artifact = canonical_json_bytes(
+            {
+                "authorization_scope": "TRAINING_EXECUTION",
+                "authorization_statement": authorization_statement,
+                "authorization_subject_sha256": authorization_subject_sha256,
+                "authorize": True,
+                "authorizer_id": authorizer_id,
+                "corpus_binding_sha256": corpus_binding_sha256,
+                "kind": "mesc.training_authorization.v1",
+                "runtime_qualification_sha256": runtime_qualification_sha256,
+            }
+        )
+    return _build_training_authorization_receipt(
+        authorizer_id=authorizer_id,
+        authorization_subject_sha256=authorization_subject_sha256,
+        runtime_qualification_sha256=runtime_qualification_sha256,
+        corpus_binding_sha256=corpus_binding_sha256,
+        authorization_statement=authorization_statement,
+        authorize=authorize,
+        authorization_artifact=artifact,
+    )
 
 
 def _candidate(*, model_id: str, revision: str, weight_byte: str) -> TrainingCandidate:
