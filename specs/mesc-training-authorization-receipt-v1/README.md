@@ -98,3 +98,28 @@ Receipt producers bind through `mesc-training-readiness-receipt-binding-v1`. Rem
 work is external/evidence: authorized local model assets, qualified corpus bytes,
 platform-qualified runtime smoke, a real founder/operator authorization artifact,
 training/evaluation, rights/SBOM/provenance, and a non-empty qualifying GitHub Release.
+
+## Canonical trust registry
+
+Canonical JSON and SHA-256 prove artifact identity, not who authorized it. Therefore an
+`authorize=true` artifact is necessary but not sufficient for `AUTHORIZED`.
+
+The validator additionally requires the artifact SHA-256 to be present in the
+repository-controlled registry implemented by:
+
+```text
+src/medscale/mesc/_training_authorization_trust_v1.py
+```
+
+The production registry is intentionally empty in this implementation. No repository
+caller can mint real training authority from scalars or self-authored canonical bytes.
+Provisioning a real artifact digest is a separate governance mutation: it must bind the
+exact artifact, be independently reviewed, and be authenticated by the repository's
+Founder-attestation process before canonical adoption. Test code may temporarily replace
+the private in-process registry only to exercise positive paths; no synthetic digest is
+shipped as a production trust root.
+
+An `AUTHORIZED` receipt content-addresses the exact trust-registry identity used when the
+artifact was admitted. Missing, malformed, or unregistered authority evidence fails
+closed. This package does not provision a Founder key, fabricate a Founder attestation,
+or grant current real-world training authority.

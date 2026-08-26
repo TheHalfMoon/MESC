@@ -2,14 +2,18 @@
 
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Callable
 from dataclasses import replace
+from unittest.mock import patch
 
 import pytest
 
+from medscale.mesc import _training_authorization_trust_v1 as authorization_trust
 from medscale.mesc._canonical_json_v1 import canonical_json_bytes
 from medscale.mesc._training_authorization_receipt_v1 import (
     TrainingAuthorizationReceipt,
+    TrainingAuthorizationReceiptError,
 )
 from medscale.mesc._training_authorization_receipt_v1 import (
     build_training_authorization_receipt as _build_training_authorization_receipt,
@@ -44,7 +48,7 @@ def build_training_authorization_receipt(
     authorization_statement: str,
     authorize: bool,
 ) -> TrainingAuthorizationReceipt:
-    """Build explicit canonical synthetic authorization evidence for this test module."""
+    """Build explicit synthetic evidence under a test-only temporary trust registry."""
     artifact = None
     if authorize:
         artifact = canonical_json_bytes(
@@ -59,15 +63,31 @@ def build_training_authorization_receipt(
                 "runtime_qualification_sha256": runtime_qualification_sha256,
             }
         )
-    return _build_training_authorization_receipt(
-        authorizer_id=authorizer_id,
-        authorization_subject_sha256=authorization_subject_sha256,
-        runtime_qualification_sha256=runtime_qualification_sha256,
-        corpus_binding_sha256=corpus_binding_sha256,
-        authorization_statement=authorization_statement,
-        authorize=authorize,
-        authorization_artifact=artifact,
-    )
+    if artifact is None:
+        return _build_training_authorization_receipt(
+            authorizer_id=authorizer_id,
+            authorization_subject_sha256=authorization_subject_sha256,
+            runtime_qualification_sha256=runtime_qualification_sha256,
+            corpus_binding_sha256=corpus_binding_sha256,
+            authorization_statement=authorization_statement,
+            authorize=authorize,
+            authorization_artifact=None,
+        )
+    trusted = frozenset({hashlib.sha256(artifact).hexdigest()})
+    with patch.object(
+        authorization_trust,
+        "TRUSTED_TRAINING_AUTHORIZATION_ARTIFACT_SHA256",
+        trusted,
+    ):
+        return _build_training_authorization_receipt(
+            authorizer_id=authorizer_id,
+            authorization_subject_sha256=authorization_subject_sha256,
+            runtime_qualification_sha256=runtime_qualification_sha256,
+            corpus_binding_sha256=corpus_binding_sha256,
+            authorization_statement=authorization_statement,
+            authorize=authorize,
+            authorization_artifact=artifact,
+        )
 
 
 def _candidate(*, model_id: str, revision: str, weight_byte: str) -> TrainingCandidate:
@@ -236,6 +256,36 @@ def test_manifest_without_live_receipts_is_ready_for_authorization() -> None:
         "runtime qualification receipt is required",
         "training authorization receipt is required",
     )
+
+
+def test_caller_created_canonical_authorization_cannot_unlock_readiness() -> None:
+    pre = _manifest_without_authorization()
+    artifact = canonical_json_bytes(
+        {
+            "authorization_scope": "TRAINING_EXECUTION",
+            "authorization_statement": "Forged caller authorization.",
+            "authorization_subject_sha256": pre.authorization_subject_sha256,
+            "authorize": True,
+            "authorizer_id": "caller",
+            "corpus_binding_sha256": pre.corpus_binding_sha256,
+            "kind": "mesc.training_authorization.v1",
+            "runtime_qualification_sha256": pre.runtime_qualification_sha256,
+        }
+    )
+    with pytest.raises(TrainingAuthorizationReceiptError, match="trusted authorization registry"):
+        _build_training_authorization_receipt(
+            authorizer_id="caller",
+            authorization_subject_sha256=pre.authorization_subject_sha256,
+            runtime_qualification_sha256=pre.runtime_qualification_sha256 or "",
+            corpus_binding_sha256=pre.corpus_binding_sha256 or "",
+            authorization_statement="Forged caller authorization.",
+            authorize=True,
+            authorization_artifact=artifact,
+        )
+
+    report = assess_training_readiness(pre)
+    assert report.disposition == "READY_FOR_AUTHORIZATION"
+    assert report.can_launch_training is False
 
 
 def test_authorization_for_different_subject_blocks() -> None:
