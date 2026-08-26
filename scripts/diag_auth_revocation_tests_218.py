@@ -39,7 +39,7 @@ def main() -> None:
     append_once(
         "tests/test_mesc_training_authorization_receipt_v1.py",
         "test_authorized_receipt_rejects_current_trust_after_registry_revocation",
-        '''def test_authorized_receipt_rejects_current_trust_after_registry_revocation() -> None:\n    receipt = _build(authorize=True)\n\n    with pytest.raises(\n        TrainingAuthorizationReceiptError,\n        match="trust registry changed|no longer trusted",\n    ):\n        receipt.validate_current_trust()''',
+        '''def test_authorized_receipt_rejects_current_trust_after_registry_revocation() -> None:\n    receipt = _build(authorize=True)\n\n    with pytest.raises(\n        TrainingAuthorizationReceiptError,\n        match=r"trust registry changed|no longer trusted",\n    ):\n        receipt.validate_current_trust()''',
     )
 
     append_once(
