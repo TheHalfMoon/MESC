@@ -40,8 +40,6 @@ def test_uv_lock_contains_exact_top_level_training_versions() -> None:
     for pin in _EXPECTED_TRAINING_PINS:
         name, expected_version = pin.split("==", maxsplit=1)
         versions = {
-            cast(str, package["version"])
-            for package in packages
-            if package.get("name") == name
+            cast(str, package["version"]) for package in packages if package.get("name") == name
         }
         assert versions == {expected_version}, (name, versions)
