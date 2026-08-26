@@ -11,7 +11,7 @@ name = "medscale"
 dynamic = ["version"]
 description = "An open research platform for verifiable clinical AI: FHIR-native, grammar-constrained, validator-grounded, reproducible."
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.15"
 license = "Apache-2.0"
 authors = [{ name = "Abdulaziz Alshehri" }]
 keywords = [
@@ -47,6 +47,15 @@ backends-transformers = [
 ]
 backends-llamacpp = [
   "llama-cpp-python>=0.3.21; sys_platform != 'win32'",
+]
+training-hf-sft = [
+  "accelerate==1.14.0",
+  "bitsandbytes==0.50.1",
+  "datasets==5.0.1",
+  "peft==0.20.0",
+  "torch==2.13.0",
+  "transformers==5.15.1",
+  "trl==1.10.0",
 ]
 
 [dependency-groups]
