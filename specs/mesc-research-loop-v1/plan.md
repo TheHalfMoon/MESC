@@ -16,36 +16,45 @@ Each stage must become canonically accepted before the next stage that depends o
 claim eligibility. Strategy/planning acceptance does not itself authorize implementation
 or execution where a separate founder/operator gate is required.
 
+Canonical ADR-0033 remains controlling for deferred model-promotion ownership. MRL V1
+must not implement `PromotionDecision`, `PROMOTED`, or an equivalent promotion authority
+under another name. It may produce only non-authoritative research evidence candidates
+until a separately accepted dedicated promotion-ownership/evidence ADR exists.
+
 ## MRL-0 — Research constitution and governance reconciliation
 
 ### Goal
 
-Freeze the conceptual boundaries before implementing an agent loop.
+Freeze the conceptual and authority boundaries before implementing an agent loop.
 
 ### Deliverables
 
 - accept/revise this MRL V1 specification;
-- record MRL vs MCRL separation;
+- record MRL vs MCRL separation and research-input admission policy;
+- record ADR-0033 promotion-ownership deferral;
 - define the immutable evaluator rule;
 - define adaptive evaluation tiers 0-4;
-- define hard medical promotion gates vs optimization metrics;
-- define research resource ceilings;
+- define hard medical evidence gates vs optimization metrics;
+- define frozen compute/query/result-exposure ceilings;
 - reconcile foundational RQ1-RQ7 with later MESC research programs;
-- define canonical project-state projection requirements.
+- define canonical project-state projection precedence and anti-staleness requirements.
 
 ### Acceptance
 
-- no ambiguous source of execution authority;
-- no path by which MRL can learn from PHI/product telemetry under current governance;
+- no ambiguous source of execution or promotion authority;
+- no path by which MRL can learn from PHI, product telemetry, or clinical-runtime state
+  under current governance;
+- MCRL remains a separate clinical/task-time layer;
 - no research-agent write authority over governance, sealed evals, evaluators, trust,
-  authorization, licensing decisions, or canonical history;
+  authorization, licensing decisions, canonical history, or machine-state authority;
+- adaptive-query and result-exposure budgets are frozen outside agent control;
 - all later stages have explicit dependencies and gates.
 
 ### Exit state
 
 `MRL_CONSTITUTION_FROZEN`
 
-This state still grants no training or autonomous execution authority.
+This state still grants no training, autonomous execution, or model-promotion authority.
 
 ---
 
@@ -60,8 +69,10 @@ or GPU execution.
 
 ### Deliverables
 
-Implement deterministic typed artifacts for:
+Implement deterministic typed contracts/artifacts for:
 
+- canonical content identity with `content_sha256` derived outside its own preimage;
+- `ResearchInputAdmissionContract`;
 - `ResearchObjectiveContract`;
 - `ResearchHypothesis`;
 - `ResearchExperimentPlan`;
@@ -73,15 +84,34 @@ Implement deterministic typed artifacts for:
 
 Reuse the existing `ExperimentManifest` for runtime experiment identity.
 
+`ResearchDecision` V1 is restricted to:
+
+```text
+INVALID
+REJECT
+REPLICATE
+RETAIN_LEAD
+EVIDENCE_CANDIDATE
+BLOCKED
+```
+
+`EVIDENCE_CANDIDATE` is a non-authoritative research recommendation. No MRL-1 artifact
+may encode `PROMOTED`.
+
 ### Required tests
 
 - canonical serialization is byte-stable;
+- `content_sha256` is derived from canonical semantic bytes and excluded from its own
+  preimage;
 - duplicate/unknown/malformed fields fail closed where closed schemas are used;
 - content hashes change when material semantics change;
+- research input admission rejects PHI/product telemetry/clinical-runtime learning input;
 - campaign DAG references are valid and acyclic where required;
 - failed/null/invalid results cannot be deleted by a later campaign projection;
-- promotion cannot be constructed from a search-set result alone;
-- `PROMOTION_CANDIDATE != PROMOTED` is enforced structurally.
+- `EVIDENCE_CANDIDATE` cannot be interpreted as promotion;
+- `PROMOTED` cannot be constructed by the MRL V1 decision contract;
+- procedure `REVIEWED`/`ADMITTED` requires an independent immutable review receipt and
+  typed applicability bounds.
 
 ### Exit state
 
@@ -112,24 +142,28 @@ hypothesis
   -> ExperimentManifest-compatible runtime identity
   -> structured receipt
   -> decision
-  -> reject / replicate / retain
+  -> reject / replicate / retain / evidence-candidate
   -> campaign update
 ```
 
 ### Mandatory adversarial tests
 
 - attempted scorer mutation;
-- attempted promotion-threshold mutation;
+- attempted evidence-threshold mutation;
 - attempted sealed-data read during search;
 - attempted write outside allow-listed experiment surface;
 - resource-budget escape;
+- adaptive-query/result-exposure budget escape;
+- PHI/product/clinical-runtime input admission attempt;
 - raw-log prompt-injection string;
 - fabricated metric value without bound metric artifact;
 - stale experiment receipt;
 - mismatched plan/manifest/code identity;
-- repeated known failure beyond configured retry ceiling.
+- repeated known failure beyond configured retry ceiling;
+- attempted construction of `PROMOTED` or self-admitted procedure state.
 
-Every case must fail closed without manufacturing a valid promotion.
+Every case must fail closed without manufacturing valid sealed evidence, promotion, or
+procedure admission.
 
 ### Exit state
 
@@ -137,30 +171,37 @@ Every case must fail closed without manufacturing a valid promotion.
 
 ---
 
-## MRL-3 — Adaptive evaluation and promotion control
+## MRL-3 — Adaptive evaluation and sealed-evidence control
 
 Depends on: `MRL-2`
 
 ### Goal
 
 Make high-volume iterative research statistically and scientifically safer than repeated
-optimization against one visible validation set.
+optimization against one visible validation set without creating model-promotion
+ownership.
 
 ### Deliverables
 
 - tier-aware evaluation contract;
-- search-set result exposure policy;
-- replication-set result exposure policy;
-- sealed-promotion evaluator interface;
-- independent promotion report;
+- frozen Tier 1 query/result-exposure budget;
+- frozen Tier 2 query/result-exposure budget;
+- exact allowed aggregate-result exposure policy;
+- replication-set policy;
+- sealed Tier 3 evaluator interface;
+- independent sealed-evaluation evidence artifact/report;
 - hard non-regression gates;
 - Pareto comparison support;
 - campaign-level adaptive-query accounting;
+- fail-closed budget-exhaustion handling;
 - explicit rule that sealed item-level results never become agent search context.
+
+Tier 3 evidence is delivered to an independent consumer and is not an iterative agent
+result stream. MRL-3 cannot emit `PROMOTED` or any equivalent promotion decision.
 
 ### Required medical guardrail model
 
-The system must be able to represent mandatory floors for relevant axes such as:
+The system must represent mandatory floors for relevant axes such as:
 
 - safety;
 - harmful overconfidence;
@@ -170,11 +211,13 @@ The system must be able to represent mandatory floors for relevant axes such as:
 - reproducibility;
 - critical subgroups.
 
-The exact active floors belong to each frozen objective contract.
+The exact active floors and adaptive budgets belong to each frozen objective contract.
+When a query/exposure budget is exhausted, the campaign becomes `BLOCKED` for further use
+of that tier. The agent cannot enlarge its own budget.
 
 ### Exit state
 
-`MRL_PROMOTION_CONTROL_READY`
+`MRL_EVALUATION_CONTROL_READY`
 
 ---
 
@@ -185,19 +228,20 @@ Depends on: `MRL-3`
 ### Goal
 
 Add Hermes-style learning from prior work without allowing repeated success to silently
-become scientific truth.
+become scientific truth or allowing the research agent to self-admit procedures.
 
 ### Deliverables
 
 - campaign-history query/projection;
 - procedure-candidate extraction interface;
 - procedure replay harness;
-- transfer-test contract;
+- representative transfer-test contract;
 - negative/failure-control contract;
+- typed applicability limits;
+- independent reviewer/operator review receipt;
 - admission report;
-- admitted-procedure registry;
-- rejected/superseded procedure history;
-- rebuildable non-authoritative search index.
+- admitted/rejected/superseded/invalidated procedure registry;
+- rebuildable non-authoritative search index enforcing research-input admission.
 
 ### Admission rule
 
@@ -210,12 +254,16 @@ DISCOVERED
   -> ADMITTED
 ```
 
-No stage may be skipped.
+No stage may be skipped. The campaign/research agent cannot be the sole producer of
+`REVIEWED` or `ADMITTED`. Admission must bind independent review identity, replay and
+representative transfer evidence, negative controls, and explicit applicability bounds.
+A later known failure or boundary violation must support append-only invalidation or
+supersession without deleting history.
 
 ### Required comparison
 
 Demonstrate on fixture research tasks that admitted procedure memory reduces at least one
-research-cost measure without increasing invalid/false-promotion behavior.
+research-cost measure without increasing invalid or false-evidence-candidate behavior.
 
 ### Exit state
 
@@ -258,7 +306,7 @@ At minimum where applicable:
 - validated gain per compute unit;
 - experiments to first replicated gain;
 - invalid experiment rate;
-- false-promotion rate;
+- false-evidence-candidate rate;
 - repeated-known-failure rate;
 - hypothesis diversity;
 - procedure transfer success;
@@ -274,12 +322,13 @@ At minimum where applicable:
 
 ## MRL-6 — Contamination lineage and temporal canaries
 
-Depends on: `MRL-3`; can proceed in parallel with portions of MRL-4/5 after dependency
-review.
+Depends on: `MRL-3`; implementation may proceed in parallel with portions of MRL-4/5
+after dependency review.
 
 ### Goal
 
 Strengthen scientific isolation for synthetic-teacher and repeated research workflows.
+This stage is mandatory before any real MRL experiment preflight can pass.
 
 ### Deliverables
 
@@ -304,7 +353,8 @@ schema is frozen.
 
 ### Goal
 
-Prevent future agents and humans from following stale narrative roadmaps.
+Prevent future agents and humans from following stale narrative roadmaps or manually
+edited projections.
 
 ### Proposed projections
 
@@ -314,11 +364,19 @@ Prevent future agents and humans from following stale narrative roadmaps.
 
 ### Rules
 
-- generated from canonical repository/spec state where practical;
-- deterministic;
-- content-addressable or bound to an exact repository SHA;
-- human-readable roadmaps remain explanatory, not competing operational truth;
+- deterministic generation from canonical repository/spec/governance state is mandatory;
+- each projection binds the exact repository commit it represents;
+- each projection binds hashes of the canonical source artifacts used to derive it;
+- projections are derived views, not independent authority sources;
+- eligibility/preflight consumers reject stale projections;
+- manually edited projections fail the generation/check contract;
+- conflicting narrative status never overrides live canonical gate evidence;
 - foundational RQ1-RQ7 remain preserved with explicit historical namespace/meaning.
+
+### Required negative proof
+
+Construct conflicting narrative/projection/canonical-gate states and prove downstream
+eligibility follows the live canonical gate evidence and rejects stale/manual projections.
 
 ### Exit state
 
@@ -328,8 +386,17 @@ Prevent future agents and humans from following stale narrative roadmaps.
 
 ## MRL-8 — Real autonomous research preflight
 
-Depends on: `MRL-2`, `MRL-3`, `MRL-4`, `MRL-5`, applicable `MRL-6`, and current
-training/runtime governance.
+Depends on all of:
+
+- `MRL_FIXTURE_LOOP_PROVEN`;
+- `MRL_EVALUATION_CONTROL_READY`;
+- `MRL_PROCEDURE_MEMORY_READY`;
+- `MRL_RESEARCHER_EVAL_READY`;
+- `MRL_CONTAMINATION_V2_READY`;
+- `MESC_MACHINE_STATE_READY`;
+- current training/runtime governance.
+
+There is no optional MRL-6 bypass for real MRL experimentation.
 
 ### Goal
 
@@ -340,27 +407,35 @@ substrate to a real bounded model experiment runner.
 
 - exact selected model and weights identity;
 - corpus identity and rights evidence;
-- training/evaluation contamination evidence;
+- completed contamination/lineage evidence from the canonical MRL-6 gate;
+- held-out/sealed-evaluation isolation evidence;
 - runtime/GPU qualification;
 - dependency lock and exact code tree;
 - applicable training authorization;
 - frozen research objective;
 - frozen evaluator identities;
-- sealed promotion set identity;
-- resource budget;
+- sealed Tier 3 evaluation identities;
+- resource, adaptive-query, and result-exposure budgets;
+- research-input admission policy identity;
 - sandbox policy;
 - allowed mutation paths;
 - output destinations;
 - rollback/stop conditions;
+- current machine-state projection bound to the exact candidate commit;
 - exact-head CI/security qualification.
 
 ### Mandatory status distinction
 
 ```text
 MRL_CODE_READY != MRL_REAL_EXPERIMENT_READY
+MRL_REAL_EXPERIMENT_READY != TRAINING_READY
 MRL_REAL_EXPERIMENT_READY != TRAINING_EXECUTION_COMPLETE
 TRAINING_EXECUTION_COMPLETE != RELEASE_READY
+EVIDENCE_CANDIDATE != PROMOTED
 ```
+
+`PROMOTED` is not an MRL V1 state. Any future promotion state belongs to the dedicated
+promotion-ownership/evidence ADR required by ADR-0033.
 
 ### Exit state
 
@@ -375,6 +450,7 @@ This planning package cannot declare it.
 
 After evidence from MRL V1 exists, later proposals may evaluate:
 
+- the dedicated promotion-ownership/evidence ADR required by ADR-0033;
 - multi-agent scientist/reviewer roles;
 - independent hypothesis-generation models;
 - cost-aware Bayesian or bandit allocation;
