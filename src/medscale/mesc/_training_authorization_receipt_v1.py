@@ -219,6 +219,29 @@ class TrainingAuthorizationReceipt:
                         "BLOCKED receipt cannot bind an authorize=true artifact"
                     )
 
+    def validate_current_trust(self) -> None:
+        """Require this AUTHORIZED receipt to remain trusted by the current registry."""
+        if self.disposition != "AUTHORIZED" or not self.real_training_authorized:
+            raise TrainingAuthorizationReceiptError(
+                "current-trust validation requires an AUTHORIZED receipt"
+            )
+        artifact = self.authorization_artifact
+        if artifact is None:
+            raise TrainingAuthorizationReceiptError(
+                "AUTHORIZED receipt lacks validated authorization artifact bytes"
+            )
+        current_registry_sha256 = authorization_trust.training_authorization_trust_registry_sha256()
+        if self.authorization_trust_registry_sha256 != current_registry_sha256:
+            raise TrainingAuthorizationReceiptError(
+                "authorization trust registry changed after receipt admission"
+            )
+        if not authorization_trust.is_trusted_training_authorization_artifact_sha256(
+            artifact.artifact_sha256
+        ):
+            raise TrainingAuthorizationReceiptError(
+                "authorization artifact is no longer trusted by the canonical registry"
+            )
+
     @property
     def authorization_artifact_sha256(self) -> str | None:
         if self.authorization_artifact is None:

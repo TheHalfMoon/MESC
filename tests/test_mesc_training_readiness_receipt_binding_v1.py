@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-import hashlib
 from dataclasses import replace
-from unittest.mock import patch
 
 import pytest
 
-from medscale.mesc import _training_authorization_trust_v1 as authorization_trust
+from _training_authorization_test_support import (
+    install_training_authorization_test_trust,
+    restore_training_authorization_test_trust,
+)
 from medscale.mesc._canonical_json_v1 import canonical_json_bytes
 from medscale.mesc._training_authorization_receipt_v1 import (
     TrainingAuthorizationReceipt,
@@ -77,21 +78,16 @@ def build_training_authorization_receipt(
             authorize=authorize,
             authorization_artifact=None,
         )
-    trusted = frozenset({hashlib.sha256(artifact).hexdigest()})
-    with patch.object(
-        authorization_trust,
-        "TRUSTED_TRAINING_AUTHORIZATION_ARTIFACT_SHA256",
-        trusted,
-    ):
-        return _build_training_authorization_receipt(
-            authorizer_id=authorizer_id,
-            authorization_subject_sha256=authorization_subject_sha256,
-            runtime_qualification_sha256=runtime_qualification_sha256,
-            corpus_binding_sha256=corpus_binding_sha256,
-            authorization_statement=authorization_statement,
-            authorize=authorize,
-            authorization_artifact=artifact,
-        )
+    install_training_authorization_test_trust(artifact)
+    return _build_training_authorization_receipt(
+        authorizer_id=authorizer_id,
+        authorization_subject_sha256=authorization_subject_sha256,
+        runtime_qualification_sha256=runtime_qualification_sha256,
+        corpus_binding_sha256=corpus_binding_sha256,
+        authorization_statement=authorization_statement,
+        authorize=authorize,
+        authorization_artifact=artifact,
+    )
 
 
 def _candidate(*, model_id: str, revision: str, weight_byte: str) -> TrainingCandidate:
@@ -343,3 +339,28 @@ def test_refuses_scientific_blocker() -> None:
     blocked = replace(_scientific_manifest(), phi_present=True)
     with pytest.raises(TrainingReadinessReceiptBindingError, match="BLOCKED"):
         bind_runtime_qualification_to_readiness(blocked, _runtime(smoke=True))
+
+
+def test_binding_rejects_authorization_after_registry_revocation() -> None:
+    scientific = _scientific_manifest()
+    runtime = _runtime(smoke=True)
+    with_runtime = bind_runtime_qualification_to_readiness(scientific, runtime)
+    auth = build_training_authorization_receipt(
+        authorizer_id="founder",
+        authorization_subject_sha256=with_runtime.authorization_subject_sha256,
+        runtime_qualification_sha256=runtime.receipt_sha256,
+        corpus_binding_sha256=_CORPUS,
+        authorization_statement="Authorize TRAINING_EXECUTION for the bound subject.",
+        authorize=True,
+    )
+    restore_training_authorization_test_trust()
+
+    with pytest.raises(
+        TrainingReadinessReceiptBindingError,
+        match="current canonical registry",
+    ):
+        bind_training_authorization_to_readiness(
+            with_runtime,
+            auth,
+            runtime_qualification=runtime,
+        )
