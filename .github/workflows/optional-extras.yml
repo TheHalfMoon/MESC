@@ -13,8 +13,8 @@ jobs:
   backends-transformers:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
       - name: Install transformer extra
         run: uv sync --extra backends-transformers --frozen
       - name: Run backend tests with transformers
@@ -23,8 +23,8 @@ jobs:
   backends-llamacpp:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
       - name: Install llama.cpp extra
         run: uv sync --extra backends-llamacpp --frozen
       - name: Run backend tests with llama.cpp available
@@ -33,8 +33,8 @@ jobs:
   core-without-backends:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
       - name: Install core only
         run: uv sync --frozen
       - name: Ensure backend package import is safe on core
