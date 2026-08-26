@@ -14,7 +14,7 @@ from typing import Final, Literal
 from medscale.modelkit.manifests import RunnerClass
 from medscale.reproducibility import content_hash
 
-RuntimeQualificationDisposition = Literal["BLOCKED", "PASS"]
+RuntimeQualificationDisposition = Literal["BLOCKED", "OBSERVED", "PASS"]
 SmokeDisposition = Literal["SKIPPED", "PASS", "FAIL"]
 
 _PROGRAM_VERSION: Final = "MESC-TRAINING-RUNTIME-QUALIFICATION-V1"
@@ -53,7 +53,7 @@ class TrainingRuntimeQualificationReceipt:
             raise TrainingRuntimeQualificationError(
                 f"program_version must be exactly {_PROGRAM_VERSION}"
             )
-        if self.disposition not in ("BLOCKED", "PASS"):
+        if self.disposition not in ("BLOCKED", "OBSERVED", "PASS"):
             raise TrainingRuntimeQualificationError("disposition is invalid")
         if not isinstance(self.runner_class, RunnerClass):
             raise TrainingRuntimeQualificationError("runner_class must be a RunnerClass")
@@ -77,28 +77,46 @@ class TrainingRuntimeQualificationReceipt:
             raise TrainingRuntimeQualificationError("platform_qualified must be a bool")
         if self.smoke_disposition not in ("SKIPPED", "PASS", "FAIL"):
             raise TrainingRuntimeQualificationError("smoke_disposition is invalid")
+        if type(self.blockers) is not tuple:
+            raise TrainingRuntimeQualificationError("blockers must be a tuple")
         if self.smoke_receipt_sha256 is not None:
             _require_sha256(self.smoke_receipt_sha256, field="smoke_receipt_sha256")
-        if self.disposition == "PASS" and self.blockers:
-            raise TrainingRuntimeQualificationError("PASS receipts cannot retain blockers")
+        if self.disposition in ("OBSERVED", "PASS") and self.blockers:
+            raise TrainingRuntimeQualificationError(
+                f"{self.disposition} receipts cannot retain blockers"
+            )
         if self.disposition == "BLOCKED" and not self.blockers:
             raise TrainingRuntimeQualificationError("BLOCKED receipts must record blockers")
-        if self.disposition == "PASS" and (self.network_accessed or self.remote_code_allowed):
+        if self.disposition in ("OBSERVED", "PASS") and (
+            self.network_accessed or self.remote_code_allowed
+        ):
             raise TrainingRuntimeQualificationError(
-                "PASS receipts forbid network access and remote code"
+                f"{self.disposition} receipts forbid network access and remote code"
             )
+        if self.disposition == "PASS":
+            if self.smoke_disposition != "PASS":
+                raise TrainingRuntimeQualificationError("PASS requires smoke_disposition PASS")
+            if self.smoke_receipt_sha256 is None:
+                raise TrainingRuntimeQualificationError("PASS requires smoke_receipt_sha256")
+            if not self.platform_qualified:
+                raise TrainingRuntimeQualificationError("PASS requires platform_qualified=true")
+        if self.disposition == "OBSERVED":
+            if self.smoke_disposition != "SKIPPED":
+                raise TrainingRuntimeQualificationError(
+                    "OBSERVED requires smoke_disposition SKIPPED"
+                )
+            if self.smoke_receipt_sha256 is not None:
+                raise TrainingRuntimeQualificationError("OBSERVED forbids smoke_receipt_sha256")
+            if self.platform_qualified:
+                raise TrainingRuntimeQualificationError("OBSERVED forbids platform_qualified=true")
         if self.platform_qualified:
             if self.disposition != "PASS":
                 raise TrainingRuntimeQualificationError(
                     "platform_qualified requires disposition PASS"
                 )
-            if self.smoke_disposition != "PASS":
+            if self.smoke_disposition != "PASS" or self.smoke_receipt_sha256 is None:
                 raise TrainingRuntimeQualificationError(
-                    "platform_qualified requires smoke_disposition PASS"
-                )
-            if self.smoke_receipt_sha256 is None:
-                raise TrainingRuntimeQualificationError(
-                    "platform_qualified requires smoke_receipt_sha256"
+                    "platform_qualified requires smoke PASS with smoke_receipt_sha256"
                 )
         if self.smoke_disposition == "PASS" and self.smoke_receipt_sha256 is None:
             raise TrainingRuntimeQualificationError(
@@ -107,6 +125,10 @@ class TrainingRuntimeQualificationReceipt:
         if self.smoke_disposition == "SKIPPED" and self.smoke_receipt_sha256 is not None:
             raise TrainingRuntimeQualificationError(
                 "smoke_disposition SKIPPED forbids smoke_receipt_sha256"
+            )
+        if self.smoke_disposition == "FAIL" and self.disposition != "BLOCKED":
+            raise TrainingRuntimeQualificationError(
+                "smoke_disposition FAIL requires disposition BLOCKED"
             )
 
     @property
@@ -188,10 +210,16 @@ def build_training_runtime_qualification_receipt(
     if smoke_disposition == "FAIL":
         blockers.append("runtime smoke qualification failed")
 
-    disposition: RuntimeQualificationDisposition = "BLOCKED" if blockers else "PASS"
-    platform_qualified = (
-        disposition == "PASS" and smoke_disposition == "PASS" and smoke_receipt_sha256 is not None
-    )
+    if blockers:
+        disposition: RuntimeQualificationDisposition = "BLOCKED"
+        platform_qualified = False
+    elif smoke_disposition == "PASS":
+        disposition = "PASS"
+        platform_qualified = True
+    else:
+        disposition = "OBSERVED"
+        platform_qualified = False
+
     return TrainingRuntimeQualificationReceipt(
         disposition=disposition,
         runner_class=runner_class,

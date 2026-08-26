@@ -39,14 +39,21 @@ A `TrainingRuntimeQualificationReceipt` binds:
 - `network_accessed` / `remote_code_allowed` (must be false for `PASS`)
 - `smoke_disposition` (`SKIPPED` | `PASS` | `FAIL`)
 - optional `smoke_receipt_sha256`
-- `platform_qualified` (true only when disposition `PASS` and smoke `PASS` with receipt)
+- `platform_qualified` (true only for disposition `PASS`)
 
-`receipt_sha256` is the opaque digest for readiness/launch.
+Dispositions:
+
+- `OBSERVED` — complete local facts with `smoke_disposition=SKIPPED`; **not** platform qualified
+- `PASS` — smoke evidence present and passing; `platform_qualified=true`
+- `BLOCKED` — policy/smoke failure
+
+`receipt_sha256` is the opaque digest for readiness/launch. Callers that require
+platform qualification must check `platform_qualified` / disposition `PASS`; an
+`OBSERVED` receipt alone is not launch authority.
 
 ## Authority boundary
 
 - Package installation is **not** `PLATFORM_QUALIFIED`.
-- `PASS` with `smoke_disposition=SKIPPED` records observed identity only.
 - This package does not authorize training, download models, accept gated terms, or
   clear MedScale Spec 012.
 - Default CI uses injected facts only.

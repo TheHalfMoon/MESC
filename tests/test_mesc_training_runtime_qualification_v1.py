@@ -18,7 +18,7 @@ _SMOKE = "d" * 64
 
 
 def _build(**overrides: object) -> TrainingRuntimeQualificationReceipt:
-    kwargs = {
+    kwargs: dict[str, object] = {
         "runner_class": RunnerClass.LOCAL,
         "python_version": "3.12.14",
         "os_name": "linux",
@@ -47,9 +47,9 @@ def _build(**overrides: object) -> TrainingRuntimeQualificationReceipt:
     )
 
 
-def test_observed_receipt_pass_without_smoke_is_not_platform_qualified() -> None:
+def test_observed_without_smoke_is_not_platform_qualified() -> None:
     receipt = _build()
-    assert receipt.disposition == "PASS"
+    assert receipt.disposition == "OBSERVED"
     assert receipt.smoke_disposition == "SKIPPED"
     assert receipt.platform_qualified is False
     assert len(receipt.receipt_sha256) == 64
@@ -72,6 +72,28 @@ def test_smoke_fail_blocks() -> None:
     receipt = _build(smoke_disposition="FAIL")
     assert receipt.disposition == "BLOCKED"
     assert "runtime smoke qualification failed" in receipt.blockers
+
+
+def test_direct_pass_with_failed_smoke_is_rejected() -> None:
+    with pytest.raises(TrainingRuntimeQualificationError, match="PASS requires smoke"):
+        TrainingRuntimeQualificationReceipt(
+            disposition="PASS",
+            runner_class=RunnerClass.LOCAL,
+            python_version="3.12.14",
+            os_name="linux",
+            gpu_model="fixture-gpu",
+            dependency_lock_sha256=_LOCK,
+            repository_sha=_SHA,
+            repository_tree=_TREE,
+            probe_id="fixture-probe",
+            probe_version="v1",
+            network_accessed=False,
+            remote_code_allowed=False,
+            smoke_disposition="FAIL",
+            smoke_receipt_sha256=None,
+            platform_qualified=True,
+            blockers=(),
+        )
 
 
 def test_refuses_invented_empty_gpu() -> None:
