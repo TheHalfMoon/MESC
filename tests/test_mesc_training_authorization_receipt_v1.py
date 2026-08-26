@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import hashlib
 from typing import cast
+from unittest.mock import patch
 
 import pytest
 
+from medscale.mesc import _training_authorization_trust_v1 as authorization_trust
 from medscale.mesc._canonical_json_v1 import canonical_json_bytes
 from medscale.mesc._training_authorization_receipt_v1 import (
     TrainingAuthorizationReceipt,
@@ -34,8 +37,30 @@ def _artifact(*, authorize: bool) -> bytes:
     )
 
 
-def _build(*, authorize: bool, with_artifact: bool | None = None) -> TrainingAuthorizationReceipt:
+def _build(
+    *,
+    authorize: bool,
+    with_artifact: bool | None = None,
+    trust_artifact: bool = True,
+) -> TrainingAuthorizationReceipt:
     include_artifact = authorize if with_artifact is None else with_artifact
+    artifact = _artifact(authorize=authorize) if include_artifact else None
+    if authorize and artifact is not None and trust_artifact:
+        trusted = frozenset({hashlib.sha256(artifact).hexdigest()})
+        with patch.object(
+            authorization_trust,
+            "TRUSTED_TRAINING_AUTHORIZATION_ARTIFACT_SHA256",
+            trusted,
+        ):
+            return build_training_authorization_receipt(
+                authorizer_id="fixture-founder",
+                authorization_subject_sha256=_SUBJECT,
+                runtime_qualification_sha256=_RUNTIME,
+                corpus_binding_sha256=_CORPUS,
+                authorization_statement=_STATEMENT,
+                authorize=authorize,
+                authorization_artifact=artifact,
+            )
     return build_training_authorization_receipt(
         authorizer_id="fixture-founder",
         authorization_subject_sha256=_SUBJECT,
@@ -43,7 +68,7 @@ def _build(*, authorize: bool, with_artifact: bool | None = None) -> TrainingAut
         corpus_binding_sha256=_CORPUS,
         authorization_statement=_STATEMENT,
         authorize=authorize,
-        authorization_artifact=_artifact(authorize=authorize) if include_artifact else None,
+        authorization_artifact=artifact,
     )
 
 
@@ -64,6 +89,11 @@ def test_authorize_true_without_artifact_is_rejected() -> None:
         _build(authorize=True, with_artifact=False)
 
 
+def test_caller_created_canonical_artifact_is_rejected_without_trust_registry() -> None:
+    with pytest.raises(TrainingAuthorizationReceiptError, match="trusted authorization registry"):
+        _build(authorize=True, trust_artifact=False)
+
+
 def test_explicit_artifact_authorization_binds_pre_authorization_subject() -> None:
     receipt = _build(authorize=True)
     assert receipt.disposition == "AUTHORIZED"
@@ -73,6 +103,8 @@ def test_explicit_artifact_authorization_binds_pre_authorization_subject() -> No
     assert receipt.corpus_binding_sha256 == _CORPUS
     assert receipt.authorization_artifact_sha256 is not None
     assert len(receipt.authorization_artifact_sha256) == 64
+    assert receipt.authorization_trust_registry_sha256 is not None
+    assert len(receipt.authorization_trust_registry_sha256) == 64
     assert receipt.blockers == ()
 
 

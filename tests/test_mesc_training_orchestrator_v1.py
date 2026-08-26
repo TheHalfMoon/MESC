@@ -6,10 +6,12 @@ import hashlib
 import subprocess
 from dataclasses import replace
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
 import medscale.mesc._training_orchestrator_v1 as orchestrator_module
+from medscale.mesc import _training_authorization_trust_v1 as authorization_trust
 from medscale.mesc._canonical_json_v1 import canonical_json_bytes
 from medscale.mesc._training_authorization_receipt_v1 import (
     TrainingAuthorizationReceipt,
@@ -74,7 +76,7 @@ def build_training_authorization_receipt(
     authorization_statement: str,
     authorize: bool,
 ) -> TrainingAuthorizationReceipt:
-    """Build explicit canonical synthetic authorization evidence for this test module."""
+    """Build explicit synthetic evidence under a test-only temporary trust registry."""
     artifact = None
     if authorize:
         artifact = canonical_json_bytes(
@@ -89,15 +91,31 @@ def build_training_authorization_receipt(
                 "runtime_qualification_sha256": runtime_qualification_sha256,
             }
         )
-    return _build_training_authorization_receipt(
-        authorizer_id=authorizer_id,
-        authorization_subject_sha256=authorization_subject_sha256,
-        runtime_qualification_sha256=runtime_qualification_sha256,
-        corpus_binding_sha256=corpus_binding_sha256,
-        authorization_statement=authorization_statement,
-        authorize=authorize,
-        authorization_artifact=artifact,
-    )
+    if artifact is None:
+        return _build_training_authorization_receipt(
+            authorizer_id=authorizer_id,
+            authorization_subject_sha256=authorization_subject_sha256,
+            runtime_qualification_sha256=runtime_qualification_sha256,
+            corpus_binding_sha256=corpus_binding_sha256,
+            authorization_statement=authorization_statement,
+            authorize=authorize,
+            authorization_artifact=None,
+        )
+    trusted = frozenset({hashlib.sha256(artifact).hexdigest()})
+    with patch.object(
+        authorization_trust,
+        "TRUSTED_TRAINING_AUTHORIZATION_ARTIFACT_SHA256",
+        trusted,
+    ):
+        return _build_training_authorization_receipt(
+            authorizer_id=authorizer_id,
+            authorization_subject_sha256=authorization_subject_sha256,
+            runtime_qualification_sha256=runtime_qualification_sha256,
+            corpus_binding_sha256=corpus_binding_sha256,
+            authorization_statement=authorization_statement,
+            authorize=authorize,
+            authorization_artifact=artifact,
+        )
 
 
 def _candidate(*, role: TrainingRole) -> TrainingCandidate:
