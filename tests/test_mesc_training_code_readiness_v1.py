@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 
 import pytest
@@ -51,6 +52,35 @@ def test_audit_blocks_when_module_sources_missing(tmp_path: Path) -> None:
     assert report.missing_specs
     assert "missing module: medscale.mesc._training_orchestrator_v1" in report.blockers
     assert report.medscale_spec_012_admission_readiness == "NOT_READY"
+    assert report.real_training_authorized is False
+
+
+def test_audit_blocks_when_authorization_trust_module_missing(tmp_path: Path) -> None:
+    live = audit_training_code_readiness(repository_root=_REPOSITORY_ROOT)
+    assert live.disposition == "TRAINING_CODE_READY"
+
+    root = tmp_path / "repo"
+    root.mkdir()
+    for module_name in live.present_modules:
+        relative = Path("src", *module_name.split(".")).with_suffix(".py")
+        target = root / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(_REPOSITORY_ROOT / relative, target)
+    for relative_text in live.present_specs:
+        relative = Path(relative_text)
+        target = root / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(_REPOSITORY_ROOT / relative, target)
+    shutil.copy2(_REPOSITORY_ROOT / "pyproject.toml", root / "pyproject.toml")
+    shutil.copy2(_REPOSITORY_ROOT / "uv.lock", root / "uv.lock")
+
+    trust_relative = Path("src/medscale/mesc/_training_authorization_trust_v1.py")
+    (root / trust_relative).unlink()
+
+    report = audit_training_code_readiness(repository_root=root)
+    assert report.disposition == "BLOCKED"
+    assert report.missing_modules == ("medscale.mesc._training_authorization_trust_v1",)
+    assert "missing module: medscale.mesc._training_authorization_trust_v1" in report.blockers
     assert report.real_training_authorized is False
 
 

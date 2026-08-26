@@ -32,6 +32,7 @@ _REQUIRED_MODULES: Final = (
     "medscale.mesc._training_hf_local_sft_backend_v1",
     "medscale.mesc._training_orchestrator_v1",
     "medscale.mesc._training_runtime_qualification_v1",
+    "medscale.mesc._training_authorization_trust_v1",
     "medscale.mesc._training_authorization_receipt_v1",
     "medscale.mesc._training_readiness_receipt_binding_v1",
 )

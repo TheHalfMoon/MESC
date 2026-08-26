@@ -13,6 +13,11 @@ from datetime import datetime
 from pathlib import PurePosixPath
 from typing import Final, Literal, Protocol
 
+from medscale.mesc import _training_authorization_trust_v1 as authorization_trust
+from medscale.mesc._training_authorization_receipt_v1 import (
+    TrainingAuthorizationReceipt,
+    TrainingAuthorizationReceiptError,
+)
 from medscale.mesc._training_corpus_binding_v1 import TrainingCorpusBindingReport
 from medscale.mesc._training_launch_plan_v1 import (
     TrainingLaunchPlan,
@@ -421,7 +426,7 @@ class TrainingExecutionReceipt:
             "failure_reason": self.failure_reason,
             "finished_at": self.finished_at,
             "launch_plan_sha256": self.launch_plan_sha256,
-            "local_asset_attestation_sha256": (self.local_asset_attestation_sha256),
+            "local_asset_attestation_sha256": self.local_asset_attestation_sha256,
             "model_id": self.model_id,
             "readiness_manifest_sha256": self.readiness_manifest_sha256,
             "repository_sha": self.repository_sha,
@@ -536,10 +541,11 @@ def execute_training(
     )
     execution_manifest_sha256 = execution_manifest.execution_manifest_sha256
 
-    try:
-        backend_result = backend.execute(manifest=execution_manifest)
-    except Exception as exc:
-        raise TrainingExecutionError("training backend failed without a canonical result") from exc
+    backend_result = _execute_backend_with_current_authorization(
+        backend=backend,
+        manifest=manifest,
+        execution_manifest=execution_manifest,
+    )
 
     if execution_manifest.execution_manifest_sha256 != execution_manifest_sha256:
         raise TrainingExecutionError("backend mutated the core-owned execution manifest")
@@ -560,9 +566,9 @@ def execute_training(
         disposition=result.disposition,
         launch_plan_sha256=execution_manifest.launch_plan_sha256,
         run_plan_sha256=execution_manifest.run_plan_sha256,
-        readiness_manifest_sha256=(execution_manifest.readiness_manifest_sha256),
+        readiness_manifest_sha256=execution_manifest.readiness_manifest_sha256,
         corpus_binding_sha256=execution_manifest.corpus_binding_sha256,
-        local_asset_attestation_sha256=(execution_manifest.local_asset_attestation_sha256),
+        local_asset_attestation_sha256=execution_manifest.local_asset_attestation_sha256,
         execution_manifest_sha256=execution_manifest_sha256,
         environment_sha256=execution_manifest.environment_sha256,
         role=execution_manifest.role,
@@ -570,11 +576,11 @@ def execute_training(
         model_id=execution_manifest.model_id,
         revision=execution_manifest.revision,
         weights_sha256=execution_manifest.weights_sha256,
-        training_dataset_sha256=(execution_manifest.training_dataset_sha256),
+        training_dataset_sha256=execution_manifest.training_dataset_sha256,
         repository_sha=execution_manifest.repository_sha,
         repository_tree=execution_manifest.repository_tree,
-        dependency_lock_sha256=(execution_manifest.dependency_lock_sha256),
-        runtime_qualification_sha256=(execution_manifest.runtime_qualification_sha256),
+        dependency_lock_sha256=execution_manifest.dependency_lock_sha256,
+        runtime_qualification_sha256=execution_manifest.runtime_qualification_sha256,
         training_authorization_receipt_sha256=(
             execution_manifest.training_authorization_receipt_sha256
         ),
@@ -586,6 +592,47 @@ def execute_training(
         result_manifest_sha256=result_manifest_sha256,
         failure_reason=result.failure_reason,
     )
+
+
+def _execute_backend_with_current_authorization(
+    *,
+    backend: TrainingBackend,
+    manifest: TrainingReadinessManifest,
+    execution_manifest: TrainingExecutionManifest,
+) -> TrainingBackendResult:
+    source_receipt = manifest.training_authorization_receipt
+    if type(source_receipt) is not TrainingAuthorizationReceipt:
+        raise TrainingExecutionError(
+            "readiness manifest lacks the exact bound training authorization receipt"
+        )
+    try:
+        receipt = source_receipt.validated_current_trust_snapshot()
+    except TrainingAuthorizationReceiptError as exc:
+        raise TrainingExecutionError(
+            "training authorization trust changed before backend invocation"
+        ) from exc
+    registry_sha256 = receipt.authorization_trust_registry_sha256
+    artifact_sha256 = receipt.authorization_artifact_sha256
+    if registry_sha256 is None or artifact_sha256 is None:
+        raise TrainingExecutionError(
+            "training authorization receipt lacks canonical trust admission evidence"
+        )
+
+    try:
+        with authorization_trust.hold_training_authorization_trust(
+            expected_registry_sha256=registry_sha256,
+            artifact_sha256=artifact_sha256,
+        ):
+            try:
+                return backend.execute(manifest=execution_manifest)
+            except Exception as exc:
+                raise TrainingExecutionError(
+                    "training backend failed without a canonical result"
+                ) from exc
+    except authorization_trust.TrainingAuthorizationTrustError as exc:
+        raise TrainingExecutionError(
+            "training authorization trust changed before backend invocation"
+        ) from exc
 
 
 def _snapshot_execution_inputs(
@@ -648,8 +695,16 @@ def _require_nested_canonical_types(
     launch_plan: TrainingLaunchPlan,
 ) -> None:
     checks: tuple[tuple[str, object, type[object]], ...] = (
-        ("manifest.compact_candidate", manifest.compact_candidate, TrainingCandidate),
-        ("manifest.reasoner_candidate", manifest.reasoner_candidate, TrainingCandidate),
+        (
+            "manifest.compact_candidate",
+            manifest.compact_candidate,
+            TrainingCandidate,
+        ),
+        (
+            "manifest.reasoner_candidate",
+            manifest.reasoner_candidate,
+            TrainingCandidate,
+        ),
         ("manifest.compact_recipe", manifest.compact_recipe, TrainingRecipe),
         ("manifest.reasoner_recipe", manifest.reasoner_recipe, TrainingRecipe),
         ("launch_plan.compact", launch_plan.compact, TrainingRunPlan),
@@ -861,7 +916,7 @@ def _build_execution_manifest(
         repository_sha=run_plan.repository_sha,
         repository_tree=run_plan.repository_tree,
         dependency_lock_sha256=run_plan.dependency_lock_sha256,
-        runtime_qualification_sha256=(launch_plan.runtime_qualification_sha256),
+        runtime_qualification_sha256=launch_plan.runtime_qualification_sha256,
         training_authorization_receipt_sha256=(launch_plan.training_authorization_receipt_sha256),
         canonical_corpus_sha256=corpus_binding.canonical_jsonl_sha256,
         canonical_corpus_byte_count=corpus_binding.canonical_jsonl_byte_count,

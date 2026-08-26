@@ -15,7 +15,10 @@ import re
 from dataclasses import dataclass
 from typing import Final, Literal
 
-from medscale.mesc._training_authorization_receipt_v1 import TrainingAuthorizationReceipt
+from medscale.mesc._training_authorization_receipt_v1 import (
+    TrainingAuthorizationReceipt,
+    TrainingAuthorizationReceiptError,
+)
 from medscale.mesc._training_runtime_qualification_v1 import (
     TrainingRuntimeQualificationReceipt,
 )
@@ -318,9 +321,16 @@ def _validate_authorization_receipt(
     *,
     blockers: list[str],
 ) -> None:
-    receipt = manifest.training_authorization_receipt
-    if type(receipt) is not TrainingAuthorizationReceipt:
+    source_receipt = manifest.training_authorization_receipt
+    if type(source_receipt) is not TrainingAuthorizationReceipt:
         blockers.append("training authorization receipt is non-canonical")
+        return
+    try:
+        receipt = source_receipt.validated_current_trust_snapshot()
+    except TrainingAuthorizationReceiptError:
+        blockers.append(
+            "training authorization receipt is not trusted by the current canonical registry"
+        )
         return
     if receipt.receipt_sha256 != manifest.training_authorization_receipt_sha256:
         blockers.append("training authorization receipt hash does not match manifest")

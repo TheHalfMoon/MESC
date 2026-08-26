@@ -6,10 +6,16 @@ from dataclasses import replace
 
 import pytest
 
+from _training_authorization_test_support import (
+    install_training_authorization_test_trust,
+    restore_training_authorization_test_trust,
+)
 from medscale.mesc._canonical_json_v1 import canonical_json_bytes
 from medscale.mesc._training_authorization_receipt_v1 import (
     TrainingAuthorizationReceipt,
-    build_training_authorization_receipt,
+)
+from medscale.mesc._training_authorization_receipt_v1 import (
+    build_training_authorization_receipt as _build_training_authorization_receipt,
 )
 from medscale.mesc._training_readiness_receipt_binding_v1 import (
     TrainingReadinessReceiptBindingError,
@@ -36,6 +42,52 @@ _CORPUS = "c" * 64
 _LOCK = "a" * 64
 _SHA = "b" * 40
 _TREE = "e" * 40
+
+
+def build_training_authorization_receipt(
+    *,
+    authorizer_id: str,
+    authorization_subject_sha256: str,
+    runtime_qualification_sha256: str,
+    corpus_binding_sha256: str,
+    authorization_statement: str,
+    authorize: bool,
+) -> TrainingAuthorizationReceipt:
+    """Build explicit synthetic evidence under a test-only temporary trust registry."""
+    artifact = None
+    if authorize:
+        artifact = canonical_json_bytes(
+            {
+                "authorization_scope": "TRAINING_EXECUTION",
+                "authorization_statement": authorization_statement,
+                "authorization_subject_sha256": authorization_subject_sha256,
+                "authorize": True,
+                "authorizer_id": authorizer_id,
+                "corpus_binding_sha256": corpus_binding_sha256,
+                "kind": "mesc.training_authorization.v1",
+                "runtime_qualification_sha256": runtime_qualification_sha256,
+            }
+        )
+    if artifact is None:
+        return _build_training_authorization_receipt(
+            authorizer_id=authorizer_id,
+            authorization_subject_sha256=authorization_subject_sha256,
+            runtime_qualification_sha256=runtime_qualification_sha256,
+            corpus_binding_sha256=corpus_binding_sha256,
+            authorization_statement=authorization_statement,
+            authorize=authorize,
+            authorization_artifact=None,
+        )
+    install_training_authorization_test_trust(artifact)
+    return _build_training_authorization_receipt(
+        authorizer_id=authorizer_id,
+        authorization_subject_sha256=authorization_subject_sha256,
+        runtime_qualification_sha256=runtime_qualification_sha256,
+        corpus_binding_sha256=corpus_binding_sha256,
+        authorization_statement=authorization_statement,
+        authorize=authorize,
+        authorization_artifact=artifact,
+    )
 
 
 def _candidate(*, model_id: str, revision: str, weight_byte: str) -> TrainingCandidate:
@@ -158,7 +210,8 @@ def test_binds_pass_runtime_and_authorized_receipt_to_ready_to_launch() -> None:
     assert report.disposition == "READY_TO_LAUNCH"
     assert final.runtime_qualification_sha256 == runtime.receipt_sha256
     assert final.training_authorization_receipt_sha256 == auth.receipt_sha256
-    assert final.training_authorization_receipt is auth
+    assert final.training_authorization_receipt == auth
+    assert final.training_authorization_receipt is not auth
 
     rebound = bind_training_authorization_to_readiness(
         final,
@@ -287,3 +340,28 @@ def test_refuses_scientific_blocker() -> None:
     blocked = replace(_scientific_manifest(), phi_present=True)
     with pytest.raises(TrainingReadinessReceiptBindingError, match="BLOCKED"):
         bind_runtime_qualification_to_readiness(blocked, _runtime(smoke=True))
+
+
+def test_binding_rejects_authorization_after_registry_revocation() -> None:
+    scientific = _scientific_manifest()
+    runtime = _runtime(smoke=True)
+    with_runtime = bind_runtime_qualification_to_readiness(scientific, runtime)
+    auth = build_training_authorization_receipt(
+        authorizer_id="founder",
+        authorization_subject_sha256=with_runtime.authorization_subject_sha256,
+        runtime_qualification_sha256=runtime.receipt_sha256,
+        corpus_binding_sha256=_CORPUS,
+        authorization_statement="Authorize TRAINING_EXECUTION for the bound subject.",
+        authorize=True,
+    )
+    restore_training_authorization_test_trust()
+
+    with pytest.raises(
+        TrainingReadinessReceiptBindingError,
+        match="current canonical registry",
+    ):
+        bind_training_authorization_to_readiness(
+            with_runtime,
+            auth,
+            runtime_qualification=runtime,
+        )
