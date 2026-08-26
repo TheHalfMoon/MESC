@@ -30,7 +30,9 @@ from medscale.mesc._training_executor_v1 import (
 )
 from medscale.mesc._training_hf_local_sft_backend_v1 import (
     HfLocalSftBackend,
+    HfLocalSftExecutionProfile,
     HfLocalSftRuntime,
+    HfSftRuntimeResult,
     build_hf_local_sft_runtime,
 )
 from medscale.mesc._training_hf_safetensors_identity_v1 import (
@@ -262,8 +264,14 @@ def run_training_orchestrator(
         blockers = ", ".join(local_assets.blockers) if local_assets.blockers else "unknown"
         raise TrainingOrchestratorError(f"local asset attestation blocked: {blockers}")
 
-    selected_runtime = build_hf_local_sft_runtime() if runtime is None else runtime
     factory = _default_backend_factory if backend_factory is None else backend_factory
+    if backend_factory is None:
+        selected_runtime = build_hf_local_sft_runtime() if runtime is None else runtime
+    elif runtime is None:
+        # Injected factories used by default CI never import the training stack.
+        selected_runtime = _UnusedRuntime()
+    else:
+        selected_runtime = runtime
     try:
         backend = factory(
             selected_recipe,
@@ -305,6 +313,22 @@ def _default_backend_factory(
         repository_root=repository_root,
         runtime=runtime,
     )
+
+
+class _UnusedRuntime:
+    """Placeholder runtime for injected backend factories that ignore the runtime."""
+
+    def train_seed(
+        self,
+        *,
+        model_root: Path,
+        records: tuple[dict[str, object], ...],
+        recipe: TrainingRecipe,
+        seed: int,
+        output_dir: Path,
+        profile: HfLocalSftExecutionProfile,
+    ) -> HfSftRuntimeResult:
+        raise TrainingOrchestratorError("unused runtime must not execute training")
 
 
 def _default_gpu_probe() -> str:

@@ -392,7 +392,6 @@ def test_orchestrator_invokes_executor_when_authority_matches(tmp_path: Path) ->
         repository_root=repository_root,
         environment=environment,
         verifier=verifier,
-        runtime=object(),  # unused because backend_factory is injected
         backend_factory=lambda *_args: backend,
     )
 
