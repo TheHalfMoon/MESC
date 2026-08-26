@@ -45,22 +45,10 @@ jobs:
 
           path = Path("tests/test_mesc_release_artifact_qualification_v1.py")
           text = path.read_text(encoding="utf-8")
-          old = '''    common = {
-              "repository": repository,
-              "tag_name": tag_name,
-              "release_id": release_id,
-              "asset_manifest": asset_manifest,
-              "training_sha": training.receipt_sha256,
-          }
-          return ReleaseSemanticEvidenceBundle(
-              training_execution=training,
-              provenance=_document("PROVENANCE", **common),
-              rights=_document("RIGHTS", **common),
-              sbom=_document("SBOM", **common),
-              evaluation=_document("EVALUATION", **common),
-          )
-          '''
-          new = '''    return ReleaseSemanticEvidenceBundle(
+          semantic_start = text.index("def _semantic(")
+          start = text.index("    common = {", semantic_start)
+          end = text.index("\n\n\ndef _binding(", start)
+          replacement = '''    return ReleaseSemanticEvidenceBundle(
               training_execution=training,
               provenance=_document(
                   "PROVENANCE",
@@ -94,11 +82,8 @@ jobs:
                   asset_manifest=asset_manifest,
                   training_sha=training.receipt_sha256,
               ),
-          )
-          '''
-          if old not in text:
-              raise SystemExit("fixture typing anchor missing")
-          path.write_text(text.replace(old, new, 1), encoding="utf-8")
+          )'''
+          path.write_text(text[:start] + replacement + text[end:], encoding="utf-8")
           PY
 
       - name: Format and enforce mutation allowlist
