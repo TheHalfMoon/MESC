@@ -1,0 +1,74 @@
+name: Diagnostic MESC 218 Import Repair
+
+on:
+  push:
+    branches:
+      - diag/mesc-218-qodo-fixes-151761d
+
+permissions:
+  contents: write
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: true
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+        with:
+          enable-cache: true
+      - name: Install Python 3.11
+        run: uv python install 3.11
+      - name: Sync locked environment
+        run: uv sync --frozen
+      - name: Add required receipt imports
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("src/medscale/mesc/_training_executor_v1.py")
+          text = path.read_text(encoding="utf-8")
+          needle = "from medscale.mesc import _training_authorization_trust_v1 as authorization_trust\n"
+          block = needle + (
+              "from medscale.mesc._training_authorization_receipt_v1 import (\n"
+              "    TrainingAuthorizationReceipt,\n"
+              "    TrainingAuthorizationReceiptError,\n"
+              ")\n"
+          )
+          if block not in text:
+              if text.count(needle) != 1:
+                  raise SystemExit("expected one authorization_trust import anchor")
+              path.write_text(text.replace(needle, block), encoding="utf-8")
+          PY
+          uv run ruff format src/medscale/mesc/_training_executor_v1.py
+          git diff --check
+          if ! git diff --quiet -- src/medscale/mesc/_training_executor_v1.py; then
+            git add -- src/medscale/mesc/_training_executor_v1.py
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "fix(mesc): import authorization receipt guards"
+            git push origin HEAD:${GITHUB_REF_NAME}
+          fi
+      - name: Ruff lint
+        run: uv run ruff check .
+      - name: Ruff format check
+        run: uv run ruff format --check .
+      - name: Strict mypy
+        run: uv run mypy
+      - name: Focused authorization tests
+        run: >-
+          uv run pytest -q
+          tests/test_mesc_training_authorization_receipt_v1.py
+          tests/test_mesc_training_authorization_admission_guard_v1.py
+          tests/test_mesc_training_readiness_receipt_binding_v1.py
+          tests/test_mesc_training_readiness_v1.py
+          tests/test_mesc_training_launch_plan_v1.py
+          tests/test_mesc_training_executor_v1.py
+          tests/test_mesc_training_orchestrator_v1.py
+      - name: Full pytest
+        run: uv run pytest --cov --cov-report=term-missing
+      - name: medscale check
+        run: uv run medscale check
