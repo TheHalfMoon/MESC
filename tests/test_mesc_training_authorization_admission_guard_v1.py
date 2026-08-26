@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
 from _training_authorization_test_support import (
@@ -12,7 +14,11 @@ from medscale.mesc import _training_executor_v1 as executor_module
 from medscale.mesc._training_authorization_receipt_v1 import (
     TrainingAuthorizationReceiptError,
 )
-from medscale.mesc._training_executor_v1 import TrainingExecutionError, execute_training
+from medscale.mesc._training_executor_v1 import (
+    TrainingExecutionError,
+    TrainingExecutionManifest,
+    execute_training,
+)
 from medscale.mesc._training_readiness_v1 import assess_training_readiness
 from test_mesc_training_executor_v1 import _SuccessBackend, _bundle
 
@@ -24,7 +30,7 @@ def test_revocation_after_launch_recompute_blocks_backend_invocation(
     backend = _SuccessBackend()
     original = executor_module._build_execution_manifest
 
-    def _revoke_after_manifest(**kwargs: object):
+    def _revoke_after_manifest(**kwargs: Any) -> TrainingExecutionManifest:
         execution_manifest = original(**kwargs)
         restore_training_authorization_test_trust()
         return execution_manifest
