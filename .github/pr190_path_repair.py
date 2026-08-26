@@ -14,7 +14,13 @@ source_text = replace_once(
     source_text,
     "            if type(value) is not Path:\n",
     "            if not isinstance(value, Path):\n",
-    label="path runtime type guard",
+    label="constructor path runtime type guard",
+)
+source_text = replace_once(
+    source_text,
+    "    if type(path) is not Path:\n",
+    "    if not isinstance(path, Path):\n",
+    label="corpus path runtime type guard",
 )
 source.write_text(source_text, encoding="utf-8", newline="\n")
 
@@ -41,7 +47,7 @@ def test_constructor_accepts_platform_path_and_rejects_non_path(tmp_path: Path) 
     recipe = _recipe()
     with pytest.raises(
         HfLocalSftBackendError,
-        match=r"model_root must be an exact pathlib\.Path",
+        match=r"model_root must be an exact pathlib[.]Path",
     ):
         HfLocalSftBackend(
             recipe=recipe,
