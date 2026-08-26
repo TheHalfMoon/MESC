@@ -21,6 +21,7 @@ from medscale.mesc._training_readiness_v1 import (
     assess_training_readiness,
 )
 from medscale.mesc._training_runtime_qualification_v1 import (
+    TrainingRuntimeQualificationReceipt,
     build_training_runtime_qualification_receipt,
 )
 from medscale.modelkit.interfaces import ModelRef
@@ -90,7 +91,7 @@ def _scientific_manifest(**overrides: object) -> TrainingReadinessManifest:
     return TrainingReadinessManifest(**kwargs)  # type: ignore[arg-type]
 
 
-def _runtime(*, smoke: bool = True):
+def _runtime(*, smoke: bool = True) -> TrainingRuntimeQualificationReceipt:
     return build_training_runtime_qualification_receipt(
         runner_class=RunnerClass.LOCAL,
         python_version="3.12.14",
