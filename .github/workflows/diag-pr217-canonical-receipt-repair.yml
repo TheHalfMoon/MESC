@@ -41,7 +41,9 @@ jobs:
         run: |
           set -euo pipefail
           git show origin/diag/pr217-canonical-receipt-repair:tools/diag_pr217_canonical_receipt_repair.py > /tmp/diag_pr217_repair.py
+          git show origin/diag/pr217-canonical-receipt-repair:tools/diag_pr217_update_test_expectations.py > /tmp/diag_pr217_expectations.py
           uv run python /tmp/diag_pr217_repair.py
+          uv run python /tmp/diag_pr217_expectations.py
 
       - name: Format and enforce mutation allowlist
         shell: bash
