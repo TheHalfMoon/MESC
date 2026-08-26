@@ -42,6 +42,7 @@ from medscale.mesc._training_readiness_v1 import (
     assess_training_readiness,
 )
 from medscale.mesc._training_runtime_qualification_v1 import (
+    TrainingRuntimeQualificationReceipt,
     TrainingRuntimeSmokeEvidence,
     build_training_runtime_qualification_receipt,
 )
@@ -96,7 +97,9 @@ def _recipe(candidate: TrainingCandidate) -> TrainingRecipe:
     )
 
 
-def _runtime_receipt(*, dependency_lock_sha256: str = _LOCK_SHA):
+def _runtime_receipt(
+    *, dependency_lock_sha256: str = _LOCK_SHA
+) -> TrainingRuntimeQualificationReceipt:
     smoke = TrainingRuntimeSmokeEvidence(
         canonical_json_bytes(
             {

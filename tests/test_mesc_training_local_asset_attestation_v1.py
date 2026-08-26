@@ -62,6 +62,7 @@ def _run(role: TrainingRole) -> TrainingRunPlan:
 def _launch() -> TrainingLaunchPlan:
     return TrainingLaunchPlan(
         readiness_manifest_sha256=_SHA_A,
+        corpus_binding_sha256=_SHA_A,
         runtime_qualification_sha256=_SHA_B,
         training_authorization_receipt_sha256=_SHA_C,
         compact=_run("compact"),
@@ -491,6 +492,7 @@ def test_rejects_subclassed_canonical_plan_and_binding(tmp_path: Path) -> None:
     launch = _launch()
     fake_launch: Any = FakeLaunch(
         readiness_manifest_sha256=launch.readiness_manifest_sha256,
+        corpus_binding_sha256=launch.corpus_binding_sha256,
         runtime_qualification_sha256=launch.runtime_qualification_sha256,
         training_authorization_receipt_sha256=launch.training_authorization_receipt_sha256,
         compact=launch.compact,
