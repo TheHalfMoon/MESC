@@ -6,11 +6,12 @@ from typing import Any
 
 import pytest
 
+import medscale.mesc._training_authorization_trust_v1 as authorization_trust
+import medscale.mesc._training_executor_v1 as executor_module
+import test_mesc_training_executor_v1 as executor_test_support
 from _training_authorization_test_support import (
     restore_training_authorization_test_trust,
 )
-from medscale.mesc import _training_authorization_trust_v1 as authorization_trust
-from medscale.mesc import _training_executor_v1 as executor_module
 from medscale.mesc._training_authorization_receipt_v1 import (
     TrainingAuthorizationReceiptError,
 )
@@ -20,14 +21,15 @@ from medscale.mesc._training_executor_v1 import (
     execute_training,
 )
 from medscale.mesc._training_readiness_v1 import assess_training_readiness
-from test_mesc_training_executor_v1 import _SuccessBackend, _bundle
 
 
 def test_revocation_after_launch_recompute_blocks_backend_invocation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    manifest, readiness, launch, binding, assets, environment = _bundle()
-    backend = _SuccessBackend()
+    manifest, readiness, launch, binding, assets, environment = (
+        executor_test_support._bundle()
+    )
+    backend = executor_test_support._SuccessBackend()
     original = executor_module._build_execution_manifest
 
     def _revoke_after_manifest(**kwargs: Any) -> TrainingExecutionManifest:
@@ -62,7 +64,7 @@ def test_revocation_after_launch_recompute_blocks_backend_invocation(
 def test_malformed_registry_is_domain_fail_closed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    manifest, _, _, _, _, _ = _bundle()
+    manifest, _, _, _, _, _ = executor_test_support._bundle()
     receipt = manifest.training_authorization_receipt
     assert receipt is not None
 
