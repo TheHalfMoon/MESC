@@ -6,6 +6,7 @@ from typing import cast
 
 import pytest
 
+from medscale.mesc._canonical_json_v1 import canonical_json_bytes
 from medscale.mesc._training_authorization_receipt_v1 import (
     TrainingAuthorizationReceipt,
     TrainingAuthorizationReceiptError,
@@ -15,16 +16,34 @@ from medscale.mesc._training_authorization_receipt_v1 import (
 _SUBJECT = "a" * 64
 _RUNTIME = "b" * 64
 _CORPUS = "c" * 64
+_STATEMENT = "Fixture authorization for the exact TRAINING_EXECUTION subject."
 
 
-def _build(*, authorize: bool) -> TrainingAuthorizationReceipt:
+def _artifact(*, authorize: bool) -> bytes:
+    return canonical_json_bytes(
+        {
+            "authorization_scope": "TRAINING_EXECUTION",
+            "authorization_statement": _STATEMENT,
+            "authorization_subject_sha256": _SUBJECT,
+            "authorize": authorize,
+            "authorizer_id": "fixture-founder",
+            "corpus_binding_sha256": _CORPUS,
+            "kind": "mesc.training_authorization.v1",
+            "runtime_qualification_sha256": _RUNTIME,
+        }
+    )
+
+
+def _build(*, authorize: bool, with_artifact: bool | None = None) -> TrainingAuthorizationReceipt:
+    include_artifact = authorize if with_artifact is None else with_artifact
     return build_training_authorization_receipt(
         authorizer_id="fixture-founder",
         authorization_subject_sha256=_SUBJECT,
         runtime_qualification_sha256=_RUNTIME,
         corpus_binding_sha256=_CORPUS,
-        authorization_statement="Fixture authorization for the exact TRAINING_EXECUTION subject.",
+        authorization_statement=_STATEMENT,
         authorize=authorize,
+        authorization_artifact=_artifact(authorize=authorize) if include_artifact else None,
     )
 
 
@@ -33,17 +52,96 @@ def test_authorize_false_is_blocked_and_not_real_training() -> None:
     assert receipt.disposition == "BLOCKED"
     assert receipt.real_training_authorized is False
     assert "explicit authorize=true was not supplied" in receipt.blockers
+    assert receipt.authorization_artifact_sha256 is None
     assert len(receipt.receipt_sha256) == 64
 
 
-def test_explicit_fixture_authorization_binds_pre_authorization_subject() -> None:
+def test_authorize_true_without_artifact_is_rejected() -> None:
+    with pytest.raises(
+        TrainingAuthorizationReceiptError,
+        match="requires validated authorization_artifact bytes",
+    ):
+        _build(authorize=True, with_artifact=False)
+
+
+def test_explicit_artifact_authorization_binds_pre_authorization_subject() -> None:
     receipt = _build(authorize=True)
     assert receipt.disposition == "AUTHORIZED"
     assert receipt.real_training_authorized is True
     assert receipt.authorization_subject_sha256 == _SUBJECT
     assert receipt.runtime_qualification_sha256 == _RUNTIME
     assert receipt.corpus_binding_sha256 == _CORPUS
+    assert receipt.authorization_artifact_sha256 is not None
+    assert len(receipt.authorization_artifact_sha256) == 64
     assert receipt.blockers == ()
+
+
+def test_artifact_semantics_must_match_supplied_bindings() -> None:
+    artifact = canonical_json_bytes(
+        {
+            "authorization_scope": "TRAINING_EXECUTION",
+            "authorization_statement": _STATEMENT,
+            "authorization_subject_sha256": "d" * 64,
+            "authorize": True,
+            "authorizer_id": "fixture-founder",
+            "corpus_binding_sha256": _CORPUS,
+            "kind": "mesc.training_authorization.v1",
+            "runtime_qualification_sha256": _RUNTIME,
+        }
+    )
+    with pytest.raises(TrainingAuthorizationReceiptError, match="authorization_subject_sha256"):
+        build_training_authorization_receipt(
+            authorizer_id="fixture-founder",
+            authorization_subject_sha256=_SUBJECT,
+            runtime_qualification_sha256=_RUNTIME,
+            corpus_binding_sha256=_CORPUS,
+            authorization_statement=_STATEMENT,
+            authorize=True,
+            authorization_artifact=artifact,
+        )
+
+
+def test_noncanonical_artifact_bytes_are_rejected() -> None:
+    noncanonical = _artifact(authorize=True).rstrip(b"\n")
+    with pytest.raises(TrainingAuthorizationReceiptError, match="not canonical JSON"):
+        build_training_authorization_receipt(
+            authorizer_id="fixture-founder",
+            authorization_subject_sha256=_SUBJECT,
+            runtime_qualification_sha256=_RUNTIME,
+            corpus_binding_sha256=_CORPUS,
+            authorization_statement=_STATEMENT,
+            authorize=True,
+            authorization_artifact=noncanonical,
+        )
+
+
+def test_duplicate_or_nonstandard_json_is_rejected() -> None:
+    duplicate = (
+        b'{"authorization_scope":"TRAINING_EXECUTION",'
+        b'"authorization_scope":"TRAINING_EXECUTION"}\n'
+    )
+    with pytest.raises(TrainingAuthorizationReceiptError, match="duplicate key"):
+        build_training_authorization_receipt(
+            authorizer_id="fixture-founder",
+            authorization_subject_sha256=_SUBJECT,
+            runtime_qualification_sha256=_RUNTIME,
+            corpus_binding_sha256=_CORPUS,
+            authorization_statement=_STATEMENT,
+            authorize=True,
+            authorization_artifact=duplicate,
+        )
+
+    nonstandard = _artifact(authorize=True).replace(b'"authorize":true', b'"authorize":NaN')
+    with pytest.raises(TrainingAuthorizationReceiptError, match="non-standard JSON constant"):
+        build_training_authorization_receipt(
+            authorizer_id="fixture-founder",
+            authorization_subject_sha256=_SUBJECT,
+            runtime_qualification_sha256=_RUNTIME,
+            corpus_binding_sha256=_CORPUS,
+            authorization_statement=_STATEMENT,
+            authorize=True,
+            authorization_artifact=nonstandard,
+        )
 
 
 def test_post_launch_local_asset_hash_is_not_an_authorization_input() -> None:
@@ -83,6 +181,21 @@ def test_receipt_blockers_are_immutable() -> None:
             authorization_statement="Fixture authorization.",
             real_training_authorized=False,
             blockers=cast(tuple[str, ...], ["mutable"]),
+        )
+
+
+def test_authorized_receipt_cannot_be_constructed_without_artifact() -> None:
+    with pytest.raises(TrainingAuthorizationReceiptError, match="validated authorization artifact"):
+        TrainingAuthorizationReceipt(
+            disposition="AUTHORIZED",
+            authorization_scope="TRAINING_EXECUTION",
+            authorizer_id="fixture-founder",
+            authorization_subject_sha256=_SUBJECT,
+            runtime_qualification_sha256=_RUNTIME,
+            corpus_binding_sha256=_CORPUS,
+            authorization_statement=_STATEMENT,
+            real_training_authorized=True,
+            blockers=(),
         )
 
 
