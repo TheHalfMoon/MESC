@@ -1,0 +1,52 @@
+name: diag-auth-final-format-218
+
+on:
+  push:
+    branches:
+      - diag/mesc-auth-final-format-218
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: true
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+      - run: uv python install 3.12
+      - run: uv sync --frozen
+      - name: Format final repair files
+        run: |
+          uv run ruff format \
+            src/medscale/mesc/_training_authorization_receipt_v1.py \
+            src/medscale/mesc/_training_executor_v1.py \
+            tests/_training_authorization_test_support.py \
+            tests/test_mesc_training_authorization_admission_guard_v1.py
+          uv run ruff check \
+            src/medscale/mesc/_training_authorization_receipt_v1.py \
+            src/medscale/mesc/_training_executor_v1.py \
+            tests/_training_authorization_test_support.py \
+            tests/test_mesc_training_authorization_admission_guard_v1.py
+          uv run ruff format --check \
+            src/medscale/mesc/_training_authorization_receipt_v1.py \
+            src/medscale/mesc/_training_executor_v1.py \
+            tests/_training_authorization_test_support.py \
+            tests/test_mesc_training_authorization_admission_guard_v1.py
+      - name: Commit formatter output
+        run: |
+          if git diff --quiet; then
+            echo "No formatting changes"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            src/medscale/mesc/_training_authorization_receipt_v1.py \
+            src/medscale/mesc/_training_executor_v1.py \
+            tests/_training_authorization_test_support.py \
+            tests/test_mesc_training_authorization_admission_guard_v1.py
+          git commit -m "style(mesc): apply canonical Ruff formatting"
+          git push origin HEAD:diag/mesc-auth-final-format-218
