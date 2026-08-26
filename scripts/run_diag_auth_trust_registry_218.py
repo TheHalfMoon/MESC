@@ -5,6 +5,7 @@ from pathlib import Path
 from types import ModuleType
 
 SCRIPT = Path("scripts/diag_auth_trust_registry_218.py")
+README = Path("specs/mesc-training-authorization-receipt-v1/README.md")
 
 
 def _load() -> ModuleType:
@@ -31,6 +32,7 @@ def main() -> None:
 
     module.replace_once = replace_once
     module.main()
+    README.write_text(README.read_text(encoding="utf-8").rstrip() + "\n", encoding="utf-8")
 
 
 if __name__ == "__main__":
