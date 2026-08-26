@@ -3,12 +3,10 @@
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Callable
-from unittest.mock import patch
 
 from medscale.mesc import _training_authorization_trust_v1 as authorization_trust
 
-_TRUST_CLEANUPS: list[Callable[[], object]] = []
+_TRUST_CLEANUPS: list[frozenset[str]] = []
 
 
 def install_training_authorization_test_trust(artifact: bytes) -> None:
@@ -17,16 +15,14 @@ def install_training_authorization_test_trust(artifact: bytes) -> None:
     trusted = authorization_trust.TRUSTED_TRAINING_AUTHORIZATION_ARTIFACT_SHA256 | frozenset(
         {digest}
     )
-    patcher = patch.object(
-        authorization_trust,
-        "TRUSTED_TRAINING_AUTHORIZATION_ARTIFACT_SHA256",
-        trusted,
+    previous = authorization_trust._replace_training_authorization_trust_registry_for_tests(
+        trusted
     )
-    patcher.start()
-    _TRUST_CLEANUPS.append(patcher.stop)
+    _TRUST_CLEANUPS.append(previous)
 
 
 def restore_training_authorization_test_trust() -> None:
-    """Restore all temporary registry patches in reverse installation order."""
+    """Restore all temporary registry replacements in reverse installation order."""
     while _TRUST_CLEANUPS:
-        _TRUST_CLEANUPS.pop()()
+        previous = _TRUST_CLEANUPS.pop()
+        authorization_trust._replace_training_authorization_trust_registry_for_tests(previous)
