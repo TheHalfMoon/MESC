@@ -1,0 +1,112 @@
+name: Diagnostic PR 208 action runtime qualification
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/diag-pr208-actions-runtime-qualification.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  core:
+    name: core with Node 24 action stack
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: 8d9ee63fde79ac4162bbe5879d70c4577cd806c0
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v10
+        with:
+          version: '0.12.6'
+          enable-cache: false
+      - run: uv python install 3.12
+      - run: uv sync --frozen
+      - run: uv lock --check
+      - run: uv run ruff check .
+      - run: uv run mypy src tests
+
+  transformers:
+    name: transformers extra with Node 24 action stack
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: 8d9ee63fde79ac4162bbe5879d70c4577cd806c0
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v10
+        with:
+          version: '0.12.6'
+          enable-cache: false
+      - run: uv python install 3.12
+      - run: uv sync --extra backends-transformers --frozen
+      - run: uv run pytest tests/test_modelkit_backends.py -q --no-header
+
+  llamacpp:
+    name: llama.cpp extra with Node 24 action stack
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: 8d9ee63fde79ac4162bbe5879d70c4577cd806c0
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v10
+        with:
+          version: '0.12.6'
+          enable-cache: false
+      - run: uv python install 3.12
+      - run: uv sync --extra backends-llamacpp --frozen
+      - run: uv run pytest tests/test_modelkit_backends.py -k 'llamacpp or llamacpp_skip' -q --no-header
+
+  artifact-build:
+    name: build and upload artifact with v7
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: 8d9ee63fde79ac4162bbe5879d70c4577cd806c0
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v10
+        with:
+          version: '0.12.6'
+          enable-cache: false
+      - run: uv python install 3.12
+      - run: uv sync --frozen
+      - run: uv build
+      - name: Prepare byte-identity payload
+        shell: bash
+        run: |
+          mkdir payload
+          cp dist/* payload/
+          (cd payload && sha256sum *.whl *.tar.gz > SHA256SUMS)
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: diag-pr208-dist
+          path: payload/
+          retention-days: 1
+
+  artifact-roundtrip:
+    name: download v8 and verify artifact bytes
+    needs: artifact-build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Download artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: diag-pr208-dist
+          path: roundtrip
+      - name: Verify byte identity
+        shell: bash
+        run: |
+          cd roundtrip
+          sha256sum -c SHA256SUMS
+          test "$(find . -maxdepth 1 -type f -name '*.whl' | wc -l)" -ge 1
+          test "$(find . -maxdepth 1 -type f -name '*.tar.gz' | wc -l)" -ge 1
