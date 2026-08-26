@@ -186,19 +186,40 @@ def _semantic(
         tag_name=tag_name,
         release_id=release_id,
     )
-    common = {
-        "repository": repository,
-        "tag_name": tag_name,
-        "release_id": release_id,
-        "asset_manifest": asset_manifest,
-        "training_sha": training.receipt_sha256,
-    }
     return ReleaseSemanticEvidenceBundle(
         training_execution=training,
-        provenance=_document("PROVENANCE", **common),
-        rights=_document("RIGHTS", **common),
-        sbom=_document("SBOM", **common),
-        evaluation=_document("EVALUATION", **common),
+        provenance=_document(
+            "PROVENANCE",
+            repository=repository,
+            tag_name=tag_name,
+            release_id=release_id,
+            asset_manifest=asset_manifest,
+            training_sha=training.receipt_sha256,
+        ),
+        rights=_document(
+            "RIGHTS",
+            repository=repository,
+            tag_name=tag_name,
+            release_id=release_id,
+            asset_manifest=asset_manifest,
+            training_sha=training.receipt_sha256,
+        ),
+        sbom=_document(
+            "SBOM",
+            repository=repository,
+            tag_name=tag_name,
+            release_id=release_id,
+            asset_manifest=asset_manifest,
+            training_sha=training.receipt_sha256,
+        ),
+        evaluation=_document(
+            "EVALUATION",
+            repository=repository,
+            tag_name=tag_name,
+            release_id=release_id,
+            asset_manifest=asset_manifest,
+            training_sha=training.receipt_sha256,
+        ),
     )
 
 
