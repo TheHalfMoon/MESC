@@ -14,6 +14,10 @@ from pathlib import PurePosixPath
 from typing import Final, Literal, Protocol
 
 from medscale.mesc import _training_authorization_trust_v1 as authorization_trust
+from medscale.mesc._training_authorization_receipt_v1 import (
+    TrainingAuthorizationReceipt,
+    TrainingAuthorizationReceiptError,
+)
 from medscale.mesc._training_corpus_binding_v1 import TrainingCorpusBindingReport
 from medscale.mesc._training_launch_plan_v1 import (
     TrainingLaunchPlan,
