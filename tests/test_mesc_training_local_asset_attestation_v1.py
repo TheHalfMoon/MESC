@@ -176,7 +176,7 @@ def test_corpus_content_and_size_mismatch_block(tmp_path: Path) -> None:
     actual = b'{"example":"tampered"}\n'
     model_root, corpus_path = _paths(tmp_path, actual)
     report = attest_local_training_assets(
-                launch_plan=_launch(_binding(expected)),
+        launch_plan=_launch(_binding(expected)),
         corpus_binding=_binding(expected),
         role="compact",
         model_root=model_root,
@@ -200,7 +200,7 @@ def test_corpus_read_failure_blocks_instead_of_raising(
 
     monkeypatch.setattr(attestation_mod, "_observe_file", fail_read)
     report = attest_local_training_assets(
-                launch_plan=_launch(_binding(raw)),
+        launch_plan=_launch(_binding(raw)),
         corpus_binding=_binding(raw),
         role="compact",
         model_root=model_root,
@@ -239,7 +239,7 @@ def test_symlinked_assets_fail_closed_without_model_verification(tmp_path: Path)
 
     verifier = _Verifier()
     report = attest_local_training_assets(
-                launch_plan=_launch(_binding(raw)),
+        launch_plan=_launch(_binding(raw)),
         corpus_binding=_binding(raw),
         role="compact",
         model_root=model_link,
@@ -256,7 +256,7 @@ def test_missing_paths_fail_closed_without_model_verification(tmp_path: Path) ->
     raw = b'{"example":"one"}\n'
     verifier = _Verifier()
     report = attest_local_training_assets(
-                launch_plan=_launch(_binding(raw)),
+        launch_plan=_launch(_binding(raw)),
         corpus_binding=_binding(raw),
         role="compact",
         model_root=tmp_path / "missing-model",
@@ -273,7 +273,7 @@ def test_blocked_binding_and_dataset_mismatch_cannot_pass(tmp_path: Path) -> Non
     raw = b'{"example":"one"}\n'
     model_root, corpus_path = _paths(tmp_path, raw)
     blocked = attest_local_training_assets(
-                launch_plan=_launch(_binding(raw, disposition="BLOCKED")),
+        launch_plan=_launch(_binding(raw, disposition="BLOCKED")),
         corpus_binding=_binding(raw, disposition="BLOCKED"),
         role="compact",
         model_root=model_root,
@@ -285,7 +285,7 @@ def test_blocked_binding_and_dataset_mismatch_cannot_pass(tmp_path: Path) -> Non
 
     mismatch_binding = replace(_binding(raw), training_dataset_sha256=_SHA_A)
     mismatch = attest_local_training_assets(
-                launch_plan=_launch(mismatch_binding),
+        launch_plan=_launch(mismatch_binding),
         corpus_binding=mismatch_binding,
         role="compact",
         model_root=model_root,
@@ -393,7 +393,7 @@ def test_verifier_exception_and_subclass_observation_fail_closed(tmp_path: Path)
             raise RuntimeError("boom")
 
     broken = attest_local_training_assets(
-                launch_plan=_launch(_binding(raw)),
+        launch_plan=_launch(_binding(raw)),
         corpus_binding=_binding(raw),
         role="compact",
         model_root=model_root,
@@ -428,7 +428,7 @@ def test_verifier_exception_and_subclass_observation_fail_closed(tmp_path: Path)
             )
 
     forged = attest_local_training_assets(
-                launch_plan=_launch(_binding(raw)),
+        launch_plan=_launch(_binding(raw)),
         corpus_binding=_binding(raw),
         role="compact",
         model_root=model_root,
