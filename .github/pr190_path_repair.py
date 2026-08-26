@@ -22,6 +22,12 @@ source_text = replace_once(
     "    if not isinstance(path, Path):\n",
     label="corpus path runtime type guard",
 )
+source_text = replace_once(
+    source_text,
+    "    if type(repository_root) is not Path:\n",
+    "    if not isinstance(repository_root, Path):\n",
+    label="repository root runtime type guard",
+)
 source.write_text(source_text, encoding="utf-8", newline="\n")
 
 tests = Path("tests/test_mesc_training_hf_local_sft_backend_v1.py")
