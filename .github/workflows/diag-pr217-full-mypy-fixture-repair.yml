@@ -1,0 +1,131 @@
+name: Diagnostic PR 217 Full Mypy Fixture Repair
+
+on:
+  push:
+    branches:
+      - diag/pr217-full-mypy-fixture-repair
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact target branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: fix/mesc-release-semantic-evidence-v1
+          persist-credentials: true
+          fetch-depth: 0
+
+      - name: Assert exact target head
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "c89c1f34ce9f77459ceaf6961e427c0038a769d2"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+        with:
+          enable-cache: true
+
+      - name: Install Python 3.12
+        run: uv python install 3.12
+
+      - name: Sync locked default environment
+        run: uv sync --frozen
+
+      - name: Repair typed fixture calls
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run python - <<'PY'
+          from pathlib import Path
+
+          path = Path("tests/test_mesc_release_artifact_qualification_v1.py")
+          text = path.read_text(encoding="utf-8")
+          old = '''    common = {
+              "repository": repository,
+              "tag_name": tag_name,
+              "release_id": release_id,
+              "asset_manifest": asset_manifest,
+              "training_sha": training.receipt_sha256,
+          }
+          return ReleaseSemanticEvidenceBundle(
+              training_execution=training,
+              provenance=_document("PROVENANCE", **common),
+              rights=_document("RIGHTS", **common),
+              sbom=_document("SBOM", **common),
+              evaluation=_document("EVALUATION", **common),
+          )
+          '''
+          new = '''    return ReleaseSemanticEvidenceBundle(
+              training_execution=training,
+              provenance=_document(
+                  "PROVENANCE",
+                  repository=repository,
+                  tag_name=tag_name,
+                  release_id=release_id,
+                  asset_manifest=asset_manifest,
+                  training_sha=training.receipt_sha256,
+              ),
+              rights=_document(
+                  "RIGHTS",
+                  repository=repository,
+                  tag_name=tag_name,
+                  release_id=release_id,
+                  asset_manifest=asset_manifest,
+                  training_sha=training.receipt_sha256,
+              ),
+              sbom=_document(
+                  "SBOM",
+                  repository=repository,
+                  tag_name=tag_name,
+                  release_id=release_id,
+                  asset_manifest=asset_manifest,
+                  training_sha=training.receipt_sha256,
+              ),
+              evaluation=_document(
+                  "EVALUATION",
+                  repository=repository,
+                  tag_name=tag_name,
+                  release_id=release_id,
+                  asset_manifest=asset_manifest,
+                  training_sha=training.receipt_sha256,
+              ),
+          )
+          '''
+          if old not in text:
+              raise SystemExit("fixture typing anchor missing")
+          path.write_text(text.replace(old, new, 1), encoding="utf-8")
+          PY
+
+      - name: Format and enforce mutation allowlist
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run ruff format tests/test_mesc_release_artifact_qualification_v1.py
+          changed="$(git diff --name-only)"
+          printf '%s\n' "$changed"
+          test "$changed" = "tests/test_mesc_release_artifact_qualification_v1.py"
+
+      - name: Qualify full typing repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run ruff format --check .
+          uv run ruff check .
+          uv run mypy
+          uv run pytest -q tests/test_mesc_release_artifact_qualification_v1.py tests/test_mesc_release_semantic_evidence_v1.py
+          uv lock --check
+
+      - name: Commit and push repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "TheHalfMoon"
+          git config user.email "alshehriofficial@gmail.com"
+          git add tests/test_mesc_release_artifact_qualification_v1.py
+          git commit -m "test(mesc): preserve release evidence fixture types"
+          git push origin HEAD:fix/mesc-release-semantic-evidence-v1
