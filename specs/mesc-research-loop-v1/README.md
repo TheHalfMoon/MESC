@@ -9,6 +9,7 @@ BASE_MAIN_SHA = 89d5edf0035c7b659d20dd861ec501d7fef0d192
 TRAINING_EXECUTION = NOT_AUTHORIZED_BY_THIS_PACKAGE
 REAL_MODEL_OR_DATA_ACCESS = NOT_AUTHORIZED_BY_THIS_PACKAGE
 AUTONOMOUS_GPU_EXPERIMENTATION = NOT_AUTHORIZED_BY_THIS_PACKAGE
+MODEL_PROMOTION = NOT_OWNED_BY_MRL_V1
 ```
 
 ## Purpose
@@ -32,7 +33,8 @@ research objective
   -> replication or rejection
   -> next hypothesis
   -> reusable validated research procedure
-  -> promotion gate
+  -> sealed evaluation evidence
+  -> non-authoritative evidence candidate
 ```
 
 `MESC Research Loop (MRL)` is the proposed layer for that gap.
@@ -55,37 +57,46 @@ MRL does not replace:
 - Backbone Tournament contracts;
 - training-readiness / launch / execution gates;
 - MESC-Eval;
-- MCRL.
+- MCRL;
+- future model-promotion governance.
 
-MRL sits above experiment execution and below canonical scientific promotion.
+MRL stops at research evidence. Canonical ADR-0033 explicitly defers model-promotion
+ownership and evidence to a later dedicated ADR, so MRL V1 must not create
+`PromotionDecision`, `PROMOTED`, or an equivalent promotion authority under another
+name.
 
-MCRL remains the patient/task-time clinical state, evidence, verification,
-uncertainty, tool, and recovery layer. MRL is a separate research-time layer for
-hypotheses, experiments, scientific decisions, research memory, and procedure
-admission. Patient/product/PHI data must never become an MRL learning signal under
-current governance.
+MCRL remains the patient/task-time clinical state, evidence, verification, uncertainty,
+tool, and recovery layer. MRL is a separate research-time layer for hypotheses,
+experiments, scientific decisions, research memory, and procedure admission.
+Patient/product/PHI data and clinical-runtime state must never become an MRL learning
+signal under current governance.
 
 ## Core principles
 
 1. **The researcher may modify the experiment; it may never modify the ruler.**
-   Frozen evaluators, sealed evaluation data, promotion rules, trust registries,
-   authorization code, governance, and canonical experiment history are outside the
+   Frozen evaluators, sealed evaluation data, governance, trust registries,
+   authorization code, canonical history, and future promotion authority are outside the
    autonomous mutation surface.
-2. **Search feedback is not final evidence.** Repeated adaptive experimentation must
-   use separate search, replication, sealed promotion, and external/clinician assurance
-   tiers.
-3. **Safety gates dominate aggregate optimization.** No scalar score may hide a
-   material regression in safety, harmful overconfidence, abstention, evidence fidelity,
-   critical subgroups, contamination, or reproducibility.
+2. **Search feedback is not final evidence.** Repeated adaptive experimentation uses
+   separate search, replication, sealed evaluation, and external/clinician assurance
+   tiers with frozen query/result-exposure budgets.
+3. **Safety gates dominate aggregate optimization.** No scalar score may hide a material
+   regression in safety, harmful overconfidence, abstention, evidence fidelity, critical
+   subgroups, contamination, or reproducibility.
 4. **Research memory is admitted, not merely accumulated.** A repeated successful
-   workflow becomes a reusable `ResearchProcedure` only after replay, transfer testing,
-   failure controls, and review.
+   workflow becomes a reusable `ResearchProcedure` only after replay, representative
+   transfer testing, failure controls, typed applicability limits, and independent review.
 5. **Failures remain first-class artifacts.** Rejected, invalid, null, unsafe, and
    non-reproducible experiments stay in the campaign graph so the system does not pay
    repeatedly for the same known failure.
-6. **No silent authority expansion.** This package defines a future research substrate;
-   it grants no model access, dataset access, GPU use, training, retrieval, provider,
-   credential, or release authority.
+6. **Content identity is non-self-referential.** `content_sha256` is derived from
+   canonical semantic bytes and is excluded from its own hash preimage.
+7. **No silent authority expansion.** This package grants no model access, dataset
+   access, GPU use, training, retrieval, provider, credential, promotion, or release
+   authority.
+8. **Derived state cannot self-authorize.** Machine-readable project-state projections
+   are deterministic views bound to exact repository/source identities; stale or manually
+   altered projections fail closed.
 
 ## Planning package
 
@@ -100,7 +111,10 @@ This directory contains:
 
 Do not begin with an autonomous GPU agent.
 
-First build and validate the typed research artifacts, immutable evaluator boundary,
-adaptive-evaluation hierarchy, fixture-only closed loop, and research-memory admission
-mechanism. Only after those layers are independently qualified should a separately
-authorized real experiment runner be attached.
+First build and validate the canonical artifact/hash contract, typed research-input
+admission boundary, immutable evaluator boundary, adaptive-evaluation hierarchy,
+fixture-only closed loop, independently reviewed research-memory admission,
+contamination/lineage gate, and anti-stale machine-state projections. Only after those
+layers are independently qualified should a separately authorized real experiment runner
+be considered. Model promotion remains outside MRL V1 until the dedicated ADR required
+by ADR-0033 is separately accepted.
