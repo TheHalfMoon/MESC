@@ -1,0 +1,89 @@
+name: Diagnostic MESC 218 Binding Snapshot Repair
+
+on:
+  push:
+    branches:
+      - diag/mesc-218-qodo-fixes-151761d
+
+permissions:
+  contents: write
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: true
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+        with:
+          enable-cache: true
+      - name: Install Python 3.11
+        run: uv python install 3.11
+      - name: Sync locked environment
+        run: uv sync --frozen
+      - name: Apply bounded binding repair
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          binding = Path("src/medscale/mesc/_training_readiness_receipt_binding_v1.py")
+          text = binding.read_text(encoding="utf-8")
+          old = '''    try:\n        receipt = receipt.validated_current_trust_snapshot()\n    except TrainingAuthorizationReceiptError as exc:\n        raise TrainingReadinessReceiptBindingError(\n            "authorization receipt is not trusted by the current canonical registry"\n        ) from exc\n    if receipt.disposition != "AUTHORIZED" or not receipt.real_training_authorized:\n        raise TrainingReadinessReceiptBindingError(\n            "authorization receipt must be AUTHORIZED with real_training_authorized=true"\n        )\n'''
+          new = '''    if receipt.disposition != "AUTHORIZED" or not receipt.real_training_authorized:\n        raise TrainingReadinessReceiptBindingError(\n            "authorization receipt must be AUTHORIZED with real_training_authorized=true"\n        )\n    try:\n        receipt = receipt.validated_current_trust_snapshot()\n    except TrainingAuthorizationReceiptError as exc:\n        raise TrainingReadinessReceiptBindingError(\n            "authorization receipt is not trusted by the current canonical registry"\n        ) from exc\n'''
+          if old in text:
+              text = text.replace(old, new, 1)
+              binding.write_text(text, encoding="utf-8")
+          elif new not in text:
+              raise SystemExit("binding repair anchor not found")
+
+          tests = Path("tests/test_mesc_training_readiness_receipt_binding_v1.py")
+          text = tests.read_text(encoding="utf-8")
+          old = "    assert final.training_authorization_receipt is auth\n"
+          new = (
+              "    assert final.training_authorization_receipt == auth\n"
+              "    assert final.training_authorization_receipt is not auth\n"
+          )
+          if old in text:
+              text = text.replace(old, new, 1)
+              tests.write_text(text, encoding="utf-8")
+          elif new not in text:
+              raise SystemExit("snapshot identity test anchor not found")
+          PY
+          uv run ruff format \
+            src/medscale/mesc/_training_readiness_receipt_binding_v1.py \
+            tests/test_mesc_training_readiness_receipt_binding_v1.py
+          git diff --check
+          if ! git diff --quiet -- \
+            src/medscale/mesc/_training_readiness_receipt_binding_v1.py \
+            tests/test_mesc_training_readiness_receipt_binding_v1.py; then
+            git add -- \
+              src/medscale/mesc/_training_readiness_receipt_binding_v1.py \
+              tests/test_mesc_training_readiness_receipt_binding_v1.py
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "fix(mesc): preserve authorization snapshot semantics"
+            git push origin HEAD:${GITHUB_REF_NAME}
+          fi
+      - name: Ruff lint
+        run: uv run ruff check .
+      - name: Ruff format check
+        run: uv run ruff format --check .
+      - name: Strict mypy
+        run: uv run mypy
+      - name: Focused authorization tests
+        run: >-
+          uv run pytest -q
+          tests/test_mesc_training_authorization_receipt_v1.py
+          tests/test_mesc_training_authorization_admission_guard_v1.py
+          tests/test_mesc_training_readiness_receipt_binding_v1.py
+          tests/test_mesc_training_readiness_v1.py
+          tests/test_mesc_training_launch_plan_v1.py
+          tests/test_mesc_training_executor_v1.py
+          tests/test_mesc_training_orchestrator_v1.py
+      - name: Full pytest
+        run: uv run pytest --cov --cov-report=term-missing
+      - name: medscale check
+        run: uv run medscale check
