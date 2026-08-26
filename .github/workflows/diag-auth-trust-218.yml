@@ -7,6 +7,7 @@ on:
     paths:
       - .github/workflows/diag-auth-trust-218.yml
       - scripts/diag_auth_trust_registry_218.py
+      - scripts/run_diag_auth_trust_registry_218.py
       - src/medscale/mesc/_training_authorization_trust_v1.py
 
 permissions:
@@ -26,7 +27,7 @@ jobs:
       - run: uv python install 3.12
       - run: uv sync --frozen
       - name: Apply trust-registry repair
-        run: uv run python scripts/diag_auth_trust_registry_218.py
+        run: uv run python scripts/run_diag_auth_trust_registry_218.py
       - name: Ruff fix and format
         run: |
           uv run ruff check --fix src/medscale/mesc/_training_authorization_trust_v1.py src/medscale/mesc/_training_authorization_receipt_v1.py tests/test_mesc_training_authorization_receipt_v1.py tests/test_mesc_training_readiness_receipt_binding_v1.py tests/test_mesc_training_readiness_v1.py tests/test_mesc_training_launch_plan_v1.py tests/test_mesc_training_executor_v1.py tests/test_mesc_training_orchestrator_v1.py
