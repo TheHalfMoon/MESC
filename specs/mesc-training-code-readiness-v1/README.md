@@ -66,12 +66,14 @@ This package does not:
 
 ## Next gates (external / evidence)
 
-After `TRAINING_CODE_READY`, real training and a MedScale-admissible release still require:
+Receipt producers for runtime qualification and training authorization now exist in-repo.
+After an updated `TRAINING_CODE_READY` audit includes those producers, real training and a
+MedScale-admissible release still require:
 
 - authorized local model assets with `weights_sha256`;
 - qualified corpus bytes;
-- runtime/GPU qualification receipts;
-- explicit training-authorization receipts;
+- a runtime/GPU qualification receipt with `platform_qualified=true` (smoke evidence);
+- an explicit training-authorization receipt with `authorize=true` from the founder/operator;
 - successful training/evaluation evidence;
 - rights/SBOM/provenance; and
 - a GitHub Release with non-empty immutable assets that survive independent re-fetch and
