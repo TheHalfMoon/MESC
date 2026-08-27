@@ -46,7 +46,7 @@ def test_mutating_returned_trust_snapshot_cannot_mint_admission_authority() -> N
         match="not trusted",
     ):
         permission_trust.validate_research_input_source_permission_trust(
-            permission.content_sha256
+            permission.content_sha256,
         )
     with pytest.raises(ResearchInputAdmissionError, match="not trusted"):
         contract.require_learning_admission(ResearchLearningSurface.OBSERVATION)
