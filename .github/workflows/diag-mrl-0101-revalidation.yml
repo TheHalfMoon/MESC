@@ -39,17 +39,11 @@ jobs:
               raise SystemExit("expected one NUL regression match pattern")
           text = text.replace(old_regex, 'match=r"canonical text|canonical relative"')
 
-          old_evaluator = '''        objective.evaluator_identities[0],
-        "tiers",
-        (EvaluationTier.SEALED,),
-'''
-          new_evaluator = '''        objective.evaluator_identities[1],
-        "tiers",
-        (EvaluationTier.SEALED,),
-'''
-          if text.count(old_evaluator) != 1:
-              raise SystemExit("expected one forged search-evaluator regression target")
-          text = text.replace(old_evaluator, new_evaluator)
+          needle = "objective.evaluator_identities[0]"
+          index = text.rfind(needle)
+          if index < 0:
+              raise SystemExit("forged search-evaluator regression target missing")
+          text = text[:index] + "objective.evaluator_identities[1]" + text[index + len(needle):]
 
           path.write_text(text, encoding="utf-8")
           PY
