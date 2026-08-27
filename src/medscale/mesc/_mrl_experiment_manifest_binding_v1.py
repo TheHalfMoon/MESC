@@ -48,6 +48,8 @@ class ExperimentManifestBinding:
 
     plan: ResearchExperimentPlan = field(repr=False)
     manifest: ExperimentManifest = field(repr=False)
+    _construction_plan_sha256: str = field(init=False, repr=False, compare=False)
+    _construction_manifest_sha256: str = field(init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         # A subclass may exist only as an untrusted object. Every trust-bearing public
@@ -57,8 +59,12 @@ class ExperimentManifestBinding:
         plan = _snapshot_plan(self.plan)
         manifest = _snapshot_manifest(self.manifest)
         _require_expected_manifest_match(plan.expected_manifest, manifest)
+        plan_sha256 = plan.content_sha256
+        manifest_sha256 = manifest.manifest_id
         object.__setattr__(self, "plan", plan)
         object.__setattr__(self, "manifest", manifest)
+        object.__setattr__(self, "_construction_plan_sha256", plan_sha256)
+        object.__setattr__(self, "_construction_manifest_sha256", manifest_sha256)
 
     def _validated_snapshot(self) -> ExperimentManifestBinding:
         """Return one exact, freshly revalidated binding snapshot."""
@@ -107,10 +113,24 @@ def _validated_binding_snapshot(value: ExperimentManifestBinding) -> ExperimentM
         ExperimentManifestBinding,
         "experiment_manifest_binding",
     )
-    return ExperimentManifestBinding(
-        plan=_snapshot_plan(value.plan),
-        manifest=_snapshot_manifest(value.manifest),
-    )
+    try:
+        construction_plan_sha256 = value._construction_plan_sha256
+        construction_manifest_sha256 = value._construction_manifest_sha256
+    except AttributeError as exc:
+        raise ExperimentManifestBindingError(
+            "binding construction identities are missing"
+        ) from exc
+    _require_exact_str(construction_plan_sha256, "construction plan identity")
+    _require_exact_str(construction_manifest_sha256, "construction manifest identity")
+
+    plan = _snapshot_plan(value.plan)
+    manifest = _snapshot_manifest(value.manifest)
+    _require_expected_manifest_match(plan.expected_manifest, manifest)
+    if plan.content_sha256 != construction_plan_sha256:
+        raise ExperimentManifestBindingError("bound plan identity changed after construction")
+    if manifest.manifest_id != construction_manifest_sha256:
+        raise ExperimentManifestBindingError("bound manifest identity changed after construction")
+    return ExperimentManifestBinding(plan=plan, manifest=manifest)
 
 
 def _binding_semantic_dict(value: ExperimentManifestBinding) -> dict[str, str]:
