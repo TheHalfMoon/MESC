@@ -63,6 +63,7 @@ class ResearchHypothesis:
 
     def _validated_snapshot(self) -> ResearchHypothesis:
         """Rebuild and validate one local semantic snapshot before every public view."""
+        _require_exact_hypothesis(self)
         return ResearchHypothesis(
             hypothesis_id=self.hypothesis_id,
             objective_sha256=self.objective_sha256,
@@ -92,27 +93,38 @@ class ResearchHypothesis:
 
     def semantic_dict(self) -> dict[str, object]:
         """Return complete semantics from one freshly revalidated local snapshot."""
+        _require_exact_hypothesis(self)
         snapshot = self._validated_snapshot()
         return snapshot._semantic_dict_validated()
 
     @property
     def semantic_bytes(self) -> bytes:
         """Return canonical UTF-8 bytes from one freshly revalidated snapshot."""
+        _require_exact_hypothesis(self)
         snapshot = self._validated_snapshot()
         return canonical_semantic_bytes(snapshot._semantic_dict_validated())
 
     @property
     def content_sha256(self) -> str:
         """Derive identity from canonical semantics outside the semantic preimage."""
+        _require_exact_hypothesis(self)
         snapshot = self._validated_snapshot()
         return derive_content_sha256(snapshot._semantic_dict_validated())
 
     def to_dict(self) -> dict[str, object]:
         """Return semantic envelope plus derived content identity."""
+        _require_exact_hypothesis(self)
         snapshot = self._validated_snapshot()
         data = snapshot._semantic_dict_validated()
         data["content_sha256"] = derive_content_sha256(data)
         return data
+
+
+def _require_exact_hypothesis(value: ResearchHypothesis) -> None:
+    if type(value) is not ResearchHypothesis:
+        raise ResearchHypothesisError(
+            "research hypothesis semantic views require an exact ResearchHypothesis instance"
+        )
 
 
 def _require_text(value: str, label: str) -> None:

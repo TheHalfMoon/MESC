@@ -324,3 +324,32 @@ def test_post_construction_parent_self_reference_fails_closed() -> None:
         hypothesis.semantic_dict()
     with pytest.raises(ResearchHypothesisError, match="cannot reference itself"):
         _ = hypothesis.content_sha256
+
+
+class _SnapshotBypassHypothesis(ResearchHypothesis):
+    def _validated_snapshot(self) -> ResearchHypothesis:
+        return _hypothesis()
+
+
+def test_subclass_snapshot_override_fails_closed_for_all_public_views() -> None:
+    base = _hypothesis()
+    forged = _SnapshotBypassHypothesis(
+        hypothesis_id=base.hypothesis_id,
+        objective_sha256=base.objective_sha256,
+        mechanism=base.mechanism,
+        predicted_effects=base.predicted_effects,
+        predicted_failure_modes=base.predicted_failure_modes,
+        falsification_criteria=base.falsification_criteria,
+        evidence_refs=base.evidence_refs,
+        parent_hypothesis_ids=base.parent_hypothesis_ids,
+        created_from_campaign_state_sha256=base.created_from_campaign_state_sha256,
+    )
+
+    with pytest.raises(ResearchHypothesisError, match="exact ResearchHypothesis instance"):
+        forged.semantic_dict()
+    with pytest.raises(ResearchHypothesisError, match="exact ResearchHypothesis instance"):
+        _ = forged.semantic_bytes
+    with pytest.raises(ResearchHypothesisError, match="exact ResearchHypothesis instance"):
+        _ = forged.content_sha256
+    with pytest.raises(ResearchHypothesisError, match="exact ResearchHypothesis instance"):
+        forged.to_dict()
