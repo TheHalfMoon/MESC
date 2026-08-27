@@ -14,6 +14,9 @@ code execution that rewrites executable interpreter state such as function code,
 class methods, or ``sys.modules`` is outside this contract-level boundary: such a caller can replace
 the enforcement code itself. Untrusted research execution must therefore run outside the
 trust-bearing interpreter/process under the separately governed execution boundary.
+
+Lineage validation is iterative, graph-bounded, and non-amplifying: pathological
+depth or breadth fails closed instead of triggering repeated recursive snapshots.
 """
 
 from __future__ import annotations
@@ -188,28 +191,32 @@ class ResearchInputParentRef:
 
     def __post_init__(self) -> None:
         _require_exact_admission(self.parent_admission)
-        parent = self.parent_admission._validated_snapshot()
-        object.__setattr__(
-            self,
-            "_bound_admission_sha256",
-            derive_content_sha256(parent._semantic_dict_validated()),
+        _, current_sha256, current_classification, current_disposition = _validated_admission_state(
+            self.parent_admission
         )
-        object.__setattr__(self, "_bound_classification", parent.classification)
-        object.__setattr__(
-            self,
-            "_bound_disposition",
-            _disposition_for_classification(parent.classification),
-        )
+        object.__setattr__(self, "_bound_admission_sha256", current_sha256)
+        object.__setattr__(self, "_bound_classification", current_classification)
+        object.__setattr__(self, "_bound_disposition", current_disposition)
 
     def _validated_binding(
         self,
     ) -> tuple[str, ResearchInputClassification, ResearchInputDisposition]:
         _require_exact_parent_ref(self)
         _require_exact_admission(self.parent_admission)
-        parent = self.parent_admission._validated_snapshot()
-        current_sha256 = derive_content_sha256(parent._semantic_dict_validated())
-        current_classification = parent.classification
-        current_disposition = _disposition_for_classification(current_classification)
+        _, current_sha256, current_classification, current_disposition = _validated_admission_state(
+            self.parent_admission
+        )
+        _require_sha256(self._bound_admission_sha256, "bound parent admission sha256")
+        _require_exact_enum(
+            self._bound_classification,
+            ResearchInputClassification,
+            "bound parent classification",
+        )
+        _require_exact_enum(
+            self._bound_disposition,
+            ResearchInputDisposition,
+            "bound parent disposition",
+        )
         if (
             current_sha256 != self._bound_admission_sha256
             or current_classification is not self._bound_classification
@@ -233,8 +240,9 @@ class ResearchInputParentRef:
         return self._validated_binding()[2]
 
     def _validated_snapshot(self) -> ResearchInputParentRef:
+        """Validate the live binding without recursively rebuilding its ancestry."""
         self._validated_binding()
-        return ResearchInputParentRef(parent_admission=self.parent_admission._validated_snapshot())
+        return self
 
     def to_dict(self) -> dict[str, str]:
         """Return one freshly validated parent-reference semantic mapping."""
@@ -252,6 +260,7 @@ def _build_admission_graph_trust_gate(
     """Bind admission authority to one import-time canonical validator closure."""
 
     def require_admission_graph_trust(root: ResearchInputAdmissionContract) -> None:
+        _validated_admission_state(root)
         stack = [root]
         visited: set[int] = set()
         while stack:
@@ -309,7 +318,7 @@ def _bind_learning_admission_trust(
             surface: ResearchLearningSurface,
         ) -> None:
             method(self, surface)
-            trust_gate(self._validated_snapshot())
+            trust_gate(self)
 
         return guarded
 
@@ -329,7 +338,7 @@ def _bind_external_evaluation_trust(
     ) -> Callable[[ResearchInputAdmissionContract], None]:
         def guarded(self: ResearchInputAdmissionContract) -> None:
             method(self)
-            trust_gate(self._validated_snapshot())
+            trust_gate(self)
 
         return guarded
 
@@ -351,82 +360,27 @@ class ResearchInputAdmissionContract:
     parent_inputs: tuple[ResearchInputParentRef, ...] = ()
 
     def __post_init__(self) -> None:
-        _require_token(self.input_id, "input_id")
-        _require_sha256(self.classification_policy_sha256, "classification_policy_sha256")
-        _require_exact_enum(self.classification, ResearchInputClassification, "classification")
-        _require_optional_sha256(self.source_artifact_sha256, "source_artifact_sha256")
-        _require_optional_sha256(self.source_contract_sha256, "source_contract_sha256")
-        _require_learning_surfaces(self.allowed_learning_surfaces)
-        try:
-            _require_parent_refs(self.parent_inputs)
-            _require_transformation_lineage(self.transformation_kind, self.parent_inputs)
-
-            disposition = _disposition_for_classification(self.classification)
-            if disposition is ResearchInputDisposition.LEARNING_ADMITTED:
-                if self.source_artifact_sha256 is None or self.source_contract_sha256 is None:
-                    raise ResearchInputAdmissionError(
-                        "learning-admitted input requires exact source artifact and "
-                        "contract identities"
-                    )
-                if not self.allowed_learning_surfaces:
-                    raise ResearchInputAdmissionError(
-                        "learning-admitted input requires at least one explicit learning surface"
-                    )
-                _require_source_permission_binding(self)
-            elif disposition is ResearchInputDisposition.EXTERNAL_EVALUATION_ONLY:
-                if self.source_artifact_sha256 is None or self.source_contract_sha256 is None:
-                    raise ResearchInputAdmissionError(
-                        "external evaluation evidence requires exact artifact and "
-                        "governing contract identities"
-                    )
-                if self.allowed_learning_surfaces:
-                    raise ResearchInputAdmissionError(
-                        "external evaluation evidence cannot enter an MRL learning surface"
-                    )
-                _require_source_permission_binding(self)
-            else:
-                if self.source_permission is not None:
-                    raise ResearchInputAdmissionError(
-                        "rejected input cannot carry a source permission into MRL"
-                    )
-                if (
-                    self.source_artifact_sha256 is not None
-                    or self.source_contract_sha256 is not None
-                ):
-                    raise ResearchInputAdmissionError(
-                        "rejected input cannot carry source artifact or contract "
-                        "identities into MRL"
-                    )
-                if self.allowed_learning_surfaces:
-                    raise ResearchInputAdmissionError(
-                        "rejected input cannot enter an MRL learning surface"
-                    )
-
-            _require_no_lineage_laundering(disposition, self.parent_inputs)
-        except RecursionError as exc:
-            raise ResearchInputAdmissionError(
-                "cyclic research-input parent lineage is forbidden"
-            ) from exc
+        # Exact-type enforcement belongs to authoritative/public validation. A subclass may
+        # exist as an untrusted object, but every public view and admission gate rejects it.
+        if type(self) is not ResearchInputAdmissionContract:
+            return
+        _validated_admission_state(self)
 
     @property
     def disposition(self) -> ResearchInputDisposition:
-        """Return policy disposition; authority still requires a public admission gate."""
+        """Return validated policy disposition; authority still requires a public gate."""
         _require_exact_admission(self)
-        snapshot = self._validated_snapshot()
-        return _disposition_for_classification(snapshot.classification)
+        return _validated_admission_state(self)[3]
 
     @_bind_learning_admission_trust(_require_admission_graph_trust)
     def require_learning_admission(self, surface: ResearchLearningSurface) -> None:
         """Fail closed unless this exact input may enter the requested MRL learning surface."""
         _require_exact_admission(self)
         _require_exact_enum(surface, ResearchLearningSurface, "surface")
-        snapshot = self._validated_snapshot()
-        if (
-            _disposition_for_classification(snapshot.classification)
-            is not ResearchInputDisposition.LEARNING_ADMITTED
-        ):
+        _, _, _, disposition = _validated_admission_state(self)
+        if disposition is not ResearchInputDisposition.LEARNING_ADMITTED:
             raise ResearchInputAdmissionError("input is not admitted as an MRL learning signal")
-        if surface not in snapshot.allowed_learning_surfaces:
+        if surface not in self.allowed_learning_surfaces:
             raise ResearchInputAdmissionError(
                 f"input is not admitted to learning surface {surface.value!r}"
             )
@@ -435,90 +389,45 @@ class ResearchInputAdmissionContract:
     def require_external_evaluation_use(self) -> None:
         """Fail closed unless this input is separately classified as external evidence only."""
         _require_exact_admission(self)
-        snapshot = self._validated_snapshot()
-        if (
-            _disposition_for_classification(snapshot.classification)
-            is not ResearchInputDisposition.EXTERNAL_EVALUATION_ONLY
-        ):
+        _, _, _, disposition = _validated_admission_state(self)
+        if disposition is not ResearchInputDisposition.EXTERNAL_EVALUATION_ONLY:
             raise ResearchInputAdmissionError(
                 "input is not admitted as separately governed external evaluation evidence"
             )
 
     def _validated_snapshot(self) -> ResearchInputAdmissionContract:
+        """Validate the live graph without recursively rebuilding equivalent objects."""
         _require_exact_admission(self)
-        _require_acyclic_parent_lineage(self)
-        try:
-            _require_parent_refs(self.parent_inputs)
-            parents = tuple(parent._validated_snapshot() for parent in self.parent_inputs)
-            permission = (
-                self.source_permission._validated_snapshot()
-                if self.source_permission is not None
-                else None
-            )
-            return ResearchInputAdmissionContract(
-                input_id=self.input_id,
-                classification_policy_sha256=self.classification_policy_sha256,
-                classification=self.classification,
-                source_artifact_sha256=self.source_artifact_sha256,
-                source_contract_sha256=self.source_contract_sha256,
-                allowed_learning_surfaces=self.allowed_learning_surfaces,
-                source_permission=permission,
-                transformation_kind=self.transformation_kind,
-                parent_inputs=parents,
-            )
-        except RecursionError as exc:
-            raise ResearchInputAdmissionError(
-                "cyclic research-input parent lineage is forbidden"
-            ) from exc
+        _validated_admission_state(self)
+        return self
 
     def _semantic_dict_validated(self) -> dict[str, object]:
-        disposition = _disposition_for_classification(self.classification)
-        return {
-            "format": "MRL-RESEARCH-INPUT-ADMISSION-V1",
-            "input_id": self.input_id,
-            "classification_policy_sha256": self.classification_policy_sha256,
-            "classification": self.classification.value,
-            "disposition": disposition.value,
-            "source_artifact_sha256": self.source_artifact_sha256,
-            "source_contract_sha256": self.source_contract_sha256,
-            "allowed_learning_surfaces": [
-                surface.value for surface in self.allowed_learning_surfaces
-            ],
-            "source_permission_sha256": (
-                derive_content_sha256(self.source_permission._semantic_dict_validated())
-                if self.source_permission is not None
-                else None
-            ),
-            "transformation_kind": self.transformation_kind,
-            "parent_inputs": [parent.to_dict() for parent in self.parent_inputs],
-        }
+        """Return semantics from one bounded, fully validated graph pass."""
+        return _validated_admission_state(self)[0]
 
     def semantic_dict(self) -> dict[str, object]:
-        """Return complete semantics from one freshly validated local snapshot."""
+        """Return complete semantics from one bounded validated graph pass."""
         _require_exact_admission(self)
-        snapshot = self._validated_snapshot()
-        return snapshot._semantic_dict_validated()
+        return _validated_admission_state(self)[0]
 
     @property
     def semantic_bytes(self) -> bytes:
-        """Return canonical UTF-8 semantic bytes from a fresh snapshot."""
+        """Return canonical UTF-8 bytes from one bounded validated graph pass."""
         _require_exact_admission(self)
-        snapshot = self._validated_snapshot()
-        return canonical_semantic_bytes(snapshot._semantic_dict_validated())
+        semantic, _, _, _ = _validated_admission_state(self)
+        return canonical_semantic_bytes(semantic)
 
     @property
     def content_sha256(self) -> str:
         """Derive content identity outside the semantic preimage."""
         _require_exact_admission(self)
-        snapshot = self._validated_snapshot()
-        return derive_content_sha256(snapshot._semantic_dict_validated())
+        return _validated_admission_state(self)[1]
 
     def to_dict(self) -> dict[str, object]:
         """Return semantic envelope plus derived content identity."""
         _require_exact_admission(self)
-        snapshot = self._validated_snapshot()
-        data = snapshot._semantic_dict_validated()
-        data["content_sha256"] = derive_content_sha256(data)
+        data, content_sha256, _, _ = _validated_admission_state(self)
+        data["content_sha256"] = content_sha256
         return data
 
 
@@ -540,11 +449,16 @@ def _disposition_for_classification(
     raise ResearchInputAdmissionError("unsupported research-input classification")
 
 
-def _require_acyclic_parent_lineage(root: ResearchInputAdmissionContract) -> None:
-    """Reject cyclic or pathologically deep parent graphs before recursive validation."""
+def _parent_graph_postorder(
+    root: ResearchInputAdmissionContract,
+) -> list[ResearchInputAdmissionContract]:
+    """Return parent-first order while bounding cycles, depth, and graph cardinality."""
     max_depth = 128
+    max_nodes = 4096
     active: set[int] = set()
     visited: set[int] = set()
+    discovered: set[int] = set()
+    order: list[ResearchInputAdmissionContract] = []
     stack: list[tuple[ResearchInputAdmissionContract, int, bool]] = [(root, 0, False)]
 
     while stack:
@@ -553,6 +467,7 @@ def _require_acyclic_parent_lineage(root: ResearchInputAdmissionContract) -> Non
         if exiting:
             active.remove(node_id)
             visited.add(node_id)
+            order.append(node)
             continue
         _require_exact_admission(node)
         if node_id in active:
@@ -563,6 +478,12 @@ def _require_acyclic_parent_lineage(root: ResearchInputAdmissionContract) -> Non
             raise ResearchInputAdmissionError(
                 "research-input parent lineage exceeds the fail-closed depth limit"
             )
+        if node_id not in discovered:
+            discovered.add(node_id)
+            if len(discovered) > max_nodes:
+                raise ResearchInputAdmissionError(
+                    "research-input parent lineage exceeds the fail-closed node limit"
+                )
         parents = node.parent_inputs
         if type(parents) is not tuple:
             raise ResearchInputAdmissionError("parent_inputs must be an exact tuple")
@@ -573,6 +494,153 @@ def _require_acyclic_parent_lineage(root: ResearchInputAdmissionContract) -> Non
             parent = parent_ref.parent_admission
             _require_exact_admission(parent)
             stack.append((parent, depth + 1, False))
+
+    return order
+
+
+def _validated_admission_state(
+    root: ResearchInputAdmissionContract,
+) -> tuple[dict[str, object], str, ResearchInputClassification, ResearchInputDisposition]:
+    """Validate and serialize an admission DAG once, memoizing every ancestor by identity."""
+    states: dict[
+        int,
+        tuple[dict[str, object], str, ResearchInputClassification, ResearchInputDisposition],
+    ] = {}
+
+    for node in _parent_graph_postorder(root):
+        _require_token(node.input_id, "input_id")
+        _require_sha256(node.classification_policy_sha256, "classification_policy_sha256")
+        _require_exact_enum(node.classification, ResearchInputClassification, "classification")
+        _require_optional_sha256(node.source_artifact_sha256, "source_artifact_sha256")
+        _require_optional_sha256(node.source_contract_sha256, "source_contract_sha256")
+        _require_learning_surfaces(node.allowed_learning_surfaces)
+        parents = node.parent_inputs
+        _require_transformation_lineage(node.transformation_kind, parents)
+
+        disposition = _disposition_for_classification(node.classification)
+        if disposition is ResearchInputDisposition.LEARNING_ADMITTED:
+            if node.source_artifact_sha256 is None or node.source_contract_sha256 is None:
+                raise ResearchInputAdmissionError(
+                    "learning-admitted input requires exact source artifact and contract identities"
+                )
+            if not node.allowed_learning_surfaces:
+                raise ResearchInputAdmissionError(
+                    "learning-admitted input requires at least one explicit learning surface"
+                )
+            _require_source_permission_binding(node)
+        elif disposition is ResearchInputDisposition.EXTERNAL_EVALUATION_ONLY:
+            if node.source_artifact_sha256 is None or node.source_contract_sha256 is None:
+                raise ResearchInputAdmissionError(
+                    "external evaluation evidence requires exact artifact and "
+                    "governing contract identities"
+                )
+            if node.allowed_learning_surfaces:
+                raise ResearchInputAdmissionError(
+                    "external evaluation evidence cannot enter an MRL learning surface"
+                )
+            _require_source_permission_binding(node)
+        else:
+            if node.source_permission is not None:
+                raise ResearchInputAdmissionError(
+                    "rejected input cannot carry a source permission into MRL"
+                )
+            if node.source_artifact_sha256 is not None or node.source_contract_sha256 is not None:
+                raise ResearchInputAdmissionError(
+                    "rejected input cannot carry source artifact or contract identities into MRL"
+                )
+            if node.allowed_learning_surfaces:
+                raise ResearchInputAdmissionError(
+                    "rejected input cannot enter an MRL learning surface"
+                )
+
+        parent_payloads: list[dict[str, str]] = []
+        parent_digests: list[str] = []
+        parent_dispositions: list[ResearchInputDisposition] = []
+        for parent_ref in parents:
+            _require_exact_parent_ref(parent_ref)
+            parent = parent_ref.parent_admission
+            _require_exact_admission(parent)
+            parent_state = states.get(id(parent))
+            if parent_state is None:
+                raise ResearchInputAdmissionError("parent admission validation order is incomplete")
+            _, parent_sha256, parent_classification, parent_disposition = parent_state
+            _require_sha256(parent_ref._bound_admission_sha256, "bound parent admission sha256")
+            _require_exact_enum(
+                parent_ref._bound_classification,
+                ResearchInputClassification,
+                "bound parent classification",
+            )
+            _require_exact_enum(
+                parent_ref._bound_disposition,
+                ResearchInputDisposition,
+                "bound parent disposition",
+            )
+            if (
+                parent_sha256 != parent_ref._bound_admission_sha256
+                or parent_classification is not parent_ref._bound_classification
+                or parent_disposition is not parent_ref._bound_disposition
+            ):
+                raise ResearchInputAdmissionError(
+                    "parent admission binding changed after reference creation"
+                )
+            parent_payloads.append(
+                {
+                    "admission_sha256": parent_sha256,
+                    "classification": parent_classification.value,
+                    "disposition": parent_disposition.value,
+                }
+            )
+            parent_digests.append(parent_sha256)
+            parent_dispositions.append(parent_disposition)
+
+        if tuple(parent_digests) != tuple(sorted(set(parent_digests))):
+            raise ResearchInputAdmissionError(
+                "parent_inputs must be unique and strictly sorted by admission_sha256"
+            )
+        for parent_disposition in parent_dispositions:
+            if (
+                parent_disposition is ResearchInputDisposition.REJECTED
+                and disposition is not ResearchInputDisposition.REJECTED
+            ):
+                raise ResearchInputAdmissionError(
+                    "a rejected parent cannot be transformed into an admissible MRL input"
+                )
+            if (
+                parent_disposition is ResearchInputDisposition.EXTERNAL_EVALUATION_ONLY
+                and disposition is ResearchInputDisposition.LEARNING_ADMITTED
+            ):
+                raise ResearchInputAdmissionError(
+                    "external evaluation evidence cannot be transformed into an MRL learning signal"
+                )
+
+        source_permission_sha256: str | None = None
+        if node.source_permission is not None:
+            _require_exact_source_permission(node.source_permission)
+            permission = node.source_permission._validated_snapshot()
+            source_permission_sha256 = derive_content_sha256(permission._semantic_dict_validated())
+
+        semantic: dict[str, object] = {
+            "format": "MRL-RESEARCH-INPUT-ADMISSION-V1",
+            "input_id": node.input_id,
+            "classification_policy_sha256": node.classification_policy_sha256,
+            "classification": node.classification.value,
+            "disposition": disposition.value,
+            "source_artifact_sha256": node.source_artifact_sha256,
+            "source_contract_sha256": node.source_contract_sha256,
+            "allowed_learning_surfaces": [
+                surface.value for surface in node.allowed_learning_surfaces
+            ],
+            "source_permission_sha256": source_permission_sha256,
+            "transformation_kind": node.transformation_kind,
+            "parent_inputs": parent_payloads,
+        }
+        content_sha256 = derive_content_sha256(semantic)
+        states[id(node)] = (semantic, content_sha256, node.classification, disposition)
+
+    state = states.get(id(root))
+    if state is None:
+        raise ResearchInputAdmissionError("research-input graph validation produced no root state")
+    return state
 
 
 def _require_source_permission_binding(contract: ResearchInputAdmissionContract) -> None:
@@ -602,27 +670,6 @@ def _require_source_permission_binding(contract: ResearchInputAdmissionContract)
         )
 
 
-def _require_no_lineage_laundering(
-    child_disposition: ResearchInputDisposition,
-    parents: tuple[ResearchInputParentRef, ...],
-) -> None:
-    for parent in parents:
-        if (
-            parent.disposition is ResearchInputDisposition.REJECTED
-            and child_disposition is not ResearchInputDisposition.REJECTED
-        ):
-            raise ResearchInputAdmissionError(
-                "a rejected parent cannot be transformed into an admissible MRL input"
-            )
-        if (
-            parent.disposition is ResearchInputDisposition.EXTERNAL_EVALUATION_ONLY
-            and child_disposition is ResearchInputDisposition.LEARNING_ADMITTED
-        ):
-            raise ResearchInputAdmissionError(
-                "external evaluation evidence cannot be transformed into an MRL learning signal"
-            )
-
-
 def _require_transformation_lineage(
     transformation_kind: str | None,
     parents: tuple[ResearchInputParentRef, ...],
@@ -637,20 +684,6 @@ def _require_transformation_lineage(
     if not parents:
         raise ResearchInputAdmissionError(
             "transformed input requires at least one parent admission identity"
-        )
-
-
-def _require_parent_refs(parents: tuple[ResearchInputParentRef, ...]) -> None:
-    if type(parents) is not tuple:
-        raise ResearchInputAdmissionError("parent_inputs must be an exact tuple")
-    digests: list[str] = []
-    for parent in parents:
-        _require_exact_parent_ref(parent)
-        snapshot = parent._validated_snapshot()
-        digests.append(snapshot.admission_sha256)
-    if tuple(digests) != tuple(sorted(set(digests))):
-        raise ResearchInputAdmissionError(
-            "parent_inputs must be unique and strictly sorted by admission_sha256"
         )
 
 

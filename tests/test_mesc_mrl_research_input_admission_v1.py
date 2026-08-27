@@ -813,3 +813,42 @@ def test_mutually_cyclic_lineage_fails_closed_without_recursion_error() -> None:
     object.__setattr__(second, "parent_inputs", (first_ref,))
     with pytest.raises(ResearchInputAdmissionError, match="cyclic research-input parent lineage"):
         first.to_dict()
+
+
+def _deep_learning_chain(depth: int) -> ResearchInputAdmissionContract:
+    """Build one valid linear ancestry for amplification-regression coverage."""
+    current = _learning_contract()
+    for index in range(depth):
+        parent = ResearchInputParentRef(parent_admission=current)
+        current = replace(
+            _learning_contract(),
+            input_id=f"research-input-depth-{index:03d}",
+            transformation_kind="summary",
+            parent_inputs=(parent,),
+        )
+    return current
+
+
+def test_deep_acyclic_lineage_validation_is_bounded_and_deterministic() -> None:
+    contract = _deep_learning_chain(96)
+
+    first = contract.semantic_dict()
+    second = contract.semantic_dict()
+    assert first == second
+    assert contract.content_sha256 == contract.to_dict()["content_sha256"]
+    assert len(contract.content_sha256) == 64
+    with pytest.raises(ResearchInputAdmissionError, match="not trusted"):
+        contract.require_learning_admission(ResearchLearningSurface.OBSERVATION)
+
+
+def test_parent_lineage_beyond_depth_limit_fails_closed() -> None:
+    current = _deep_learning_chain(128)
+    parent = ResearchInputParentRef(parent_admission=current)
+
+    with pytest.raises(ResearchInputAdmissionError, match="depth limit"):
+        replace(
+            _learning_contract(),
+            input_id="research-input-too-deep",
+            transformation_kind="summary",
+            parent_inputs=(parent,),
+        )
