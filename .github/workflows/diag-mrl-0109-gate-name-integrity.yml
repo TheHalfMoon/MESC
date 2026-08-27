@@ -1,0 +1,93 @@
+name: diag-mrl-0109-gate-name-integrity
+
+on:
+  push:
+    branches:
+      - diag/mrl-0109-gate-name-integrity
+
+permissions:
+  contents: write
+
+jobs:
+  qualify:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+      - run: uv python install 3.12
+      - run: uv sync --frozen
+      - name: Apply bounded product repair
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("src/medscale/mesc/_mrl_research_input_admission_v1.py")
+          text = path.read_text(encoding="utf-8")
+
+          gate_start = text.index("def _build_admission_graph_trust_gate(")
+          gate_end = text.index("\n\ndef _require_no_lineage_laundering", gate_start)
+          gate_block = text[gate_start:gate_end]
+          text = text[:gate_start] + text[gate_end + 2:]
+
+          class_marker = "@dataclass(frozen=True, slots=True)\nclass ResearchInputAdmissionContract:"
+          if class_marker not in text:
+              raise SystemExit("ResearchInputAdmissionContract marker not found")
+
+          decorators = '''\n\ndef _bind_learning_admission_trust(\n    trust_gate: Callable[[ResearchInputAdmissionContract], None],\n) -> Callable[\n    [Callable[[ResearchInputAdmissionContract, ResearchLearningSurface], None]],\n    Callable[[ResearchInputAdmissionContract, ResearchLearningSurface], None],\n]:\n    """Bind the canonical trust gate lexically into the public learning method."""\n\n    def decorate(\n        method: Callable[[ResearchInputAdmissionContract, ResearchLearningSurface], None],\n    ) -> Callable[[ResearchInputAdmissionContract, ResearchLearningSurface], None]:\n        def guarded(\n            self: ResearchInputAdmissionContract,\n            surface: ResearchLearningSurface,\n        ) -> None:\n            method(self, surface)\n            trust_gate(self._validated_snapshot())\n\n        return guarded\n\n    return decorate\n\n\ndef _bind_external_evaluation_trust(\n    trust_gate: Callable[[ResearchInputAdmissionContract], None],\n) -> Callable[\n    [Callable[[ResearchInputAdmissionContract], None]],\n    Callable[[ResearchInputAdmissionContract], None],\n]:\n    """Bind the canonical trust gate lexically into the public evaluation method."""\n\n    def decorate(\n        method: Callable[[ResearchInputAdmissionContract], None],\n    ) -> Callable[[ResearchInputAdmissionContract], None]:\n        def guarded(self: ResearchInputAdmissionContract) -> None:\n            method(self)\n            trust_gate(self._validated_snapshot())\n\n        return guarded\n\n    return decorate\n'''
+
+          insertion = gate_block + decorators + "\n\n" + class_marker
+          text = text.replace(class_marker, insertion, 1)
+
+          old_learning = '''    def require_learning_admission(self, surface: ResearchLearningSurface) -> None:\n        """Fail closed unless this exact input may enter the requested MRL learning surface."""\n        _require_exact_admission(self)\n        _require_exact_enum(surface, ResearchLearningSurface, "surface")\n        snapshot = self._validated_snapshot()\n        if (\n            _disposition_for_classification(snapshot.classification)\n            is not ResearchInputDisposition.LEARNING_ADMITTED\n        ):\n            raise ResearchInputAdmissionError("input is not admitted as an MRL learning signal")\n        if surface not in snapshot.allowed_learning_surfaces:\n            raise ResearchInputAdmissionError(\n                f"input is not admitted to learning surface {surface.value!r}"\n            )\n        _require_admission_graph_trust(snapshot)\n\n    def require_external_evaluation_use(self) -> None:\n        """Fail closed unless this input is separately classified as external evidence only."""\n        _require_exact_admission(self)\n        snapshot = self._validated_snapshot()\n        if (\n            _disposition_for_classification(snapshot.classification)\n            is not ResearchInputDisposition.EXTERNAL_EVALUATION_ONLY\n        ):\n            raise ResearchInputAdmissionError(\n                "input is not admitted as separately governed external evaluation evidence"\n            )\n        _require_admission_graph_trust(snapshot)\n'''
+          new_learning = '''    @_bind_learning_admission_trust(_require_admission_graph_trust)\n    def require_learning_admission(self, surface: ResearchLearningSurface) -> None:\n        """Fail closed unless this exact input may enter the requested MRL learning surface."""\n        _require_exact_admission(self)\n        _require_exact_enum(surface, ResearchLearningSurface, "surface")\n        snapshot = self._validated_snapshot()\n        if (\n            _disposition_for_classification(snapshot.classification)\n            is not ResearchInputDisposition.LEARNING_ADMITTED\n        ):\n            raise ResearchInputAdmissionError("input is not admitted as an MRL learning signal")\n        if surface not in snapshot.allowed_learning_surfaces:\n            raise ResearchInputAdmissionError(\n                f"input is not admitted to learning surface {surface.value!r}"\n            )\n\n    @_bind_external_evaluation_trust(_require_admission_graph_trust)\n    def require_external_evaluation_use(self) -> None:\n        """Fail closed unless this input is separately classified as external evidence only."""\n        _require_exact_admission(self)\n        snapshot = self._validated_snapshot()\n        if (\n            _disposition_for_classification(snapshot.classification)\n            is not ResearchInputDisposition.EXTERNAL_EVALUATION_ONLY\n        ):\n            raise ResearchInputAdmissionError(\n                "input is not admitted as separately governed external evaluation evidence"\n            )\n'''
+          if old_learning not in text:
+              raise SystemExit("public admission methods block not found")
+          text = text.replace(old_learning, new_learning, 1)
+
+          class_end_marker = '''    def to_dict(self) -> dict[str, object]:\n        """Return semantic envelope plus derived content identity."""\n        _require_exact_admission(self)\n        snapshot = self._validated_snapshot()\n        data = snapshot._semantic_dict_validated()\n        data["content_sha256"] = derive_content_sha256(data)\n        return data\n\n\ndef _disposition_for_classification('''
+          replacement = '''    def to_dict(self) -> dict[str, object]:\n        """Return semantic envelope plus derived content identity."""\n        _require_exact_admission(self)\n        snapshot = self._validated_snapshot()\n        data = snapshot._semantic_dict_validated()\n        data["content_sha256"] = derive_content_sha256(data)\n        return data\n\n\ndel _bind_learning_admission_trust\ndel _bind_external_evaluation_trust\ndel _require_admission_graph_trust\n\n\ndef _disposition_for_classification('''
+          if class_end_marker not in text:
+              raise SystemExit("class end marker not found")
+          text = text.replace(class_end_marker, replacement, 1)
+          path.write_text(text, encoding="utf-8")
+
+          test_path = Path("tests/test_mesc_mrl_research_input_permission_trust_v1.py")
+          tests = test_path.read_text(encoding="utf-8")
+          old_test_start = tests.index("\ndef test_mutating_trust_gate_defaults_cannot_mint_admission_authority(")
+          tests = tests[:old_test_start]
+          tests += '''\n\ndef test_rebinding_admission_gate_name_cannot_mint_admission_authority(\n    monkeypatch: pytest.MonkeyPatch,\n) -> None:\n    learning_permission = ResearchInputSourcePermission(\n        permission_id="gate-rebind-learning",\n        source_artifact_sha256="1" * 64,\n        source_contract_sha256="2" * 64,\n        classification=ResearchInputClassification.RESEARCH_ARTIFACT,\n        allowed_learning_surfaces=(ResearchLearningSurface.OBSERVATION,),\n    )\n    learning = ResearchInputAdmissionContract(\n        input_id="gate-rebind-learning-input",\n        classification_policy_sha256="c" * 64,\n        classification=ResearchInputClassification.RESEARCH_ARTIFACT,\n        source_artifact_sha256="1" * 64,\n        source_contract_sha256="2" * 64,\n        allowed_learning_surfaces=(ResearchLearningSurface.OBSERVATION,),\n        source_permission=learning_permission,\n    )\n    external_permission = ResearchInputSourcePermission(\n        permission_id="gate-rebind-external",\n        source_artifact_sha256="3" * 64,\n        source_contract_sha256="4" * 64,\n        classification=ResearchInputClassification.EXTERNAL_EVALUATION_EVIDENCE,\n        allowed_learning_surfaces=(),\n    )\n    external = ResearchInputAdmissionContract(\n        input_id="gate-rebind-external-input",\n        classification_policy_sha256="d" * 64,\n        classification=ResearchInputClassification.EXTERNAL_EVALUATION_EVIDENCE,\n        source_artifact_sha256="3" * 64,\n        source_contract_sha256="4" * 64,\n        allowed_learning_surfaces=(),\n        source_permission=external_permission,\n    )\n\n    assert not hasattr(admission, "_require_admission_graph_trust")\n    monkeypatch.setattr(\n        admission,\n        "_require_admission_graph_trust",\n        lambda _root: None,\n        raising=False,\n    )\n\n    with pytest.raises(ResearchInputAdmissionError, match="not trusted"):\n        learning.require_learning_admission(ResearchLearningSurface.OBSERVATION)\n    with pytest.raises(ResearchInputAdmissionError, match="not trusted"):\n        external.require_external_evaluation_use()\n'''
+          test_path.write_text(tests, encoding="utf-8")
+          PY
+      - name: Canonicalize changed Python
+        run: |
+          uv run ruff check --fix src/medscale/mesc/_mrl_research_input_admission_v1.py tests/test_mesc_mrl_research_input_permission_trust_v1.py
+          uv run ruff format src/medscale/mesc/_mrl_research_input_admission_v1.py tests/test_mesc_mrl_research_input_permission_trust_v1.py
+      - name: Ruff lint
+        run: uv run ruff check .
+      - name: Ruff format check
+        run: uv run ruff format --check .
+      - name: Strict mypy
+        run: uv run mypy src tests
+      - name: Focused tests
+        run: uv run pytest -q tests/test_mesc_mrl_research_input_permission_trust_v1.py tests/test_mesc_mrl_research_input_admission_v1.py
+      - name: Full pytest
+        run: uv run pytest -q
+      - name: MedScale integrity
+        run: uv run medscale check
+      - name: Verify bounded product diff
+        shell: bash
+        run: |
+          actual="$(git diff --name-only HEAD -- | grep -v '^.github/workflows/diag-mrl-0109-gate-name-integrity.yml$' | sort)"
+          expected=$'src/medscale/mesc/_mrl_research_input_admission_v1.py\ntests/test_mesc_mrl_research_input_permission_trust_v1.py'
+          test "$actual" = "$expected"
+      - name: Commit qualified product repair
+        shell: bash
+        run: |
+          git config user.name "MESC Diagnostic Qualification"
+          git config user.email "actions@users.noreply.github.com"
+          git add src/medscale/mesc/_mrl_research_input_admission_v1.py tests/test_mesc_mrl_research_input_permission_trust_v1.py
+          git commit -m "diag(mrl): qualify gate-name integrity repair [skip ci]"
+          git push
