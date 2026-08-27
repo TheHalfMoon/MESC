@@ -58,6 +58,12 @@ Every projection must bind:
 The projection must not read an unpinned working-tree file and then claim a different Git
 commit as its source.
 
+A source `path` is a repository-relative ASCII path. It must not be absolute, contain an
+empty component, contain `.` or `..` components, contain backslashes, or use an alternate
+spelling that could resolve to the same repository path. Symlink/gitlink/non-regular-object
+semantics are not inferred from a string path: when object type matters, the deriving
+implementation must resolve the bound Git object and fail closed on an unacceptable type.
+
 ## Required canonical sources
 
 At minimum, an MRL V1 task-state projection must bind the canonical versions of:
@@ -72,6 +78,24 @@ At minimum, an MRL V1 task-state projection must bind the canonical versions of:
 
 A projection may bind additional sources, but it must not silently omit a source whose
 semantics affect the represented state.
+
+## Identity uniqueness
+
+Identity-bearing arrays are fail-closed:
+
+- each `sources[].path` must appear exactly once;
+- each `tasks[].task_id` must appear exactly once;
+- each task's dependency IDs must be unique;
+- each task's evidence references must be unique.
+
+A duplicate source path is invalid even when the duplicate entries carry different blob or
+byte hashes. A duplicate task ID is invalid even when the duplicate entries carry different
+states or evidence. Ambiguity is never resolved by first-wins, last-wins, array order, or
+merging duplicate records.
+
+JSON Schema `uniqueItems` provides an additional structural duplicate check, but consumers
+must also enforce the identity-specific uniqueness rules above because two unequal JSON
+objects can still claim the same `path` or `task_id`.
 
 ## Deterministic serialization
 
@@ -137,8 +161,9 @@ true:
 6. `source_set_sha256` cannot be reproduced;
 7. task dependencies in the projection disagree with the canonical task ledger;
 8. a required authority/evidence source was omitted;
-9. the projection was manually edited rather than deterministically rebuilt;
-10. the projection claims `can_authorize = true` or any equivalent authority-bearing state.
+9. a source path or task identity is duplicated or ambiguously encoded;
+10. the projection was manually edited rather than deterministically rebuilt;
+11. the projection claims `can_authorize = true` or any equivalent authority-bearing state.
 
 Staleness is fail-closed. A stale projection is discarded and rebuilt from canonical
 sources; it is not patched by hand.
@@ -174,8 +199,8 @@ The absence of a blocker in the projection is not positive authority.
 
 Generated project-state JSON may be stored for inspection, but manual edits have no
 canonical force. A consumer must validate the schema, reproduce repository/source
-bindings, reproduce `source_set_sha256`, and apply the anti-staleness rules before using a
-projection for navigation.
+bindings, reproduce identity uniqueness, reproduce `source_set_sha256`, and apply the
+anti-staleness rules before using a projection for navigation.
 
 Search indexes, dashboards, caches, agent memories, and status summaries built from the
 projection inherit the same non-authoritative status.
@@ -183,7 +208,7 @@ projection inherit the same non-authoritative status.
 ## MRL-0 acceptance
 
 MRL-0007 is satisfied when this contract and its JSON Schema are canonically accepted and
-review confirms that stale/manual projections cannot authorize work.
+review confirms that stale/manual/ambiguous projections cannot authorize work.
 
 Implementation of a generator/validator is intentionally deferred to the later MRL
 implementation stage authorized by the task ledger. This MRL-0 contract itself performs no
