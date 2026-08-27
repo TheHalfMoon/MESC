@@ -125,9 +125,7 @@ def _require_text(value: str, label: str) -> None:
 def _require_hypothesis_id(value: str, label: str) -> None:
     _require_text(value, label)
     if not _HYPOTHESIS_ID.fullmatch(value):
-        raise ResearchHypothesisError(
-            f"{label} must use lowercase kebab-case identifier semantics"
-        )
+        raise ResearchHypothesisError(f"{label} must use lowercase kebab-case identifier semantics")
 
 
 def _require_sha256(value: str, label: str) -> None:

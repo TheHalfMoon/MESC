@@ -92,9 +92,7 @@ def test_semantic_envelope_contains_exact_required_fields() -> None:
         ),
         lambda value: replace(
             value,
-            falsification_criteria=(
-                "Any applicable hard evidence floor regresses.",
-            ),
+            falsification_criteria=("Any applicable hard evidence floor regresses.",),
         ),
         lambda value: replace(
             value,
