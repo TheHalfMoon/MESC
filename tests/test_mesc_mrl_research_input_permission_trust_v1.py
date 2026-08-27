@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+from medscale.mesc import _mrl_research_input_admission_v1 as admission
 from medscale.mesc import _mrl_research_input_permission_trust_v1 as permission_trust
 from medscale.mesc._mrl_research_input_admission_v1 import (
     ResearchInputAdmissionContract,
@@ -50,3 +51,70 @@ def test_mutating_returned_trust_snapshot_cannot_mint_admission_authority() -> N
         )
     with pytest.raises(ResearchInputAdmissionError, match="not trusted"):
         contract.require_learning_admission(ResearchLearningSurface.OBSERVATION)
+
+
+def test_consumer_module_rebinding_cannot_mint_admission_authority(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    learning_permission = ResearchInputSourcePermission(
+        permission_id="consumer-rebind-learning",
+        source_artifact_sha256="6" * 64,
+        source_contract_sha256="7" * 64,
+        classification=ResearchInputClassification.RESEARCH_ARTIFACT,
+        allowed_learning_surfaces=(ResearchLearningSurface.OBSERVATION,),
+    )
+    learning = ResearchInputAdmissionContract(
+        input_id="consumer-rebind-learning-input",
+        classification_policy_sha256="a" * 64,
+        classification=ResearchInputClassification.RESEARCH_ARTIFACT,
+        source_artifact_sha256="6" * 64,
+        source_contract_sha256="7" * 64,
+        allowed_learning_surfaces=(ResearchLearningSurface.OBSERVATION,),
+        source_permission=learning_permission,
+    )
+    external_permission = ResearchInputSourcePermission(
+        permission_id="consumer-rebind-external",
+        source_artifact_sha256="8" * 64,
+        source_contract_sha256="9" * 64,
+        classification=ResearchInputClassification.EXTERNAL_EVALUATION_EVIDENCE,
+        allowed_learning_surfaces=(),
+    )
+    external = ResearchInputAdmissionContract(
+        input_id="consumer-rebind-external-input",
+        classification_policy_sha256="b" * 64,
+        classification=ResearchInputClassification.EXTERNAL_EVALUATION_EVIDENCE,
+        source_artifact_sha256="8" * 64,
+        source_contract_sha256="9" * 64,
+        allowed_learning_surfaces=(),
+        source_permission=external_permission,
+    )
+    forged = permission_trust.ResearchInputPermissionTrustSnapshot(
+        registry_version=permission_trust.TRUST_REGISTRY_VERSION,
+        trusted_source_permission_sha256=frozenset(
+            {
+                learning_permission.content_sha256,
+                external_permission.content_sha256,
+            }
+        ),
+        registry_sha256="f" * 64,
+    )
+
+    assert not hasattr(admission, "_canonical_permission_trust_snapshot")
+    assert not hasattr(admission, "_canonical_validate_permission_trust")
+    monkeypatch.setattr(
+        admission,
+        "_canonical_permission_trust_snapshot",
+        lambda: forged,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        admission,
+        "_canonical_validate_permission_trust",
+        lambda _value: forged,
+        raising=False,
+    )
+
+    with pytest.raises(ResearchInputAdmissionError, match="not trusted"):
+        learning.require_learning_admission(ResearchLearningSurface.OBSERVATION)
+    with pytest.raises(ResearchInputAdmissionError, match="not trusted"):
+        external.require_external_evaluation_use()
