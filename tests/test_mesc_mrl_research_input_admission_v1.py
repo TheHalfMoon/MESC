@@ -1,36 +1,92 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
 from dataclasses import FrozenInstanceError, replace
 
 import pytest
 
+from medscale.mesc import _mrl_research_input_permission_trust_v1 as permission_trust
 from medscale.mesc._mrl_research_input_admission_v1 import (
     ResearchInputAdmissionContract,
     ResearchInputAdmissionError,
     ResearchInputClassification,
     ResearchInputDisposition,
     ResearchInputParentRef,
+    ResearchInputSourcePermission,
     ResearchLearningSurface,
 )
+
+
+@pytest.fixture(autouse=True)
+def _reset_source_permission_trust() -> Iterator[None]:
+    previous = permission_trust._replace_research_input_permission_trust_registry_for_tests(
+        frozenset()
+    )
+    try:
+        yield
+    finally:
+        permission_trust._replace_research_input_permission_trust_registry_for_tests(previous)
+
+
+def _trust_permission(permission: ResearchInputSourcePermission) -> None:
+    snapshot = permission_trust.research_input_permission_trust_snapshot()
+    permission_trust._replace_research_input_permission_trust_registry_for_tests(
+        snapshot.trusted_source_permission_sha256 | frozenset({permission.content_sha256})
+    )
+
+
+def _trusted_permission(
+    *,
+    permission_id: str,
+    source_artifact_sha256: str,
+    source_contract_sha256: str,
+    classification: ResearchInputClassification,
+    allowed_learning_surfaces: tuple[ResearchLearningSurface, ...],
+) -> ResearchInputSourcePermission:
+    permission = ResearchInputSourcePermission(
+        permission_id=permission_id,
+        source_artifact_sha256=source_artifact_sha256,
+        source_contract_sha256=source_contract_sha256,
+        classification=classification,
+        allowed_learning_surfaces=allowed_learning_surfaces,
+    )
+    _trust_permission(permission)
+    return permission
 
 
 def _learning_contract(
     classification: ResearchInputClassification = ResearchInputClassification.RESEARCH_ARTIFACT,
 ) -> ResearchInputAdmissionContract:
+    surfaces = (
+        ResearchLearningSurface.CAMPAIGN_HISTORY,
+        ResearchLearningSurface.OBSERVATION,
+    )
+    permission = _trusted_permission(
+        permission_id=f"permission-{classification.value.lower()}",
+        source_artifact_sha256="b" * 64,
+        source_contract_sha256="c" * 64,
+        classification=classification,
+        allowed_learning_surfaces=surfaces,
+    )
     return ResearchInputAdmissionContract(
         input_id="research-input-001",
         classification_policy_sha256="a" * 64,
         classification=classification,
         source_artifact_sha256="b" * 64,
         source_contract_sha256="c" * 64,
-        allowed_learning_surfaces=(
-            ResearchLearningSurface.CAMPAIGN_HISTORY,
-            ResearchLearningSurface.OBSERVATION,
-        ),
+        allowed_learning_surfaces=surfaces,
+        source_permission=permission,
     )
 
 
 def _external_contract() -> ResearchInputAdmissionContract:
+    permission = _trusted_permission(
+        permission_id="permission-external-evidence",
+        source_artifact_sha256="d" * 64,
+        source_contract_sha256="e" * 64,
+        classification=ResearchInputClassification.EXTERNAL_EVALUATION_EVIDENCE,
+        allowed_learning_surfaces=(),
+    )
     return ResearchInputAdmissionContract(
         input_id="external-evidence-001",
         classification_policy_sha256="a" * 64,
@@ -38,6 +94,7 @@ def _external_contract() -> ResearchInputAdmissionContract:
         source_artifact_sha256="d" * 64,
         source_contract_sha256="e" * 64,
         allowed_learning_surfaces=(),
+        source_permission=permission,
     )
 
 
@@ -60,29 +117,7 @@ def _parent_ref(
     classification: ResearchInputClassification,
     disposition: ResearchInputDisposition,
 ) -> ResearchInputParentRef:
-    if classification in (
-        ResearchInputClassification.RESEARCH_ARTIFACT,
-        ResearchInputClassification.DETERMINISTIC_FIXTURE_OUTPUT,
-        ResearchInputClassification.NEGATIVE_OR_INVALID_RESEARCH_RESULT,
-    ):
-        parent = ResearchInputAdmissionContract(
-            input_id=f"parent-{sha_char}",
-            classification_policy_sha256="a" * 64,
-            classification=classification,
-            source_artifact_sha256=sha_char * 64,
-            source_contract_sha256="b" * 64,
-            allowed_learning_surfaces=(ResearchLearningSurface.OBSERVATION,),
-        )
-    elif classification is ResearchInputClassification.EXTERNAL_EVALUATION_EVIDENCE:
-        parent = ResearchInputAdmissionContract(
-            input_id=f"parent-{sha_char}",
-            classification_policy_sha256="a" * 64,
-            classification=classification,
-            source_artifact_sha256=sha_char * 64,
-            source_contract_sha256="b" * 64,
-            allowed_learning_surfaces=(),
-        )
-    else:
+    if disposition is ResearchInputDisposition.REJECTED:
         parent = ResearchInputAdmissionContract(
             input_id=f"parent-{sha_char}",
             classification_policy_sha256="a" * 64,
@@ -90,6 +125,28 @@ def _parent_ref(
             source_artifact_sha256=None,
             source_contract_sha256=None,
             allowed_learning_surfaces=(),
+        )
+    else:
+        surfaces = (
+            (ResearchLearningSurface.OBSERVATION,)
+            if disposition is ResearchInputDisposition.LEARNING_ADMITTED
+            else ()
+        )
+        permission = _trusted_permission(
+            permission_id=f"permission-parent-{sha_char}",
+            source_artifact_sha256=sha_char * 64,
+            source_contract_sha256="b" * 64,
+            classification=classification,
+            allowed_learning_surfaces=surfaces,
+        )
+        parent = ResearchInputAdmissionContract(
+            input_id=f"parent-{sha_char}",
+            classification_policy_sha256="a" * 64,
+            classification=classification,
+            source_artifact_sha256=sha_char * 64,
+            source_contract_sha256="b" * 64,
+            allowed_learning_surfaces=surfaces,
+            source_permission=permission,
         )
     reference = ResearchInputParentRef(parent_admission=parent)
     assert reference.disposition is disposition
@@ -125,6 +182,7 @@ def test_semantic_envelope_contains_exact_boundary_fields() -> None:
         "source_artifact_sha256",
         "source_contract_sha256",
         "allowed_learning_surfaces",
+        "source_permission_sha256",
         "transformation_kind",
         "parent_inputs",
     }
@@ -486,11 +544,11 @@ def test_post_construction_classification_mutation_fails_closed() -> None:
     contract = _learning_contract()
     object.__setattr__(contract, "classification", ResearchInputClassification.PHI_OR_PATIENT_DATA)
 
-    with pytest.raises(ResearchInputAdmissionError, match="cannot carry source artifact"):
+    with pytest.raises(ResearchInputAdmissionError, match="cannot carry a source permission"):
         contract.semantic_dict()
-    with pytest.raises(ResearchInputAdmissionError, match="cannot carry source artifact"):
+    with pytest.raises(ResearchInputAdmissionError, match="cannot carry a source permission"):
         _ = contract.content_sha256
-    with pytest.raises(ResearchInputAdmissionError, match="cannot carry source artifact"):
+    with pytest.raises(ResearchInputAdmissionError, match="cannot carry a source permission"):
         contract.require_learning_admission(ResearchLearningSurface.OBSERVATION)
 
 
@@ -537,6 +595,7 @@ def test_subclass_snapshot_override_fails_closed_for_all_public_views_and_gates(
         source_artifact_sha256=base.source_artifact_sha256,
         source_contract_sha256=base.source_contract_sha256,
         allowed_learning_surfaces=base.allowed_learning_surfaces,
+        source_permission=base.source_permission,
     )
 
     with pytest.raises(ResearchInputAdmissionError, match="exact ResearchInputAdmissionContract"):
@@ -582,3 +641,147 @@ def test_parent_ref_subclass_cannot_bypass_admission_snapshot_validation() -> No
         contract.semantic_dict()
     with pytest.raises(ResearchInputAdmissionError, match="exact ResearchInputParentRef"):
         _ = contract.content_sha256
+
+
+def test_untrusted_source_permission_cannot_mint_learning_admission() -> None:
+    permission = ResearchInputSourcePermission(
+        permission_id="untrusted-permission",
+        source_artifact_sha256="8" * 64,
+        source_contract_sha256="6" * 64,
+        classification=ResearchInputClassification.RESEARCH_ARTIFACT,
+        allowed_learning_surfaces=(ResearchLearningSurface.OBSERVATION,),
+    )
+    with pytest.raises(ResearchInputAdmissionError, match="not trusted"):
+        ResearchInputAdmissionContract(
+            input_id="untrusted-input",
+            classification_policy_sha256="a" * 64,
+            classification=ResearchInputClassification.RESEARCH_ARTIFACT,
+            source_artifact_sha256="8" * 64,
+            source_contract_sha256="6" * 64,
+            allowed_learning_surfaces=(ResearchLearningSurface.OBSERVATION,),
+            source_permission=permission,
+        )
+
+
+def test_source_permission_semantics_must_match_admission() -> None:
+    permission = _trusted_permission(
+        permission_id="bounded-permission",
+        source_artifact_sha256="9" * 64,
+        source_contract_sha256="5" * 64,
+        classification=ResearchInputClassification.RESEARCH_ARTIFACT,
+        allowed_learning_surfaces=(ResearchLearningSurface.OBSERVATION,),
+    )
+    with pytest.raises(ResearchInputAdmissionError, match="requested learning surfaces"):
+        ResearchInputAdmissionContract(
+            input_id="mismatched-input",
+            classification_policy_sha256="a" * 64,
+            classification=ResearchInputClassification.RESEARCH_ARTIFACT,
+            source_artifact_sha256="9" * 64,
+            source_contract_sha256="5" * 64,
+            allowed_learning_surfaces=(ResearchLearningSurface.CAMPAIGN_HISTORY,),
+            source_permission=permission,
+        )
+
+
+def test_source_permission_binds_governing_contract_identity() -> None:
+    permission = _trusted_permission(
+        permission_id="contract-bound-permission",
+        source_artifact_sha256="7" * 64,
+        source_contract_sha256="3" * 64,
+        classification=ResearchInputClassification.RESEARCH_ARTIFACT,
+        allowed_learning_surfaces=(ResearchLearningSurface.OBSERVATION,),
+    )
+    with pytest.raises(ResearchInputAdmissionError, match="governing source contract"):
+        ResearchInputAdmissionContract(
+            input_id="wrong-contract-input",
+            classification_policy_sha256="a" * 64,
+            classification=ResearchInputClassification.RESEARCH_ARTIFACT,
+            source_artifact_sha256="7" * 64,
+            source_contract_sha256="4" * 64,
+            allowed_learning_surfaces=(ResearchLearningSurface.OBSERVATION,),
+            source_permission=permission,
+        )
+
+
+def test_source_permission_allows_a_strict_surface_subset() -> None:
+    permission = _trusted_permission(
+        permission_id="subset-permission",
+        source_artifact_sha256="6" * 64,
+        source_contract_sha256="2" * 64,
+        classification=ResearchInputClassification.RESEARCH_ARTIFACT,
+        allowed_learning_surfaces=(
+            ResearchLearningSurface.CAMPAIGN_HISTORY,
+            ResearchLearningSurface.OBSERVATION,
+        ),
+    )
+    contract = ResearchInputAdmissionContract(
+        input_id="subset-input",
+        classification_policy_sha256="f" * 64,
+        classification=ResearchInputClassification.RESEARCH_ARTIFACT,
+        source_artifact_sha256="6" * 64,
+        source_contract_sha256="2" * 64,
+        allowed_learning_surfaces=(ResearchLearningSurface.OBSERVATION,),
+        source_permission=permission,
+    )
+    contract.require_learning_admission(ResearchLearningSurface.OBSERVATION)
+
+
+def test_source_permission_revocation_invalidates_existing_admission() -> None:
+    contract = _learning_contract()
+    permission_trust._replace_research_input_permission_trust_registry_for_tests(frozenset())
+    with pytest.raises(ResearchInputAdmissionError, match="not trusted"):
+        contract.require_learning_admission(ResearchLearningSurface.OBSERVATION)
+    with pytest.raises(ResearchInputAdmissionError, match="not trusted"):
+        _ = contract.content_sha256
+
+
+def test_rejected_input_cannot_carry_source_permission() -> None:
+    permission = _trusted_permission(
+        permission_id="rejected-mismatch-permission",
+        source_artifact_sha256="7" * 64,
+        source_contract_sha256="4" * 64,
+        classification=ResearchInputClassification.RESEARCH_ARTIFACT,
+        allowed_learning_surfaces=(ResearchLearningSurface.OBSERVATION,),
+    )
+    with pytest.raises(ResearchInputAdmissionError, match="cannot carry a source permission"):
+        ResearchInputAdmissionContract(
+            input_id="rejected-with-permission",
+            classification_policy_sha256="a" * 64,
+            classification=ResearchInputClassification.PHI_OR_PATIENT_DATA,
+            source_artifact_sha256=None,
+            source_contract_sha256=None,
+            allowed_learning_surfaces=(),
+            source_permission=permission,
+        )
+
+
+def test_permission_mutation_fails_closed_after_trust_admission() -> None:
+    contract = _learning_contract()
+    assert contract.source_permission is not None
+    object.__setattr__(contract.source_permission, "source_contract_sha256", "1" * 64)
+    with pytest.raises(ResearchInputAdmissionError, match=r"not trusted|governing source contract"):
+        contract.semantic_dict()
+
+
+def test_self_referential_lineage_fails_closed_without_recursion_error() -> None:
+    contract = _learning_contract()
+    parent = ResearchInputParentRef(parent_admission=contract)
+    object.__setattr__(contract, "transformation_kind", "summary")
+    object.__setattr__(contract, "parent_inputs", (parent,))
+    with pytest.raises(ResearchInputAdmissionError, match="cyclic research-input parent lineage"):
+        contract.semantic_dict()
+    with pytest.raises(ResearchInputAdmissionError, match="cyclic research-input parent lineage"):
+        contract.require_learning_admission(ResearchLearningSurface.OBSERVATION)
+
+
+def test_mutually_cyclic_lineage_fails_closed_without_recursion_error() -> None:
+    first = _learning_contract()
+    second = _learning_contract()
+    first_ref = ResearchInputParentRef(parent_admission=first)
+    second_ref = ResearchInputParentRef(parent_admission=second)
+    object.__setattr__(first, "transformation_kind", "summary")
+    object.__setattr__(first, "parent_inputs", (second_ref,))
+    object.__setattr__(second, "transformation_kind", "summary")
+    object.__setattr__(second, "parent_inputs", (first_ref,))
+    with pytest.raises(ResearchInputAdmissionError, match="cyclic research-input parent lineage"):
+        first.to_dict()
