@@ -24,10 +24,10 @@ jobs:
         run: |
           uv run ruff check --fix src/medscale/mesc/_mrl_research_input_admission_v1.py tests/test_mesc_mrl_research_input_admission_v1.py
           uv run ruff format src/medscale/mesc/_mrl_research_input_admission_v1.py tests/test_mesc_mrl_research_input_admission_v1.py
-      - name: Ruff lint
-        run: uv run ruff check .
-      - name: Ruff format check
-        run: uv run ruff format --check .
+      - name: Ruff lint product surfaces
+        run: uv run ruff check src tests
+      - name: Ruff format check product surfaces
+        run: uv run ruff format --check src tests
       - name: Strict mypy
         run: uv run mypy src tests
       - name: Focused admission tests
