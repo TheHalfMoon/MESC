@@ -24,6 +24,11 @@ replacements = (
         '    assert plan.mutation_surfaces == (\n        "tests/fixtures/mrl/candidates/deeper/candidate.json",\n    )\n',
         "directory narrowing assertion",
     ),
+    (
+        '    assert b"content_sha256" not in plan.semantic_bytes\n',
+        '',
+        "top-level content identity assertion",
+    ),
 )
 
 for old, new, label in replacements:
