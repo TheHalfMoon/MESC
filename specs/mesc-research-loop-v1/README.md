@@ -1,6 +1,6 @@
 # MESC Research Loop V1
 
-Status: **CANONICAL PLANNING / MRL-0 QUALIFYING / NOT EXECUTION AUTHORITY**
+Status: **CANONICAL PLANNING / MRL-0 CLOSEOUT CANDIDATE / NOT EXECUTION AUTHORITY**
 
 Canonical planning acceptance and current MRL-0 qualification base:
 
@@ -109,10 +109,9 @@ under current governance.
 - `plan.md` — dependency-ordered implementation program;
 - `tasks.md` — concrete task ledger.
 
-## MRL-0 constitution candidate
+## MRL-0 constitution closeout candidate
 
-MRL-0001 through MRL-0008 are implemented as a governance candidate on the active
-MRL-0 branch through:
+MRL-0001 through MRL-0008 are implemented by:
 
 - `docs/adr/0035-mrl-governance-constitution.md` — MRL/MCRL boundary, immutable evaluator
   rule, adaptive tiers, evidence floors, resource/query governance, promotion deferral,
@@ -121,21 +120,27 @@ MRL-0 branch through:
   reserves explicit MESC/MCRL/Arabic/AMGE/Omni/MRL namespaces without fabricating new
   scientific questions;
 - `project-state-contract.md` — precedence, deterministic serialization, source binding,
-  identity uniqueness, mandatory admission validation, and anti-staleness rules;
+  identity uniqueness, mandatory admission validation, complete task-state recomputation,
+  and anti-staleness rules;
 - `project-state-v1.schema.json` — closed machine-readable shape requiring
   `DERIVED_NON_AUTHORITATIVE` and `can_authorize=false`;
 - `docs/research/README.md` — index/traceability reconciliation.
 
-Candidate deliverables are **QUALIFYING**, not `CLOSED_CANONICAL`. `MRL-0099` remains open
-until the exact final head passes repository checks and independent governance review.
+The task ledger now records MRL-0001..0008 and MRL-0099 as `[x]` **only as a closeout
+candidate on this unmerged branch**. The branch remains `QUALIFYING`, not
+`CLOSED_CANONICAL`. Closure attaches only if this final closeout head passes fresh hosted
+CI, CodeQL, internal governance review, Qodo review, CodeRabbit status/review, and
+unresolved-thread checks, remains the exact PR head, and then merges to canonical `main`
+with expected-head protection.
+
 No later MRL task may treat this branch state as `MRL_CONSTITUTION_FROZEN` before that
-canonical gate closes.
+canonical merge.
 
 ## Current sequencing
 
-Do not begin with an autonomous GPU agent.
+Qualify the exact MRL-0 closeout head and merge it canonically. Only after canonical `main`
+contains that qualified closeout does `MRL_CONSTITUTION_FROZEN` hold and MRL-0100 become
+eligible, beginning the typed artifact core.
 
-First close `MRL-0099`. Only after `MRL_CONSTITUTION_FROZEN` is canonically proven does
-MRL-0100 become eligible, beginning the typed artifact core. Real model, corpus, network,
-GPU, provider, inference, training, and promotion work remain outside this MRL-0 package
-and require their own later gates.
+Real model, corpus, network, GPU, provider, inference, training, promotion, deployment, and
+release work remain outside this MRL-0 package and require their own later gates.
