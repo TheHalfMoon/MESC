@@ -413,12 +413,6 @@ def _validate_plan(plan: ResearchExperimentPlan) -> None:
         raise ResearchExperimentPlanError(
             "plan evaluation tiers must be a subset of the frozen objective policy"
         )
-    plan_tiers = set(plan.evaluation_tiers)
-    for identity in plan.evaluator_identities:
-        if not set(identity.tiers).issubset(plan_tiers):
-            raise ResearchExperimentPlanError(
-                f"evaluator {identity.evaluator_id!r} carries tiers outside this plan"
-            )
     for tier in plan.evaluation_tiers:
         if not any(tier in identity.tiers for identity in plan.evaluator_identities):
             raise ResearchExperimentPlanError(
@@ -654,19 +648,11 @@ def _require_result_destinations_outside_forbidden_surfaces(
 
 
 def _paths_overlap(left: str, right: str) -> bool:
-    if not _looks_like_repo_path(right):
-        return left == right
     return _path_contains(left, right) or _path_contains(right, left)
 
 
-def _looks_like_repo_path(value: str) -> bool:
-    return "/" in value or value.endswith("/")
-
-
 def _path_contains(envelope: str, candidate: str) -> bool:
-    if envelope == candidate:
-        return True
-    return envelope.endswith("/") and candidate.startswith(envelope)
+    return envelope == candidate or candidate.startswith(f"{envelope}/")
 
 
 def _require_result_paths(values: tuple[str, ...]) -> None:
