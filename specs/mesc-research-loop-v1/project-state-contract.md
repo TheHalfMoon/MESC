@@ -97,6 +97,50 @@ JSON Schema `uniqueItems` provides an additional structural duplicate check, but
 must also enforce the identity-specific uniqueness rules above because two unequal JSON
 objects can still claim the same `path` or `task_id`.
 
+## Mandatory projection-admission validator
+
+Schema validation alone is insufficient to admit a projection for use.
+
+Every component that wants to use MRL project state for task eligibility, dependency
+navigation, closeout status, or automation must pass the bytes through **one canonical
+projection-admission validator** before consumption. Direct use of raw JSON, use after only
+JSON Schema validation, or consumer-specific first/last-wins reconciliation is prohibited.
+
+The admission validator must, at minimum:
+
+1. parse with duplicate JSON member rejection;
+2. validate `project-state-v1.schema.json`;
+3. enforce source-path normalization and reject absolute, empty, `.`, `..`, backslash, or
+   alternate-path ambiguity;
+4. reject repeated `sources[].path` even when the objects differ;
+5. reject repeated `tasks[].task_id` even when states/evidence differ;
+6. reject repeated dependency IDs or evidence references;
+7. resolve and verify the bound commit/tree and every required source Git object;
+8. reproduce every source byte SHA-256 and `source_set_sha256`;
+9. compare task dependencies and closure evidence with canonical sources;
+10. enforce all anti-staleness rules in this contract;
+11. require `projection_kind = DERIVED_NON_AUTHORITATIVE` and `can_authorize = false`.
+
+Until that validator is separately implemented, tested, reviewed, and canonically accepted,
+project-state examples may be inspected as contract fixtures but **must not be used to make
+an eligibility or closure decision**. Canonical source inspection remains the required
+decision path.
+
+The later validator implementation must include negative fixtures proving rejection of at
+least:
+
+- two unequal source objects with the same `path` and conflicting hashes;
+- two unequal task objects with the same `task_id` and conflicting state/evidence;
+- duplicated dependency IDs;
+- duplicated evidence references;
+- absolute, empty-component, `.`, `..`, and backslash source paths;
+- stale commit/tree/source hashes;
+- omitted required authority/evidence sources;
+- a manually altered projection;
+- `can_authorize=true` or an equivalent authority-bearing variant.
+
+MRL-0 freezes these validator requirements; it does not implement the validator.
+
 ## Deterministic serialization
 
 Semantic projection bytes use UTF-8, no BOM, LF line endings, and canonical JSON with:
@@ -198,18 +242,19 @@ The absence of a blocker in the projection is not positive authority.
 ## Manual edits and derived tooling
 
 Generated project-state JSON may be stored for inspection, but manual edits have no
-canonical force. A consumer must validate the schema, reproduce repository/source
-bindings, reproduce identity uniqueness, reproduce `source_set_sha256`, and apply the
-anti-staleness rules before using a projection for navigation.
+canonical force. A consumer must use the canonical projection-admission validator before
+using a projection for navigation or state decisions.
 
 Search indexes, dashboards, caches, agent memories, and status summaries built from the
-projection inherit the same non-authoritative status.
+projection inherit the same non-authoritative status and must not bypass validator
+admission.
 
 ## MRL-0 acceptance
 
 MRL-0007 is satisfied when this contract and its JSON Schema are canonically accepted and
-review confirms that stale/manual/ambiguous projections cannot authorize work.
+review confirms that stale/manual/ambiguous projections cannot authorize work and cannot
+be consumed for eligibility without the required validator gate.
 
-Implementation of a generator/validator is intentionally deferred to the later MRL
-implementation stage authorized by the task ledger. This MRL-0 contract itself performs no
-runtime execution.
+Implementation of the validator/generator and its negative fixtures is intentionally
+deferred to the later machine-state implementation stage authorized by the task ledger.
+This MRL-0 contract itself performs no runtime execution.
