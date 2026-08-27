@@ -1,0 +1,160 @@
+name: MRL forbidden-path repair once
+
+on:
+  push:
+    branches:
+      - tmp/mrl-0103-forbidden-path-fix
+    paths:
+      - .github/workflows/mrl-0103-forbidden-path-fix-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  qualify-once:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout isolated branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: tmp/mrl-0103-forbidden-path-fix
+
+      - name: Verify exact PR-head ancestry
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected=45b8c368eb343a7a1ef8dc142dd9f513d138b3be
+          git cat-file -e "${expected}^{commit}"
+          git merge-base --is-ancestor "$expected" HEAD
+          changed="$(git diff --name-only "$expected" HEAD)"
+          test "$changed" = ".github/workflows/mrl-0103-forbidden-path-fix-once.yml"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Apply forbidden-path repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          objective = Path("src/medscale/mesc/_mrl_research_objective_v1.py")
+          text = objective.read_text()
+          old = '''        _require_allowed_mutation_surfaces(self.allowed_mutation_surfaces)\n        _require_sorted_unique_text(self.forbidden_mutation_surfaces, "forbidden_mutation_surfaces")\n'''
+          new = '''        _require_allowed_mutation_surfaces(self.allowed_mutation_surfaces)\n        _require_forbidden_mutation_surfaces(self.forbidden_mutation_surfaces)\n'''
+          if text.count(old) != 1:
+              raise SystemExit("objective validation callsite drifted")
+          text = text.replace(old, new, 1)
+
+          marker = '''\n\ndef _require_sorted_unique_text(\n'''
+          helper = '''\n\ndef _require_forbidden_mutation_surfaces(values: tuple[str, ...]) -> None:\n    _require_sorted_unique_text(values, "forbidden_mutation_surfaces")\n    for value in values:\n        parts = value.split("/")\n        if (\n            value.startswith("/")\n            or value.endswith("/")\n            or "\\x00" in value\n            or "\\\\" in value\n            or any(part in ("", ".", "..") for part in parts)\n        ):\n            raise ResearchObjectiveContractError(\n                "forbidden_mutation_surfaces contains non-canonical relative path "\n                f"{value!r}"\n            )\n'''
+          if text.count(marker) != 1:
+              raise SystemExit("objective helper insertion point drifted")
+          text = text.replace(marker, helper + marker, 1)
+          objective.write_text(text)
+
+          objective_tests = Path("tests/test_mesc_mrl_research_objective_v1.py")
+          with objective_tests.open("a") as handle:
+              handle.write(r'''
+
+@pytest.mark.parametrize(
+    "surface",
+    [
+        "governance/../sealed-evaluation",
+        "governance//sealed-evaluation",
+        "/governance",
+        r"governance\sealed-evaluation",
+        "governance/",
+    ],
+)
+def test_forbidden_mutation_surfaces_require_canonical_relative_paths(surface: str) -> None:
+    with pytest.raises(
+        ResearchObjectiveContractError,
+        match="forbidden_mutation_surfaces contains non-canonical relative path",
+    ):
+        replace(_objective(), forbidden_mutation_surfaces=(surface,))
+
+
+def test_forbidden_mutation_surfaces_allow_canonical_bare_roots() -> None:
+    objective = replace(_objective(), forbidden_mutation_surfaces=("governance",))
+    assert objective.forbidden_mutation_surfaces == ("governance",)
+''')
+
+          plan_tests = Path("tests/test_mesc_mrl_research_experiment_plan_v1.py")
+          with plan_tests.open("a") as handle:
+              handle.write(r'''
+
+@pytest.mark.parametrize(
+    "forbidden_surface",
+    [
+        "tests/fixtures/mrl/../mrl/candidates",
+        "tests/fixtures/mrl//candidates",
+        "/tests/fixtures/mrl/candidates",
+        r"tests\fixtures\mrl\candidates",
+    ],
+)
+def test_plan_revalidates_malformed_forbidden_mutation_surface_before_scope_checks(
+    forbidden_surface: str,
+) -> None:
+    plan = _plan()
+    object.__setattr__(
+        plan.objective,
+        "forbidden_mutation_surfaces",
+        (forbidden_surface,),
+    )
+
+    with pytest.raises(ResearchExperimentPlanError):
+        plan.semantic_dict()
+
+
+@pytest.mark.parametrize(
+    "forbidden_surface",
+    [
+        "experiments/../experiments/results",
+        "experiments//results",
+        "/experiments/results",
+        r"experiments\results",
+    ],
+)
+def test_plan_revalidates_malformed_forbidden_surface_before_result_destination_checks(
+    forbidden_surface: str,
+) -> None:
+    plan = _plan()
+    object.__setattr__(
+        plan.objective,
+        "forbidden_mutation_surfaces",
+        (forbidden_surface,),
+    )
+
+    with pytest.raises(ResearchExperimentPlanError):
+        plan.to_dict()
+''')
+          PY
+
+      - name: Qualify candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run ruff check src tests
+          uv run ruff format --check src tests
+          uv run mypy src/medscale
+          uv run pytest -q tests/test_mesc_mrl_research_objective_v1.py tests/test_mesc_mrl_research_experiment_plan_v1.py
+          uv run pytest -q
+          uv run medscale check
+          git diff --check
+
+      - name: Commit qualified repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            src/medscale/mesc/_mrl_research_objective_v1.py \
+            tests/test_mesc_mrl_research_objective_v1.py \
+            tests/test_mesc_mrl_research_experiment_plan_v1.py
+          git diff --cached --check
+          git commit -m "fix(mrl): canonicalize forbidden mutation surfaces"
+          git push origin HEAD:tmp/mrl-0103-forbidden-path-fix
