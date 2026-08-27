@@ -95,9 +95,7 @@ class ResourceBudget:
         _require_optional_nonnegative_int(self.input_tokens, "input_tokens")
         _require_optional_nonnegative_int(self.generated_tokens, "generated_tokens")
         _require_nonnegative_int(self.storage_bytes, "storage_bytes")
-        _require_optional_nonnegative_int(
-            self.monetary_cost_microunits, "monetary_cost_microunits"
-        )
+        _require_optional_nonnegative_int(self.monetary_cost_microunits, "monetary_cost_microunits")
         _require_nonnegative_int(self.retries, "retries")
         _require_nonnegative_int(self.known_failure_retries, "known_failure_retries")
         _require_optional_nonnegative_int(self.evaluator_invocations, "evaluator_invocations")
@@ -293,9 +291,7 @@ class ResearchObjectiveContract:
         _require_sorted_unique_text(
             self.allowed_mutation_surfaces, "allowed_mutation_surfaces", allow_empty=True
         )
-        _require_sorted_unique_text(
-            self.forbidden_mutation_surfaces, "forbidden_mutation_surfaces"
-        )
+        _require_sorted_unique_text(self.forbidden_mutation_surfaces, "forbidden_mutation_surfaces")
         _require_exact_instance(self.resource_budget, ResourceBudget, "resource_budget")
         _require_exact_instance(
             self.evaluation_tier_policy, EvaluationTierPolicy, "evaluation_tier_policy"
@@ -310,9 +306,7 @@ class ResearchObjectiveContract:
         )
         _require_exact_instances(self.hard_guardrails, EvidenceFloor, "hard_guardrails")
         _require_exact_instances(self.search_metrics, MetricContract, "search_metrics")
-        _require_exact_instances(
-            self.evaluation_metrics, MetricContract, "evaluation_metrics"
-        )
+        _require_exact_instances(self.evaluation_metrics, MetricContract, "evaluation_metrics")
         _require_exact_instances(self.subgroup_floors, EvidenceFloor, "subgroup_floors")
         _require_exact_instances(
             self.tier_result_exposure_policy,
@@ -449,9 +443,7 @@ class ResearchObjectiveContract:
                 policy.to_dict() for policy in self.tier_result_exposure_policy
             ],
             "budget_exhaustion_disposition": self.budget_exhaustion_disposition.value,
-            "evaluator_identities": [
-                identity.to_dict() for identity in self.evaluator_identities
-            ],
+            "evaluator_identities": [identity.to_dict() for identity in self.evaluator_identities],
         }
 
     def to_dict(self) -> dict[str, object]:
@@ -471,9 +463,7 @@ def _require_text(value: str, label: str) -> None:
 def _require_token(value: str, label: str) -> None:
     _require_text(value, label)
     if not _TOKEN_ID.fullmatch(value):
-        raise ResearchObjectiveContractError(
-            f"{label} contains unsupported identifier characters"
-        )
+        raise ResearchObjectiveContractError(f"{label} contains unsupported identifier characters")
 
 
 def _require_sha256(value: str, label: str) -> None:
@@ -539,16 +529,12 @@ def _require_canonical_decimal(value: str, label: str) -> None:
     except InvalidOperation as exc:
         raise ResearchObjectiveContractError(f"{label} must be a finite decimal") from exc
     if not parsed.is_finite() or (parsed == 0 and value != "0"):
-        raise ResearchObjectiveContractError(
-            f"{label} must be canonical finite decimal text"
-        )
+        raise ResearchObjectiveContractError(f"{label} must be canonical finite decimal text")
 
 
 def _require_exact_instance(value: object, expected_type: type[object], label: str) -> None:
     if type(value) is not expected_type:
-        raise ResearchObjectiveContractError(
-            f"{label} must be exact {expected_type.__name__}"
-        )
+        raise ResearchObjectiveContractError(f"{label} must be exact {expected_type.__name__}")
 
 
 def _require_exact_instances(
