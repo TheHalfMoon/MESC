@@ -89,7 +89,7 @@ def _objective() -> ResearchObjectiveContract:
         ),
         allowed_mutation_surfaces=(
             "experiments/fixture.py",
-            "tests/fixtures/mrl/",
+            "tests/fixtures/mrl",
         ),
         forbidden_mutation_surfaces=("governance", "sealed-evaluation"),
         evaluation_tier_policy=EvaluationTierPolicy(
@@ -414,15 +414,28 @@ def test_every_plan_tier_requires_a_frozen_evaluator() -> None:
         )
 
 
-def test_evaluator_cannot_carry_tier_outside_plan() -> None:
+def test_plan_can_narrow_tier_without_rewriting_exact_evaluator_identity() -> None:
     plan = _plan()
-    with pytest.raises(ResearchExperimentPlanError, match="carries tiers outside"):
-        replace(
-            plan,
-            evaluation_tiers=(EvaluationTier.SEARCH,),
-            evaluator_identities=(plan.evaluator_identities[1], plan.evaluator_identities[0]),
-            tier_allowances=(plan.tier_allowances[0],),
-        )
+    multi_tier_search = replace(
+        plan.objective.evaluator_identities[1],
+        tiers=(EvaluationTier.SEARCH, EvaluationTier.SEALED),
+    )
+    objective = replace(
+        plan.objective,
+        evaluator_identities=(plan.objective.evaluator_identities[0], multi_tier_search),
+    )
+
+    narrowed = replace(
+        plan,
+        objective=objective,
+        hypothesis=_hypothesis(objective),
+        evaluation_tiers=(EvaluationTier.SEARCH,),
+        evaluator_identities=(multi_tier_search,),
+        tier_allowances=(plan.tier_allowances[0],),
+    )
+
+    assert narrowed.evaluation_tiers == (EvaluationTier.SEARCH,)
+    assert narrowed.evaluator_identities == (multi_tier_search,)
 
 
 def test_query_allowance_cannot_exceed_objective() -> None:
