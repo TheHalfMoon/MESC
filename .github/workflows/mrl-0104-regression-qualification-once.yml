@@ -1,0 +1,88 @@
+name: MRL-0104 regression qualification once
+
+on:
+  push:
+    branches:
+      - tmp/mrl-0104-regression-qualification
+
+permissions:
+  contents: write
+
+jobs:
+  repair-and-qualify:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout isolated branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: tmp/mrl-0104-regression-qualification
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+
+      - name: Add exact regression coverage
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          source_path = Path("src/medscale/mesc/_mrl_experiment_manifest_binding_v1.py")
+          source = source_path.read_text()
+          old_import = "from typing import Callable\n"
+          if source.count(old_import) != 1:
+              raise SystemExit("expected exactly one typing.Callable import")
+          source = source.replace(old_import, "from collections.abc import Callable\n")
+          source_path.write_text(source)
+
+          test_path = Path("tests/test_mesc_mrl_experiment_manifest_binding_v1.py")
+          tests = test_path.read_text()
+
+          huge_anchor = '''    with pytest.raises(ExperimentManifestBindingError, match="finite numeric"):\n        bind_experiment_manifest(_plan(), manifest)\n\n\ndef test_binding_snapshots_inputs_and_isolated_from_later_external_tampering() -> None:\n'''
+          huge_replacement = '''    with pytest.raises(ExperimentManifestBindingError, match="finite numeric"):\n        bind_experiment_manifest(_plan(), manifest)\n\n\ndef test_huge_runtime_vram_integer_is_normalized_to_binding_domain_error() -> None:\n    manifest = _manifest(\n        runner=RunnerEnv(\n            runner=RunnerClass.LOCAL,\n            python="3.11",\n            os_name="linux",\n            peak_vram_gb=10**10_000,\n        )\n    )\n\n    with pytest.raises(ExperimentManifestBindingError, match="finite numeric"):\n        bind_experiment_manifest(_plan(), manifest)\n\n\ndef test_binding_snapshots_inputs_and_isolated_from_later_external_tampering() -> None:\n'''
+          if tests.count(huge_anchor) != 1:
+              raise SystemExit("expected exactly one huge-integer insertion anchor")
+          tests = tests.replace(huge_anchor, huge_replacement)
+
+          pin_anchor = '''    object.__setattr__(binding, "plan", replacement_plan)\n    object.__setattr__(binding, "manifest", replacement_manifest)\n\n    with pytest.raises(ExperimentManifestBindingError, match="plan identity changed"):\n'''
+          pin_replacement = '''    with pytest.raises(AttributeError):\n        object.__setattr__(\n            binding,\n            "_construction_plan_sha256",\n            replacement_plan.content_sha256,\n        )\n    with pytest.raises(AttributeError):\n        object.__setattr__(\n            binding,\n            "_construction_manifest_sha256",\n            replacement_manifest.manifest_id,\n        )\n\n    object.__setattr__(binding, "plan", replacement_plan)\n    object.__setattr__(binding, "manifest", replacement_manifest)\n\n    with pytest.raises(ExperimentManifestBindingError, match="plan identity changed"):\n'''
+          if tests.count(pin_anchor) != 1:
+              raise SystemExit("expected exactly one construction-pin insertion anchor")
+          tests = tests.replace(pin_anchor, pin_replacement)
+          test_path.write_text(tests)
+          PY
+
+      - name: Sync locked environment
+        run: uv sync --frozen
+
+      - name: Ruff fix and format exact files
+        run: |
+          uv run ruff check --fix src/medscale/mesc/_mrl_experiment_manifest_binding_v1.py tests/test_mesc_mrl_experiment_manifest_binding_v1.py
+          uv run ruff format src/medscale/mesc/_mrl_experiment_manifest_binding_v1.py tests/test_mesc_mrl_experiment_manifest_binding_v1.py
+          uv run ruff check src/medscale/mesc/_mrl_experiment_manifest_binding_v1.py tests/test_mesc_mrl_experiment_manifest_binding_v1.py
+          uv run ruff format --check src/medscale/mesc/_mrl_experiment_manifest_binding_v1.py tests/test_mesc_mrl_experiment_manifest_binding_v1.py
+
+      - name: Strict mypy
+        run: uv run mypy .
+
+      - name: Focused pytest
+        run: uv run pytest -q tests/test_mesc_mrl_experiment_manifest_binding_v1.py
+
+      - name: Verify exact delta scope
+        shell: bash
+        run: |
+          mapfile -t changed < <(git diff --name-only)
+          printf '%s\n' "${changed[@]}"
+          test "${#changed[@]}" -eq 2
+          test "${changed[0]}" = "src/medscale/mesc/_mrl_experiment_manifest_binding_v1.py"
+          test "${changed[1]}" = "tests/test_mesc_mrl_experiment_manifest_binding_v1.py"
+
+      - name: Commit qualified blobs
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/medscale/mesc/_mrl_experiment_manifest_binding_v1.py tests/test_mesc_mrl_experiment_manifest_binding_v1.py
+          git commit -m "test(mrl): harden manifest binding regressions"
+          git push origin HEAD:tmp/mrl-0104-regression-qualification
