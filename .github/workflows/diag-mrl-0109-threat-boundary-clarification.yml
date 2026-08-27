@@ -23,61 +23,20 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
-
           admission = Path("src/medscale/mesc/_mrl_research_input_admission_v1.py")
           text = admission.read_text(encoding="utf-8")
-          old = '''This module is declarative only. It grants no filesystem, network, model, data, GPU,
-inference, training, promotion, deployment, release, or clinical authority.
-"""'''
-          new = '''This module is declarative only. It grants no filesystem, network, model, data, GPU,
-inference, training, promotion, deployment, release, or clinical authority.
-
-Integrity checks cover caller-controlled values, post-construction mutation of canonical artifact
-data, and accidental or hostile rebinding of ordinary module-level trust names. Arbitrary Python
-code execution that rewrites executable interpreter state such as function code, closure cells,
-class methods, or ``sys.modules`` is outside this contract-level boundary: such a caller can replace
-the enforcement code itself. Untrusted research execution must therefore run outside the
-trust-bearing interpreter/process under the separately governed execution boundary.
-"""'''
+          old = "This module is declarative only. It grants no filesystem, network, model, data, GPU,\ninference, training, promotion, deployment, release, or clinical authority.\n\"\"\""
+          new = "This module is declarative only. It grants no filesystem, network, model, data, GPU,\ninference, training, promotion, deployment, release, or clinical authority.\n\nIntegrity checks cover caller-controlled values, post-construction mutation of canonical artifact\ndata, and accidental or hostile rebinding of ordinary module-level trust names. Arbitrary Python\ncode execution that rewrites executable interpreter state such as function code, closure cells,\nclass methods, or ``sys.modules`` is outside this contract-level boundary: such a caller can replace\nthe enforcement code itself. Untrusted research execution must therefore run outside the\ntrust-bearing interpreter/process under the separately governed execution boundary.\n\"\"\""
           if old not in text:
               raise SystemExit("admission docstring marker not found")
           admission.write_text(text.replace(old, new, 1), encoding="utf-8")
-
           spec = Path("specs/mesc-research-loop-v1/spec.md")
           text = spec.read_text(encoding="utf-8")
-          marker = '''MCRL remains a separate clinical/task-time layer. MCRL output may be treated only as
-separately authorized external evaluation evidence when its governing data boundary
-permits that use; it must never silently become an MRL learning signal.
-
-### 5.2 `ResearchObjectiveContract`'''
-          replacement = '''MCRL remains a separate clinical/task-time layer. MCRL output may be treated only as
-separately authorized external evaluation evidence when its governing data boundary
-permits that use; it must never silently become an MRL learning signal.
-
-#### Implementation integrity boundary
-
-MRL-1 contract validation must fail closed for malformed or caller-controlled values and
-for post-construction mutation of canonical artifact data that remains reachable through
-ordinary object references. Authority decisions must not depend on caller-supplied trust
-metadata or ordinary rebindable module names.
-
-This contract-level threat model does **not** treat a caller with arbitrary Python code
-execution in the trust-bearing interpreter as an unprivileged research input. A caller
-that can rewrite executable interpreter state such as function code, closure cells,
-class methods, import tables, or `sys.modules` can replace the enforcement implementation
-itself. That capability is already code execution, which is a separate security failure,
-not a property that immutable Python dataclasses can contain.
-
-Accordingly, any future untrusted or agent-authored research execution must not share the
-trust-bearing interpreter/process with these governance contracts. Process/sandbox
-isolation belongs to the separately governed execution stages; this clarification grants
-no execution, model, data, network, GPU, training, promotion, deployment, release, or
-clinical authority.
-
-### 5.2 `ResearchObjectiveContract`'''
+          marker = "MCRL remains a separate clinical/task-time layer. MCRL output may be treated only as\nseparately authorized external evaluation evidence when its governing data boundary\npermits that use; it must never silently become an MRL learning signal.\n\n### 5.2 `ResearchObjectiveContract`"
+          clarification = "MCRL remains a separate clinical/task-time layer. MCRL output may be treated only as\nseparately authorized external evaluation evidence when its governing data boundary\npermits that use; it must never silently become an MRL learning signal.\n\n#### Implementation integrity boundary\n\nMRL-1 contract validation must fail closed for malformed or caller-controlled values and\nfor post-construction mutation of canonical artifact data that remains reachable through\nordinary object references. Authority decisions must not depend on caller-supplied trust\nmetadata or ordinary rebindable module names.\n\nThis contract-level threat model does **not** treat a caller with arbitrary Python code\nexecution in the trust-bearing interpreter as an unprivileged research input. A caller\nthat can rewrite executable interpreter state such as function code, closure cells,\nclass methods, import tables, or `sys.modules` can replace the enforcement implementation\nitself. That capability is already code execution, which is a separate security failure,\nnot a property that immutable Python dataclasses can contain.\n\nAccordingly, any future untrusted or agent-authored research execution must not share the\ntrust-bearing interpreter/process with these governance contracts. Process/sandbox\nisolation belongs to the separately governed execution stages; this clarification grants\nno execution, model, data, network, GPU, training, promotion, deployment, release, or\nclinical authority.\n\n### 5.2 `ResearchObjectiveContract`"
           if marker not in text:
               raise SystemExit("spec insertion marker not found")
-          spec.write_text(text.replace(marker, replacement, 1), encoding="utf-8")
+          spec.write_text(text.replace(marker, clarification, 1), encoding="utf-8")
           PY
       - name: Canonicalize changed Python
         run: |
