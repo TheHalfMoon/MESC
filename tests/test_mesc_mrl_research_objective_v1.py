@@ -1,0 +1,387 @@
+"""MRL-0101 tests for the immutable ResearchObjectiveContract."""
+
+from __future__ import annotations
+
+from dataclasses import FrozenInstanceError, replace
+
+import pytest
+
+from medscale.mesc._mrl_research_objective_v1 import (
+    AdaptiveQueryBudget,
+    BudgetExhaustionDisposition,
+    EvaluationTier,
+    EvaluationTierPolicy,
+    EvaluatorIdentity,
+    EvidenceFloor,
+    FloorComparator,
+    MetricContract,
+    MetricDirection,
+    ResearchObjectiveContract,
+    ResearchObjectiveContractError,
+    ResourceBudget,
+    TierResultExposure,
+)
+
+
+def _objective() -> ResearchObjectiveContract:
+    return ResearchObjectiveContract(
+        objective_id="fixture-research-objective",
+        research_program_refs=("RQ1",),
+        target_capabilities=("evidence-fidelity",),
+        hard_guardrails=(
+            EvidenceFloor(
+                floor_id="global-safety",
+                metric_id="safety",
+                comparator=FloorComparator.GTE,
+                threshold_decimal="0.95",
+            ),
+        ),
+        search_metrics=(
+            MetricContract(
+                metric_id="search-score",
+                evaluator_id="eval.search",
+                direction=MetricDirection.MAXIMIZE,
+            ),
+        ),
+        evaluation_metrics=(
+            MetricContract(
+                metric_id="safety",
+                evaluator_id="eval.sealed",
+                direction=MetricDirection.MAXIMIZE,
+            ),
+        ),
+        subgroup_floors=(
+            EvidenceFloor(
+                floor_id="subgroup-safety",
+                metric_id="safety",
+                comparator=FloorComparator.GTE,
+                threshold_decimal="0.9",
+                subgroup="critical-cohort",
+            ),
+        ),
+        resource_budget=ResourceBudget(
+            wall_clock_seconds=600,
+            compute_seconds=300,
+            input_tokens=10_000,
+            generated_tokens=2_000,
+            storage_bytes=1_000_000,
+            monetary_cost_microunits=500_000,
+            retries=3,
+            known_failure_retries=1,
+            evaluator_invocations=20,
+        ),
+        allowed_mutation_surfaces=("src/medscale/mesc/fixture.py",),
+        forbidden_mutation_surfaces=("governance", "sealed-evaluation"),
+        evaluation_tier_policy=EvaluationTierPolicy(
+            allowed_tiers=(EvaluationTier.SEARCH, EvaluationTier.SEALED)
+        ),
+        adaptive_query_budget=AdaptiveQueryBudget(tier_1_queries=5, tier_2_queries=0),
+        tier_result_exposure_policy=(
+            TierResultExposure(
+                tier=EvaluationTier.SEARCH,
+                max_exposures=5,
+                allowed_result_fields=("aggregate_score", "cost_microunits"),
+            ),
+            TierResultExposure(
+                tier=EvaluationTier.SEALED,
+                max_exposures=0,
+                allowed_result_fields=(),
+            ),
+        ),
+        budget_exhaustion_disposition=BudgetExhaustionDisposition.BLOCKED,
+        evaluator_identities=(
+            EvaluatorIdentity(
+                evaluator_id="eval.sealed",
+                artifact_sha256="b" * 64,
+                tiers=(EvaluationTier.SEALED,),
+            ),
+            EvaluatorIdentity(
+                evaluator_id="eval.search",
+                artifact_sha256="a" * 64,
+                tiers=(EvaluationTier.SEARCH,),
+            ),
+        ),
+    )
+
+
+def test_objective_identity_is_outside_semantic_preimage() -> None:
+    objective = _objective()
+
+    assert b"content_sha256" not in objective.semantic_bytes
+    assert "content_sha256" not in objective.semantic_dict()
+    assert objective.to_dict()["content_sha256"] == objective.content_sha256
+    assert len(objective.content_sha256) == 64
+
+
+def test_equivalent_objectives_have_byte_stable_identity() -> None:
+    first = _objective()
+    second = _objective()
+
+    assert first.semantic_bytes == second.semantic_bytes
+    assert first.content_sha256 == second.content_sha256
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda value: replace(
+            value,
+            resource_budget=replace(value.resource_budget, wall_clock_seconds=601),
+        ),
+        lambda value: replace(
+            value,
+            adaptive_query_budget=AdaptiveQueryBudget(tier_1_queries=4, tier_2_queries=0),
+        ),
+        lambda value: replace(
+            value,
+            tier_result_exposure_policy=(
+                TierResultExposure(
+                    tier=EvaluationTier.SEARCH,
+                    max_exposures=4,
+                    allowed_result_fields=("aggregate_score", "cost_microunits"),
+                ),
+                TierResultExposure(
+                    tier=EvaluationTier.SEALED,
+                    max_exposures=0,
+                    allowed_result_fields=(),
+                ),
+            ),
+        ),
+        lambda value: replace(
+            value,
+            evaluator_identities=(
+                EvaluatorIdentity(
+                    evaluator_id="eval.sealed",
+                    artifact_sha256="c" * 64,
+                    tiers=(EvaluationTier.SEALED,),
+                ),
+                value.evaluator_identities[1],
+            ),
+        ),
+        lambda value: replace(
+            value,
+            hard_guardrails=(
+                replace(value.hard_guardrails[0], threshold_decimal="0.96"),
+            ),
+        ),
+        lambda value: replace(
+            value,
+            allowed_mutation_surfaces=("src/medscale/mesc/other_fixture.py",),
+        ),
+    ],
+)
+def test_material_semantic_changes_change_content_identity(mutate: object) -> None:
+    original = _objective()
+    changed = mutate(original)  # type: ignore[operator]
+
+    assert changed.content_sha256 != original.content_sha256
+
+
+def test_objective_and_nested_contracts_are_frozen() -> None:
+    objective = _objective()
+
+    with pytest.raises(FrozenInstanceError):
+        objective.objective_id = "changed"  # type: ignore[misc]
+    with pytest.raises(FrozenInstanceError):
+        objective.resource_budget.retries = 99  # type: ignore[misc]
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("wall_clock_seconds", 0),
+        ("wall_clock_seconds", True),
+        ("compute_seconds", -1),
+        ("storage_bytes", -1),
+        ("retries", -1),
+        ("evaluator_invocations", -1),
+    ],
+)
+def test_invalid_resource_ceilings_fail_closed(field: str, value: object) -> None:
+    kwargs: dict[str, object] = {
+        "wall_clock_seconds": 600,
+        "compute_seconds": 300,
+        "input_tokens": 10_000,
+        "generated_tokens": 2_000,
+        "storage_bytes": 1_000_000,
+        "monetary_cost_microunits": 500_000,
+        "retries": 3,
+        "known_failure_retries": 1,
+        "evaluator_invocations": 20,
+    }
+    kwargs[field] = value
+
+    with pytest.raises(ResearchObjectiveContractError):
+        ResourceBudget(**kwargs)  # type: ignore[arg-type]
+
+
+def test_known_failure_retry_ceiling_cannot_exceed_total_retries() -> None:
+    with pytest.raises(ResearchObjectiveContractError, match="cannot exceed retries"):
+        replace(_objective().resource_budget, retries=1, known_failure_retries=2)
+
+
+@pytest.mark.parametrize(
+    "threshold",
+    ["0.90", "1e-1", ".9", "-0", "01", "nan", "inf"],
+)
+def test_noncanonical_floor_decimals_fail_closed(threshold: str) -> None:
+    with pytest.raises(ResearchObjectiveContractError):
+        replace(_objective().hard_guardrails[0], threshold_decimal=threshold)
+
+
+def test_allowed_and_forbidden_mutation_surfaces_cannot_overlap() -> None:
+    with pytest.raises(ResearchObjectiveContractError, match="both allowed and forbidden"):
+        replace(
+            _objective(),
+            allowed_mutation_surfaces=("governance",),
+        )
+
+
+def test_set_like_semantics_must_be_strictly_sorted_and_unique() -> None:
+    objective = _objective()
+
+    with pytest.raises(ResearchObjectiveContractError, match="strictly sorted"):
+        replace(objective, target_capabilities=("zeta", "alpha"))
+    with pytest.raises(ResearchObjectiveContractError, match="strictly sorted"):
+        replace(
+            objective,
+            evaluator_identities=tuple(reversed(objective.evaluator_identities)),
+        )
+    with pytest.raises(ResearchObjectiveContractError, match="strictly sorted"):
+        replace(
+            objective,
+            research_program_refs=("RQ1", "RQ1"),
+        )
+
+
+def test_research_program_reference_format_fails_closed() -> None:
+    with pytest.raises(ResearchObjectiveContractError, match="unsupported reference"):
+        replace(_objective(), research_program_refs=("UNREGISTERED-RQ-0001",))
+
+
+def test_metric_must_reference_a_frozen_evaluator_identity() -> None:
+    objective = _objective()
+    with pytest.raises(ResearchObjectiveContractError, match="unknown evaluator"):
+        replace(
+            objective,
+            search_metrics=(
+                replace(objective.search_metrics[0], evaluator_id="eval.unknown"),
+            ),
+        )
+
+
+def test_metric_identity_cannot_be_reused_across_search_and_evaluation() -> None:
+    objective = _objective()
+    with pytest.raises(ResearchObjectiveContractError, match="cannot be reused"):
+        replace(
+            objective,
+            evaluation_metrics=(
+                replace(objective.evaluation_metrics[0], metric_id="search-score"),
+            ),
+            hard_guardrails=(
+                replace(objective.hard_guardrails[0], metric_id="search-score"),
+            ),
+            subgroup_floors=(
+                replace(objective.subgroup_floors[0], metric_id="search-score"),
+            ),
+        )
+
+
+def test_evaluator_cannot_reference_tier_outside_objective_policy() -> None:
+    objective = _objective()
+    with pytest.raises(ResearchObjectiveContractError, match="outside the objective policy"):
+        replace(
+            objective,
+            evaluator_identities=(
+                objective.evaluator_identities[0],
+                replace(
+                    objective.evaluator_identities[1],
+                    tiers=(EvaluationTier.SEARCH, EvaluationTier.REPLICATION),
+                ),
+            ),
+        )
+
+
+def test_floor_roles_and_metric_bindings_fail_closed() -> None:
+    objective = _objective()
+
+    with pytest.raises(ResearchObjectiveContractError, match="hard_guardrails must be global"):
+        replace(
+            objective,
+            hard_guardrails=(replace(objective.hard_guardrails[0], subgroup="cohort"),),
+        )
+    with pytest.raises(ResearchObjectiveContractError, match="require a subgroup"):
+        replace(
+            objective,
+            subgroup_floors=(replace(objective.subgroup_floors[0], subgroup=None),),
+        )
+    with pytest.raises(ResearchObjectiveContractError, match="evaluation metric"):
+        replace(
+            objective,
+            hard_guardrails=(
+                replace(objective.hard_guardrails[0], metric_id="search-score"),
+            ),
+        )
+
+
+def test_tier_3_and_4_cannot_expose_iterative_agent_feedback() -> None:
+    with pytest.raises(ResearchObjectiveContractError, match="cannot expose"):
+        TierResultExposure(
+            tier=EvaluationTier.SEALED,
+            max_exposures=1,
+            allowed_result_fields=(),
+        )
+    with pytest.raises(ResearchObjectiveContractError, match="cannot expose"):
+        TierResultExposure(
+            tier=EvaluationTier.EXTERNAL_ASSURANCE,
+            max_exposures=0,
+            allowed_result_fields=("aggregate_score",),
+        )
+
+
+def test_exposure_policy_must_match_allowed_tiers_exactly() -> None:
+    objective = _objective()
+    with pytest.raises(ResearchObjectiveContractError, match="exactly every allowed"):
+        replace(
+            objective,
+            tier_result_exposure_policy=(objective.tier_result_exposure_policy[0],),
+        )
+
+
+def test_adaptive_query_budget_cannot_target_disallowed_tier() -> None:
+    objective = _objective()
+    with pytest.raises(ResearchObjectiveContractError, match="tier_2_queries must be zero"):
+        replace(
+            objective,
+            adaptive_query_budget=AdaptiveQueryBudget(tier_1_queries=5, tier_2_queries=1),
+        )
+
+
+def test_runtime_type_confusion_fails_closed() -> None:
+    objective = _objective()
+
+    with pytest.raises(ResearchObjectiveContractError, match="exact MetricDirection"):
+        replace(
+            objective,
+            search_metrics=(
+                MetricContract(
+                    metric_id="search-score",
+                    evaluator_id="eval.search",
+                    direction="MAXIMIZE",  # type: ignore[arg-type]
+                ),
+            ),
+        )
+    with pytest.raises(ResearchObjectiveContractError, match="exact EvaluationTier"):
+        TierResultExposure(
+            tier=3,  # type: ignore[arg-type]
+            max_exposures=0,
+            allowed_result_fields=(),
+        )
+
+
+def test_unknown_constructor_field_is_rejected_by_closed_typed_contract() -> None:
+    kwargs = _objective().semantic_dict()
+    kwargs["unknown_field"] = "rejected"
+
+    with pytest.raises(TypeError):
+        ResearchObjectiveContract(**kwargs)  # type: ignore[arg-type]
