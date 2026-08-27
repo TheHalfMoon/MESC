@@ -38,6 +38,9 @@ __all__ = [
 
 _OBJECTIVE_ID: Final = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 _TOKEN_ID: Final = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]*$")
+_RESEARCH_PROGRAM_REF: Final = re.compile(
+    r"^(?:RQ[1-7]|(?:MESC|MCRL|ARABIC|AMGE|OMNI|MRL)-RQ-[0-9]{4})$"
+)
 _SHA256: Final = re.compile(r"^[0-9a-f]{64}$")
 _CANONICAL_DECIMAL: Final = re.compile(r"^-?(?:0|[1-9][0-9]*)(?:\.[0-9]*[1-9])?$")
 
@@ -142,6 +145,7 @@ class EvaluationTierPolicy:
     def __post_init__(self) -> None:
         if not self.allowed_tiers:
             raise ResearchObjectiveContractError("evaluation_tier_policy cannot be empty")
+        _require_exact_instances(self.allowed_tiers, EvaluationTier, "allowed_tiers")
         numeric = tuple(int(tier) for tier in self.allowed_tiers)
         if numeric != tuple(sorted(set(numeric))):
             raise ResearchObjectiveContractError(
@@ -162,10 +166,10 @@ class EvaluatorIdentity:
 
     def __post_init__(self) -> None:
         _require_token(self.evaluator_id, "evaluator_id")
-        if not _SHA256.fullmatch(self.artifact_sha256):
-            raise ResearchObjectiveContractError("artifact_sha256 must be 64 lowercase hex")
+        _require_sha256(self.artifact_sha256, "artifact_sha256")
         if not self.tiers:
             raise ResearchObjectiveContractError("evaluator tiers cannot be empty")
+        _require_exact_instances(self.tiers, EvaluationTier, "evaluator tiers")
         numeric = tuple(int(tier) for tier in self.tiers)
         if numeric != tuple(sorted(set(numeric))):
             raise ResearchObjectiveContractError(
@@ -191,6 +195,7 @@ class MetricContract:
     def __post_init__(self) -> None:
         _require_token(self.metric_id, "metric_id")
         _require_token(self.evaluator_id, "evaluator_id")
+        _require_exact_enum(self.direction, MetricDirection, "direction")
 
     def to_dict(self) -> dict[str, str]:
         return {
@@ -213,6 +218,7 @@ class EvidenceFloor:
     def __post_init__(self) -> None:
         _require_token(self.floor_id, "floor_id")
         _require_token(self.metric_id, "metric_id")
+        _require_exact_enum(self.comparator, FloorComparator, "comparator")
         _require_canonical_decimal(self.threshold_decimal, "threshold_decimal")
         if self.subgroup is not None:
             _require_text(self.subgroup, "subgroup")
@@ -236,8 +242,11 @@ class TierResultExposure:
     allowed_result_fields: tuple[str, ...]
 
     def __post_init__(self) -> None:
+        _require_exact_enum(self.tier, EvaluationTier, "tier")
         _require_nonnegative_int(self.max_exposures, "max_exposures")
-        _require_sorted_unique_text(self.allowed_result_fields, "allowed_result_fields", allow_empty=True)
+        _require_sorted_unique_text(
+            self.allowed_result_fields, "allowed_result_fields", allow_empty=True
+        )
         if self.tier in (EvaluationTier.SEALED, EvaluationTier.EXTERNAL_ASSURANCE):
             if self.max_exposures != 0 or self.allowed_result_fields:
                 raise ResearchObjectiveContractError(
@@ -273,16 +282,45 @@ class ResearchObjectiveContract:
     evaluator_identities: tuple[EvaluatorIdentity, ...]
 
     def __post_init__(self) -> None:
+        _require_text(self.objective_id, "objective_id")
         if not _OBJECTIVE_ID.fullmatch(self.objective_id):
             raise ResearchObjectiveContractError(
                 "objective_id must be lowercase kebab-case [a-z0-9-]"
             )
-        _require_sorted_unique_text(self.research_program_refs, "research_program_refs")
+        _require_sorted_unique_program_refs(self.research_program_refs)
         _require_sorted_unique_text(self.target_capabilities, "target_capabilities")
         _require_sorted_unique_text(
             self.allowed_mutation_surfaces, "allowed_mutation_surfaces", allow_empty=True
         )
-        _require_sorted_unique_text(self.forbidden_mutation_surfaces, "forbidden_mutation_surfaces")
+        _require_sorted_unique_text(
+            self.forbidden_mutation_surfaces, "forbidden_mutation_surfaces"
+        )
+        _require_exact_instance(self.resource_budget, ResourceBudget, "resource_budget")
+        _require_exact_instance(
+            self.evaluation_tier_policy, EvaluationTierPolicy, "evaluation_tier_policy"
+        )
+        _require_exact_instance(
+            self.adaptive_query_budget, AdaptiveQueryBudget, "adaptive_query_budget"
+        )
+        _require_exact_enum(
+            self.budget_exhaustion_disposition,
+            BudgetExhaustionDisposition,
+            "budget_exhaustion_disposition",
+        )
+        _require_exact_instances(self.hard_guardrails, EvidenceFloor, "hard_guardrails")
+        _require_exact_instances(self.search_metrics, MetricContract, "search_metrics")
+        _require_exact_instances(
+            self.evaluation_metrics, MetricContract, "evaluation_metrics"
+        )
+        _require_exact_instances(self.subgroup_floors, EvidenceFloor, "subgroup_floors")
+        _require_exact_instances(
+            self.tier_result_exposure_policy,
+            TierResultExposure,
+            "tier_result_exposure_policy",
+        )
+        _require_exact_instances(
+            self.evaluator_identities, EvaluatorIdentity, "evaluator_identities"
+        )
 
         overlap = set(self.allowed_mutation_surfaces) & set(self.forbidden_mutation_surfaces)
         if overlap:
@@ -293,7 +331,7 @@ class ResearchObjectiveContract:
             raise ResearchObjectiveContractError("budget exhaustion disposition must be BLOCKED")
 
         evaluator_ids = tuple(identity.evaluator_id for identity in self.evaluator_identities)
-        _require_unique_ordered_ids(evaluator_ids, "evaluator_identities")
+        _require_strictly_sorted_ids(evaluator_ids, "evaluator_identities")
         allowed_tiers = set(self.evaluation_tier_policy.allowed_tiers)
         for identity in self.evaluator_identities:
             if not set(identity.tiers).issubset(allowed_tiers):
@@ -301,15 +339,23 @@ class ResearchObjectiveContract:
                     f"evaluator {identity.evaluator_id!r} references a tier outside the objective policy"
                 )
 
-        all_metrics = self.search_metrics + self.evaluation_metrics
         if not self.search_metrics:
             raise ResearchObjectiveContractError("search_metrics cannot be empty")
         if not self.evaluation_metrics:
             raise ResearchObjectiveContractError("evaluation_metrics cannot be empty")
-        metric_ids = tuple(metric.metric_id for metric in all_metrics)
-        _require_unique_ordered_ids(metric_ids, "metric contracts")
+        search_metric_ids = tuple(metric.metric_id for metric in self.search_metrics)
+        evaluation_metric_ids_ordered = tuple(
+            metric.metric_id for metric in self.evaluation_metrics
+        )
+        _require_strictly_sorted_ids(search_metric_ids, "search_metrics")
+        _require_strictly_sorted_ids(evaluation_metric_ids_ordered, "evaluation_metrics")
+        metric_ids = search_metric_ids + evaluation_metric_ids_ordered
+        if len(metric_ids) != len(set(metric_ids)):
+            raise ResearchObjectiveContractError(
+                "metric_id cannot be reused across search and evaluation metrics"
+            )
         known_evaluators = set(evaluator_ids)
-        for metric in all_metrics:
+        for metric in self.search_metrics + self.evaluation_metrics:
             if metric.evaluator_id not in known_evaluators:
                 raise ResearchObjectiveContractError(
                     f"metric {metric.metric_id!r} references unknown evaluator {metric.evaluator_id!r}"
@@ -317,9 +363,17 @@ class ResearchObjectiveContract:
 
         if not self.hard_guardrails:
             raise ResearchObjectiveContractError("hard_guardrails cannot be empty")
-        floor_ids = tuple(floor.floor_id for floor in self.hard_guardrails + self.subgroup_floors)
-        _require_unique_ordered_ids(floor_ids, "evidence floors")
-        evaluation_metric_ids = {metric.metric_id for metric in self.evaluation_metrics}
+        hard_floor_ids = tuple(floor.floor_id for floor in self.hard_guardrails)
+        subgroup_floor_ids = tuple(floor.floor_id for floor in self.subgroup_floors)
+        _require_strictly_sorted_ids(hard_floor_ids, "hard_guardrails")
+        if subgroup_floor_ids:
+            _require_strictly_sorted_ids(subgroup_floor_ids, "subgroup_floors")
+        floor_ids = hard_floor_ids + subgroup_floor_ids
+        if len(floor_ids) != len(set(floor_ids)):
+            raise ResearchObjectiveContractError(
+                "floor_id cannot be reused across global and subgroup floors"
+            )
+        evaluation_metric_ids = set(evaluation_metric_ids_ordered)
         for floor in self.hard_guardrails:
             if floor.subgroup is not None:
                 raise ResearchObjectiveContractError(
@@ -391,7 +445,9 @@ class ResearchObjectiveContract:
                 policy.to_dict() for policy in self.tier_result_exposure_policy
             ],
             "budget_exhaustion_disposition": self.budget_exhaustion_disposition.value,
-            "evaluator_identities": [identity.to_dict() for identity in self.evaluator_identities],
+            "evaluator_identities": [
+                identity.to_dict() for identity in self.evaluator_identities
+            ],
         }
 
     def to_dict(self) -> dict[str, object]:
@@ -402,6 +458,8 @@ class ResearchObjectiveContract:
 
 
 def _require_text(value: str, label: str) -> None:
+    if type(value) is not str:
+        raise ResearchObjectiveContractError(f"{label} must be an exact string")
     if not value or value != value.strip() or any(char in value for char in "\r\n\t"):
         raise ResearchObjectiveContractError(f"{label} must be non-empty canonical text")
 
@@ -409,12 +467,31 @@ def _require_text(value: str, label: str) -> None:
 def _require_token(value: str, label: str) -> None:
     _require_text(value, label)
     if not _TOKEN_ID.fullmatch(value):
-        raise ResearchObjectiveContractError(f"{label} contains unsupported identifier characters")
+        raise ResearchObjectiveContractError(
+            f"{label} contains unsupported identifier characters"
+        )
+
+
+def _require_sha256(value: str, label: str) -> None:
+    _require_text(value, label)
+    if not _SHA256.fullmatch(value):
+        raise ResearchObjectiveContractError(f"{label} must be 64 lowercase hex")
+
+
+def _require_sorted_unique_program_refs(values: tuple[str, ...]) -> None:
+    _require_sorted_unique_text(values, "research_program_refs")
+    for value in values:
+        if not _RESEARCH_PROGRAM_REF.fullmatch(value):
+            raise ResearchObjectiveContractError(
+                f"research_program_refs contains unsupported reference {value!r}"
+            )
 
 
 def _require_sorted_unique_text(
     values: tuple[str, ...], label: str, *, allow_empty: bool = False
 ) -> None:
+    if type(values) is not tuple:
+        raise ResearchObjectiveContractError(f"{label} must be an exact tuple")
     if not values and not allow_empty:
         raise ResearchObjectiveContractError(f"{label} cannot be empty")
     for value in values:
@@ -423,11 +500,13 @@ def _require_sorted_unique_text(
         raise ResearchObjectiveContractError(f"{label} must be unique and strictly sorted")
 
 
-def _require_unique_ordered_ids(values: tuple[str, ...], label: str) -> None:
+def _require_strictly_sorted_ids(values: tuple[str, ...], label: str) -> None:
     if not values:
         raise ResearchObjectiveContractError(f"{label} cannot be empty")
-    if len(values) != len(set(values)):
-        raise ResearchObjectiveContractError(f"{label} contains duplicate identities")
+    if values != tuple(sorted(set(values))):
+        raise ResearchObjectiveContractError(
+            f"{label} identities must be unique and strictly sorted"
+        )
 
 
 def _require_nonnegative_int(value: int, label: str) -> None:
@@ -456,4 +535,29 @@ def _require_canonical_decimal(value: str, label: str) -> None:
     except InvalidOperation as exc:
         raise ResearchObjectiveContractError(f"{label} must be a finite decimal") from exc
     if not parsed.is_finite() or (parsed == 0 and value != "0"):
-        raise ResearchObjectiveContractError(f"{label} must be canonical finite decimal text")
+        raise ResearchObjectiveContractError(
+            f"{label} must be canonical finite decimal text"
+        )
+
+
+def _require_exact_instance(value: object, expected_type: type[object], label: str) -> None:
+    if type(value) is not expected_type:
+        raise ResearchObjectiveContractError(
+            f"{label} must be exact {expected_type.__name__}"
+        )
+
+
+def _require_exact_instances(
+    values: tuple[object, ...], expected_type: type[object], label: str
+) -> None:
+    if type(values) is not tuple:
+        raise ResearchObjectiveContractError(f"{label} must be an exact tuple")
+    for value in values:
+        _require_exact_instance(value, expected_type, label)
+
+
+def _require_exact_enum(value: object, expected_type: type[enum.Enum], label: str) -> None:
+    if type(value) is not expected_type:
+        raise ResearchObjectiveContractError(
+            f"{label} must be exact {expected_type.__name__} member"
+        )
