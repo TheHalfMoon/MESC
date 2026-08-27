@@ -34,6 +34,14 @@ jobs:
           if source.count(old_import) != 1:
               raise SystemExit("expected exactly one typing.Callable import")
           source = source.replace(old_import, "from collections.abc import Callable\n")
+
+          old_finalizers = "finalizers: dict[int, weakref.finalize] = {}"
+          new_finalizers = (
+              "finalizers: dict[int, weakref.finalize[ExperimentManifestBinding]] = {}"
+          )
+          if source.count(old_finalizers) != 1:
+              raise SystemExit("expected exactly one weakref.finalize annotation")
+          source = source.replace(old_finalizers, new_finalizers)
           source_path.write_text(source)
 
           test_path = Path("tests/test_mesc_mrl_experiment_manifest_binding_v1.py")
