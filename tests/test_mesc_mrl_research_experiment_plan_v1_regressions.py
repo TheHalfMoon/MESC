@@ -77,9 +77,17 @@ def test_plan_mutation_surface_rejects_nested_forbidden_path() -> None:
     with pytest.raises(plan_module.ResearchExperimentPlanError, match="forbidden"):
         plan_module._require_plan_mutation_surface(
             "tests/fixtures/mrl/sealed/candidate.json",
-            ("tests/fixtures/mrl/",),
-            ("tests/fixtures/mrl/sealed/",),
+            ("tests/fixtures/mrl",),
+            ("tests/fixtures/mrl/sealed",),
         )
+
+
+def test_component_boundary_containment_does_not_use_raw_prefixes() -> None:
+    assert plan_module._path_contains("tests/fixtures/mrl", "tests/fixtures/mrl/candidate.json")
+    assert not plan_module._path_contains(
+        "tests/fixtures/mrl",
+        "tests/fixtures/mrl-other/candidate.json",
+    )
 
 
 def test_result_destination_rejects_nested_forbidden_path() -> None:
@@ -89,5 +97,5 @@ def test_result_destination_rejects_nested_forbidden_path() -> None:
     with pytest.raises(plan_module.ResearchExperimentPlanError, match="forbidden"):
         plan_module._require_result_destinations_outside_forbidden_surfaces(
             (destination,),
-            ("experiments/results/sealed/",),
+            ("experiments/results/sealed",),
         )
