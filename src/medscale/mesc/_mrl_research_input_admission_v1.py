@@ -50,6 +50,9 @@ __all__ = [
 
 _TOKEN_ID: Final = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]*$")
 _SHA256: Final = re.compile(r"^[0-9a-f]{64}$")
+_MAX_LINEAGE_DEPTH: Final = 128
+_MAX_LINEAGE_NODES: Final = 4096
+_MAX_LINEAGE_EDGES: Final = 16384
 
 
 class ResearchInputAdmissionError(ValueError):
@@ -191,7 +194,7 @@ class ResearchInputParentRef:
 
     def __post_init__(self) -> None:
         _require_exact_admission(self.parent_admission)
-        _, current_sha256, current_classification, current_disposition = _validated_admission_state(
+        _, current_sha256, current_classification, current_disposition = _local_admission_state(
             self.parent_admission
         )
         object.__setattr__(self, "_bound_admission_sha256", current_sha256)
@@ -364,7 +367,7 @@ class ResearchInputAdmissionContract:
         # exist as an untrusted object, but every public view and admission gate rejects it.
         if type(self) is not ResearchInputAdmissionContract:
             return
-        _validated_admission_state(self)
+        _local_admission_state(self)
 
     @property
     def disposition(self) -> ResearchInputDisposition:
@@ -449,15 +452,135 @@ def _disposition_for_classification(
     raise ResearchInputAdmissionError("unsupported research-input classification")
 
 
+def _local_admission_state(
+    node: ResearchInputAdmissionContract,
+) -> tuple[dict[str, object], str, ResearchInputClassification, ResearchInputDisposition]:
+    """Validate one envelope using bound parent metadata without traversing ancestry."""
+    _require_exact_admission(node)
+    _require_token(node.input_id, "input_id")
+    _require_sha256(node.classification_policy_sha256, "classification_policy_sha256")
+    _require_exact_enum(node.classification, ResearchInputClassification, "classification")
+    _require_optional_sha256(node.source_artifact_sha256, "source_artifact_sha256")
+    _require_optional_sha256(node.source_contract_sha256, "source_contract_sha256")
+    _require_learning_surfaces(node.allowed_learning_surfaces)
+    parents = node.parent_inputs
+    if type(parents) is not tuple:
+        raise ResearchInputAdmissionError("parent_inputs must be an exact tuple")
+    if len(parents) > _MAX_LINEAGE_NODES:
+        raise ResearchInputAdmissionError(
+            "research-input parent lineage exceeds the fail-closed direct-parent limit"
+        )
+    _require_transformation_lineage(node.transformation_kind, parents)
+
+    disposition = _disposition_for_classification(node.classification)
+    if disposition is ResearchInputDisposition.LEARNING_ADMITTED:
+        if node.source_artifact_sha256 is None or node.source_contract_sha256 is None:
+            raise ResearchInputAdmissionError(
+                "learning-admitted input requires exact source artifact and contract identities"
+            )
+        if not node.allowed_learning_surfaces:
+            raise ResearchInputAdmissionError(
+                "learning-admitted input requires at least one explicit learning surface"
+            )
+        _require_source_permission_binding(node)
+    elif disposition is ResearchInputDisposition.EXTERNAL_EVALUATION_ONLY:
+        if node.source_artifact_sha256 is None or node.source_contract_sha256 is None:
+            raise ResearchInputAdmissionError(
+                "external evaluation evidence requires exact artifact and "
+                "governing contract identities"
+            )
+        if node.allowed_learning_surfaces:
+            raise ResearchInputAdmissionError(
+                "external evaluation evidence cannot enter an MRL learning surface"
+            )
+        _require_source_permission_binding(node)
+    else:
+        if node.source_permission is not None:
+            raise ResearchInputAdmissionError(
+                "rejected input cannot carry a source permission into MRL"
+            )
+        if node.source_artifact_sha256 is not None or node.source_contract_sha256 is not None:
+            raise ResearchInputAdmissionError(
+                "rejected input cannot carry source artifact or contract identities into MRL"
+            )
+        if node.allowed_learning_surfaces:
+            raise ResearchInputAdmissionError("rejected input cannot enter an MRL learning surface")
+
+    parent_payloads: list[dict[str, str]] = []
+    parent_digests: list[str] = []
+    for parent_ref in parents:
+        _require_exact_parent_ref(parent_ref)
+        _require_exact_admission(parent_ref.parent_admission)
+        _require_sha256(parent_ref._bound_admission_sha256, "bound parent admission sha256")
+        _require_exact_enum(
+            parent_ref._bound_classification,
+            ResearchInputClassification,
+            "bound parent classification",
+        )
+        _require_exact_enum(
+            parent_ref._bound_disposition,
+            ResearchInputDisposition,
+            "bound parent disposition",
+        )
+        if (
+            parent_ref._bound_disposition is ResearchInputDisposition.REJECTED
+            and disposition is not ResearchInputDisposition.REJECTED
+        ):
+            raise ResearchInputAdmissionError(
+                "a rejected parent cannot be transformed into an admissible MRL input"
+            )
+        if (
+            parent_ref._bound_disposition is ResearchInputDisposition.EXTERNAL_EVALUATION_ONLY
+            and disposition is ResearchInputDisposition.LEARNING_ADMITTED
+        ):
+            raise ResearchInputAdmissionError(
+                "external evaluation evidence cannot be transformed into an MRL learning signal"
+            )
+        parent_payloads.append(
+            {
+                "admission_sha256": parent_ref._bound_admission_sha256,
+                "classification": parent_ref._bound_classification.value,
+                "disposition": parent_ref._bound_disposition.value,
+            }
+        )
+        parent_digests.append(parent_ref._bound_admission_sha256)
+
+    if tuple(parent_digests) != tuple(sorted(set(parent_digests))):
+        raise ResearchInputAdmissionError(
+            "parent_inputs must be unique and strictly sorted by admission_sha256"
+        )
+
+    source_permission_sha256: str | None = None
+    if node.source_permission is not None:
+        _require_exact_source_permission(node.source_permission)
+        permission = node.source_permission._validated_snapshot()
+        source_permission_sha256 = derive_content_sha256(permission._semantic_dict_validated())
+
+    semantic: dict[str, object] = {
+        "format": "MRL-RESEARCH-INPUT-ADMISSION-V1",
+        "input_id": node.input_id,
+        "classification_policy_sha256": node.classification_policy_sha256,
+        "classification": node.classification.value,
+        "disposition": disposition.value,
+        "source_artifact_sha256": node.source_artifact_sha256,
+        "source_contract_sha256": node.source_contract_sha256,
+        "allowed_learning_surfaces": [surface.value for surface in node.allowed_learning_surfaces],
+        "source_permission_sha256": source_permission_sha256,
+        "transformation_kind": node.transformation_kind,
+        "parent_inputs": parent_payloads,
+    }
+    content_sha256 = derive_content_sha256(semantic)
+    return semantic, content_sha256, node.classification, disposition
+
+
 def _parent_graph_postorder(
     root: ResearchInputAdmissionContract,
 ) -> list[ResearchInputAdmissionContract]:
     """Return parent-first order while bounding cycles, depth, and graph cardinality."""
-    max_depth = 128
-    max_nodes = 4096
     active: set[int] = set()
     visited: set[int] = set()
     discovered: set[int] = set()
+    edge_count = 0
     order: list[ResearchInputAdmissionContract] = []
     stack: list[tuple[ResearchInputAdmissionContract, int, bool]] = [(root, 0, False)]
 
@@ -474,19 +597,24 @@ def _parent_graph_postorder(
             raise ResearchInputAdmissionError("cyclic research-input parent lineage is forbidden")
         if node_id in visited:
             continue
-        if depth > max_depth:
+        if depth > _MAX_LINEAGE_DEPTH:
             raise ResearchInputAdmissionError(
                 "research-input parent lineage exceeds the fail-closed depth limit"
             )
         if node_id not in discovered:
             discovered.add(node_id)
-            if len(discovered) > max_nodes:
+            if len(discovered) > _MAX_LINEAGE_NODES:
                 raise ResearchInputAdmissionError(
                     "research-input parent lineage exceeds the fail-closed node limit"
                 )
         parents = node.parent_inputs
         if type(parents) is not tuple:
             raise ResearchInputAdmissionError("parent_inputs must be an exact tuple")
+        edge_count += len(parents)
+        if edge_count > _MAX_LINEAGE_EDGES:
+            raise ResearchInputAdmissionError(
+                "research-input parent lineage exceeds the fail-closed edge limit"
+            )
         active.add(node_id)
         stack.append((node, depth, True))
         for parent_ref in reversed(parents):

@@ -90,6 +90,12 @@ for post-construction mutation of canonical artifact data that remains reachable
 ordinary object references. Authority decisions must not depend on caller-supplied trust
 metadata or ordinary rebindable module names.
 
+Canonical implementations must bound lineage depth, node cardinality, and edge count.
+Construction-time checks may inspect only the local envelope and already-bound direct
+parent metadata; every public semantic/hash/admission view must revalidate the complete
+reachable lineage with a bounded, memoized graph pass. Shared or deep ancestry must not
+trigger repeated subtree reconstruction, and pathological lineage must fail closed.
+
 This contract-level threat model does **not** treat a caller with arbitrary Python code
 execution in the trust-bearing interpreter as an unprivileged research input. A caller
 that can rewrite executable interpreter state such as function code, closure cells,
