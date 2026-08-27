@@ -1,0 +1,46 @@
+name: DIAG MRL-0101 Ruff Format
+
+on:
+  push:
+    branches:
+      - diag/mrl-0101-format-8e64da28
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          enable-cache: true
+
+      - name: Sync locked environment
+        run: uv sync --frozen
+
+      - name: Materialize canonical Ruff formatting
+        run: |
+          uv run ruff format \
+            src/medscale/mesc/_mrl_research_objective_v1.py \
+            tests/test_mesc_mrl_research_objective_v1.py
+          git diff --check
+
+      - name: Commit formatter output when needed
+        run: |
+          if git diff --quiet -- \
+            src/medscale/mesc/_mrl_research_objective_v1.py \
+            tests/test_mesc_mrl_research_objective_v1.py; then
+            echo "No formatter delta."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            src/medscale/mesc/_mrl_research_objective_v1.py \
+            tests/test_mesc_mrl_research_objective_v1.py
+          git commit -m "style(diag): materialize Ruff formatting"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
