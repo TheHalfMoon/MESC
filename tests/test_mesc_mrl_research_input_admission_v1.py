@@ -60,11 +60,40 @@ def _parent_ref(
     classification: ResearchInputClassification,
     disposition: ResearchInputDisposition,
 ) -> ResearchInputParentRef:
-    return ResearchInputParentRef(
-        admission_sha256=sha_char * 64,
-        classification=classification,
-        disposition=disposition,
-    )
+    if classification in (
+        ResearchInputClassification.RESEARCH_ARTIFACT,
+        ResearchInputClassification.DETERMINISTIC_FIXTURE_OUTPUT,
+        ResearchInputClassification.NEGATIVE_OR_INVALID_RESEARCH_RESULT,
+    ):
+        parent = ResearchInputAdmissionContract(
+            input_id=f"parent-{sha_char}",
+            classification_policy_sha256="a" * 64,
+            classification=classification,
+            source_artifact_sha256=sha_char * 64,
+            source_contract_sha256="b" * 64,
+            allowed_learning_surfaces=(ResearchLearningSurface.OBSERVATION,),
+        )
+    elif classification is ResearchInputClassification.EXTERNAL_EVALUATION_EVIDENCE:
+        parent = ResearchInputAdmissionContract(
+            input_id=f"parent-{sha_char}",
+            classification_policy_sha256="a" * 64,
+            classification=classification,
+            source_artifact_sha256=sha_char * 64,
+            source_contract_sha256="b" * 64,
+            allowed_learning_surfaces=(),
+        )
+    else:
+        parent = ResearchInputAdmissionContract(
+            input_id=f"parent-{sha_char}",
+            classification_policy_sha256="a" * 64,
+            classification=classification,
+            source_artifact_sha256=None,
+            source_contract_sha256=None,
+            allowed_learning_surfaces=(),
+        )
+    reference = ResearchInputParentRef(parent_admission=parent)
+    assert reference.disposition is disposition
+    return reference
 
 
 def test_content_identity_is_outside_semantic_preimage() -> None:
@@ -287,11 +316,18 @@ def test_learning_surface_collection_requires_exact_tuple() -> None:
         )
 
 
-def test_parent_ref_disposition_must_match_classification() -> None:
-    with pytest.raises(ResearchInputAdmissionError, match="exactly match"):
-        ResearchInputParentRef(
-            admission_sha256="1" * 64,
-            classification=ResearchInputClassification.PHI_OR_PATIENT_DATA,
+def test_parent_ref_is_derived_from_actual_parent_admission() -> None:
+    parent = _rejected_contract(ResearchInputClassification.PHI_OR_PATIENT_DATA)
+    reference = ResearchInputParentRef(parent_admission=parent)
+
+    assert reference.admission_sha256 == parent.content_sha256
+    assert reference.classification is ResearchInputClassification.PHI_OR_PATIENT_DATA
+    assert reference.disposition is ResearchInputDisposition.REJECTED
+
+    with pytest.raises(TypeError):
+        ResearchInputParentRef(  # type: ignore[call-arg]
+            admission_sha256=parent.content_sha256,
+            classification=ResearchInputClassification.RESEARCH_ARTIFACT,
             disposition=ResearchInputDisposition.LEARNING_ADMITTED,
         )
 
@@ -401,6 +437,7 @@ def test_parent_inputs_must_be_unique_and_sorted_by_admission_identity() -> None
         classification=ResearchInputClassification.RESEARCH_ARTIFACT,
         disposition=ResearchInputDisposition.LEARNING_ADMITTED,
     )
+    first, second = sorted((first, second), key=lambda item: item.admission_sha256)
 
     with pytest.raises(ResearchInputAdmissionError, match="unique and strictly sorted"):
         replace(
@@ -442,7 +479,7 @@ def test_contract_and_parent_ref_are_frozen() -> None:
     with pytest.raises(FrozenInstanceError):
         contract.input_id = "changed"  # type: ignore[misc]
     with pytest.raises(FrozenInstanceError):
-        parent.admission_sha256 = "2" * 64  # type: ignore[misc]
+        parent.parent_admission = _learning_contract()  # type: ignore[misc]
 
 
 def test_post_construction_classification_mutation_fails_closed() -> None:
@@ -478,11 +515,11 @@ def test_post_construction_nested_parent_mutation_fails_closed() -> None:
         transformation_kind="summary",
         parent_inputs=(parent,),
     )
-    object.__setattr__(parent, "classification", ResearchInputClassification.PHI_OR_PATIENT_DATA)
+    object.__setattr__(parent.parent_admission, "input_id", "changed-parent")
 
-    with pytest.raises(ResearchInputAdmissionError, match="exactly match"):
+    with pytest.raises(ResearchInputAdmissionError, match="binding changed"):
         contract.semantic_dict()
-    with pytest.raises(ResearchInputAdmissionError, match="exactly match"):
+    with pytest.raises(ResearchInputAdmissionError, match="binding changed"):
         _ = contract.content_sha256
 
 
@@ -516,3 +553,32 @@ def test_subclass_snapshot_override_fails_closed_for_all_public_views_and_gates(
         forged.require_learning_admission(ResearchLearningSurface.OBSERVATION)
     with pytest.raises(ResearchInputAdmissionError, match="exact ResearchInputAdmissionContract"):
         forged.require_external_evaluation_use()
+
+
+class _SnapshotBypassParentRef(ResearchInputParentRef):
+    def _validated_snapshot(self) -> ResearchInputParentRef:
+        return _parent_ref(
+            sha_char="2",
+            classification=ResearchInputClassification.RESEARCH_ARTIFACT,
+            disposition=ResearchInputDisposition.LEARNING_ADMITTED,
+        )
+
+
+def test_parent_ref_subclass_cannot_bypass_admission_snapshot_validation() -> None:
+    exact_parent = _parent_ref(
+        sha_char="1",
+        classification=ResearchInputClassification.RESEARCH_ARTIFACT,
+        disposition=ResearchInputDisposition.LEARNING_ADMITTED,
+    )
+    contract = replace(
+        _learning_contract(),
+        transformation_kind="summary",
+        parent_inputs=(exact_parent,),
+    )
+    forged_parent = _SnapshotBypassParentRef(parent_admission=exact_parent.parent_admission)
+    object.__setattr__(contract, "parent_inputs", (forged_parent,))
+
+    with pytest.raises(ResearchInputAdmissionError, match="exact ResearchInputParentRef"):
+        contract.semantic_dict()
+    with pytest.raises(ResearchInputAdmissionError, match="exact ResearchInputParentRef"):
+        _ = contract.content_sha256
