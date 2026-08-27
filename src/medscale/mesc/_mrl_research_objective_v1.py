@@ -21,7 +21,10 @@ from medscale.mesc._mrl_content_identity_v1 import (
 )
 
 __all__ = [
+    "AdaptiveEvaluationControls",
+    "AdaptiveInvalidationRule",
     "AdaptiveQueryBudget",
+    "AdaptiveStoppingRule",
     "BudgetExhaustionDisposition",
     "EvaluationTier",
     "EvaluationTierPolicy",
@@ -30,6 +33,7 @@ __all__ = [
     "FloorComparator",
     "MetricContract",
     "MetricDirection",
+    "RepeatedEvaluationPolicy",
     "ResearchObjectiveContract",
     "ResearchObjectiveContractError",
     "ResourceBudget",
@@ -38,8 +42,13 @@ __all__ = [
 
 _OBJECTIVE_ID: Final = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 _TOKEN_ID: Final = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]*$")
-_RESEARCH_PROGRAM_REF: Final = re.compile(
-    r"^(?:RQ[1-7]|(?:MESC|MCRL|ARABIC|AMGE|OMNI|MRL)-RQ-[0-9]{4})$"
+_ACCEPTED_RESEARCH_PROGRAM_REFS: Final[frozenset[str]] = frozenset(
+    {"RQ1", "RQ2", "RQ3", "RQ4", "RQ5", "RQ6", "RQ7"}
+)
+_SAFE_MUTATION_ROOTS: Final[tuple[str, ...]] = (
+    "experiments/",
+    "research/experiments/",
+    "tests/fixtures/mrl/",
 )
 _SHA256: Final = re.compile(r"^[0-9a-f]{64}$")
 _CANONICAL_DECIMAL: Final = re.compile(r"^-?(?:0|[1-9][0-9]*)(?:\.[0-9]*[1-9])?$")
@@ -61,6 +70,27 @@ class FloorComparator(enum.Enum):
 
 class BudgetExhaustionDisposition(enum.Enum):
     BLOCKED = "BLOCKED"
+
+
+class RepeatedEvaluationPolicy(enum.Enum):
+    FORBIDDEN = "FORBIDDEN"
+    PERMITTED_WITHIN_FROZEN_BUDGET = "PERMITTED_WITHIN_FROZEN_BUDGET"
+
+
+class AdaptiveStoppingRule(enum.Enum):
+    ADAPTIVE_QUERY_BUDGET_EXHAUSTED = "ADAPTIVE_QUERY_BUDGET_EXHAUSTED"
+    EXTERNAL_GOVERNANCE_STOP = "EXTERNAL_GOVERNANCE_STOP"
+    OBJECTIVE_INVALIDATED = "OBJECTIVE_INVALIDATED"
+    RESOURCE_BUDGET_EXHAUSTED = "RESOURCE_BUDGET_EXHAUSTED"
+    RESULT_EXPOSURE_BUDGET_EXHAUSTED = "RESULT_EXPOSURE_BUDGET_EXHAUSTED"
+
+
+class AdaptiveInvalidationRule(enum.Enum):
+    EVALUATOR_IDENTITY_CHANGED = "EVALUATOR_IDENTITY_CHANGED"
+    LINEAGE_OR_CONTAMINATION_FAILURE = "LINEAGE_OR_CONTAMINATION_FAILURE"
+    OBJECTIVE_SEMANTICS_CHANGED = "OBJECTIVE_SEMANTICS_CHANGED"
+    PROTECTED_SURFACE_MUTATION_ATTEMPT = "PROTECTED_SURFACE_MUTATION_ATTEMPT"
+    SEALED_BOUNDARY_BREACH = "SEALED_BOUNDARY_BREACH"
 
 
 class EvaluationTier(enum.IntEnum):
@@ -135,6 +165,39 @@ class AdaptiveQueryBudget:
 
 
 @dataclass(frozen=True, slots=True)
+class AdaptiveEvaluationControls:
+    """Frozen repeated-evaluation, stopping, and invalidation semantics."""
+
+    repeated_candidate_evaluation: RepeatedEvaluationPolicy
+    stopping_rules: tuple[AdaptiveStoppingRule, ...]
+    invalidation_rules: tuple[AdaptiveInvalidationRule, ...]
+
+    def __post_init__(self) -> None:
+        _require_exact_enum(
+            self.repeated_candidate_evaluation,
+            RepeatedEvaluationPolicy,
+            "repeated_candidate_evaluation",
+        )
+        _require_sorted_unique_enum_members(
+            self.stopping_rules,
+            AdaptiveStoppingRule,
+            "stopping_rules",
+        )
+        _require_sorted_unique_enum_members(
+            self.invalidation_rules,
+            AdaptiveInvalidationRule,
+            "invalidation_rules",
+        )
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "repeated_candidate_evaluation": self.repeated_candidate_evaluation.value,
+            "stopping_rules": [rule.value for rule in self.stopping_rules],
+            "invalidation_rules": [rule.value for rule in self.invalidation_rules],
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class EvaluationTierPolicy:
     """The exact evaluation tiers admitted by the frozen objective."""
 
@@ -184,21 +247,24 @@ class EvaluatorIdentity:
 
 @dataclass(frozen=True, slots=True)
 class MetricContract:
-    """Metric identity bound to a frozen evaluator and optimization direction."""
+    """Metric identity bound to one frozen evaluator and evaluation tier."""
 
     metric_id: str
     evaluator_id: str
+    tier: EvaluationTier
     direction: MetricDirection
 
     def __post_init__(self) -> None:
         _require_token(self.metric_id, "metric_id")
         _require_token(self.evaluator_id, "evaluator_id")
+        _require_exact_enum(self.tier, EvaluationTier, "tier")
         _require_exact_enum(self.direction, MetricDirection, "direction")
 
-    def to_dict(self) -> dict[str, str]:
+    def to_dict(self) -> dict[str, object]:
         return {
             "metric_id": self.metric_id,
             "evaluator_id": self.evaluator_id,
+            "tier": int(self.tier),
             "direction": self.direction.value,
         }
 
@@ -276,6 +342,7 @@ class ResearchObjectiveContract:
     forbidden_mutation_surfaces: tuple[str, ...]
     evaluation_tier_policy: EvaluationTierPolicy
     adaptive_query_budget: AdaptiveQueryBudget
+    adaptive_evaluation_controls: AdaptiveEvaluationControls
     tier_result_exposure_policy: tuple[TierResultExposure, ...]
     budget_exhaustion_disposition: BudgetExhaustionDisposition
     evaluator_identities: tuple[EvaluatorIdentity, ...]
@@ -288,9 +355,7 @@ class ResearchObjectiveContract:
             )
         _require_sorted_unique_program_refs(self.research_program_refs)
         _require_sorted_unique_text(self.target_capabilities, "target_capabilities")
-        _require_sorted_unique_text(
-            self.allowed_mutation_surfaces, "allowed_mutation_surfaces", allow_empty=True
-        )
+        _require_allowed_mutation_surfaces(self.allowed_mutation_surfaces)
         _require_sorted_unique_text(self.forbidden_mutation_surfaces, "forbidden_mutation_surfaces")
         _require_exact_instance(self.resource_budget, ResourceBudget, "resource_budget")
         _require_exact_instance(
@@ -298,6 +363,11 @@ class ResearchObjectiveContract:
         )
         _require_exact_instance(
             self.adaptive_query_budget, AdaptiveQueryBudget, "adaptive_query_budget"
+        )
+        _require_exact_instance(
+            self.adaptive_evaluation_controls,
+            AdaptiveEvaluationControls,
+            "adaptive_evaluation_controls",
         )
         _require_exact_enum(
             self.budget_exhaustion_disposition,
@@ -350,13 +420,21 @@ class ResearchObjectiveContract:
             raise ResearchObjectiveContractError(
                 "metric_id cannot be reused across search and evaluation metrics"
             )
-        known_evaluators = set(evaluator_ids)
-        for metric in self.search_metrics + self.evaluation_metrics:
-            if metric.evaluator_id not in known_evaluators:
+        evaluator_by_id = {
+            identity.evaluator_id: identity for identity in self.evaluator_identities
+        }
+        for metric in self.search_metrics:
+            if metric.tier is not EvaluationTier.SEARCH:
                 raise ResearchObjectiveContractError(
-                    f"metric {metric.metric_id!r} references unknown evaluator "
-                    f"{metric.evaluator_id!r}"
+                    f"search metric {metric.metric_id!r} must use Tier 1 SEARCH"
                 )
+            _require_metric_evaluator_binding(metric, evaluator_by_id, allowed_tiers)
+        for metric in self.evaluation_metrics:
+            if metric.tier is EvaluationTier.SEARCH:
+                raise ResearchObjectiveContractError(
+                    f"evaluation metric {metric.metric_id!r} cannot use Tier 1 SEARCH"
+                )
+            _require_metric_evaluator_binding(metric, evaluator_by_id, allowed_tiers)
 
         if not self.hard_guardrails:
             raise ResearchObjectiveContractError("hard_guardrails cannot be empty")
@@ -439,6 +517,7 @@ class ResearchObjectiveContract:
             "forbidden_mutation_surfaces": list(self.forbidden_mutation_surfaces),
             "evaluation_tier_policy": self.evaluation_tier_policy.to_dict(),
             "adaptive_query_budget": self.adaptive_query_budget.to_dict(),
+            "adaptive_evaluation_controls": self.adaptive_evaluation_controls.to_dict(),
             "tier_result_exposure_policy": [
                 policy.to_dict() for policy in self.tier_result_exposure_policy
             ],
@@ -475,9 +554,30 @@ def _require_sha256(value: str, label: str) -> None:
 def _require_sorted_unique_program_refs(values: tuple[str, ...]) -> None:
     _require_sorted_unique_text(values, "research_program_refs")
     for value in values:
-        if not _RESEARCH_PROGRAM_REF.fullmatch(value):
+        if value not in _ACCEPTED_RESEARCH_PROGRAM_REFS:
             raise ResearchObjectiveContractError(
-                f"research_program_refs contains unsupported reference {value!r}"
+                "research_program_refs contains an unregistered canonical question "
+                f"reference {value!r}"
+            )
+
+
+def _require_allowed_mutation_surfaces(values: tuple[str, ...]) -> None:
+    _require_sorted_unique_text(values, "allowed_mutation_surfaces", allow_empty=True)
+    for value in values:
+        parts = value.split("/")
+        if (
+            value.startswith("/")
+            or value.endswith("/")
+            or "\\" in value
+            or any(part in ("", ".", "..") for part in parts)
+        ):
+            raise ResearchObjectiveContractError(
+                f"allowed_mutation_surfaces contains non-canonical relative path {value!r}"
+            )
+        if not any(value.startswith(root) for root in _SAFE_MUTATION_ROOTS):
+            raise ResearchObjectiveContractError(
+                "allowed_mutation_surfaces may target only governed campaign-mutable roots; "
+                f"rejected {value!r}"
             )
 
 
@@ -550,4 +650,36 @@ def _require_exact_enum(value: object, expected_type: type[enum.Enum], label: st
     if type(value) is not expected_type:
         raise ResearchObjectiveContractError(
             f"{label} must be exact {expected_type.__name__} member"
+        )
+
+
+def _require_sorted_unique_enum_members(
+    values: tuple[enum.Enum, ...], expected_type: type[enum.Enum], label: str
+) -> None:
+    if type(values) is not tuple or not values:
+        raise ResearchObjectiveContractError(f"{label} must be a non-empty exact tuple")
+    for value in values:
+        _require_exact_enum(value, expected_type, label)
+    encoded = tuple(str(value.value) for value in values)
+    if encoded != tuple(sorted(set(encoded))):
+        raise ResearchObjectiveContractError(f"{label} must be unique and canonically sorted")
+
+
+def _require_metric_evaluator_binding(
+    metric: MetricContract,
+    evaluator_by_id: dict[str, EvaluatorIdentity],
+    allowed_tiers: set[EvaluationTier],
+) -> None:
+    evaluator = evaluator_by_id.get(metric.evaluator_id)
+    if evaluator is None:
+        raise ResearchObjectiveContractError(
+            f"metric {metric.metric_id!r} references unknown evaluator {metric.evaluator_id!r}"
+        )
+    if metric.tier not in allowed_tiers:
+        raise ResearchObjectiveContractError(
+            f"metric {metric.metric_id!r} references a tier outside the objective policy"
+        )
+    if metric.tier not in evaluator.tiers:
+        raise ResearchObjectiveContractError(
+            f"evaluator {metric.evaluator_id!r} does not admit metric tier {int(metric.tier)}"
         )
