@@ -17,31 +17,38 @@ jobs:
           persist-credentials: true
           fetch-depth: 1
       - name: Apply exact MRL-0102 closeout block
-        shell: python
+        shell: bash
         run: |
+          set -euo pipefail
+          python - <<'PY'
           from pathlib import Path
 
           path = Path("specs/mesc-research-loop-v1/tasks.md")
           text = path.read_text(encoding="utf-8")
           old = '''- [ ] **MRL-0102 — Implement `ResearchHypothesis`**
-  - Depends on: MRL-0101.
-  - Test: mechanism, predicted effects, falsification criteria, evidence refs, and parent
-    relationships are required and content-addressed.
-'''
+            - Depends on: MRL-0101.
+            - Test: mechanism, predicted effects, falsification criteria, evidence refs, and parent
+              relationships are required and content-addressed.
+          '''
           new = '''- [x] **MRL-0102 — Implement `ResearchHypothesis`**
-  - Depends on: MRL-0101.
-  - Test: mechanism, predicted effects, falsification criteria, evidence refs, and parent
-    relationships are required and content-addressed.
-  - Closeout rule: this checkbox is a branch closeout candidate only. `MRL-0102` becomes
-    `CLOSED_CANONICAL` only if the exact final head containing it passes fresh repository
-    checks and independent review, remains the exact PR head through expected-head merge,
-    and is then present on canonical `main`.
-  - Eligibility effect: MRL-0103 remains ineligible until MRL-0109 is also
-    `CLOSED_CANONICAL` on canonical `main`.
-'''
-          if text.count(old) != 1:
-              raise SystemExit(f"expected exactly one MRL-0102 block, found {text.count(old)}")
+            - Depends on: MRL-0101.
+            - Test: mechanism, predicted effects, falsification criteria, evidence refs, and parent
+              relationships are required and content-addressed.
+            - Closeout rule: this checkbox is a branch closeout candidate only. `MRL-0102` becomes
+              `CLOSED_CANONICAL` only if the exact final head containing it passes fresh repository
+              checks and independent review, remains the exact PR head through expected-head merge,
+              and is then present on canonical `main`.
+            - Eligibility effect: MRL-0103 remains ineligible until MRL-0109 is also
+              `CLOSED_CANONICAL` on canonical `main`.
+          '''
+          # Dedent the embedded Markdown block back to repository indentation.
+          old = '\n'.join(line[10:] if line.startswith('          ') else line for line in old.splitlines()) + '\n'
+          new = '\n'.join(line[10:] if line.startswith('          ') else line for line in new.splitlines()) + '\n'
+          count = text.count(old)
+          if count != 1:
+              raise SystemExit(f"expected exactly one MRL-0102 block, found {count}")
           path.write_text(text.replace(old, new, 1), encoding="utf-8")
+          PY
       - name: Verify bounded ledger diff
         shell: bash
         run: |
