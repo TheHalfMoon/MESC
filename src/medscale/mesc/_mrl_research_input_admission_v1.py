@@ -500,43 +500,50 @@ def _require_source_permission_binding(contract: ResearchInputAdmissionContract)
         )
 
 
-def _require_admission_graph_trust(
-    root: ResearchInputAdmissionContract,
-    _validate_permission_trust: Callable[[str], object] = _canonical_validate_permission_trust,
-) -> None:
-    """Require canonical trust through the import-time-bound validator."""
-    stack = [root]
-    visited: set[int] = set()
-    while stack:
-        node = stack.pop()
-        node_id = id(node)
-        if node_id in visited:
-            continue
-        visited.add(node_id)
-        _require_exact_admission(node)
-        disposition = _disposition_for_classification(node.classification)
-        if disposition is not ResearchInputDisposition.REJECTED:
-            _require_source_permission_binding(node)
-            permission = node.source_permission
-            if type(permission) is not ResearchInputSourcePermission:
-                raise ResearchInputAdmissionError(
-                    "admissible input requires an exact ResearchInputSourcePermission"
+def _build_admission_graph_trust_gate(
+    validate_permission_trust: Callable[[str], object],
+) -> Callable[[ResearchInputAdmissionContract], None]:
+    """Bind admission authority to one import-time canonical validator closure."""
+
+    def require_admission_graph_trust(root: ResearchInputAdmissionContract) -> None:
+        stack = [root]
+        visited: set[int] = set()
+        while stack:
+            node = stack.pop()
+            node_id = id(node)
+            if node_id in visited:
+                continue
+            visited.add(node_id)
+            _require_exact_admission(node)
+            disposition = _disposition_for_classification(node.classification)
+            if disposition is not ResearchInputDisposition.REJECTED:
+                _require_source_permission_binding(node)
+                permission = node.source_permission
+                if type(permission) is not ResearchInputSourcePermission:
+                    raise ResearchInputAdmissionError(
+                        "admissible input requires an exact ResearchInputSourcePermission"
+                    )
+                permission_snapshot = permission._validated_snapshot()
+                permission_sha256 = derive_content_sha256(
+                    permission_snapshot._semantic_dict_validated()
                 )
-            permission_snapshot = permission._validated_snapshot()
-            permission_sha256 = derive_content_sha256(
-                permission_snapshot._semantic_dict_validated()
-            )
-            try:
-                _validate_permission_trust(permission_sha256)
-            except ResearchInputPermissionTrustError as exc:
-                raise ResearchInputAdmissionError(
-                    "source permission is not trusted by canonical research-input governance"
-                ) from exc
-        for parent_ref in node.parent_inputs:
-            _require_exact_parent_ref(parent_ref)
-            stack.append(parent_ref.parent_admission)
+                try:
+                    validate_permission_trust(permission_sha256)
+                except ResearchInputPermissionTrustError as exc:
+                    raise ResearchInputAdmissionError(
+                        "source permission is not trusted by canonical research-input governance"
+                    ) from exc
+            for parent_ref in node.parent_inputs:
+                _require_exact_parent_ref(parent_ref)
+                stack.append(parent_ref.parent_admission)
+
+    return require_admission_graph_trust
 
 
+_require_admission_graph_trust = _build_admission_graph_trust_gate(
+    _canonical_validate_permission_trust
+)
+del _build_admission_graph_trust_gate
 del _canonical_validate_permission_trust
 
 
