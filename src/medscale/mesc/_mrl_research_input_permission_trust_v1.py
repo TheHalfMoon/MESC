@@ -1,10 +1,10 @@
 """Immutable repository-controlled trust root for MRL research-input permissions.
 
 A caller cannot create research-input authority by constructing well-formed permission
-semantics. Public admission gates consult one immutable trust snapshot captured from
-canonical repository code at import time. The canonical registry intentionally starts
-empty, so this module grants no research-input, model, dataset, network, training,
-promotion, deployment, or clinical authority.
+semantics. Public admission gates consult disposable snapshots derived from one immutable
+canonical registry captured from repository code at import time. The canonical registry
+intentionally starts empty, so this module grants no research-input, model, dataset,
+network, training, promotion, deployment, or clinical authority.
 """
 
 from __future__ import annotations
@@ -29,14 +29,14 @@ class ResearchInputPermissionTrustError(RuntimeError):
 
 @dataclass(frozen=True, slots=True)
 class ResearchInputPermissionTrustSnapshot:
-    """One immutable canonical source-permission trust snapshot."""
+    """One disposable view of canonical source-permission trust."""
 
     registry_version: str
     trusted_source_permission_sha256: frozenset[str]
     registry_sha256: str
 
     def admits(self, value: str) -> bool:
-        """Return whether this exact snapshot admits one source-permission digest."""
+        """Return whether this snapshot view contains one source-permission digest."""
         if type(value) is not str or _SHA256.fullmatch(value) is None:
             return False
         return value in self.trusted_source_permission_sha256
@@ -72,22 +72,32 @@ def _build_canonical_trust_api(
     Callable[[], ResearchInputPermissionTrustSnapshot],
     Callable[[str], ResearchInputPermissionTrustSnapshot],
 ]:
-    """Bind public trust operations to one immutable registry snapshot."""
+    """Bind public trust operations to one immutable closure-owned registry."""
     canonical_snapshot = _validated_registry_snapshot(registry)
+    trusted_registry = canonical_snapshot.trusted_source_permission_sha256
+    registry_version = canonical_snapshot.registry_version
+    registry_sha256 = canonical_snapshot.registry_sha256
 
     def snapshot() -> ResearchInputPermissionTrustSnapshot:
-        return canonical_snapshot
+        # Never expose the authority-bearing object itself. Each caller receives a
+        # disposable view, so object.__setattr__ on one returned dataclass cannot
+        # change the closure-owned membership consulted by future admission gates.
+        return ResearchInputPermissionTrustSnapshot(
+            registry_version=registry_version,
+            trusted_source_permission_sha256=trusted_registry,
+            registry_sha256=registry_sha256,
+        )
 
     def validate(permission_sha256: str) -> ResearchInputPermissionTrustSnapshot:
         if type(permission_sha256) is not str or _SHA256.fullmatch(permission_sha256) is None:
             raise ResearchInputPermissionTrustError(
                 "source permission identity must be 64 lowercase hex characters"
             )
-        if not canonical_snapshot.admits(permission_sha256):
+        if permission_sha256 not in trusted_registry:
             raise ResearchInputPermissionTrustError(
                 "source permission is not trusted by the canonical registry"
             )
-        return canonical_snapshot
+        return snapshot()
 
     return snapshot, validate
 
