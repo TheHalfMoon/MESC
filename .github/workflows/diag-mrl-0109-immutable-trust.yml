@@ -1,0 +1,58 @@
+name: DIAG MRL-0109 Immutable Trust Repair
+
+on:
+  push:
+    branches:
+      - diag/mrl-0109-immutable-trust-376b782
+
+permissions:
+  contents: write
+
+jobs:
+  repair-and-qualify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+      - name: Install uv
+        uses: astral-sh/setup-uv@b75a909f75acd358c2196fb9a5f1299a9a8868a4
+      - name: Install Python
+        run: uv python install 3.11
+      - name: Apply repair
+        run: python .github/diag/mrl0109_immutable_trust_repair.py
+      - name: Verify no shipped trust mutation path
+        run: |
+          ! rg -n '_replace_research_input_permission_trust_registry_for_tests|TRUSTED_RESEARCH_INPUT_SOURCE_PERMISSION_SHA256' src/medscale/mesc/_mrl_research_input_permission_trust_v1.py
+      - name: Sync
+        run: uv sync --locked --all-extras
+      - name: Ruff lint
+        run: uv run ruff check src/medscale/mesc/_mrl_research_input_admission_v1.py src/medscale/mesc/_mrl_research_input_permission_trust_v1.py tests/test_mesc_mrl_research_input_admission_v1.py
+      - name: Ruff format
+        run: uv run ruff format --check src/medscale/mesc/_mrl_research_input_admission_v1.py src/medscale/mesc/_mrl_research_input_permission_trust_v1.py tests/test_mesc_mrl_research_input_admission_v1.py
+      - name: Mypy strict
+        run: uv run mypy src tests
+      - name: Focused tests
+        run: uv run pytest -q tests/test_mesc_mrl_research_input_admission_v1.py
+      - name: Full tests
+        run: uv run pytest -q
+      - name: medscale check
+        run: uv run medscale check
+      - name: Verify bounded product diff
+        run: |
+          git status --short
+          paths=$(git diff --name-only | sort)
+          expected=$(printf '%s\n' \
+            'src/medscale/mesc/_mrl_research_input_admission_v1.py' \
+            'src/medscale/mesc/_mrl_research_input_permission_trust_v1.py' \
+            'tests/test_mesc_mrl_research_input_admission_v1.py' | sort)
+          test "$paths" = "$expected"
+      - name: Commit qualified repair
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/medscale/mesc/_mrl_research_input_admission_v1.py \
+                  src/medscale/mesc/_mrl_research_input_permission_trust_v1.py \
+                  tests/test_mesc_mrl_research_input_admission_v1.py
+          git commit -m 'fix(mrl): make source permission trust immutable'
+          git push origin HEAD:diag/mrl-0109-immutable-trust-376b782
