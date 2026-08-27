@@ -344,6 +344,49 @@ def test_binding_snapshots_inputs_and_isolated_from_later_external_tampering() -
     assert binding.to_dict() == before
 
 
+def test_replacing_bound_manifest_after_construction_fails_closed() -> None:
+    binding = bind_experiment_manifest(_plan(), _manifest())
+    replacement = _manifest(
+        runner=RunnerEnv(
+            runner=RunnerClass.LOCAL,
+            python="3.12",
+            os_name="linux",
+            gpu="replacement-gpu",
+        ),
+        started_at="2026-08-27T00:02:00+00:00",
+        reproduction="uv run fixture-experiment --replacement",
+    )
+    object.__setattr__(binding, "manifest", replacement)
+
+    with pytest.raises(ExperimentManifestBindingError, match="manifest identity changed"):
+        binding.semantic_dict()
+    with pytest.raises(ExperimentManifestBindingError, match="manifest identity changed"):
+        _ = binding.semantic_bytes
+    with pytest.raises(ExperimentManifestBindingError, match="manifest identity changed"):
+        _ = binding.content_sha256
+    with pytest.raises(ExperimentManifestBindingError, match="manifest identity changed"):
+        binding.to_dict()
+
+
+def test_replacing_bound_plan_and_manifest_pair_after_construction_fails_closed() -> None:
+    binding = bind_experiment_manifest(_plan(), _manifest())
+    replacement_plan = replace(_plan(), experiment_plan_id="fixture-plan-002")
+    replacement_manifest = _manifest(
+        runner=RunnerEnv(
+            runner=RunnerClass.LOCAL,
+            python="3.12",
+            os_name="linux",
+        ),
+        started_at="2026-08-27T00:03:00+00:00",
+        reproduction="uv run fixture-experiment --new-pair",
+    )
+    object.__setattr__(binding, "plan", replacement_plan)
+    object.__setattr__(binding, "manifest", replacement_manifest)
+
+    with pytest.raises(ExperimentManifestBindingError, match="plan identity changed"):
+        binding.semantic_dict()
+
+
 def test_binding_public_views_fail_closed_on_reachable_internal_tampering() -> None:
     binding = bind_experiment_manifest(_plan(), _manifest())
     object.__setattr__(binding.manifest.model, "backend", "tampered")
