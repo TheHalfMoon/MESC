@@ -857,6 +857,44 @@ def test_parent_lineage_beyond_depth_limit_fails_closed() -> None:
         too_deep.semantic_dict()
 
 
+def test_shared_ancestor_cannot_bypass_depth_limit() -> None:
+    shared = _learning_contract()
+
+    deep = shared
+    for index in range(128):
+        deep = replace(
+            _learning_contract(),
+            input_id=f"research-input-shared-depth-{index:03d}",
+            transformation_kind="summary",
+            parent_inputs=(ResearchInputParentRef(parent_admission=deep),),
+        )
+    deep_ref = ResearchInputParentRef(parent_admission=deep)
+
+    shallow_ref: ResearchInputParentRef | None = None
+    for index in range(512):
+        shallow = replace(
+            _learning_contract(),
+            input_id=f"research-input-shallow-shared-{index:03d}",
+            transformation_kind="summary",
+            parent_inputs=(ResearchInputParentRef(parent_admission=shared),),
+        )
+        candidate = ResearchInputParentRef(parent_admission=shallow)
+        if candidate.admission_sha256 < deep_ref.admission_sha256:
+            shallow_ref = candidate
+            break
+    assert shallow_ref is not None
+
+    root = replace(
+        _learning_contract(),
+        input_id="research-input-shared-depth-overflow",
+        transformation_kind="merge",
+        parent_inputs=(shallow_ref, deep_ref),
+    )
+
+    with pytest.raises(ResearchInputAdmissionError, match="depth limit"):
+        root.semantic_dict()
+
+
 def test_deep_lineage_hash_work_is_linear_during_construction_and_validation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

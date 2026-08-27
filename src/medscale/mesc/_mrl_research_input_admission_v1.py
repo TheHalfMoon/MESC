@@ -595,12 +595,12 @@ def _parent_graph_postorder(
         _require_exact_admission(node)
         if node_id in active:
             raise ResearchInputAdmissionError("cyclic research-input parent lineage is forbidden")
-        if node_id in visited:
-            continue
         if depth > _MAX_LINEAGE_DEPTH:
             raise ResearchInputAdmissionError(
                 "research-input parent lineage exceeds the fail-closed depth limit"
             )
+        if node_id in visited:
+            continue
         if node_id not in discovered:
             discovered.add(node_id)
             if len(discovered) > _MAX_LINEAGE_NODES:
