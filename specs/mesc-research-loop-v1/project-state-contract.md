@@ -117,14 +117,63 @@ The admission validator must, at minimum:
 6. reject repeated dependency IDs or evidence references;
 7. resolve and verify the bound commit/tree and every required source Git object;
 8. reproduce every source byte SHA-256 and `source_set_sha256`;
-9. compare task dependencies and closure evidence with canonical sources;
-10. enforce all anti-staleness rules in this contract;
-11. require `projection_kind = DERIVED_NON_AUTHORITATIVE` and `can_authorize = false`.
+9. independently recompute the complete expected `tasks[]` array from the bound canonical
+   sources and evidence, without trusting any projected task field as an input;
+10. compare the supplied `tasks[]` with that independently recomputed array and reject any
+    semantic or canonical-byte mismatch;
+11. enforce all anti-staleness rules in this contract;
+12. require `projection_kind = DERIVED_NON_AUTHORITATIVE` and `can_authorize = false`.
 
 Until that validator is separately implemented, tested, reviewed, and canonically accepted,
 project-state examples may be inspected as contract fixtures but **must not be used to make
 an eligibility or closure decision**. Canonical source inspection remains the required
 decision path.
+
+## Complete task-array derivation
+
+`tasks[]` is output-only derived state. A validator or generator must never accept the
+projection's own `task_id`, `state`, `dependencies`, or `evidence_refs` as evidence for what
+those fields should be.
+
+The canonical derivation procedure must operate only on the bound canonical sources and
+independently bound evidence:
+
+1. enumerate every task record from the bound canonical task ledger;
+2. require each task identifier to match `MRL-[0-9]{4}` and occur exactly once;
+3. derive `dependencies` from the task ledger's explicit `Depends on:` / `Requires:`
+   clauses, expanding closed task-ID ranges such as `MRL-0001..0008` deterministically and
+   rejecting malformed, reversed, cross-prefix, unknown, or ambiguous ranges;
+4. discover the independently bound evidence required by that task's acceptance/gate
+   semantics; the projected `evidence_refs` array is not a discovery source;
+5. derive `state` from the canonical task ledger plus independently verified dependency,
+   authority, review, check, and closeout evidence required by the task;
+6. if the canonical sources do not contain enough information to determine one exact state
+   or one exact evidence-reference set, return an indeterminate derivation failure and
+   reject the projection rather than trusting the projected value;
+7. sort dependencies and evidence references uniquely as required by this contract;
+8. sort the complete expected task records by `task_id`;
+9. canonicalize the independently derived array and require semantic equality and
+   byte-for-byte canonical equality with the supplied `tasks[]` array.
+
+State derivation is fail-closed:
+
+- `CLOSED_CANONICAL` requires independent canonical closure evidence satisfying the task's
+  own gate; a checkbox, projected prior state, or downstream task is not sufficient by
+  itself;
+- `ELIGIBLE` requires every declared dependency plus every separately applicable authority
+  gate to be independently proven at the bound source identity;
+- incomplete prerequisites remain `PLANNED` unless a canonical blocker establishes
+  `BLOCKED`;
+- `QUALIFYING` and `IN_PROGRESS` require independently bound canonical evidence of those
+  states rather than self-assertion by the projection;
+- contradictory evidence, ambiguous status, or evidence that cannot be reproduced causes
+  derivation failure rather than state selection.
+
+This full recomputation rule makes semantic manual edits detectable even when an attacker or
+operator leaves `repository`, `sources`, hashes, ordering, `projection_kind`, and
+`can_authorize` unchanged. Changing a projected task state, dependency, or evidence
+reference without changing canonical sources necessarily disagrees with the independently
+recomputed expected array and is rejected.
 
 The later validator implementation must include negative fixtures proving rejection of at
 least:
@@ -136,10 +185,14 @@ least:
 - absolute, empty-component, `.`, `..`, and backslash source paths;
 - stale commit/tree/source hashes;
 - omitted required authority/evidence sources;
-- a manually altered projection;
+- a manually altered task `state` with every repository/source hash left unchanged;
+- a manually altered dependency/evidence reference with every repository/source hash left
+  unchanged;
+- an indeterminate state for which the projection attempts to supply its own answer;
 - `can_authorize=true` or an equivalent authority-bearing variant.
 
-MRL-0 freezes these validator requirements; it does not implement the validator.
+MRL-0 freezes these validator and derivation requirements; it does not implement the
+validator.
 
 ## Deterministic serialization
 
@@ -181,15 +234,8 @@ QUALIFYING
 CLOSED_CANONICAL
 ```
 
-A projection may derive `ELIGIBLE` only when every declared dependency and separately
-required authority gate is satisfied by the bound canonical sources.
-
-A projection may derive `CLOSED_CANONICAL` only when canonical evidence outside the
-projection proves closure. The projection's previous state is never closure evidence.
-
-A task with unknown, contradictory, missing, or stale dependency evidence is not
-`ELIGIBLE`; it is represented as `BLOCKED` when an applicable blocker is known or remains
-`PLANNED` when prerequisites are merely incomplete.
+The complete task-array derivation rules above control how these states are computed. A
+projection never supplies its own authoritative state.
 
 ## Anti-staleness rules
 
@@ -203,10 +249,12 @@ true:
 4. any source Git blob SHA differs from the recorded value;
 5. any source byte SHA-256 differs from the recorded value;
 6. `source_set_sha256` cannot be reproduced;
-7. task dependencies in the projection disagree with the canonical task ledger;
+7. the supplied complete `tasks[]` array differs from the independently recomputed expected
+   array;
 8. a required authority/evidence source was omitted;
 9. a source path or task identity is duplicated or ambiguously encoded;
-10. the projection was manually edited rather than deterministically rebuilt;
+10. the projection was manually edited and therefore cannot reproduce canonical derived
+   bytes;
 11. the projection claims `can_authorize = true` or any equivalent authority-bearing state.
 
 Staleness is fail-closed. A stale projection is discarded and rebuilt from canonical
@@ -242,8 +290,9 @@ The absence of a blocker in the projection is not positive authority.
 ## Manual edits and derived tooling
 
 Generated project-state JSON may be stored for inspection, but manual edits have no
-canonical force. A consumer must use the canonical projection-admission validator before
-using a projection for navigation or state decisions.
+canonical force. A consumer must use the canonical projection-admission validator and
+complete task-array recomputation before using a projection for navigation or state
+decisions.
 
 Search indexes, dashboards, caches, agent memories, and status summaries built from the
 projection inherit the same non-authoritative status and must not bypass validator
@@ -252,8 +301,10 @@ admission.
 ## MRL-0 acceptance
 
 MRL-0007 is satisfied when this contract and its JSON Schema are canonically accepted and
-review confirms that stale/manual/ambiguous projections cannot authorize work and cannot
-be consumed for eligibility without the required validator gate.
+review confirms that stale/manual/ambiguous projections cannot authorize work, cannot be
+consumed for eligibility without the required validator gate, and cannot preserve a
+manually fabricated task state because the entire task array must be independently
+recomputed.
 
 Implementation of the validator/generator and its negative fixtures is intentionally
 deferred to the later machine-state implementation stage authorized by the task ledger.
