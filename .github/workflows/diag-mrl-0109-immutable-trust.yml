@@ -23,6 +23,7 @@ jobs:
         run: |
           python .github/diag/mrl0109_immutable_trust_repair.py
           python .github/diag/mrl0109_immutable_trust_ruff_fix.py
+          python .github/diag/mrl0109_immutable_trust_external_test_fix.py
       - name: Sync
         run: uv sync --locked
       - name: Normalize generated product files
