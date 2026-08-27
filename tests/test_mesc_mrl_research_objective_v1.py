@@ -515,3 +515,65 @@ def test_adaptive_control_semantics_are_content_addressed() -> None:
 
     assert changed_stopping.content_sha256 != objective.content_sha256
     assert changed_invalidation.content_sha256 != objective.content_sha256
+
+
+def test_mutation_surface_with_nul_fails_closed() -> None:
+    with pytest.raises(ResearchObjectiveContractError, match=r"canonical text|canonical relative"):
+        replace(
+            _objective(),
+            allowed_mutation_surfaces=("experiments/result\x00.json",),
+        )
+
+
+def test_post_construction_top_level_mutation_fails_closed_at_public_views() -> None:
+    objective = _objective()
+    object.__setattr__(
+        objective,
+        "allowed_mutation_surfaces",
+        ("src/medscale/mesc/forged.py",),
+    )
+
+    with pytest.raises(ResearchObjectiveContractError, match="campaign-mutable roots"):
+        objective.semantic_dict()
+    with pytest.raises(ResearchObjectiveContractError, match="campaign-mutable roots"):
+        _ = objective.semantic_bytes
+    with pytest.raises(ResearchObjectiveContractError, match="campaign-mutable roots"):
+        _ = objective.content_sha256
+    with pytest.raises(ResearchObjectiveContractError, match="campaign-mutable roots"):
+        objective.to_dict()
+
+
+def test_post_construction_nested_budget_mutation_fails_closed_at_public_views() -> None:
+    objective = _objective()
+    object.__setattr__(objective.resource_budget, "retries", -1)
+
+    with pytest.raises(ResearchObjectiveContractError, match="retries must be a non-negative"):
+        objective.semantic_dict()
+    with pytest.raises(ResearchObjectiveContractError, match="retries must be a non-negative"):
+        _ = objective.content_sha256
+    with pytest.raises(ResearchObjectiveContractError, match="retries must be a non-negative"):
+        objective.to_dict()
+
+
+def test_post_construction_nested_metric_mutation_rechecks_cross_field_invariants() -> None:
+    objective = _objective()
+    object.__setattr__(objective.search_metrics[0], "tier", EvaluationTier.SEALED)
+
+    with pytest.raises(ResearchObjectiveContractError, match="must use Tier 1 SEARCH"):
+        objective.semantic_dict()
+    with pytest.raises(ResearchObjectiveContractError, match="must use Tier 1 SEARCH"):
+        _ = objective.content_sha256
+
+
+def test_post_construction_nested_evaluator_mutation_rechecks_tier_binding() -> None:
+    objective = _objective()
+    object.__setattr__(
+        objective.evaluator_identities[1],
+        "tiers",
+        (EvaluationTier.SEALED,),
+    )
+
+    with pytest.raises(ResearchObjectiveContractError, match="does not admit metric tier"):
+        objective.semantic_dict()
+    with pytest.raises(ResearchObjectiveContractError, match="does not admit metric tier"):
+        _ = objective.content_sha256
