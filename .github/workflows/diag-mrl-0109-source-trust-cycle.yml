@@ -22,7 +22,7 @@ jobs:
       - run: uv sync --frozen
       - name: Apply bounded repair
         run: python .github/diag/mrl0109_source_trust_cycle.py
-      - name: Normalize target long literals
+      - name: Normalize target literals and test typing
         shell: python
         run: |
           from pathlib import Path
@@ -40,6 +40,20 @@ jobs:
               '                    "identities into MRL"',
           )
           path.write_text(source)
+
+          test_path = Path("tests/test_mesc_mrl_research_input_admission_v1.py")
+          tests = test_path.read_text()
+          tests = tests.replace(
+              "from dataclasses import FrozenInstanceError, replace\n",
+              "from collections.abc import Iterator\nfrom dataclasses import FrozenInstanceError, replace\n",
+              1,
+          )
+          tests = tests.replace(
+              "def _reset_source_permission_trust():\n",
+              "def _reset_source_permission_trust() -> Iterator[None]:\n",
+              1,
+          )
+          test_path.write_text(tests)
       - name: Canonical formatting
         run: >-
           uv run ruff format
