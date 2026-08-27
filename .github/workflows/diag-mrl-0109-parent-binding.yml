@@ -1,0 +1,370 @@
+name: DIAG MRL-0109 Parent Binding Repair
+
+on:
+  push:
+    branches:
+      - diag/mrl-0109-parent-binding-341968f
+
+permissions:
+  contents: write
+
+jobs:
+  qualify:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 1
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+        with:
+          enable-cache: true
+      - run: uv python install 3.12
+      - run: uv sync --frozen
+      - name: Bind parent refs to actual validated admissions
+        shell: python
+        run: |
+          from pathlib import Path
+
+          source_path = Path("src/medscale/mesc/_mrl_research_input_admission_v1.py")
+          source = source_path.read_text()
+          source = source.replace("from dataclasses import dataclass\n", "from dataclasses import dataclass, field\n")
+
+          old_parent = '''@dataclass(frozen=True, slots=True)
+          class ResearchInputParentRef:
+              """Content-addressed admission identity and classification of one declared parent."""
+
+              admission_sha256: str
+              classification: ResearchInputClassification
+              disposition: ResearchInputDisposition
+
+              def __post_init__(self) -> None:
+                  _require_sha256(self.admission_sha256, "admission_sha256")
+                  _require_exact_enum(self.classification, ResearchInputClassification, "classification")
+                  _require_exact_enum(self.disposition, ResearchInputDisposition, "disposition")
+                  expected = _disposition_for_classification(self.classification)
+                  if self.disposition is not expected:
+                      raise ResearchInputAdmissionError(
+                          "parent disposition must exactly match its canonical classification"
+                      )
+
+              def _validated_snapshot(self) -> ResearchInputParentRef:
+                  _require_exact_parent_ref(self)
+                  return ResearchInputParentRef(
+                      admission_sha256=self.admission_sha256,
+                      classification=self.classification,
+                      disposition=self.disposition,
+                  )
+
+              def to_dict(self) -> dict[str, str]:
+                  """Return one freshly validated parent-reference semantic mapping."""
+                  _require_exact_parent_ref(self)
+                  snapshot = self._validated_snapshot()
+                  return {
+                      "admission_sha256": snapshot.admission_sha256,
+                      "classification": snapshot.classification.value,
+                      "disposition": snapshot.disposition.value,
+                  }
+          '''
+          new_parent = '''@dataclass(frozen=True, slots=True)
+          class ResearchInputParentRef:
+              """Reference derived from one actual validated parent admission.
+
+              The semantic reference exposes only the parent's content identity, classification,
+              and canonical disposition, but those values are never accepted independently from
+              a caller. They are derived from the exact validated parent admission and rebound on
+              every public view so a detached or relabelled digest cannot launder lineage.
+              """
+
+              parent_admission: ResearchInputAdmissionContract
+              _bound_admission_sha256: str = field(init=False, repr=False)
+              _bound_classification: ResearchInputClassification = field(init=False, repr=False)
+              _bound_disposition: ResearchInputDisposition = field(init=False, repr=False)
+
+              def __post_init__(self) -> None:
+                  _require_exact_admission(self.parent_admission)
+                  parent = self.parent_admission._validated_snapshot()
+                  object.__setattr__(
+                      self,
+                      "_bound_admission_sha256",
+                      derive_content_sha256(parent._semantic_dict_validated()),
+                  )
+                  object.__setattr__(self, "_bound_classification", parent.classification)
+                  object.__setattr__(
+                      self,
+                      "_bound_disposition",
+                      _disposition_for_classification(parent.classification),
+                  )
+
+              def _validated_binding(
+                  self,
+              ) -> tuple[str, ResearchInputClassification, ResearchInputDisposition]:
+                  _require_exact_parent_ref(self)
+                  _require_exact_admission(self.parent_admission)
+                  parent = self.parent_admission._validated_snapshot()
+                  current_sha256 = derive_content_sha256(parent._semantic_dict_validated())
+                  current_classification = parent.classification
+                  current_disposition = _disposition_for_classification(current_classification)
+                  if (
+                      current_sha256 != self._bound_admission_sha256
+                      or current_classification is not self._bound_classification
+                      or current_disposition is not self._bound_disposition
+                  ):
+                      raise ResearchInputAdmissionError(
+                          "parent admission binding changed after reference creation"
+                      )
+                  return current_sha256, current_classification, current_disposition
+
+              @property
+              def admission_sha256(self) -> str:
+                  return self._validated_binding()[0]
+
+              @property
+              def classification(self) -> ResearchInputClassification:
+                  return self._validated_binding()[1]
+
+              @property
+              def disposition(self) -> ResearchInputDisposition:
+                  return self._validated_binding()[2]
+
+              def _validated_snapshot(self) -> ResearchInputParentRef:
+                  self._validated_binding()
+                  return ResearchInputParentRef(
+                      parent_admission=self.parent_admission._validated_snapshot()
+                  )
+
+              def to_dict(self) -> dict[str, str]:
+                  """Return one freshly validated parent-reference semantic mapping."""
+                  admission_sha256, classification, disposition = self._validated_binding()
+                  return {
+                      "admission_sha256": admission_sha256,
+                      "classification": classification.value,
+                      "disposition": disposition.value,
+                  }
+          '''
+          if old_parent not in source:
+              raise SystemExit("expected ResearchInputParentRef block not found")
+          source = source.replace(old_parent, new_parent)
+
+          old_snapshot = '''    def _validated_snapshot(self) -> ResearchInputAdmissionContract:
+                  _require_exact_admission(self)
+                  parents = tuple(parent._validated_snapshot() for parent in self.parent_inputs)
+                  return ResearchInputAdmissionContract(
+          '''
+          new_snapshot = '''    def _validated_snapshot(self) -> ResearchInputAdmissionContract:
+                  _require_exact_admission(self)
+                  _require_parent_refs(self.parent_inputs)
+                  parents = tuple(parent._validated_snapshot() for parent in self.parent_inputs)
+                  return ResearchInputAdmissionContract(
+          '''
+          if old_snapshot not in source:
+              raise SystemExit("expected admission snapshot block not found")
+          source = source.replace(old_snapshot, new_snapshot)
+          source_path.write_text(source)
+
+          test_path = Path("tests/test_mesc_mrl_research_input_admission_v1.py")
+          tests = test_path.read_text()
+          old_helper = '''def _parent_ref(
+              *,
+              sha_char: str,
+              classification: ResearchInputClassification,
+              disposition: ResearchInputDisposition,
+          ) -> ResearchInputParentRef:
+              return ResearchInputParentRef(
+                  admission_sha256=sha_char * 64,
+                  classification=classification,
+                  disposition=disposition,
+              )
+          '''
+          new_helper = '''def _parent_ref(
+              *,
+              sha_char: str,
+              classification: ResearchInputClassification,
+              disposition: ResearchInputDisposition,
+          ) -> ResearchInputParentRef:
+              if classification in (
+                  ResearchInputClassification.RESEARCH_ARTIFACT,
+                  ResearchInputClassification.DETERMINISTIC_FIXTURE_OUTPUT,
+                  ResearchInputClassification.NEGATIVE_OR_INVALID_RESEARCH_RESULT,
+              ):
+                  parent = ResearchInputAdmissionContract(
+                      input_id=f"parent-{sha_char}",
+                      classification_policy_sha256="a" * 64,
+                      classification=classification,
+                      source_artifact_sha256=sha_char * 64,
+                      source_contract_sha256="b" * 64,
+                      allowed_learning_surfaces=(ResearchLearningSurface.OBSERVATION,),
+                  )
+              elif classification is ResearchInputClassification.EXTERNAL_EVALUATION_EVIDENCE:
+                  parent = ResearchInputAdmissionContract(
+                      input_id=f"parent-{sha_char}",
+                      classification_policy_sha256="a" * 64,
+                      classification=classification,
+                      source_artifact_sha256=sha_char * 64,
+                      source_contract_sha256="b" * 64,
+                      allowed_learning_surfaces=(),
+                  )
+              else:
+                  parent = ResearchInputAdmissionContract(
+                      input_id=f"parent-{sha_char}",
+                      classification_policy_sha256="a" * 64,
+                      classification=classification,
+                      source_artifact_sha256=None,
+                      source_contract_sha256=None,
+                      allowed_learning_surfaces=(),
+                  )
+              reference = ResearchInputParentRef(parent_admission=parent)
+              assert reference.disposition is disposition
+              return reference
+          '''
+          if old_helper not in tests:
+              raise SystemExit("expected _parent_ref helper not found")
+          tests = tests.replace(old_helper, new_helper)
+
+          old_mismatch = '''def test_parent_ref_disposition_must_match_classification() -> None:
+              with pytest.raises(ResearchInputAdmissionError, match="exactly match"):
+                  ResearchInputParentRef(
+                      admission_sha256="1" * 64,
+                      classification=ResearchInputClassification.PHI_OR_PATIENT_DATA,
+                      disposition=ResearchInputDisposition.LEARNING_ADMITTED,
+                  )
+          '''
+          new_mismatch = '''def test_parent_ref_is_derived_from_actual_parent_admission() -> None:
+              parent = _rejected_contract(ResearchInputClassification.PHI_OR_PATIENT_DATA)
+              reference = ResearchInputParentRef(parent_admission=parent)
+
+              assert reference.admission_sha256 == parent.content_sha256
+              assert reference.classification is ResearchInputClassification.PHI_OR_PATIENT_DATA
+              assert reference.disposition is ResearchInputDisposition.REJECTED
+
+              with pytest.raises(TypeError):
+                  ResearchInputParentRef(  # type: ignore[call-arg]
+                      admission_sha256=parent.content_sha256,
+                      classification=ResearchInputClassification.RESEARCH_ARTIFACT,
+                      disposition=ResearchInputDisposition.LEARNING_ADMITTED,
+                  )
+          '''
+          if old_mismatch not in tests:
+              raise SystemExit("expected parent mismatch test not found")
+          tests = tests.replace(old_mismatch, new_mismatch)
+
+          old_sort = '''    second = _parent_ref(
+                  sha_char="2",
+                  classification=ResearchInputClassification.RESEARCH_ARTIFACT,
+                  disposition=ResearchInputDisposition.LEARNING_ADMITTED,
+              )
+
+              with pytest.raises(ResearchInputAdmissionError, match="unique and strictly sorted"):
+          '''
+          new_sort = '''    second = _parent_ref(
+                  sha_char="2",
+                  classification=ResearchInputClassification.RESEARCH_ARTIFACT,
+                  disposition=ResearchInputDisposition.LEARNING_ADMITTED,
+              )
+              first, second = sorted((first, second), key=lambda item: item.admission_sha256)
+
+              with pytest.raises(ResearchInputAdmissionError, match="unique and strictly sorted"):
+          '''
+          if old_sort not in tests:
+              raise SystemExit("expected parent sorting test context not found")
+          tests = tests.replace(old_sort, new_sort, 1)
+
+          old_nested = '''def test_post_construction_nested_parent_mutation_fails_closed() -> None:
+              parent = _parent_ref(
+                  sha_char="1",
+                  classification=ResearchInputClassification.RESEARCH_ARTIFACT,
+                  disposition=ResearchInputDisposition.LEARNING_ADMITTED,
+              )
+              contract = replace(
+                  _learning_contract(),
+                  transformation_kind="summary",
+                  parent_inputs=(parent,),
+              )
+              object.__setattr__(parent, "classification", ResearchInputClassification.PHI_OR_PATIENT_DATA)
+
+              with pytest.raises(ResearchInputAdmissionError, match="exactly match"):
+                  contract.semantic_dict()
+              with pytest.raises(ResearchInputAdmissionError, match="exactly match"):
+                  _ = contract.content_sha256
+          '''
+          new_nested = '''def test_post_construction_nested_parent_mutation_fails_closed() -> None:
+              parent = _parent_ref(
+                  sha_char="1",
+                  classification=ResearchInputClassification.RESEARCH_ARTIFACT,
+                  disposition=ResearchInputDisposition.LEARNING_ADMITTED,
+              )
+              contract = replace(
+                  _learning_contract(),
+                  transformation_kind="summary",
+                  parent_inputs=(parent,),
+              )
+              object.__setattr__(parent.parent_admission, "input_id", "changed-parent")
+
+              with pytest.raises(ResearchInputAdmissionError, match="binding changed"):
+                  contract.semantic_dict()
+              with pytest.raises(ResearchInputAdmissionError, match="binding changed"):
+                  _ = contract.content_sha256
+          '''
+          if old_nested not in tests:
+              raise SystemExit("expected nested parent mutation test not found")
+          tests = tests.replace(old_nested, new_nested)
+
+          tests += '''\n\nclass _SnapshotBypassParentRef(ResearchInputParentRef):
+              def _validated_snapshot(self) -> ResearchInputParentRef:
+                  return _parent_ref(
+                      sha_char="2",
+                      classification=ResearchInputClassification.RESEARCH_ARTIFACT,
+                      disposition=ResearchInputDisposition.LEARNING_ADMITTED,
+                  )
+          \n\ndef test_parent_ref_subclass_cannot_bypass_admission_snapshot_validation() -> None:
+              exact_parent = _parent_ref(
+                  sha_char="1",
+                  classification=ResearchInputClassification.RESEARCH_ARTIFACT,
+                  disposition=ResearchInputDisposition.LEARNING_ADMITTED,
+              )
+              contract = replace(
+                  _learning_contract(),
+                  transformation_kind="summary",
+                  parent_inputs=(exact_parent,),
+              )
+              forged_parent = _SnapshotBypassParentRef(
+                  parent_admission=exact_parent.parent_admission
+              )
+              object.__setattr__(contract, "parent_inputs", (forged_parent,))
+
+              with pytest.raises(ResearchInputAdmissionError, match="exact ResearchInputParentRef"):
+                  contract.semantic_dict()
+              with pytest.raises(ResearchInputAdmissionError, match="exact ResearchInputParentRef"):
+                  _ = contract.content_sha256
+          '''
+          test_path.write_text(tests)
+      - name: Canonical formatting
+        run: uv run ruff format src/medscale/mesc/_mrl_research_input_admission_v1.py tests/test_mesc_mrl_research_input_admission_v1.py
+      - name: Ruff lint and format check
+        run: |
+          uv run ruff check .
+          uv run ruff format --check .
+      - name: Canonical mypy
+        run: uv run mypy src tests
+      - name: Focused MRL-0109 tests
+        run: uv run pytest -q tests/test_mesc_mrl_research_input_admission_v1.py
+      - name: Full test suite
+        run: uv run pytest -q
+      - name: Integrity gate
+        run: uv run medscale check
+      - name: Verify bounded target diff
+        run: |
+          git diff --check
+          git status --short
+          test "$(git diff --name-only | sort)" = "$(printf '%s\n' src/medscale/mesc/_mrl_research_input_admission_v1.py tests/test_mesc_mrl_research_input_admission_v1.py | sort)"
+      - name: Commit qualified target files
+        shell: bash
+        run: |
+          if git diff --quiet -- src/medscale/mesc/_mrl_research_input_admission_v1.py tests/test_mesc_mrl_research_input_admission_v1.py; then
+            echo "No target changes to commit"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/medscale/mesc/_mrl_research_input_admission_v1.py tests/test_mesc_mrl_research_input_admission_v1.py
+          git commit -m "fix(diag): bind MRL parent refs to validated admissions"
+          git push origin HEAD:diag/mrl-0109-parent-binding-341968f
