@@ -128,17 +128,19 @@ def test_invalid_hypothesis_identity_fails_closed(hypothesis_id: str) -> None:
 
 
 @pytest.mark.parametrize(
-    ("field", "value"),
+    "mutate",
     [
-        ("objective_sha256", "A" * 64),
-        ("objective_sha256", "a" * 63),
-        ("created_from_campaign_state_sha256", "g" * 64),
-        ("created_from_campaign_state_sha256", "b" * 65),
+        lambda value: replace(value, objective_sha256="A" * 64),
+        lambda value: replace(value, objective_sha256="a" * 63),
+        lambda value: replace(value, created_from_campaign_state_sha256="g" * 64),
+        lambda value: replace(value, created_from_campaign_state_sha256="b" * 65),
     ],
 )
-def test_invalid_sha_bindings_fail_closed(field: str, value: str) -> None:
+def test_invalid_sha_bindings_fail_closed(
+    mutate: Callable[[ResearchHypothesis], ResearchHypothesis],
+) -> None:
     with pytest.raises(ResearchHypothesisError, match="64 lowercase hex"):
-        replace(_hypothesis(), **{field: value})
+        mutate(_hypothesis())
 
 
 @pytest.mark.parametrize(
@@ -151,22 +153,51 @@ def test_mechanism_must_be_canonical_nonempty_text(mechanism: str) -> None:
 
 
 @pytest.mark.parametrize(
-    "field",
-    ["predicted_effects", "predicted_failure_modes", "falsification_criteria"],
+    "mutate",
+    [
+        lambda value: replace(value, predicted_effects=()),
+        lambda value: replace(value, predicted_failure_modes=()),
+        lambda value: replace(value, falsification_criteria=()),
+    ],
 )
-def test_required_scientific_statements_cannot_be_empty(field: str) -> None:
+def test_required_scientific_statements_cannot_be_empty(
+    mutate: Callable[[ResearchHypothesis], ResearchHypothesis],
+) -> None:
     with pytest.raises(ResearchHypothesisError, match="cannot be empty"):
-        replace(_hypothesis(), **{field: ()})
+        mutate(_hypothesis())
 
 
 @pytest.mark.parametrize(
-    "field",
-    ["predicted_effects", "predicted_failure_modes", "falsification_criteria"],
+    "mutate",
+    [
+        lambda value: replace(
+            value,
+            predicted_effects=(
+                "A material scientific statement.",
+                "A material scientific statement.",
+            ),
+        ),
+        lambda value: replace(
+            value,
+            predicted_failure_modes=(
+                "A material scientific statement.",
+                "A material scientific statement.",
+            ),
+        ),
+        lambda value: replace(
+            value,
+            falsification_criteria=(
+                "A material scientific statement.",
+                "A material scientific statement.",
+            ),
+        ),
+    ],
 )
-def test_scientific_statements_reject_duplicates(field: str) -> None:
-    statement = "A material scientific statement."
+def test_scientific_statements_reject_duplicates(
+    mutate: Callable[[ResearchHypothesis], ResearchHypothesis],
+) -> None:
     with pytest.raises(ResearchHypothesisError, match="duplicate"):
-        replace(_hypothesis(), **{field: (statement, statement)})
+        mutate(_hypothesis())
 
 
 @pytest.mark.parametrize(
