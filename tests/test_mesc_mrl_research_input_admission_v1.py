@@ -363,7 +363,10 @@ def test_external_evidence_parent_cannot_be_laundered_into_learning_input() -> N
         disposition=ResearchInputDisposition.EXTERNAL_EVALUATION_ONLY,
     )
 
-    with pytest.raises(ResearchInputAdmissionError, match="cannot be transformed into an MRL learning"):
+    with pytest.raises(
+        ResearchInputAdmissionError,
+        match="cannot be transformed into an MRL learning",
+    ):
         replace(
             _learning_contract(),
             transformation_kind="summary",

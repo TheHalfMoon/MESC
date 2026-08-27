@@ -162,7 +162,8 @@ class ResearchInputAdmissionContract:
         elif disposition is ResearchInputDisposition.EXTERNAL_EVALUATION_ONLY:
             if self.source_artifact_sha256 is None or self.source_contract_sha256 is None:
                 raise ResearchInputAdmissionError(
-                    "external evaluation evidence requires exact artifact and governing contract identities"
+                    "external evaluation evidence requires exact artifact and "
+                    "governing contract identities"
                 )
             if self.allowed_learning_surfaces:
                 raise ResearchInputAdmissionError(
@@ -192,9 +193,10 @@ class ResearchInputAdmissionContract:
         _require_exact_admission(self)
         _require_exact_enum(surface, ResearchLearningSurface, "surface")
         snapshot = self._validated_snapshot()
-        if _disposition_for_classification(
-            snapshot.classification
-        ) is not ResearchInputDisposition.LEARNING_ADMITTED:
+        if (
+            _disposition_for_classification(snapshot.classification)
+            is not ResearchInputDisposition.LEARNING_ADMITTED
+        ):
             raise ResearchInputAdmissionError("input is not admitted as an MRL learning signal")
         if surface not in snapshot.allowed_learning_surfaces:
             raise ResearchInputAdmissionError(
@@ -205,9 +207,10 @@ class ResearchInputAdmissionContract:
         """Fail closed unless this input is separately classified as external evidence only."""
         _require_exact_admission(self)
         snapshot = self._validated_snapshot()
-        if _disposition_for_classification(
-            snapshot.classification
-        ) is not ResearchInputDisposition.EXTERNAL_EVALUATION_ONLY:
+        if (
+            _disposition_for_classification(snapshot.classification)
+            is not ResearchInputDisposition.EXTERNAL_EVALUATION_ONLY
+        ):
             raise ResearchInputAdmissionError(
                 "input is not admitted as separately governed external evaluation evidence"
             )
