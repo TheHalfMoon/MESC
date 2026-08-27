@@ -141,14 +141,13 @@ def _snapshot_manifest(value: ExperimentManifest) -> ExperimentManifest:
     _require_exact_str(value.runner.os_name, "manifest.runner.os_name")
     if value.runner.gpu is not None:
         _require_exact_str(value.runner.gpu, "manifest.runner.gpu")
-    if value.runner.peak_vram_gb is not None:
-        if isinstance(value.runner.peak_vram_gb, bool) or not isinstance(
-            value.runner.peak_vram_gb,
-            (int, float),
-        ):
-            raise ExperimentManifestBindingError(
-                "manifest.runner.peak_vram_gb must be numeric or None"
-            )
+    if value.runner.peak_vram_gb is not None and (
+        isinstance(value.runner.peak_vram_gb, bool)
+        or not isinstance(value.runner.peak_vram_gb, (int, float))
+    ):
+        raise ExperimentManifestBindingError(
+            "manifest.runner.peak_vram_gb must be numeric or None"
+        )
 
     _require_exact_str(value.started_at, "manifest.started_at")
     _require_tuple_of_exact(value.results_paths, str, "manifest.results_paths")
@@ -254,7 +253,8 @@ def _require_equal(name: str, expected: object, actual: object) -> None:
 def _require_exact_instance(value: object, expected_type: type[object], name: str) -> None:
     if type(value) is not expected_type:
         raise ExperimentManifestBindingError(
-            f"{name} must be exact {expected_type.__name__}; subclasses/type substitution are rejected"
+            f"{name} must be exact {expected_type.__name__}; "
+            "subclasses/type substitution are rejected"
         )
 
 
