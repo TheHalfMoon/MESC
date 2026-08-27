@@ -346,6 +346,35 @@ def test_huge_runtime_vram_integer_is_normalized_to_binding_domain_error() -> No
         bind_experiment_manifest(_plan(), manifest)
 
 
+def test_numeric_subclass_runtime_vram_is_rejected_before_conversion_hooks() -> None:
+    class IntSubclass(int):
+        def __float__(self) -> float:
+            raise RuntimeError("conversion hook must not run")
+
+    runner = RunnerEnv(
+        runner=RunnerClass.LOCAL,
+        python="3.11",
+        os_name="linux",
+        peak_vram_gb=1.0,
+    )
+    object.__setattr__(runner, "peak_vram_gb", IntSubclass(1))
+    manifest = _manifest(runner=runner)
+
+    with pytest.raises(ExperimentManifestBindingError, match="finite numeric"):
+        bind_experiment_manifest(_plan(), manifest)
+
+
+def test_deeply_nested_runtime_configuration_is_normalized_to_binding_domain_error() -> None:
+    manifest = _manifest()
+    object.__setattr__(manifest, "configuration", "[" * 10_000 + "0" + "]" * 10_000)
+
+    with pytest.raises(
+        ExperimentManifestBindingError,
+        match="manifest failed canonical runtime revalidation",
+    ):
+        bind_experiment_manifest(_plan(), manifest)
+
+
 def test_binding_snapshots_inputs_and_isolated_from_later_external_tampering() -> None:
     plan = _plan()
     manifest = _manifest(model=replace(_MODEL))

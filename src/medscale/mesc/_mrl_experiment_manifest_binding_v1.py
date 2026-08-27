@@ -14,6 +14,7 @@ import math
 import weakref
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from typing import cast
 
 from medscale.mesc._mrl_content_identity_v1 import (
     canonical_semantic_bytes,
@@ -246,7 +247,7 @@ def _snapshot_manifest(value: ExperimentManifest) -> ExperimentManifest:
             results_paths=tuple(value.results_paths),
             reproduction=value.reproduction,
         )
-    except (AttributeError, OverflowError, TypeError, ValueError) as exc:
+    except (AttributeError, OverflowError, RecursionError, TypeError, ValueError) as exc:
         raise ExperimentManifestBindingError(
             "manifest failed canonical runtime revalidation"
         ) from exc
@@ -343,10 +344,11 @@ def _require_exact_int(value: object, name: str) -> None:
 def _require_finite_optional_number(value: object, name: str) -> None:
     if value is None:
         return
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
+    if type(value) not in (int, float):
         raise ExperimentManifestBindingError(f"{name} must be finite numeric or None")
+    numeric_value = cast(int | float, value)
     try:
-        finite = math.isfinite(value)
+        finite = math.isfinite(numeric_value)
     except (OverflowError, TypeError, ValueError) as exc:
         raise ExperimentManifestBindingError(f"{name} must be finite numeric or None") from exc
     if not finite:
