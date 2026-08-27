@@ -1,0 +1,90 @@
+name: MRL-0104 Qodo2 qualification once
+
+on:
+  push:
+    branches:
+      - tmp/mrl-0104-qodo2-qualification
+
+permissions:
+  contents: write
+
+jobs:
+  repair-and-qualify:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout isolated branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: tmp/mrl-0104-qodo2-qualification
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+
+      - name: Apply exact Qodo regressions
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          source_path = Path("src/medscale/mesc/_mrl_experiment_manifest_binding_v1.py")
+          source = source_path.read_text()
+
+          old_catch = "    except (AttributeError, OverflowError, TypeError, ValueError) as exc:\n"
+          new_catch = "    except (AttributeError, OverflowError, RecursionError, TypeError, ValueError) as exc:\n"
+          if source.count(old_catch) != 1:
+              raise SystemExit("expected exactly one manifest reconstruction catch")
+          source = source.replace(old_catch, new_catch)
+
+          old_numeric = "    if isinstance(value, bool) or not isinstance(value, (int, float)):\n"
+          new_numeric = "    if type(value) not in (int, float):\n"
+          if source.count(old_numeric) != 1:
+              raise SystemExit("expected exactly one finite-number type gate")
+          source = source.replace(old_numeric, new_numeric)
+          source_path.write_text(source)
+
+          test_path = Path("tests/test_mesc_mrl_experiment_manifest_binding_v1.py")
+          tests = test_path.read_text()
+
+          anchor = '''def test_huge_runtime_vram_integer_is_normalized_to_binding_domain_error() -> None:\n    manifest = _manifest(\n        runner=RunnerEnv(\n            runner=RunnerClass.LOCAL,\n            python="3.11",\n            os_name="linux",\n            peak_vram_gb=10**10_000,\n        )\n    )\n\n    with pytest.raises(ExperimentManifestBindingError, match="finite numeric"):\n        bind_experiment_manifest(_plan(), manifest)\n\n\ndef test_binding_snapshots_inputs_and_isolated_from_later_external_tampering() -> None:\n'''
+          replacement = '''def test_huge_runtime_vram_integer_is_normalized_to_binding_domain_error() -> None:\n    manifest = _manifest(\n        runner=RunnerEnv(\n            runner=RunnerClass.LOCAL,\n            python="3.11",\n            os_name="linux",\n            peak_vram_gb=10**10_000,\n        )\n    )\n\n    with pytest.raises(ExperimentManifestBindingError, match="finite numeric"):\n        bind_experiment_manifest(_plan(), manifest)\n\n\ndef test_numeric_subclass_runtime_vram_is_rejected_before_conversion_hooks() -> None:\n    class IntSubclass(int):\n        def __float__(self) -> float:\n            raise RuntimeError("conversion hook must not run")\n\n    manifest = _manifest()\n    object.__setattr__(manifest.runner, "peak_vram_gb", IntSubclass(1))\n\n    with pytest.raises(ExperimentManifestBindingError, match="finite numeric"):\n        bind_experiment_manifest(_plan(), manifest)\n\n\ndef test_deeply_nested_runtime_configuration_is_normalized_to_binding_domain_error() -> None:\n    manifest = _manifest()\n    object.__setattr__(manifest, "configuration", "[" * 10_000 + "0" + "]" * 10_000)\n\n    with pytest.raises(\n        ExperimentManifestBindingError,\n        match="manifest failed canonical runtime revalidation",\n    ):\n        bind_experiment_manifest(_plan(), manifest)\n\n\ndef test_binding_snapshots_inputs_and_isolated_from_later_external_tampering() -> None:\n'''
+          if tests.count(anchor) != 1:
+              raise SystemExit("expected exactly one regression insertion anchor")
+          tests = tests.replace(anchor, replacement)
+          test_path.write_text(tests)
+          PY
+
+      - name: Sync locked environment
+        run: uv sync --frozen
+
+      - name: Ruff exact files
+        run: |
+          uv run ruff check --fix src/medscale/mesc/_mrl_experiment_manifest_binding_v1.py tests/test_mesc_mrl_experiment_manifest_binding_v1.py
+          uv run ruff format src/medscale/mesc/_mrl_experiment_manifest_binding_v1.py tests/test_mesc_mrl_experiment_manifest_binding_v1.py
+          uv run ruff check src/medscale/mesc/_mrl_experiment_manifest_binding_v1.py tests/test_mesc_mrl_experiment_manifest_binding_v1.py
+          uv run ruff format --check src/medscale/mesc/_mrl_experiment_manifest_binding_v1.py tests/test_mesc_mrl_experiment_manifest_binding_v1.py
+
+      - name: Strict mypy
+        run: uv run mypy .
+
+      - name: Focused pytest
+        run: uv run pytest -q tests/test_mesc_mrl_experiment_manifest_binding_v1.py
+
+      - name: Verify exact delta scope
+        shell: bash
+        run: |
+          mapfile -t changed < <(git diff --name-only)
+          printf '%s\n' "${changed[@]}"
+          test "${#changed[@]}" -eq 2
+          test "${changed[0]}" = "src/medscale/mesc/_mrl_experiment_manifest_binding_v1.py"
+          test "${changed[1]}" = "tests/test_mesc_mrl_experiment_manifest_binding_v1.py"
+
+      - name: Commit qualified blobs
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/medscale/mesc/_mrl_experiment_manifest_binding_v1.py tests/test_mesc_mrl_experiment_manifest_binding_v1.py
+          git commit -m "fix(mrl): normalize manifest edge cases [skip ci]"
+          git push origin HEAD:tmp/mrl-0104-qodo2-qualification
