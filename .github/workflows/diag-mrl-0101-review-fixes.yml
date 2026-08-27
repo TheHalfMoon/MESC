@@ -26,7 +26,17 @@ jobs:
         run: uv sync --frozen
 
       - name: Apply bounded review fixes
-        run: uv run python scripts/diag_fix_mrl_0101_review.py
+        run: |
+          uv run python scripts/diag_fix_mrl_0101_review.py
+          uv run python - <<'PY'
+          from pathlib import Path
+          path = Path("tests/test_mesc_mrl_research_objective_v1.py")
+          text = path.read_text(encoding="utf-8")
+          old = "        ResearchObjectiveContract(**kwargs)  # type: ignore[arg-type]\n"
+          if text.count(old) != 1:
+              raise SystemExit("expected one stale constructor suppression")
+          path.write_text(text.replace(old, "        ResearchObjectiveContract(**kwargs)\n"), encoding="utf-8")
+          PY
 
       - name: Canonical formatting
         run: |
