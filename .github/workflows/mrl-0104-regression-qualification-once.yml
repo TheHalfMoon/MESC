@@ -35,13 +35,17 @@ jobs:
               raise SystemExit("expected exactly one typing.Callable import")
           source = source.replace(old_import, "from collections.abc import Callable\n")
 
-          old_finalizers = "finalizers: dict[int, weakref.finalize] = {}"
-          new_finalizers = (
-              "finalizers: dict[int, weakref.finalize[ExperimentManifestBinding]] = {}"
-          )
-          if source.count(old_finalizers) != 1:
-              raise SystemExit("expected exactly one weakref.finalize annotation")
-          source = source.replace(old_finalizers, new_finalizers)
+          old_registry = '''    identities: dict[int, tuple[str, str]] = {}\n    finalizers: dict[int, weakref.finalize] = {}\n\n    def remove(key: int) -> None:\n        identities.pop(key, None)\n        finalizers.pop(key, None)\n'''
+          new_registry = '''    identities: dict[int, tuple[str, str]] = {}\n\n    def remove(key: int) -> None:\n        identities.pop(key, None)\n'''
+          if source.count(old_registry) != 1:
+              raise SystemExit("expected exactly one construction identity registry block")
+          source = source.replace(old_registry, new_registry)
+
+          old_finalizer_store = "        finalizers[key] = weakref.finalize(value, remove, key)\n"
+          new_finalizer_store = "        weakref.finalize(value, remove, key)\n"
+          if source.count(old_finalizer_store) != 1:
+              raise SystemExit("expected exactly one finalizer storage line")
+          source = source.replace(old_finalizer_store, new_finalizer_store)
           source_path.write_text(source)
 
           test_path = Path("tests/test_mesc_mrl_experiment_manifest_binding_v1.py")
@@ -92,5 +96,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add src/medscale/mesc/_mrl_experiment_manifest_binding_v1.py tests/test_mesc_mrl_experiment_manifest_binding_v1.py
-          git commit -m "test(mrl): harden manifest binding regressions"
+          git commit -m "test(mrl): harden manifest binding regressions [skip ci]"
           git push origin HEAD:tmp/mrl-0104-regression-qualification
