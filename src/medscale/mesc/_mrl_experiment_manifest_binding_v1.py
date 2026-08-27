@@ -117,9 +117,7 @@ def _validated_binding_snapshot(value: ExperimentManifestBinding) -> ExperimentM
         construction_plan_sha256 = value._construction_plan_sha256
         construction_manifest_sha256 = value._construction_manifest_sha256
     except AttributeError as exc:
-        raise ExperimentManifestBindingError(
-            "binding construction identities are missing"
-        ) from exc
+        raise ExperimentManifestBindingError("binding construction identities are missing") from exc
     _require_exact_str(construction_plan_sha256, "construction plan identity")
     _require_exact_str(construction_manifest_sha256, "construction manifest identity")
 
