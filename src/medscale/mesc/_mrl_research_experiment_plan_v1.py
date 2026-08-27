@@ -151,14 +151,11 @@ class ExpectedExperimentManifestBinding:
         _require_sha256(self.configuration_sha256, "configuration_sha256")
         _require_exact_instances(self.datasets, ExpectedDatasetBinding, "datasets")
         if not self.datasets:
-            raise ResearchExperimentPlanError(
-                "expected manifest requires at least one dataset"
-            )
+            raise ResearchExperimentPlanError("expected manifest requires at least one dataset")
         dataset_keys = tuple((dataset.name, dataset.version) for dataset in self.datasets)
         if dataset_keys != tuple(sorted(set(dataset_keys))):
             raise ResearchExperimentPlanError(
-                "expected manifest datasets must be unique and strictly sorted by "
-                "name/version"
+                "expected manifest datasets must be unique and strictly sorted by name/version"
             )
         _require_exact_instance(self.model, ExpectedModelBinding, "model")
         _require_positive_int(self.model_tier, "model_tier")
@@ -255,8 +252,7 @@ class ResearchExperimentPlan:
         expected_manifest = _snapshot_expected_manifest(self.expected_manifest)
         resource_ceiling = _snapshot_resource_budget(self.resource_ceiling)
         evaluator_identities = tuple(
-            _snapshot_evaluator_identity(identity)
-            for identity in self.evaluator_identities
+            _snapshot_evaluator_identity(identity) for identity in self.evaluator_identities
         )
         _require_exact_instances(
             self.tier_allowances,
@@ -295,19 +291,11 @@ class ResearchExperimentPlan:
             "mutation_surfaces": list(self.mutation_surfaces),
             "expected_manifest": self.expected_manifest.to_dict(),
             "resource_ceiling": self.resource_ceiling.to_dict(),
-            "evaluator_identities": [
-                identity.to_dict() for identity in self.evaluator_identities
-            ],
+            "evaluator_identities": [identity.to_dict() for identity in self.evaluator_identities],
             "evaluation_tiers": [int(tier) for tier in self.evaluation_tiers],
-            "tier_allowances": [
-                allowance.to_dict() for allowance in self.tier_allowances
-            ],
-            "stop_conditions": [
-                condition.value for condition in self.stop_conditions
-            ],
-            "failure_conditions": [
-                condition.value for condition in self.failure_conditions
-            ],
+            "tier_allowances": [allowance.to_dict() for allowance in self.tier_allowances],
+            "stop_conditions": [condition.value for condition in self.stop_conditions],
+            "failure_conditions": [condition.value for condition in self.failure_conditions],
         }
 
     def semantic_dict(self) -> dict[str, object]:
@@ -362,12 +350,9 @@ def _validate_plan(plan: ResearchExperimentPlan) -> None:
         )
 
     expected_manifest = _snapshot_expected_manifest(plan.expected_manifest)
-    if not set(expected_manifest.rq_refs).issubset(
-        set(objective.research_program_refs)
-    ):
+    if not set(expected_manifest.rq_refs).issubset(set(objective.research_program_refs)):
         raise ResearchExperimentPlanError(
-            "expected manifest research-question refs must be within the objective "
-            "envelope"
+            "expected manifest research-question refs must be within the objective envelope"
         )
     _require_result_destinations_outside_forbidden_surfaces(
         expected_manifest.results_paths,
@@ -386,9 +371,7 @@ def _validate_plan(plan: ResearchExperimentPlan) -> None:
         EvaluatorIdentity,
         "evaluator_identities",
     )
-    evaluator_ids = tuple(
-        identity.evaluator_id for identity in plan.evaluator_identities
-    )
+    evaluator_ids = tuple(identity.evaluator_id for identity in plan.evaluator_identities)
     if not evaluator_ids:
         raise ResearchExperimentPlanError("evaluator_identities cannot be empty")
     if evaluator_ids != tuple(sorted(set(evaluator_ids))):
@@ -396,15 +379,13 @@ def _validate_plan(plan: ResearchExperimentPlan) -> None:
             "evaluator_identities must be unique and strictly sorted by evaluator_id"
         )
     objective_evaluators = {
-        identity.evaluator_id: identity
-        for identity in objective.evaluator_identities
+        identity.evaluator_id: identity for identity in objective.evaluator_identities
     }
     for identity in plan.evaluator_identities:
         matched = objective_evaluators.get(identity.evaluator_id)
         if matched is None or identity.to_dict() != matched.to_dict():
             raise ResearchExperimentPlanError(
-                f"evaluator {identity.evaluator_id!r} does not exactly match the "
-                "frozen objective"
+                f"evaluator {identity.evaluator_id!r} does not exactly match the frozen objective"
             )
 
     _require_evaluation_tiers(plan.evaluation_tiers)
@@ -424,18 +405,12 @@ def _validate_plan(plan: ResearchExperimentPlan) -> None:
         PlanTierAllowance,
         "tier_allowances",
     )
-    allowance_tiers = tuple(
-        allowance.tier for allowance in plan.tier_allowances
-    )
+    allowance_tiers = tuple(allowance.tier for allowance in plan.tier_allowances)
     if allowance_tiers != plan.evaluation_tiers:
         raise ResearchExperimentPlanError(
-            "tier_allowances must define exactly every plan evaluation tier in "
-            "ascending order"
+            "tier_allowances must define exactly every plan evaluation tier in ascending order"
         )
-    objective_exposure = {
-        policy.tier: policy
-        for policy in objective.tier_result_exposure_policy
-    }
+    objective_exposure = {policy.tier: policy for policy in objective.tier_result_exposure_policy}
     for allowance in plan.tier_allowances:
         _require_tier_allowance_within_objective(
             allowance,
@@ -466,9 +441,7 @@ def _snapshot_objective(
     try:
         return value._validated_snapshot()
     except ResearchObjectiveContractError as exc:
-        raise ResearchExperimentPlanError(
-            "objective failed canonical revalidation"
-        ) from exc
+        raise ResearchExperimentPlanError("objective failed canonical revalidation") from exc
 
 
 def _snapshot_hypothesis(value: ResearchHypothesis) -> ResearchHypothesis:
@@ -476,9 +449,7 @@ def _snapshot_hypothesis(value: ResearchHypothesis) -> ResearchHypothesis:
     try:
         return value._validated_snapshot()
     except ResearchHypothesisError as exc:
-        raise ResearchExperimentPlanError(
-            "hypothesis failed canonical revalidation"
-        ) from exc
+        raise ResearchExperimentPlanError("hypothesis failed canonical revalidation") from exc
 
 
 def _snapshot_expected_manifest(
@@ -532,9 +503,7 @@ def _snapshot_resource_budget(value: ResourceBudget) -> ResourceBudget:
             evaluator_invocations=value.evaluator_invocations,
         )
     except ResearchObjectiveContractError as exc:
-        raise ResearchExperimentPlanError(
-            "resource_ceiling failed canonical revalidation"
-        ) from exc
+        raise ResearchExperimentPlanError("resource_ceiling failed canonical revalidation") from exc
 
 
 def _snapshot_evaluator_identity(value: EvaluatorIdentity) -> EvaluatorIdentity:
@@ -609,12 +578,9 @@ def _require_tier_allowance_within_objective(
         raise ResearchExperimentPlanError(
             f"tier {int(allowance.tier)} result exposure exceeds the frozen objective"
         )
-    if not set(allowance.allowed_result_fields).issubset(
-        set(exposure.allowed_result_fields)
-    ):
+    if not set(allowance.allowed_result_fields).issubset(set(exposure.allowed_result_fields)):
         raise ResearchExperimentPlanError(
-            f"tier {int(allowance.tier)} exposes result fields outside the frozen "
-            "objective"
+            f"tier {int(allowance.tier)} exposes result fields outside the frozen objective"
         )
 
 
@@ -674,9 +640,7 @@ def _require_canonical_relative_path(value: str, label: str) -> None:
         or "//" in value
         or any(part in ("", ".", "..") for part in parts)
     ):
-        raise ResearchExperimentPlanError(
-            f"{label} contains non-canonical relative path {value!r}"
-        )
+        raise ResearchExperimentPlanError(f"{label} contains non-canonical relative path {value!r}")
 
 
 def _require_rq_refs(values: tuple[str, ...]) -> None:
@@ -687,13 +651,9 @@ def _require_rq_refs(values: tuple[str, ...]) -> None:
     for value in values:
         _require_text(value, "rq_refs")
         if not _RQ_REF.fullmatch(value):
-            raise ResearchExperimentPlanError(
-                "rq_refs must use canonical RQn references"
-            )
+            raise ResearchExperimentPlanError("rq_refs must use canonical RQn references")
     if values != tuple(sorted(set(values))):
-        raise ResearchExperimentPlanError(
-            "rq_refs must be unique and strictly sorted"
-        )
+        raise ResearchExperimentPlanError("rq_refs must be unique and strictly sorted")
 
 
 def _require_seed_plan(values: tuple[int, ...]) -> None:
@@ -704,25 +664,19 @@ def _require_seed_plan(values: tuple[int, ...]) -> None:
     for value in values:
         _require_nonnegative_int(value, "seed")
     if values != tuple(sorted(set(values))):
-        raise ResearchExperimentPlanError(
-            "seeds must be unique and strictly ascending"
-        )
+        raise ResearchExperimentPlanError("seeds must be unique and strictly ascending")
 
 
 def _require_evaluation_tiers(values: tuple[EvaluationTier, ...]) -> None:
     if type(values) is not tuple:
-        raise ResearchExperimentPlanError(
-            "evaluation_tiers must be an exact tuple"
-        )
+        raise ResearchExperimentPlanError("evaluation_tiers must be an exact tuple")
     if not values:
         raise ResearchExperimentPlanError("evaluation_tiers cannot be empty")
     for value in values:
         _require_exact_enum(value, EvaluationTier, "evaluation_tiers")
     numeric = tuple(int(value) for value in values)
     if numeric != tuple(sorted(set(numeric))):
-        raise ResearchExperimentPlanError(
-            "evaluation_tiers must be unique and strictly ascending"
-        )
+        raise ResearchExperimentPlanError("evaluation_tiers must be unique and strictly ascending")
 
 
 def _require_sorted_unique_enum_members(
@@ -739,9 +693,7 @@ def _require_sorted_unique_enum_members(
             )
     names = tuple(value.value for value in values)
     if names != tuple(sorted(set(names))):
-        raise ResearchExperimentPlanError(
-            f"{label} must be unique and strictly sorted"
-        )
+        raise ResearchExperimentPlanError(f"{label} must be unique and strictly sorted")
 
 
 def _require_sorted_unique_text(
@@ -757,9 +709,7 @@ def _require_sorted_unique_text(
     for value in values:
         _require_text(value, label)
     if values != tuple(sorted(set(values))):
-        raise ResearchExperimentPlanError(
-            f"{label} must be unique and strictly sorted"
-        )
+        raise ResearchExperimentPlanError(f"{label} must be unique and strictly sorted")
 
 
 def _require_exact_instances(
@@ -779,9 +729,7 @@ def _require_exact_instance(
     label: str,
 ) -> None:
     if type(value) is not expected:
-        raise ResearchExperimentPlanError(
-            f"{label} must be an exact {expected.__name__} instance"
-        )
+        raise ResearchExperimentPlanError(f"{label} must be an exact {expected.__name__} instance")
 
 
 def _require_exact_enum(
@@ -790,9 +738,7 @@ def _require_exact_enum(
     label: str,
 ) -> None:
     if type(value) is not expected:
-        raise ResearchExperimentPlanError(
-            f"{label} must be an exact {expected.__name__} value"
-        )
+        raise ResearchExperimentPlanError(f"{label} must be an exact {expected.__name__} value")
 
 
 def _require_kebab_id(
@@ -803,57 +749,39 @@ def _require_kebab_id(
 ) -> None:
     _require_text(value, label)
     if not pattern.fullmatch(value):
-        raise ResearchExperimentPlanError(
-            f"{label} must use lowercase kebab-case semantics"
-        )
+        raise ResearchExperimentPlanError(f"{label} must use lowercase kebab-case semantics")
 
 
 def _require_token(value: str, label: str) -> None:
     _require_text(value, label)
     if not _TOKEN_ID.fullmatch(value):
-        raise ResearchExperimentPlanError(
-            f"{label} must be a canonical token"
-        )
+        raise ResearchExperimentPlanError(f"{label} must be a canonical token")
 
 
 def _require_text(value: str, label: str) -> None:
     if type(value) is not str:
         raise ResearchExperimentPlanError(f"{label} must be an exact string")
-    if (
-        not value
-        or value != value.strip()
-        or any(char in value for char in "\x00\r\n\t")
-    ):
-        raise ResearchExperimentPlanError(
-            f"{label} must be non-empty canonical text"
-        )
+    if not value or value != value.strip() or any(char in value for char in "\x00\r\n\t"):
+        raise ResearchExperimentPlanError(f"{label} must be non-empty canonical text")
 
 
 def _require_sha256(value: str, label: str) -> None:
     _require_text(value, label)
     if not _SHA256.fullmatch(value):
-        raise ResearchExperimentPlanError(
-            f"{label} must be 64 lowercase hex"
-        )
+        raise ResearchExperimentPlanError(f"{label} must be 64 lowercase hex")
 
 
 def _require_git_sha40(value: str, label: str) -> None:
     _require_text(value, label)
     if not _GIT_SHA40.fullmatch(value):
-        raise ResearchExperimentPlanError(
-            f"{label} must be an exact 40-character git SHA"
-        )
+        raise ResearchExperimentPlanError(f"{label} must be an exact 40-character git SHA")
 
 
 def _require_positive_int(value: int, label: str) -> None:
     if type(value) is not int or value <= 0:
-        raise ResearchExperimentPlanError(
-            f"{label} must be a positive exact integer"
-        )
+        raise ResearchExperimentPlanError(f"{label} must be a positive exact integer")
 
 
 def _require_nonnegative_int(value: int, label: str) -> None:
     if type(value) is not int or value < 0:
-        raise ResearchExperimentPlanError(
-            f"{label} must be a non-negative exact integer"
-        )
+        raise ResearchExperimentPlanError(f"{label} must be a non-negative exact integer")
