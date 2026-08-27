@@ -1,0 +1,85 @@
+name: DIAG MRL-0102 Exact Type Guard
+
+on:
+  push:
+    branches:
+      - diag/mrl-0102-exact-type-4695
+
+permissions:
+  contents: write
+
+jobs:
+  qualify:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: true
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+      - run: uv python install 3.12
+      - run: uv sync --frozen
+      - name: Apply exact-type semantic-view guard
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          source = Path("src/medscale/mesc/_mrl_research_hypothesis_v1.py")
+          text = source.read_text()
+          text = text.replace(
+              '''    def _validated_snapshot(self) -> ResearchHypothesis:\n        """Rebuild and validate one local semantic snapshot before every public view."""\n        return ResearchHypothesis(\n''',
+              '''    def _validated_snapshot(self) -> ResearchHypothesis:\n        """Rebuild and validate one local semantic snapshot before every public view."""\n        _require_exact_hypothesis(self)\n        return ResearchHypothesis(\n''',
+              1,
+          )
+          text = text.replace(
+              '''    def semantic_dict(self) -> dict[str, object]:\n        """Return complete semantics from one freshly revalidated local snapshot."""\n        snapshot = self._validated_snapshot()\n''',
+              '''    def semantic_dict(self) -> dict[str, object]:\n        """Return complete semantics from one freshly revalidated local snapshot."""\n        _require_exact_hypothesis(self)\n        snapshot = self._validated_snapshot()\n''',
+              1,
+          )
+          text = text.replace(
+              '''    def semantic_bytes(self) -> bytes:\n        """Return canonical UTF-8 bytes from one freshly revalidated snapshot."""\n        snapshot = self._validated_snapshot()\n''',
+              '''    def semantic_bytes(self) -> bytes:\n        """Return canonical UTF-8 bytes from one freshly revalidated snapshot."""\n        _require_exact_hypothesis(self)\n        snapshot = self._validated_snapshot()\n''',
+              1,
+          )
+          text = text.replace(
+              '''    def content_sha256(self) -> str:\n        """Derive identity from canonical semantics outside the semantic preimage."""\n        snapshot = self._validated_snapshot()\n''',
+              '''    def content_sha256(self) -> str:\n        """Derive identity from canonical semantics outside the semantic preimage."""\n        _require_exact_hypothesis(self)\n        snapshot = self._validated_snapshot()\n''',
+              1,
+          )
+          text = text.replace(
+              '''    def to_dict(self) -> dict[str, object]:\n        """Return semantic envelope plus derived content identity."""\n        snapshot = self._validated_snapshot()\n''',
+              '''    def to_dict(self) -> dict[str, object]:\n        """Return semantic envelope plus derived content identity."""\n        _require_exact_hypothesis(self)\n        snapshot = self._validated_snapshot()\n''',
+              1,
+          )
+          marker = '''\n\ndef _require_text(value: str, label: str) -> None:\n'''
+          helper = '''\n\ndef _require_exact_hypothesis(value: ResearchHypothesis) -> None:\n    if type(value) is not ResearchHypothesis:\n        raise ResearchHypothesisError(\n            "research hypothesis semantic views require an exact ResearchHypothesis instance"\n        )\n\n\ndef _require_text(value: str, label: str) -> None:\n'''
+          if marker not in text:
+              raise SystemExit("source helper insertion point missing")
+          text = text.replace(marker, helper, 1)
+          source.write_text(text)
+
+          tests = Path("tests/test_mesc_mrl_research_hypothesis_v1.py")
+          test_text = tests.read_text()
+          addition = '''\n\nclass _SnapshotBypassHypothesis(ResearchHypothesis):\n    def _validated_snapshot(self) -> ResearchHypothesis:\n        return _hypothesis()\n\n\ndef test_subclass_snapshot_override_fails_closed_for_all_public_views() -> None:\n    base = _hypothesis()\n    forged = _SnapshotBypassHypothesis(\n        hypothesis_id=base.hypothesis_id,\n        objective_sha256=base.objective_sha256,\n        mechanism=base.mechanism,\n        predicted_effects=base.predicted_effects,\n        predicted_failure_modes=base.predicted_failure_modes,\n        falsification_criteria=base.falsification_criteria,\n        evidence_refs=base.evidence_refs,\n        parent_hypothesis_ids=base.parent_hypothesis_ids,\n        created_from_campaign_state_sha256=base.created_from_campaign_state_sha256,\n    )\n\n    with pytest.raises(ResearchHypothesisError, match="exact ResearchHypothesis instance"):\n        forged.semantic_dict()\n    with pytest.raises(ResearchHypothesisError, match="exact ResearchHypothesis instance"):\n        _ = forged.semantic_bytes\n    with pytest.raises(ResearchHypothesisError, match="exact ResearchHypothesis instance"):\n        _ = forged.content_sha256\n    with pytest.raises(ResearchHypothesisError, match="exact ResearchHypothesis instance"):\n        forged.to_dict()\n'''
+          tests.write_text(test_text + addition)
+          PY
+      - name: Canonical formatting
+        run: uv run ruff format src/medscale/mesc/_mrl_research_hypothesis_v1.py tests/test_mesc_mrl_research_hypothesis_v1.py
+      - name: Ruff lint and format check
+        run: |
+          uv run ruff check .
+          uv run ruff format --check .
+      - name: Canonical mypy
+        run: uv run mypy
+      - name: Focused MRL-0102 tests
+        run: uv run pytest -q tests/test_mesc_mrl_research_hypothesis_v1.py
+      - name: Full test suite
+        run: uv run pytest -q
+      - name: Integrity gate
+        run: uv run medscale check
+      - name: Commit qualified target files
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/medscale/mesc/_mrl_research_hypothesis_v1.py tests/test_mesc_mrl_research_hypothesis_v1.py
+          git commit -m "fix(diag): reject hypothesis subclass semantic bypass"
+          git push origin HEAD:diag/mrl-0102-exact-type-4695
