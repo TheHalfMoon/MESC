@@ -59,6 +59,11 @@ jobs:
               'match="cannot carry source artifact"',
               'match="cannot carry a source permission"',
           )
+          tests = tests.replace(
+              'match="not trusted|governing source contract"',
+              'match=r"not trusted|governing source contract"',
+              1,
+          )
           subclass_fixture = (
               "        source_contract_sha256=base.source_contract_sha256,\n"
               "        allowed_learning_surfaces=base.allowed_learning_surfaces,\n"
