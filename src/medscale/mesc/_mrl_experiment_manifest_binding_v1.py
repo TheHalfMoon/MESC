@@ -12,8 +12,8 @@ from __future__ import annotations
 
 import math
 import weakref
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Callable
 
 from medscale.mesc._mrl_content_identity_v1 import (
     canonical_semantic_bytes,
@@ -45,18 +45,16 @@ def _make_construction_identity_registry() -> tuple[
 ]:
     """Keep construction identities outside the returned binding object's reachable state."""
     identities: dict[int, tuple[str, str]] = {}
-    finalizers: dict[int, weakref.finalize] = {}
 
     def remove(key: int) -> None:
         identities.pop(key, None)
-        finalizers.pop(key, None)
 
     def store(value: ExperimentManifestBinding, plan_sha256: str, manifest_sha256: str) -> None:
         key = id(value)
         if key in identities:
             raise ExperimentManifestBindingError("binding construction identity already exists")
         identities[key] = (plan_sha256, manifest_sha256)
-        finalizers[key] = weakref.finalize(value, remove, key)
+        weakref.finalize(value, remove, key)
 
     def load(value: ExperimentManifestBinding) -> tuple[str, str]:
         identity = identities.get(id(value))
