@@ -7,6 +7,13 @@ restricted parent into a more permissive research-learning class.
 
 This module is declarative only. It grants no filesystem, network, model, data, GPU,
 inference, training, promotion, deployment, release, or clinical authority.
+
+Integrity checks cover caller-controlled values, post-construction mutation of canonical artifact
+data, and accidental or hostile rebinding of ordinary module-level trust names. Arbitrary Python
+code execution that rewrites executable interpreter state such as function code, closure cells,
+class methods, or ``sys.modules`` is outside this contract-level boundary: such a caller can replace
+the enforcement code itself. Untrusted research execution must therefore run outside the
+trust-bearing interpreter/process under the separately governed execution boundary.
 """
 
 from __future__ import annotations

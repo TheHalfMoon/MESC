@@ -83,6 +83,26 @@ MCRL remains a separate clinical/task-time layer. MCRL output may be treated onl
 separately authorized external evaluation evidence when its governing data boundary
 permits that use; it must never silently become an MRL learning signal.
 
+#### Implementation integrity boundary
+
+MRL-1 contract validation must fail closed for malformed or caller-controlled values and
+for post-construction mutation of canonical artifact data that remains reachable through
+ordinary object references. Authority decisions must not depend on caller-supplied trust
+metadata or ordinary rebindable module names.
+
+This contract-level threat model does **not** treat a caller with arbitrary Python code
+execution in the trust-bearing interpreter as an unprivileged research input. A caller
+that can rewrite executable interpreter state such as function code, closure cells,
+class methods, import tables, or `sys.modules` can replace the enforcement implementation
+itself. That capability is already code execution, which is a separate security failure,
+not a property that immutable Python dataclasses can contain.
+
+Accordingly, any future untrusted or agent-authored research execution must not share the
+trust-bearing interpreter/process with these governance contracts. Process/sandbox
+isolation belongs to the separately governed execution stages; this clarification grants
+no execution, model, data, network, GPU, training, promotion, deployment, release, or
+clinical authority.
+
 ### 5.2 `ResearchObjectiveContract`
 
 Minimum semantic fields:
