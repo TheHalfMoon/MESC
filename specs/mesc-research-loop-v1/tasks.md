@@ -96,7 +96,7 @@ is then present on canonical `main`. Any head mutation burns prior exact-head ev
     and is then present on canonical `main`.
   - Eligibility effect: MRL-0101 remains ineligible until that canonical merge.
 
-- [ ] **MRL-0101 — Implement `ResearchObjectiveContract`**
+- [x] **MRL-0101 — Implement `ResearchObjectiveContract`**
   - Depends on: MRL-0100.
   - Test: immutable objective semantics, resource/query/result-exposure budgets, evaluator
     identities, and evidence floors are content-addressed.
@@ -137,7 +137,6 @@ is then present on canonical `main`. Any head mutation burns prior exact-head ev
     representative transfer evidence, negative controls, typed applicability bounds, and
     an independent immutable review receipt.
   - Test: research/campaign agent cannot self-admit a procedure.
-
 - [ ] **MRL-0109 — Implement `ResearchInputAdmissionContract`**
   - Depends on: MRL-0100.
   - Test: research artifacts and separately authorized external evaluation evidence are
