@@ -16,10 +16,15 @@ import re
 from dataclasses import dataclass, field
 from typing import Final
 
-from medscale.mesc import _mrl_research_input_permission_trust_v1 as permission_trust
 from medscale.mesc._mrl_content_identity_v1 import (
     canonical_semantic_bytes,
     derive_content_sha256,
+)
+from medscale.mesc._mrl_research_input_permission_trust_v1 import (
+    ResearchInputPermissionTrustSnapshot,
+)
+from medscale.mesc._mrl_research_input_permission_trust_v1 import (
+    research_input_permission_trust_snapshot as _canonical_permission_trust_snapshot,
 )
 
 __all__ = [
@@ -307,7 +312,7 @@ class ResearchInputAdmissionContract:
 
     @property
     def disposition(self) -> ResearchInputDisposition:
-        """Return the canonical disposition after fresh exact-type validation."""
+        """Return policy disposition; authority still requires a public admission gate."""
         _require_exact_admission(self)
         snapshot = self._validated_snapshot()
         return _disposition_for_classification(snapshot.classification)
@@ -326,6 +331,7 @@ class ResearchInputAdmissionContract:
             raise ResearchInputAdmissionError(
                 f"input is not admitted to learning surface {surface.value!r}"
             )
+        _require_admission_graph_trust(snapshot)
 
     def require_external_evaluation_use(self) -> None:
         """Fail closed unless this input is separately classified as external evidence only."""
@@ -338,6 +344,7 @@ class ResearchInputAdmissionContract:
             raise ResearchInputAdmissionError(
                 "input is not admitted as separately governed external evaluation evidence"
             )
+        _require_admission_graph_trust(snapshot)
 
     def _validated_snapshot(self) -> ResearchInputAdmissionContract:
         _require_exact_admission(self)
@@ -472,7 +479,6 @@ def _require_source_permission_binding(contract: ResearchInputAdmissionContract)
             "admissible input requires an exact ResearchInputSourcePermission"
         )
     snapshot = permission._validated_snapshot()
-    permission_sha256 = derive_content_sha256(snapshot._semantic_dict_validated())
     if contract.source_artifact_sha256 != snapshot.source_artifact_sha256:
         raise ResearchInputAdmissionError(
             "source permission does not bind the admitted source artifact"
@@ -491,12 +497,43 @@ def _require_source_permission_binding(contract: ResearchInputAdmissionContract)
         raise ResearchInputAdmissionError(
             "source permission does not authorize the requested learning surfaces"
         )
-    try:
-        permission_trust.validate_research_input_source_permission_trust(permission_sha256)
-    except permission_trust.ResearchInputPermissionTrustError as exc:
+
+
+def _require_admission_graph_trust(root: ResearchInputAdmissionContract) -> None:
+    """Require current canonical trust for every admissible node in this lineage graph."""
+    trust_snapshot = _canonical_permission_trust_snapshot()
+    if type(trust_snapshot) is not ResearchInputPermissionTrustSnapshot:
         raise ResearchInputAdmissionError(
-            "source permission is not trusted by canonical research-input governance"
-        ) from exc
+            "canonical research-input permission trust snapshot has an invalid runtime type"
+        )
+    stack = [root]
+    visited: set[int] = set()
+    while stack:
+        node = stack.pop()
+        node_id = id(node)
+        if node_id in visited:
+            continue
+        visited.add(node_id)
+        _require_exact_admission(node)
+        disposition = _disposition_for_classification(node.classification)
+        if disposition is not ResearchInputDisposition.REJECTED:
+            _require_source_permission_binding(node)
+            permission = node.source_permission
+            if type(permission) is not ResearchInputSourcePermission:
+                raise ResearchInputAdmissionError(
+                    "admissible input requires an exact ResearchInputSourcePermission"
+                )
+            permission_snapshot = permission._validated_snapshot()
+            permission_sha256 = derive_content_sha256(
+                permission_snapshot._semantic_dict_validated()
+            )
+            if not trust_snapshot.admits(permission_sha256):
+                raise ResearchInputAdmissionError(
+                    "source permission is not trusted by canonical research-input governance"
+                )
+        for parent_ref in node.parent_inputs:
+            _require_exact_parent_ref(parent_ref)
+            stack.append(parent_ref.parent_admission)
 
 
 def _require_no_lineage_laundering(
