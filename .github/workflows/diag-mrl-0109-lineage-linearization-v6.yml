@@ -22,6 +22,7 @@ jobs:
         run: |
           python .github/diagnostics/mrl_0109_lineage_linearization_v5.py
           python .github/diagnostics/mrl_0109_lineage_linearization_v6_postfix.py
+          python .github/diagnostics/mrl_0109_lineage_linearization_v6_typing_postfix.py
       - name: Canonicalize product Python
         run: |
           uv run ruff check --fix src/medscale/mesc/_mrl_research_input_admission_v1.py tests/test_mesc_mrl_research_input_admission_v1.py
