@@ -1,6 +1,6 @@
 # MESC Research Loop V1 — Task Ledger
 
-Status: **PROPOSED TASK ORDER / NO EXECUTION AUTHORITY**
+Status: **CANONICAL TASK ORDER / MRL-0 CLOSEOUT CANDIDATE / NO EXECUTION AUTHORITY**
 
 Task states:
 
@@ -16,25 +16,31 @@ CLOSED_CANONICAL
 A task becomes `ELIGIBLE` only when all declared dependencies and any separate authority
 gates are satisfied by live repository truth.
 
+On an unmerged branch, an `[x]` in the MRL-0 closeout block records the intended canonical
+closeout candidate only. It does not by itself establish `CLOSED_CANONICAL`. MRL-0 closure
+attaches only if the final closeout head passes fresh exact-head repository checks and
+independent governance review, remains the exact PR head through expected-head merge, and
+is then present on canonical `main`. Any head mutation burns prior exact-head evidence.
+
 ## MRL-0 — Constitution and reconciliation
 
-- [ ] **MRL-0001 — Freeze MRL/MCRL boundary**
+- [x] **MRL-0001 — Freeze MRL/MCRL boundary**
   - Depends on: planning package acceptance.
   - Deliverable: ADR or equivalent canonical decision.
   - Acceptance: research-time and clinical-runtime learning paths cannot be conflated.
 
-- [ ] **MRL-0002 — Freeze immutable evaluator rule**
+- [x] **MRL-0002 — Freeze immutable evaluator rule**
   - Depends on: MRL-0001.
   - Acceptance: campaign agents cannot alter active evaluators, evaluation rules, sealed
     data, governance, authorization, trust registries, canonical history, or CI/security
     qualification gates.
 
-- [ ] **MRL-0003 — Freeze adaptive evaluation tiers**
+- [x] **MRL-0003 — Freeze adaptive evaluation tiers**
   - Depends on: MRL-0002.
   - Acceptance: Tier 0 development, Tier 1 search, Tier 2 replication, Tier 3 sealed
     evaluation, and Tier 4 external/clinician assurance are semantically distinct.
 
-- [ ] **MRL-0004 — Freeze evidence semantics and promotion deferral**
+- [x] **MRL-0004 — Freeze evidence semantics and promotion deferral**
   - Depends on: MRL-0003.
   - Acceptance: hard safety/reproducibility/contamination/subgroup floors precede
     capability/cost optimization.
@@ -42,23 +48,23 @@ gates are satisfied by live repository truth.
     `PROMOTED`, or an equivalent model-promotion authority. Its highest positive research
     outcome is non-authoritative `EVIDENCE_CANDIDATE`.
 
-- [ ] **MRL-0005 — Define campaign resource and adaptive-query governance**
+- [x] **MRL-0005 — Define campaign resource and adaptive-query governance**
   - Depends on: MRL-0002, MRL-0003.
   - Acceptance: compute/time/token/storage/cost/retry/query/result-exposure ceilings are
     frozen and cannot be self-expanded by an agent.
   - Acceptance: exhaustion has an explicit fail-closed `BLOCKED` disposition.
 
-- [ ] **MRL-0006 — Reconcile research-program registry**
+- [x] **MRL-0006 — Reconcile research-program registry**
   - Depends on: MRL-0001.
   - Acceptance: foundational RQ1-RQ7 remain preserved while later MESC/MCRL/Arabic/AMGE/
     Omni/MRL questions receive explicit namespaces and status.
 
-- [ ] **MRL-0007 — Define machine-readable project-state contract**
+- [x] **MRL-0007 — Define machine-readable project-state contract**
   - Depends on: MRL-0006.
   - Acceptance: projections are deterministic derived views bound to an exact repository
     commit and canonical source hashes; stale/manual projections cannot authorize work.
 
-- [ ] **MRL-0008 — Freeze research-input admission policy**
+- [x] **MRL-0008 — Freeze research-input admission policy**
   - Depends on: MRL-0001.
   - Acceptance: PHI, product telemetry, and clinical-runtime state cannot enter MRL
     observation, history, procedure extraction, or indexes as learning signals.
@@ -67,10 +73,14 @@ gates are satisfied by live repository truth.
 
 ### MRL-0 gate
 
-- [ ] **MRL-0099 — MRL constitution exact-head qualification**
+- [x] **MRL-0099 — MRL constitution exact-head qualification**
   - Requires: MRL-0001..0008.
   - Evidence: exact-head review + repository checks.
-  - Exit: `MRL_CONSTITUTION_FROZEN`.
+  - Closeout rule: this checkbox is a branch closeout candidate until the exact final head
+    containing it passes fresh CI, CodeQL, internal governance review, Qodo review,
+    CodeRabbit status/review, and unresolved-thread checks, then merges with expected-head
+    protection to canonical `main`.
+  - Exit after canonical merge: `MRL_CONSTITUTION_FROZEN`.
 
 ---
 

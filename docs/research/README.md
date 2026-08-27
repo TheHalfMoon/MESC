@@ -1,15 +1,18 @@
 # Research
 
 - **Status:** Index
-- **Date:** 2026-07-10
+- **Date:** 2026-08-27
 
-The scientific core of MedScale. Every ticket traces to a research question here.
+The scientific core of MedScale. Scientific claims trace to canonical research questions;
+governance and infrastructure work follows the program/ADR traceability rules in the
+research-program registry.
 
 ## Documents
 
 | Document | Purpose |
 |---|---|
-| [research_questions.md](research_questions.md) | RQ1–RQ7: the falsifiable questions MedScale exists to answer, each with a test artifact and falsification condition. |
+| [research_questions.md](research_questions.md) | RQ1–RQ7: the foundational falsifiable questions MedScale exists to answer, each with a test artifact and falsification condition. |
+| [research_program_registry.md](research_program_registry.md) | Preserves RQ1–RQ7 and reserves explicit namespaces/status for later MESC, MCRL, Arabic, AMGE, Omni, and MRL research programs. |
 | [paper_taxonomy.md](paper_taxonomy.md) | The classification scheme for the literature database (litdb, T1). |
 | [reproducibility_policy.md](reproducibility_policy.md) | The 10 operational principles that turn the rules R1–R7 into per-artifact requirements. |
 
