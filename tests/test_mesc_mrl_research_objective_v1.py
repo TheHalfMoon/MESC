@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
-from dataclasses import FrozenInstanceError, replace
+from dataclasses import FrozenInstanceError, fields, replace
 
 import pytest
 
 from medscale.mesc._mrl_research_objective_v1 import (
+    AdaptiveEvaluationControls,
+    AdaptiveInvalidationRule,
     AdaptiveQueryBudget,
+    AdaptiveStoppingRule,
     BudgetExhaustionDisposition,
     EvaluationTier,
     EvaluationTierPolicy,
@@ -16,6 +19,7 @@ from medscale.mesc._mrl_research_objective_v1 import (
     FloorComparator,
     MetricContract,
     MetricDirection,
+    RepeatedEvaluationPolicy,
     ResearchObjectiveContract,
     ResearchObjectiveContractError,
     ResourceBudget,
@@ -40,6 +44,7 @@ def _objective() -> ResearchObjectiveContract:
             MetricContract(
                 metric_id="search-score",
                 evaluator_id="eval.search",
+                tier=EvaluationTier.SEARCH,
                 direction=MetricDirection.MAXIMIZE,
             ),
         ),
@@ -47,6 +52,7 @@ def _objective() -> ResearchObjectiveContract:
             MetricContract(
                 metric_id="safety",
                 evaluator_id="eval.sealed",
+                tier=EvaluationTier.SEALED,
                 direction=MetricDirection.MAXIMIZE,
             ),
         ),
@@ -70,12 +76,26 @@ def _objective() -> ResearchObjectiveContract:
             known_failure_retries=1,
             evaluator_invocations=20,
         ),
-        allowed_mutation_surfaces=("src/medscale/mesc/fixture.py",),
+        allowed_mutation_surfaces=("tests/fixtures/mrl/fixture.py",),
         forbidden_mutation_surfaces=("governance", "sealed-evaluation"),
         evaluation_tier_policy=EvaluationTierPolicy(
             allowed_tiers=(EvaluationTier.SEARCH, EvaluationTier.SEALED)
         ),
         adaptive_query_budget=AdaptiveQueryBudget(tier_1_queries=5, tier_2_queries=0),
+        adaptive_evaluation_controls=AdaptiveEvaluationControls(
+            repeated_candidate_evaluation=(RepeatedEvaluationPolicy.PERMITTED_WITHIN_FROZEN_BUDGET),
+            stopping_rules=(
+                AdaptiveStoppingRule.ADAPTIVE_QUERY_BUDGET_EXHAUSTED,
+                AdaptiveStoppingRule.EXTERNAL_GOVERNANCE_STOP,
+                AdaptiveStoppingRule.OBJECTIVE_INVALIDATED,
+            ),
+            invalidation_rules=(
+                AdaptiveInvalidationRule.EVALUATOR_IDENTITY_CHANGED,
+                AdaptiveInvalidationRule.OBJECTIVE_SEMANTICS_CHANGED,
+                AdaptiveInvalidationRule.PROTECTED_SURFACE_MUTATION_ATTEMPT,
+                AdaptiveInvalidationRule.SEALED_BOUNDARY_BREACH,
+            ),
+        ),
         tier_result_exposure_policy=(
             TierResultExposure(
                 tier=EvaluationTier.SEARCH,
@@ -164,7 +184,14 @@ def test_equivalent_objectives_have_byte_stable_identity() -> None:
         ),
         lambda value: replace(
             value,
-            allowed_mutation_surfaces=("src/medscale/mesc/other_fixture.py",),
+            allowed_mutation_surfaces=("experiments/other-fixture.py",),
+        ),
+        lambda value: replace(
+            value,
+            adaptive_evaluation_controls=replace(
+                value.adaptive_evaluation_controls,
+                repeated_candidate_evaluation=RepeatedEvaluationPolicy.FORBIDDEN,
+            ),
         ),
     ],
 )
@@ -231,7 +258,7 @@ def test_allowed_and_forbidden_mutation_surfaces_cannot_overlap() -> None:
     with pytest.raises(ResearchObjectiveContractError, match="both allowed and forbidden"):
         replace(
             _objective(),
-            allowed_mutation_surfaces=("governance",),
+            forbidden_mutation_surfaces=("governance", "tests/fixtures/mrl/fixture.py"),
         )
 
 
@@ -252,9 +279,10 @@ def test_set_like_semantics_must_be_strictly_sorted_and_unique() -> None:
         )
 
 
-def test_research_program_reference_format_fails_closed() -> None:
-    with pytest.raises(ResearchObjectiveContractError, match="unsupported reference"):
-        replace(_objective(), research_program_refs=("UNREGISTERED-RQ-0001",))
+@pytest.mark.parametrize("reference", ["UNREGISTERED-RQ-0001", "MRL-RQ-0001"])
+def test_unregistered_research_program_reference_fails_closed(reference: str) -> None:
+    with pytest.raises(ResearchObjectiveContractError, match="unregistered canonical question"):
+        replace(_objective(), research_program_refs=(reference,))
 
 
 def test_metric_must_reference_a_frozen_evaluator_identity() -> None:
@@ -357,6 +385,7 @@ def test_runtime_type_confusion_fails_closed() -> None:
                 MetricContract(
                     metric_id="search-score",
                     evaluator_id="eval.search",
+                    tier=EvaluationTier.SEARCH,
                     direction="MAXIMIZE",  # type: ignore[arg-type]
                 ),
             ),
@@ -370,8 +399,119 @@ def test_runtime_type_confusion_fails_closed() -> None:
 
 
 def test_unknown_constructor_field_is_rejected_by_closed_typed_contract() -> None:
-    kwargs = _objective().semantic_dict()
+    objective = _objective()
+    kwargs = {
+        field.name: getattr(objective, field.name) for field in fields(ResearchObjectiveContract)
+    }
     kwargs["unknown_field"] = "rejected"
 
-    with pytest.raises(TypeError):
-        ResearchObjectiveContract(**kwargs)  # type: ignore[arg-type]
+    with pytest.raises(TypeError, match="unexpected keyword"):
+        ResearchObjectiveContract(**kwargs)
+
+
+@pytest.mark.parametrize(
+    "surface",
+    [
+        ".github/workflows/ci.yml",
+        "data/sealed-evaluation.jsonl",
+        "docs/adr/0035-mrl-governance-constitution.md",
+        "specs/mesc-research-loop-v1/spec.md",
+        "src/medscale/mesc/evaluator.py",
+    ],
+)
+def test_protected_mutation_surfaces_cannot_be_allow_listed(surface: str) -> None:
+    with pytest.raises(ResearchObjectiveContractError, match="campaign-mutable roots"):
+        replace(_objective(), allowed_mutation_surfaces=(surface,))
+
+
+def test_noncanonical_allowed_mutation_path_fails_closed() -> None:
+    with pytest.raises(ResearchObjectiveContractError, match="non-canonical relative path"):
+        replace(
+            _objective(),
+            allowed_mutation_surfaces=("tests/fixtures/mrl/../sealed.json",),
+        )
+
+
+def test_governed_campaign_mutation_root_is_accepted() -> None:
+    objective = replace(
+        _objective(),
+        allowed_mutation_surfaces=("experiments/fixture.py",),
+    )
+    assert objective.allowed_mutation_surfaces == ("experiments/fixture.py",)
+
+
+def test_search_metric_cannot_use_sealed_only_evaluator() -> None:
+    objective = _objective()
+    with pytest.raises(ResearchObjectiveContractError, match="does not admit metric tier"):
+        replace(
+            objective,
+            search_metrics=(
+                replace(
+                    objective.search_metrics[0],
+                    evaluator_id="eval.sealed",
+                ),
+            ),
+        )
+
+
+def test_search_and_evaluation_metric_tiers_cannot_collapse() -> None:
+    objective = _objective()
+    with pytest.raises(ResearchObjectiveContractError, match="must use Tier 1 SEARCH"):
+        replace(
+            objective,
+            search_metrics=(replace(objective.search_metrics[0], tier=EvaluationTier.SEALED),),
+        )
+    with pytest.raises(ResearchObjectiveContractError, match="cannot use Tier 1 SEARCH"):
+        replace(
+            objective,
+            evaluation_metrics=(
+                replace(objective.evaluation_metrics[0], tier=EvaluationTier.SEARCH),
+            ),
+        )
+
+
+def test_metric_tier_must_be_allowed_by_objective() -> None:
+    objective = _objective()
+    with pytest.raises(ResearchObjectiveContractError, match="outside the objective policy"):
+        replace(
+            objective,
+            evaluation_tier_policy=EvaluationTierPolicy(allowed_tiers=(EvaluationTier.SEARCH,)),
+            tier_result_exposure_policy=(objective.tier_result_exposure_policy[0],),
+        )
+
+
+def test_adaptive_controls_are_required_and_canonical() -> None:
+    controls = _objective().adaptive_evaluation_controls
+    with pytest.raises(ResearchObjectiveContractError, match="non-empty exact tuple"):
+        replace(controls, stopping_rules=())
+    with pytest.raises(ResearchObjectiveContractError, match="non-empty exact tuple"):
+        replace(controls, invalidation_rules=())
+    with pytest.raises(ResearchObjectiveContractError, match="canonically sorted"):
+        replace(controls, stopping_rules=tuple(reversed(controls.stopping_rules)))
+    with pytest.raises(ResearchObjectiveContractError, match="exact RepeatedEvaluationPolicy"):
+        AdaptiveEvaluationControls(
+            repeated_candidate_evaluation="FORBIDDEN",  # type: ignore[arg-type]
+            stopping_rules=controls.stopping_rules,
+            invalidation_rules=controls.invalidation_rules,
+        )
+
+
+def test_adaptive_control_semantics_are_content_addressed() -> None:
+    objective = _objective()
+    changed_stopping = replace(
+        objective,
+        adaptive_evaluation_controls=replace(
+            objective.adaptive_evaluation_controls,
+            stopping_rules=(AdaptiveStoppingRule.OBJECTIVE_INVALIDATED,),
+        ),
+    )
+    changed_invalidation = replace(
+        objective,
+        adaptive_evaluation_controls=replace(
+            objective.adaptive_evaluation_controls,
+            invalidation_rules=(AdaptiveInvalidationRule.OBJECTIVE_SEMANTICS_CHANGED,),
+        ),
+    )
+
+    assert changed_stopping.content_sha256 != objective.content_sha256
+    assert changed_invalidation.content_sha256 != objective.content_sha256
