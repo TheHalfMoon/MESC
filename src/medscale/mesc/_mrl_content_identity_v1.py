@@ -61,8 +61,7 @@ def _validate_json_value(value: object, *, path: str) -> None:
         return
 
     if type(value) is float:
-        number = cast(float, value)
-        if not math.isfinite(number):
+        if not math.isfinite(value):
             raise MrlContentIdentityError(f"{path} contains a non-finite float")
         return
 
