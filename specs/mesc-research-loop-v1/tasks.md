@@ -149,11 +149,16 @@ is then present on canonical `main`. Any head mutation burns prior exact-head ev
     an independent immutable review receipt.
   - Test: research/campaign agent cannot self-admit a procedure.
 
-- [ ] **MRL-0109 — Implement `ResearchInputAdmissionContract`**
+- [x] **MRL-0109 — Implement `ResearchInputAdmissionContract`**
   - Depends on: MRL-0100.
   - Test: research artifacts and separately authorized external evaluation evidence are
     distinguishable from rejected PHI/product/clinical-runtime learning inputs.
   - Test: MRL observation/history/procedure/index admission fails closed on rejected input.
+  - Closeout rule: this checkbox is a branch closeout candidate only. `MRL-0109` becomes
+    `CLOSED_CANONICAL` only if the exact final head containing it passes fresh repository
+    checks and independent review, remains the exact PR head through expected-head merge,
+    and is then present on canonical `main`.
+  - Eligibility effect: MRL-0103 remains ineligible until that canonical merge.
 
 ### MRL-1 gate
 
