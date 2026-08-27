@@ -499,6 +499,15 @@ def _require_objective_control_conditions(
             "failure_conditions omit frozen objective requirements: " + ", ".join(missing_failures)
         )
 
+    if (
+        controls.invalidation_rules
+        and PlanStopCondition.FAILURE_CONDITION_TRIGGERED not in plan.stop_conditions
+    ):
+        raise ResearchExperimentPlanError(
+            "stop_conditions must include FAILURE_CONDITION_TRIGGERED when the frozen "
+            "objective defines invalidation_rules"
+        )
+
 
 def _snapshot_objective(
     value: ResearchObjectiveContract,

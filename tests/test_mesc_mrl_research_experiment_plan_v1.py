@@ -611,6 +611,19 @@ def test_plan_failure_conditions_cover_every_frozen_objective_rule(
         replace(complete, failure_conditions=reduced)
 
 
+def test_objective_invalidation_rules_require_failure_triggered_stop() -> None:
+    plan = _plan()
+    assert plan.objective.adaptive_evaluation_controls.invalidation_rules
+    reduced = tuple(
+        condition
+        for condition in plan.stop_conditions
+        if condition is not PlanStopCondition.FAILURE_CONDITION_TRIGGERED
+    )
+
+    with pytest.raises(ResearchExperimentPlanError, match="FAILURE_CONDITION_TRIGGERED"):
+        replace(plan, stop_conditions=reduced)
+
+
 def test_material_semantic_changes_change_plan_identity() -> None:
     plan = _plan()
     changed = replace(
