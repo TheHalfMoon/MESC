@@ -1,0 +1,46 @@
+name: DIAG MRL-0102 Format
+
+on:
+  push:
+    branches:
+      - diag/mrl-0102-ruff-format-d2a
+
+permissions:
+  contents: write
+
+jobs:
+  qualify:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: true
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+      - run: uv python install 3.12
+      - run: uv sync --frozen
+      - name: Canonical Ruff formatting
+        run: |
+          uv run ruff format src/medscale/mesc/_mrl_research_hypothesis_v1.py tests/test_mesc_mrl_research_hypothesis_v1.py
+      - name: Ruff lint and format check
+        run: |
+          uv run ruff check .
+          uv run ruff format --check .
+      - name: Strict mypy
+        run: uv run mypy --strict src
+      - name: Focused MRL-0102 tests
+        run: uv run pytest -q tests/test_mesc_mrl_research_hypothesis_v1.py
+      - name: Full test suite
+        run: uv run pytest -q
+      - name: Integrity gate
+        run: uv run medscale check
+      - name: Commit qualified target files
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/medscale/mesc/_mrl_research_hypothesis_v1.py tests/test_mesc_mrl_research_hypothesis_v1.py
+          if git diff --cached --quiet; then
+            echo "No formatting changes to commit"
+          else
+            git commit -m "style(diag): apply canonical MRL-0102 formatting"
+            git push origin HEAD:diag/mrl-0102-ruff-format-d2a
+          fi
