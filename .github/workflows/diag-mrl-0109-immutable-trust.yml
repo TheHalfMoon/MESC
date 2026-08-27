@@ -20,12 +20,35 @@ jobs:
       - name: Install Python
         run: uv python install 3.11
       - name: Apply repair
-        run: python .github/diag/mrl0109_immutable_trust_repair.py
-      - name: Verify no shipped trust mutation path
         run: |
-          ! rg -n '_replace_research_input_permission_trust_registry_for_tests|TRUSTED_RESEARCH_INPUT_SOURCE_PERMISSION_SHA256' src/medscale/mesc/_mrl_research_input_permission_trust_v1.py
+          python .github/diag/mrl0109_immutable_trust_repair.py
+          python .github/diag/mrl0109_immutable_trust_ruff_fix.py
       - name: Sync
         run: uv sync --locked
+      - name: Normalize generated product files
+        run: |
+          uv run ruff check --fix \
+            src/medscale/mesc/_mrl_research_input_admission_v1.py \
+            src/medscale/mesc/_mrl_research_input_permission_trust_v1.py \
+            tests/test_mesc_mrl_research_input_admission_v1.py
+          uv run ruff format \
+            src/medscale/mesc/_mrl_research_input_admission_v1.py \
+            src/medscale/mesc/_mrl_research_input_permission_trust_v1.py \
+            tests/test_mesc_mrl_research_input_admission_v1.py
+      - name: Verify no shipped trust mutation path
+        shell: python
+        run: |
+          from pathlib import Path
+
+          text = Path(
+              "src/medscale/mesc/_mrl_research_input_permission_trust_v1.py"
+          ).read_text(encoding="utf-8")
+          forbidden = (
+              "_replace_research_input_permission_trust_registry_for_tests",
+              "TRUSTED_RESEARCH_INPUT_SOURCE_PERMISSION_SHA256",
+          )
+          for token in forbidden:
+              assert token not in text, token
       - name: Ruff lint
         run: uv run ruff check src/medscale/mesc/_mrl_research_input_admission_v1.py src/medscale/mesc/_mrl_research_input_permission_trust_v1.py tests/test_mesc_mrl_research_input_admission_v1.py
       - name: Ruff format
