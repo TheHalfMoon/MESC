@@ -106,10 +106,16 @@ is then present on canonical `main`. Any head mutation burns prior exact-head ev
     and is then present on canonical `main`.
   - Eligibility effect: MRL-0102 remains ineligible until that canonical merge.
 
-- [ ] **MRL-0102 — Implement `ResearchHypothesis`**
+- [x] **MRL-0102 — Implement `ResearchHypothesis`**
   - Depends on: MRL-0101.
   - Test: mechanism, predicted effects, falsification criteria, evidence refs, and parent
     relationships are required and content-addressed.
+  - Closeout rule: this checkbox is a branch closeout candidate only. `MRL-0102` becomes
+    `CLOSED_CANONICAL` only if the exact final head containing it passes fresh repository
+    checks and independent review, remains the exact PR head through expected-head merge,
+    and is then present on canonical `main`.
+  - Eligibility effect: MRL-0103 remains ineligible until MRL-0109 is also
+    `CLOSED_CANONICAL` on canonical `main`.
 
 - [ ] **MRL-0103 — Implement `ResearchExperimentPlan`**
   - Depends on: MRL-0102, MRL-0109.
