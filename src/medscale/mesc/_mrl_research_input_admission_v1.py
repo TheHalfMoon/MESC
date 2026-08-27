@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import enum
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Final
 
@@ -21,10 +22,10 @@ from medscale.mesc._mrl_content_identity_v1 import (
     derive_content_sha256,
 )
 from medscale.mesc._mrl_research_input_permission_trust_v1 import (
-    ResearchInputPermissionTrustSnapshot,
+    ResearchInputPermissionTrustError,
 )
 from medscale.mesc._mrl_research_input_permission_trust_v1 import (
-    research_input_permission_trust_snapshot as _canonical_permission_trust_snapshot,
+    validate_research_input_source_permission_trust as _canonical_validate_permission_trust,
 )
 
 __all__ = [
@@ -499,13 +500,11 @@ def _require_source_permission_binding(contract: ResearchInputAdmissionContract)
         )
 
 
-def _require_admission_graph_trust(root: ResearchInputAdmissionContract) -> None:
-    """Require current canonical trust for every admissible node in this lineage graph."""
-    trust_snapshot = _canonical_permission_trust_snapshot()
-    if type(trust_snapshot) is not ResearchInputPermissionTrustSnapshot:
-        raise ResearchInputAdmissionError(
-            "canonical research-input permission trust snapshot has an invalid runtime type"
-        )
+def _require_admission_graph_trust(
+    root: ResearchInputAdmissionContract,
+    _validate_permission_trust: Callable[[str], object] = _canonical_validate_permission_trust,
+) -> None:
+    """Require canonical trust through the import-time-bound validator."""
     stack = [root]
     visited: set[int] = set()
     while stack:
@@ -527,13 +526,18 @@ def _require_admission_graph_trust(root: ResearchInputAdmissionContract) -> None
             permission_sha256 = derive_content_sha256(
                 permission_snapshot._semantic_dict_validated()
             )
-            if not trust_snapshot.admits(permission_sha256):
+            try:
+                _validate_permission_trust(permission_sha256)
+            except ResearchInputPermissionTrustError as exc:
                 raise ResearchInputAdmissionError(
                     "source permission is not trusted by canonical research-input governance"
-                )
+                ) from exc
         for parent_ref in node.parent_inputs:
             _require_exact_parent_ref(parent_ref)
             stack.append(parent_ref.parent_admission)
+
+
+del _canonical_validate_permission_trust
 
 
 def _require_no_lineage_laundering(
