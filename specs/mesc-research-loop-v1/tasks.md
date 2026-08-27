@@ -96,10 +96,15 @@ is then present on canonical `main`. Any head mutation burns prior exact-head ev
     and is then present on canonical `main`.
   - Eligibility effect: MRL-0101 remains ineligible until that canonical merge.
 
-- [ ] **MRL-0101 — Implement `ResearchObjectiveContract`**
+- [x] **MRL-0101 — Implement `ResearchObjectiveContract`**
   - Depends on: MRL-0100.
   - Test: immutable objective semantics, resource/query/result-exposure budgets, evaluator
     identities, and evidence floors are content-addressed.
+  - Closeout rule: this checkbox is a branch closeout candidate only. `MRL-0101` becomes
+    `CLOSED_CANONICAL` only if the exact final head containing it passes fresh repository
+    checks and independent review, remains the exact PR head through expected-head merge,
+    and is then present on canonical `main`.
+  - Eligibility effect: MRL-0102 remains ineligible until that canonical merge.
 
 - [ ] **MRL-0102 — Implement `ResearchHypothesis`**
   - Depends on: MRL-0101.
