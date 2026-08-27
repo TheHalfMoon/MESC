@@ -117,10 +117,16 @@ is then present on canonical `main`. Any head mutation burns prior exact-head ev
   - Eligibility effect: MRL-0103 remains ineligible until MRL-0109 is also
     `CLOSED_CANONICAL` on canonical `main`.
 
-- [ ] **MRL-0103 — Implement `ResearchExperimentPlan`**
+- [x] **MRL-0103 — Implement `ResearchExperimentPlan`**
   - Depends on: MRL-0102, MRL-0109.
   - Test: mutation allow-list, budget, evaluator identities, evaluation tier, and exposure
     allowance are frozen before execution.
+  - Closeout rule: this checkbox is a branch closeout candidate only. `MRL-0103` becomes
+    `CLOSED_CANONICAL` only if the exact final head containing it passes fresh repository
+    checks and independent review, remains the exact PR head through expected-head merge,
+    and is then present on canonical `main`.
+  - Eligibility effect: MRL-0104 remains ineligible until MRL-0103 is
+    `CLOSED_CANONICAL` on canonical `main`.
 
 - [ ] **MRL-0104 — Bind existing `ExperimentManifest`**
   - Depends on: MRL-0103.
