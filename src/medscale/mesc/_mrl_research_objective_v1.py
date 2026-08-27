@@ -247,11 +247,12 @@ class TierResultExposure:
         _require_sorted_unique_text(
             self.allowed_result_fields, "allowed_result_fields", allow_empty=True
         )
-        if self.tier in (EvaluationTier.SEALED, EvaluationTier.EXTERNAL_ASSURANCE):
-            if self.max_exposures != 0 or self.allowed_result_fields:
-                raise ResearchObjectiveContractError(
-                    "Tier 3/4 cannot expose iterative agent-visible result fields"
-                )
+        if self.tier in (EvaluationTier.SEALED, EvaluationTier.EXTERNAL_ASSURANCE) and (
+            self.max_exposures != 0 or self.allowed_result_fields
+        ):
+            raise ResearchObjectiveContractError(
+                "Tier 3/4 cannot expose iterative agent-visible result fields"
+            )
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -336,7 +337,8 @@ class ResearchObjectiveContract:
         for identity in self.evaluator_identities:
             if not set(identity.tiers).issubset(allowed_tiers):
                 raise ResearchObjectiveContractError(
-                    f"evaluator {identity.evaluator_id!r} references a tier outside the objective policy"
+                    f"evaluator {identity.evaluator_id!r} references a tier outside "
+                    "the objective policy"
                 )
 
         if not self.search_metrics:
@@ -358,7 +360,8 @@ class ResearchObjectiveContract:
         for metric in self.search_metrics + self.evaluation_metrics:
             if metric.evaluator_id not in known_evaluators:
                 raise ResearchObjectiveContractError(
-                    f"metric {metric.metric_id!r} references unknown evaluator {metric.evaluator_id!r}"
+                    f"metric {metric.metric_id!r} references unknown evaluator "
+                    f"{metric.evaluator_id!r}"
                 )
 
         if not self.hard_guardrails:
@@ -377,7 +380,8 @@ class ResearchObjectiveContract:
         for floor in self.hard_guardrails:
             if floor.subgroup is not None:
                 raise ResearchObjectiveContractError(
-                    "hard_guardrails must be global; use subgroup_floors for subgroup-specific floors"
+                    "hard_guardrails must be global; use subgroup_floors for "
+                    "subgroup-specific floors"
                 )
             if floor.metric_id not in evaluation_metric_ids:
                 raise ResearchObjectiveContractError(
