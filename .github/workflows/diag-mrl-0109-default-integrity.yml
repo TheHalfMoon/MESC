@@ -1,0 +1,218 @@
+name: diag-mrl-0109-default-integrity
+
+on:
+  push:
+    branches:
+      - diag/mrl-0109-default-integrity
+
+permissions:
+  contents: write
+
+jobs:
+  qualify:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+      - run: uv python install 3.12
+      - run: uv sync --frozen
+      - name: Apply bounded product repair
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          admission_path = Path("src/medscale/mesc/_mrl_research_input_admission_v1.py")
+          text = admission_path.read_text(encoding="utf-8")
+          text = text.replace(
+              "authority.\n\"\"\"",
+              "authority. The supported same-process mutation threat model covers returned data, "
+              "module globals, and callable defaults; direct replacement of Python function code, "
+              "closure cells, or class methods is equivalent to modifying executing code and is "
+              "outside this declarative contract boundary.\n\"\"\"",
+              1,
+          )
+          old = '''def _require_admission_graph_trust(
+              root: ResearchInputAdmissionContract,
+              _validate_permission_trust: Callable[[str], object] = _canonical_validate_permission_trust,
+          ) -> None:
+              """Require canonical trust through the import-time-bound validator."""
+              stack = [root]
+              visited: set[int] = set()
+              while stack:
+                  node = stack.pop()
+                  node_id = id(node)
+                  if node_id in visited:
+                      continue
+                  visited.add(node_id)
+                  _require_exact_admission(node)
+                  disposition = _disposition_for_classification(node.classification)
+                  if disposition is not ResearchInputDisposition.REJECTED:
+                      _require_source_permission_binding(node)
+                      permission = node.source_permission
+                      if type(permission) is not ResearchInputSourcePermission:
+                          raise ResearchInputAdmissionError(
+                              "admissible input requires an exact ResearchInputSourcePermission"
+                          )
+                      permission_snapshot = permission._validated_snapshot()
+                      permission_sha256 = derive_content_sha256(
+                          permission_snapshot._semantic_dict_validated()
+                      )
+                      try:
+                          _validate_permission_trust(permission_sha256)
+                      except ResearchInputPermissionTrustError as exc:
+                          raise ResearchInputAdmissionError(
+                              "source permission is not trusted by canonical research-input governance"
+                          ) from exc
+                  for parent_ref in node.parent_inputs:
+                      _require_exact_parent_ref(parent_ref)
+                      stack.append(parent_ref.parent_admission)
+
+
+          del _canonical_validate_permission_trust
+          '''
+          new = '''def _build_admission_graph_trust_gate(
+              validate_permission_trust: Callable[[str], object],
+          ) -> Callable[[ResearchInputAdmissionContract], None]:
+              """Bind admission authority to one import-time canonical validator closure."""
+
+              def require_admission_graph_trust(root: ResearchInputAdmissionContract) -> None:
+                  stack = [root]
+                  visited: set[int] = set()
+                  while stack:
+                      node = stack.pop()
+                      node_id = id(node)
+                      if node_id in visited:
+                          continue
+                      visited.add(node_id)
+                      _require_exact_admission(node)
+                      disposition = _disposition_for_classification(node.classification)
+                      if disposition is not ResearchInputDisposition.REJECTED:
+                          _require_source_permission_binding(node)
+                          permission = node.source_permission
+                          if type(permission) is not ResearchInputSourcePermission:
+                              raise ResearchInputAdmissionError(
+                                  "admissible input requires an exact ResearchInputSourcePermission"
+                              )
+                          permission_snapshot = permission._validated_snapshot()
+                          permission_sha256 = derive_content_sha256(
+                              permission_snapshot._semantic_dict_validated()
+                          )
+                          try:
+                              validate_permission_trust(permission_sha256)
+                          except ResearchInputPermissionTrustError as exc:
+                              raise ResearchInputAdmissionError(
+                                  "source permission is not trusted by canonical research-input governance"
+                              ) from exc
+                      for parent_ref in node.parent_inputs:
+                          _require_exact_parent_ref(parent_ref)
+                          stack.append(parent_ref.parent_admission)
+
+              return require_admission_graph_trust
+
+
+          _require_admission_graph_trust = _build_admission_graph_trust_gate(
+              _canonical_validate_permission_trust
+          )
+          del _build_admission_graph_trust_gate
+          del _canonical_validate_permission_trust
+          '''
+          if old not in text:
+              raise SystemExit("expected default-bound trust helper not found")
+          admission_path.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+          test_path = Path("tests/test_mesc_mrl_research_input_permission_trust_v1.py")
+          tests = test_path.read_text(encoding="utf-8")
+          tests += '''
+
+          def test_mutating_trust_gate_defaults_cannot_mint_admission_authority(
+              monkeypatch: pytest.MonkeyPatch,
+          ) -> None:
+              learning_permission = ResearchInputSourcePermission(
+                  permission_id="default-mutation-learning",
+                  source_artifact_sha256="1" * 64,
+                  source_contract_sha256="2" * 64,
+                  classification=ResearchInputClassification.RESEARCH_ARTIFACT,
+                  allowed_learning_surfaces=(ResearchLearningSurface.OBSERVATION,),
+              )
+              learning = ResearchInputAdmissionContract(
+                  input_id="default-mutation-learning-input",
+                  classification_policy_sha256="c" * 64,
+                  classification=ResearchInputClassification.RESEARCH_ARTIFACT,
+                  source_artifact_sha256="1" * 64,
+                  source_contract_sha256="2" * 64,
+                  allowed_learning_surfaces=(ResearchLearningSurface.OBSERVATION,),
+                  source_permission=learning_permission,
+              )
+              external_permission = ResearchInputSourcePermission(
+                  permission_id="default-mutation-external",
+                  source_artifact_sha256="3" * 64,
+                  source_contract_sha256="4" * 64,
+                  classification=ResearchInputClassification.EXTERNAL_EVALUATION_EVIDENCE,
+                  allowed_learning_surfaces=(),
+              )
+              external = ResearchInputAdmissionContract(
+                  input_id="default-mutation-external-input",
+                  classification_policy_sha256="d" * 64,
+                  classification=ResearchInputClassification.EXTERNAL_EVALUATION_EVIDENCE,
+                  source_artifact_sha256="3" * 64,
+                  source_contract_sha256="4" * 64,
+                  allowed_learning_surfaces=(),
+                  source_permission=external_permission,
+              )
+              forged = permission_trust.ResearchInputPermissionTrustSnapshot(
+                  registry_version=permission_trust.TRUST_REGISTRY_VERSION,
+                  trusted_source_permission_sha256=frozenset(
+                      {
+                          learning_permission.content_sha256,
+                          external_permission.content_sha256,
+                      }
+                  ),
+                  registry_sha256="e" * 64,
+              )
+              gate = admission._require_admission_graph_trust
+              assert gate.__defaults__ is None
+              monkeypatch.setattr(gate, "__defaults__", (lambda _value: forged,))
+
+              with pytest.raises(ResearchInputAdmissionError, match="not trusted"):
+                  learning.require_learning_admission(ResearchLearningSurface.OBSERVATION)
+              with pytest.raises(ResearchInputAdmissionError, match="not trusted"):
+                  external.require_external_evaluation_use()
+          '''
+          test_path.write_text(tests, encoding="utf-8")
+          PY
+      - name: Canonicalize changed Python
+        run: |
+          uv run ruff check --fix src/medscale/mesc/_mrl_research_input_admission_v1.py tests/test_mesc_mrl_research_input_permission_trust_v1.py
+          uv run ruff format src/medscale/mesc/_mrl_research_input_admission_v1.py tests/test_mesc_mrl_research_input_permission_trust_v1.py
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run mypy src tests
+      - name: Focused tests
+        run: uv run pytest -q tests/test_mesc_mrl_research_input_admission_v1.py tests/test_mesc_mrl_research_input_permission_trust_v1.py
+      - name: Full pytest
+        run: uv run pytest -q
+      - run: uv run medscale check
+      - name: Verify bounded product diff
+        shell: bash
+        run: |
+          python - <<'PY'
+          import subprocess
+          expected = {
+              "src/medscale/mesc/_mrl_research_input_admission_v1.py",
+              "tests/test_mesc_mrl_research_input_permission_trust_v1.py",
+          }
+          changed = set(subprocess.check_output(["git", "diff", "--name-only"], text=True).splitlines())
+          if changed != expected:
+              raise SystemExit(f"unexpected product diff: {sorted(changed)!r}")
+          PY
+      - name: Commit qualified product repair
+        shell: bash
+        run: |
+          git config user.name "MESC Diagnostic Qualification"
+          git config user.email "actions@users.noreply.github.com"
+          git add src/medscale/mesc/_mrl_research_input_admission_v1.py tests/test_mesc_mrl_research_input_permission_trust_v1.py
+          git commit -m "diag(mrl): qualify trust default integrity fix [skip ci]"
+          git push origin HEAD:diag/mrl-0109-default-integrity
