@@ -120,18 +120,18 @@ def test_consumer_module_rebinding_cannot_mint_admission_authority(
         external.require_external_evaluation_use()
 
 
-def test_mutating_trust_gate_defaults_cannot_mint_admission_authority(
+def test_rebinding_admission_gate_name_cannot_mint_admission_authority(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     learning_permission = ResearchInputSourcePermission(
-        permission_id="default-mutation-learning",
+        permission_id="gate-rebind-learning",
         source_artifact_sha256="1" * 64,
         source_contract_sha256="2" * 64,
         classification=ResearchInputClassification.RESEARCH_ARTIFACT,
         allowed_learning_surfaces=(ResearchLearningSurface.OBSERVATION,),
     )
     learning = ResearchInputAdmissionContract(
-        input_id="default-mutation-learning-input",
+        input_id="gate-rebind-learning-input",
         classification_policy_sha256="c" * 64,
         classification=ResearchInputClassification.RESEARCH_ARTIFACT,
         source_artifact_sha256="1" * 64,
@@ -140,14 +140,14 @@ def test_mutating_trust_gate_defaults_cannot_mint_admission_authority(
         source_permission=learning_permission,
     )
     external_permission = ResearchInputSourcePermission(
-        permission_id="default-mutation-external",
+        permission_id="gate-rebind-external",
         source_artifact_sha256="3" * 64,
         source_contract_sha256="4" * 64,
         classification=ResearchInputClassification.EXTERNAL_EVALUATION_EVIDENCE,
         allowed_learning_surfaces=(),
     )
     external = ResearchInputAdmissionContract(
-        input_id="default-mutation-external-input",
+        input_id="gate-rebind-external-input",
         classification_policy_sha256="d" * 64,
         classification=ResearchInputClassification.EXTERNAL_EVALUATION_EVIDENCE,
         source_artifact_sha256="3" * 64,
@@ -155,19 +155,14 @@ def test_mutating_trust_gate_defaults_cannot_mint_admission_authority(
         allowed_learning_surfaces=(),
         source_permission=external_permission,
     )
-    forged = permission_trust.ResearchInputPermissionTrustSnapshot(
-        registry_version=permission_trust.TRUST_REGISTRY_VERSION,
-        trusted_source_permission_sha256=frozenset(
-            {
-                learning_permission.content_sha256,
-                external_permission.content_sha256,
-            }
-        ),
-        registry_sha256="e" * 64,
+
+    assert not hasattr(admission, "_require_admission_graph_trust")
+    monkeypatch.setattr(
+        admission,
+        "_require_admission_graph_trust",
+        lambda _root: None,
+        raising=False,
     )
-    gate = admission._require_admission_graph_trust
-    assert gate.__defaults__ is None
-    monkeypatch.setattr(gate, "__defaults__", (lambda _value: forged,))
 
     with pytest.raises(ResearchInputAdmissionError, match="not trusted"):
         learning.require_learning_admission(ResearchLearningSurface.OBSERVATION)
