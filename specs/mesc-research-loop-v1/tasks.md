@@ -96,7 +96,7 @@ is then present on canonical `main`. Any head mutation burns prior exact-head ev
     and is then present on canonical `main`.
   - Eligibility effect: MRL-0101 remains ineligible until that canonical merge.
 
-- [ ] **MRL-0101 — Implement `ResearchObjectiveContract`**
+- [x] **MRL-0101 — Implement `ResearchObjectiveContract`**
   - Depends on: MRL-0100.
   - Test: immutable objective semantics, resource/query/result-exposure budgets, evaluator
     identities, and evidence floors are content-addressed.
