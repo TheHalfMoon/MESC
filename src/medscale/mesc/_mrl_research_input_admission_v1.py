@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import enum
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Final
 
 from medscale.mesc._mrl_content_identity_v1 import (
@@ -91,38 +91,76 @@ _REJECTED_CLASSIFICATIONS: Final[frozenset[ResearchInputClassification]] = froze
 
 @dataclass(frozen=True, slots=True)
 class ResearchInputParentRef:
-    """Content-addressed admission identity and classification of one declared parent."""
+    """Reference derived from one actual validated parent admission.
 
-    admission_sha256: str
-    classification: ResearchInputClassification
-    disposition: ResearchInputDisposition
+    The semantic reference exposes only the parent's content identity, classification,
+    and canonical disposition, but those values are never accepted independently from
+    a caller. They are derived from the exact validated parent admission and rebound on
+    every public view so a detached or relabelled digest cannot launder lineage.
+    """
+
+    parent_admission: ResearchInputAdmissionContract
+    _bound_admission_sha256: str = field(init=False, repr=False)
+    _bound_classification: ResearchInputClassification = field(init=False, repr=False)
+    _bound_disposition: ResearchInputDisposition = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
-        _require_sha256(self.admission_sha256, "admission_sha256")
-        _require_exact_enum(self.classification, ResearchInputClassification, "classification")
-        _require_exact_enum(self.disposition, ResearchInputDisposition, "disposition")
-        expected = _disposition_for_classification(self.classification)
-        if self.disposition is not expected:
+        _require_exact_admission(self.parent_admission)
+        parent = self.parent_admission._validated_snapshot()
+        object.__setattr__(
+            self,
+            "_bound_admission_sha256",
+            derive_content_sha256(parent._semantic_dict_validated()),
+        )
+        object.__setattr__(self, "_bound_classification", parent.classification)
+        object.__setattr__(
+            self,
+            "_bound_disposition",
+            _disposition_for_classification(parent.classification),
+        )
+
+    def _validated_binding(
+        self,
+    ) -> tuple[str, ResearchInputClassification, ResearchInputDisposition]:
+        _require_exact_parent_ref(self)
+        _require_exact_admission(self.parent_admission)
+        parent = self.parent_admission._validated_snapshot()
+        current_sha256 = derive_content_sha256(parent._semantic_dict_validated())
+        current_classification = parent.classification
+        current_disposition = _disposition_for_classification(current_classification)
+        if (
+            current_sha256 != self._bound_admission_sha256
+            or current_classification is not self._bound_classification
+            or current_disposition is not self._bound_disposition
+        ):
             raise ResearchInputAdmissionError(
-                "parent disposition must exactly match its canonical classification"
+                "parent admission binding changed after reference creation"
             )
+        return current_sha256, current_classification, current_disposition
+
+    @property
+    def admission_sha256(self) -> str:
+        return self._validated_binding()[0]
+
+    @property
+    def classification(self) -> ResearchInputClassification:
+        return self._validated_binding()[1]
+
+    @property
+    def disposition(self) -> ResearchInputDisposition:
+        return self._validated_binding()[2]
 
     def _validated_snapshot(self) -> ResearchInputParentRef:
-        _require_exact_parent_ref(self)
-        return ResearchInputParentRef(
-            admission_sha256=self.admission_sha256,
-            classification=self.classification,
-            disposition=self.disposition,
-        )
+        self._validated_binding()
+        return ResearchInputParentRef(parent_admission=self.parent_admission._validated_snapshot())
 
     def to_dict(self) -> dict[str, str]:
         """Return one freshly validated parent-reference semantic mapping."""
-        _require_exact_parent_ref(self)
-        snapshot = self._validated_snapshot()
+        admission_sha256, classification, disposition = self._validated_binding()
         return {
-            "admission_sha256": snapshot.admission_sha256,
-            "classification": snapshot.classification.value,
-            "disposition": snapshot.disposition.value,
+            "admission_sha256": admission_sha256,
+            "classification": classification.value,
+            "disposition": disposition.value,
         }
 
 
@@ -217,6 +255,7 @@ class ResearchInputAdmissionContract:
 
     def _validated_snapshot(self) -> ResearchInputAdmissionContract:
         _require_exact_admission(self)
+        _require_parent_refs(self.parent_inputs)
         parents = tuple(parent._validated_snapshot() for parent in self.parent_inputs)
         return ResearchInputAdmissionContract(
             input_id=self.input_id,
