@@ -11,7 +11,9 @@ authority.
 from __future__ import annotations
 
 import math
+import weakref
 from dataclasses import dataclass, field
+from typing import Callable
 
 from medscale.mesc._mrl_content_identity_v1 import (
     canonical_semantic_bytes,
@@ -37,7 +39,38 @@ class ExperimentManifestBindingError(ValueError):
     """Fail-closed validation error for a plan/runtime-manifest binding."""
 
 
-@dataclass(frozen=True, slots=True)
+def _make_construction_identity_registry() -> tuple[
+    Callable[[ExperimentManifestBinding, str, str], None],
+    Callable[[ExperimentManifestBinding], tuple[str, str]],
+]:
+    """Keep construction identities outside the returned binding object's reachable state."""
+    identities: dict[int, tuple[str, str]] = {}
+    finalizers: dict[int, weakref.finalize] = {}
+
+    def remove(key: int) -> None:
+        identities.pop(key, None)
+        finalizers.pop(key, None)
+
+    def store(value: ExperimentManifestBinding, plan_sha256: str, manifest_sha256: str) -> None:
+        key = id(value)
+        if key in identities:
+            raise ExperimentManifestBindingError("binding construction identity already exists")
+        identities[key] = (plan_sha256, manifest_sha256)
+        finalizers[key] = weakref.finalize(value, remove, key)
+
+    def load(value: ExperimentManifestBinding) -> tuple[str, str]:
+        identity = identities.get(id(value))
+        if identity is None:
+            raise ExperimentManifestBindingError("binding construction identities are missing")
+        return identity
+
+    return store, load
+
+
+_store_construction_identity, _load_construction_identity = _make_construction_identity_registry()
+
+
+@dataclass(frozen=True, slots=True, weakref_slot=True)
 class ExperimentManifestBinding:
     """Content-addressed linkage to the existing canonical runtime manifest.
 
@@ -48,8 +81,6 @@ class ExperimentManifestBinding:
 
     plan: ResearchExperimentPlan = field(repr=False)
     manifest: ExperimentManifest = field(repr=False)
-    _construction_plan_sha256: str = field(init=False, repr=False, compare=False)
-    _construction_manifest_sha256: str = field(init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         # A subclass may exist only as an untrusted object. Every trust-bearing public
@@ -63,8 +94,7 @@ class ExperimentManifestBinding:
         manifest_sha256 = manifest.manifest_id
         object.__setattr__(self, "plan", plan)
         object.__setattr__(self, "manifest", manifest)
-        object.__setattr__(self, "_construction_plan_sha256", plan_sha256)
-        object.__setattr__(self, "_construction_manifest_sha256", manifest_sha256)
+        _store_construction_identity(self, plan_sha256, manifest_sha256)
 
     def _validated_snapshot(self) -> ExperimentManifestBinding:
         """Return one exact, freshly revalidated binding snapshot."""
@@ -113,11 +143,7 @@ def _validated_binding_snapshot(value: ExperimentManifestBinding) -> ExperimentM
         ExperimentManifestBinding,
         "experiment_manifest_binding",
     )
-    try:
-        construction_plan_sha256 = value._construction_plan_sha256
-        construction_manifest_sha256 = value._construction_manifest_sha256
-    except AttributeError as exc:
-        raise ExperimentManifestBindingError("binding construction identities are missing") from exc
+    construction_plan_sha256, construction_manifest_sha256 = _load_construction_identity(value)
     _require_exact_str(construction_plan_sha256, "construction plan identity")
     _require_exact_str(construction_manifest_sha256, "construction manifest identity")
 
@@ -183,15 +209,7 @@ def _snapshot_manifest(value: ExperimentManifest) -> ExperimentManifest:
     _require_exact_str(value.runner.os_name, "manifest.runner.os_name")
     if value.runner.gpu is not None:
         _require_exact_str(value.runner.gpu, "manifest.runner.gpu")
-    peak_vram_gb = value.runner.peak_vram_gb
-    if peak_vram_gb is not None and (
-        isinstance(peak_vram_gb, bool)
-        or not isinstance(peak_vram_gb, (int, float))
-        or not math.isfinite(peak_vram_gb)
-    ):
-        raise ExperimentManifestBindingError(
-            "manifest.runner.peak_vram_gb must be finite numeric or None"
-        )
+    _require_finite_optional_number(value.runner.peak_vram_gb, "manifest.runner.peak_vram_gb")
 
     _require_exact_str(value.started_at, "manifest.started_at")
     _require_tuple_of_exact(value.results_paths, str, "manifest.results_paths")
@@ -230,7 +248,7 @@ def _snapshot_manifest(value: ExperimentManifest) -> ExperimentManifest:
             results_paths=tuple(value.results_paths),
             reproduction=value.reproduction,
         )
-    except (AttributeError, TypeError, ValueError) as exc:
+    except (AttributeError, OverflowError, TypeError, ValueError) as exc:
         raise ExperimentManifestBindingError(
             "manifest failed canonical runtime revalidation"
         ) from exc
@@ -322,3 +340,16 @@ def _require_exact_str(value: object, name: str) -> None:
 def _require_exact_int(value: object, name: str) -> None:
     if type(value) is not int:
         raise ExperimentManifestBindingError(f"{name} must be an exact integer")
+
+
+def _require_finite_optional_number(value: object, name: str) -> None:
+    if value is None:
+        return
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ExperimentManifestBindingError(f"{name} must be finite numeric or None")
+    try:
+        finite = math.isfinite(value)
+    except (OverflowError, TypeError, ValueError) as exc:
+        raise ExperimentManifestBindingError(f"{name} must be finite numeric or None") from exc
+    if not finite:
+        raise ExperimentManifestBindingError(f"{name} must be finite numeric or None")
