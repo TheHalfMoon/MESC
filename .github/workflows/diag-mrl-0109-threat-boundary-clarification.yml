@@ -1,0 +1,111 @@
+name: diag-mrl-0109-threat-boundary-clarification
+
+on:
+  push:
+    branches:
+      - diag/mrl-0109-threat-boundary-clarification
+
+permissions:
+  contents: write
+
+jobs:
+  qualify:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+      - run: uv python install 3.12
+      - run: uv sync --frozen
+      - name: Apply bounded threat-model clarification
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          admission = Path("src/medscale/mesc/_mrl_research_input_admission_v1.py")
+          text = admission.read_text(encoding="utf-8")
+          old = '''This module is declarative only. It grants no filesystem, network, model, data, GPU,
+inference, training, promotion, deployment, release, or clinical authority.
+"""'''
+          new = '''This module is declarative only. It grants no filesystem, network, model, data, GPU,
+inference, training, promotion, deployment, release, or clinical authority.
+
+Integrity checks cover caller-controlled values, post-construction mutation of canonical artifact
+data, and accidental or hostile rebinding of ordinary module-level trust names. Arbitrary Python
+code execution that rewrites executable interpreter state such as function code, closure cells,
+class methods, or ``sys.modules`` is outside this contract-level boundary: such a caller can replace
+the enforcement code itself. Untrusted research execution must therefore run outside the
+trust-bearing interpreter/process under the separately governed execution boundary.
+"""'''
+          if old not in text:
+              raise SystemExit("admission docstring marker not found")
+          admission.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+          spec = Path("specs/mesc-research-loop-v1/spec.md")
+          text = spec.read_text(encoding="utf-8")
+          marker = '''MCRL remains a separate clinical/task-time layer. MCRL output may be treated only as
+separately authorized external evaluation evidence when its governing data boundary
+permits that use; it must never silently become an MRL learning signal.
+
+### 5.2 `ResearchObjectiveContract`'''
+          replacement = '''MCRL remains a separate clinical/task-time layer. MCRL output may be treated only as
+separately authorized external evaluation evidence when its governing data boundary
+permits that use; it must never silently become an MRL learning signal.
+
+#### Implementation integrity boundary
+
+MRL-1 contract validation must fail closed for malformed or caller-controlled values and
+for post-construction mutation of canonical artifact data that remains reachable through
+ordinary object references. Authority decisions must not depend on caller-supplied trust
+metadata or ordinary rebindable module names.
+
+This contract-level threat model does **not** treat a caller with arbitrary Python code
+execution in the trust-bearing interpreter as an unprivileged research input. A caller
+that can rewrite executable interpreter state such as function code, closure cells,
+class methods, import tables, or `sys.modules` can replace the enforcement implementation
+itself. That capability is already code execution, which is a separate security failure,
+not a property that immutable Python dataclasses can contain.
+
+Accordingly, any future untrusted or agent-authored research execution must not share the
+trust-bearing interpreter/process with these governance contracts. Process/sandbox
+isolation belongs to the separately governed execution stages; this clarification grants
+no execution, model, data, network, GPU, training, promotion, deployment, release, or
+clinical authority.
+
+### 5.2 `ResearchObjectiveContract`'''
+          if marker not in text:
+              raise SystemExit("spec insertion marker not found")
+          spec.write_text(text.replace(marker, replacement, 1), encoding="utf-8")
+          PY
+      - name: Canonicalize changed Python
+        run: |
+          uv run ruff check --fix src/medscale/mesc/_mrl_research_input_admission_v1.py
+          uv run ruff format src/medscale/mesc/_mrl_research_input_admission_v1.py
+      - name: Ruff lint
+        run: uv run ruff check .
+      - name: Ruff format check
+        run: uv run ruff format --check .
+      - name: Strict mypy
+        run: uv run mypy src tests
+      - name: Focused tests
+        run: uv run pytest -q tests/test_mesc_mrl_research_input_permission_trust_v1.py tests/test_mesc_mrl_research_input_admission_v1.py
+      - name: Full pytest
+        run: uv run pytest -q
+      - name: MedScale integrity
+        run: uv run medscale check
+      - name: Verify bounded product diff
+        shell: bash
+        run: |
+          actual="$(git diff --name-only HEAD -- | grep -v '^.github/workflows/diag-mrl-0109-threat-boundary-clarification.yml$' | sort)"
+          expected=$'specs/mesc-research-loop-v1/spec.md\nsrc/medscale/mesc/_mrl_research_input_admission_v1.py'
+          test "$actual" = "$expected"
+      - name: Commit qualified clarification
+        shell: bash
+        run: |
+          git config user.name "MESC Diagnostic Qualification"
+          git config user.email "actions@users.noreply.github.com"
+          git add specs/mesc-research-loop-v1/spec.md src/medscale/mesc/_mrl_research_input_admission_v1.py
+          git commit -m "diag(mrl): qualify trust threat boundary clarification [skip ci]"
+          git push
