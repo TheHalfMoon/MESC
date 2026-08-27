@@ -26,7 +26,18 @@ jobs:
         run: uv sync --frozen
 
       - name: Apply bounded semantic-revalidation fixes
-        run: uv run python scripts/diag_fix_mrl_0101_revalidation.py
+        run: |
+          uv run python scripts/diag_fix_mrl_0101_revalidation.py
+          uv run python - <<'PY'
+          from pathlib import Path
+
+          path = Path("tests/test_mesc_mrl_research_objective_v1.py")
+          text = path.read_text(encoding="utf-8")
+          old = 'match="canonical text|canonical relative"'
+          if text.count(old) != 1:
+              raise SystemExit("expected one NUL regression match pattern")
+          path.write_text(text.replace(old, 'match=r"canonical text|canonical relative"'), encoding="utf-8")
+          PY
 
       - name: Canonical formatting
         run: |
