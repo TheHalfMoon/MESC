@@ -1,0 +1,219 @@
+name: MRL stop-control hardening once
+
+on:
+  push:
+    branches:
+      - tmp/mrl-0103-format-transport
+
+permissions:
+  contents: write
+
+jobs:
+  harden-once:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout isolated hardening branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
+
+      - name: Verify hardening parent
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = "aa5092ada36c27aa413303e5b1eb9c9ec9d5c003"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+
+      - name: Apply exact governance hardening
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          source = Path("src/medscale/mesc/_mrl_research_experiment_plan_v1.py")
+          tests = Path("tests/test_mesc_mrl_research_experiment_plan_v1.py")
+
+          source_text = source.read_text(encoding="utf-8")
+          tests_text = tests.read_text(encoding="utf-8")
+
+          def replace_once(text: str, old: str, new: str, label: str) -> str:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{label}: expected exactly one match, found {count}")
+              return text.replace(old, new, 1)
+
+          source_text = replace_once(
+              source_text,
+              "from medscale.mesc._mrl_research_objective_v1 import (\n    EvaluationTier,\n",
+              "from medscale.mesc._mrl_research_objective_v1 import (\n    AdaptiveInvalidationRule,\n    AdaptiveStoppingRule,\n    EvaluationTier,\n",
+              "objective rule imports",
+          )
+
+          source_text = replace_once(
+              source_text,
+              '    CONTAMINATION_OR_LINEAGE_FAILURE = "CONTAMINATION_OR_LINEAGE_FAILURE"\n    EXECUTION_ERROR = "EXECUTION_ERROR"\n\n\n@dataclass',
+              '    CONTAMINATION_OR_LINEAGE_FAILURE = "CONTAMINATION_OR_LINEAGE_FAILURE"\n    OBJECTIVE_SEMANTICS_CHANGED = "OBJECTIVE_SEMANTICS_CHANGED"\n    EXECUTION_ERROR = "EXECUTION_ERROR"\n\n\n_OBJECTIVE_STOP_CONDITION_MAP: Final[dict[AdaptiveStoppingRule, PlanStopCondition]] = {\n    AdaptiveStoppingRule.ADAPTIVE_QUERY_BUDGET_EXHAUSTED: PlanStopCondition.ADAPTIVE_QUERY_ALLOWANCE_EXHAUSTED,\n    AdaptiveStoppingRule.EXTERNAL_GOVERNANCE_STOP: PlanStopCondition.EXTERNAL_GOVERNANCE_STOP,\n    AdaptiveStoppingRule.OBJECTIVE_INVALIDATED: PlanStopCondition.OBJECTIVE_INVALIDATED,\n    AdaptiveStoppingRule.RESOURCE_BUDGET_EXHAUSTED: PlanStopCondition.RESOURCE_CEILING_REACHED,\n    AdaptiveStoppingRule.RESULT_EXPOSURE_BUDGET_EXHAUSTED: PlanStopCondition.RESULT_EXPOSURE_ALLOWANCE_EXHAUSTED,\n}\n_OBJECTIVE_FAILURE_CONDITION_MAP: Final[\n    dict[AdaptiveInvalidationRule, PlanFailureCondition]\n] = {\n    AdaptiveInvalidationRule.EVALUATOR_IDENTITY_CHANGED: PlanFailureCondition.EVALUATOR_IDENTITY_MISMATCH,\n    AdaptiveInvalidationRule.LINEAGE_OR_CONTAMINATION_FAILURE: PlanFailureCondition.CONTAMINATION_OR_LINEAGE_FAILURE,\n    AdaptiveInvalidationRule.OBJECTIVE_SEMANTICS_CHANGED: PlanFailureCondition.OBJECTIVE_SEMANTICS_CHANGED,\n    AdaptiveInvalidationRule.PROTECTED_SURFACE_MUTATION_ATTEMPT: PlanFailureCondition.MUTATION_SCOPE_VIOLATION,\n    AdaptiveInvalidationRule.SEALED_BOUNDARY_BREACH: PlanFailureCondition.SEALED_BOUNDARY_BREACH,\n}\n\n\n@dataclass',
+              "failure enums and objective control maps",
+          )
+
+          source_text = replace_once(
+              source_text,
+              '    if not plan.failure_conditions:\n        raise ResearchExperimentPlanError("failure_conditions cannot be empty")\n\n\ndef _snapshot_objective(',
+              '    if not plan.failure_conditions:\n        raise ResearchExperimentPlanError("failure_conditions cannot be empty")\n    _require_objective_control_conditions(plan, objective)\n\n\ndef _require_objective_control_conditions(\n    plan: ResearchExperimentPlan,\n    objective: ResearchObjectiveContract,\n) -> None:\n    controls = objective.adaptive_evaluation_controls\n    try:\n        required_stops = {\n            _OBJECTIVE_STOP_CONDITION_MAP[rule] for rule in controls.stopping_rules\n        }\n        required_failures = {\n            _OBJECTIVE_FAILURE_CONDITION_MAP[rule] for rule in controls.invalidation_rules\n        }\n    except KeyError as exc:\n        raise ResearchExperimentPlanError(\n            "objective contains an unsupported adaptive control rule"\n        ) from exc\n\n    missing_stops = tuple(\n        sorted(condition.value for condition in required_stops.difference(plan.stop_conditions))\n    )\n    if missing_stops:\n        raise ResearchExperimentPlanError(\n            "stop_conditions omit frozen objective requirements: " + ", ".join(missing_stops)\n        )\n\n    missing_failures = tuple(\n        sorted(\n            condition.value\n            for condition in required_failures.difference(plan.failure_conditions)\n        )\n    )\n    if missing_failures:\n        raise ResearchExperimentPlanError(\n            "failure_conditions omit frozen objective requirements: "\n            + ", ".join(missing_failures)\n        )\n\n\ndef _snapshot_objective(',
+              "objective adaptive control validation",
+          )
+
+          tests_text = replace_once(
+              tests_text,
+              '        stop_conditions=(\n            PlanStopCondition.EXTERNAL_GOVERNANCE_STOP,\n            PlanStopCondition.FAILURE_CONDITION_TRIGGERED,\n            PlanStopCondition.RESOURCE_CEILING_REACHED,\n        ),\n        failure_conditions=(\n            PlanFailureCondition.MANIFEST_BINDING_MISMATCH,\n            PlanFailureCondition.MUTATION_SCOPE_VIOLATION,\n            PlanFailureCondition.RESOURCE_BUDGET_OVERRUN,\n        ),',
+              '        stop_conditions=(\n            PlanStopCondition.ADAPTIVE_QUERY_ALLOWANCE_EXHAUSTED,\n            PlanStopCondition.EXTERNAL_GOVERNANCE_STOP,\n            PlanStopCondition.FAILURE_CONDITION_TRIGGERED,\n            PlanStopCondition.OBJECTIVE_INVALIDATED,\n            PlanStopCondition.RESOURCE_CEILING_REACHED,\n        ),\n        failure_conditions=(\n            PlanFailureCondition.EVALUATOR_IDENTITY_MISMATCH,\n            PlanFailureCondition.MANIFEST_BINDING_MISMATCH,\n            PlanFailureCondition.MUTATION_SCOPE_VIOLATION,\n            PlanFailureCondition.OBJECTIVE_SEMANTICS_CHANGED,\n            PlanFailureCondition.RESOURCE_BUDGET_OVERRUN,\n            PlanFailureCondition.SEALED_BOUNDARY_BREACH,\n        ),',
+              "fixture control conditions",
+          )
+
+          new_tests = r'''
+
+@pytest.mark.parametrize(
+    ("objective_rule", "required_condition"),
+    [
+        (
+            AdaptiveStoppingRule.ADAPTIVE_QUERY_BUDGET_EXHAUSTED,
+            PlanStopCondition.ADAPTIVE_QUERY_ALLOWANCE_EXHAUSTED,
+        ),
+        (
+            AdaptiveStoppingRule.EXTERNAL_GOVERNANCE_STOP,
+            PlanStopCondition.EXTERNAL_GOVERNANCE_STOP,
+        ),
+        (
+            AdaptiveStoppingRule.OBJECTIVE_INVALIDATED,
+            PlanStopCondition.OBJECTIVE_INVALIDATED,
+        ),
+        (
+            AdaptiveStoppingRule.RESOURCE_BUDGET_EXHAUSTED,
+            PlanStopCondition.RESOURCE_CEILING_REACHED,
+        ),
+        (
+            AdaptiveStoppingRule.RESULT_EXPOSURE_BUDGET_EXHAUSTED,
+            PlanStopCondition.RESULT_EXPOSURE_ALLOWANCE_EXHAUSTED,
+        ),
+    ],
+)
+def test_plan_stop_conditions_cover_every_frozen_objective_rule(
+    objective_rule: AdaptiveStoppingRule,
+    required_condition: PlanStopCondition,
+) -> None:
+    plan = _plan()
+    controls = replace(
+        plan.objective.adaptive_evaluation_controls,
+        stopping_rules=tuple(sorted(AdaptiveStoppingRule, key=lambda rule: rule.value)),
+    )
+    objective = replace(plan.objective, adaptive_evaluation_controls=controls)
+    complete = replace(
+        plan,
+        objective=objective,
+        hypothesis=_hypothesis(objective),
+        stop_conditions=tuple(sorted(PlanStopCondition, key=lambda condition: condition.value)),
+    )
+    assert objective_rule in controls.stopping_rules
+    reduced = tuple(
+        condition for condition in complete.stop_conditions if condition is not required_condition
+    )
+
+    with pytest.raises(ResearchExperimentPlanError, match="omit frozen objective requirements"):
+        replace(complete, stop_conditions=reduced)
+
+
+@pytest.mark.parametrize(
+    ("objective_rule", "required_condition"),
+    [
+        (
+            AdaptiveInvalidationRule.EVALUATOR_IDENTITY_CHANGED,
+            PlanFailureCondition.EVALUATOR_IDENTITY_MISMATCH,
+        ),
+        (
+            AdaptiveInvalidationRule.LINEAGE_OR_CONTAMINATION_FAILURE,
+            PlanFailureCondition.CONTAMINATION_OR_LINEAGE_FAILURE,
+        ),
+        (
+            AdaptiveInvalidationRule.OBJECTIVE_SEMANTICS_CHANGED,
+            PlanFailureCondition.OBJECTIVE_SEMANTICS_CHANGED,
+        ),
+        (
+            AdaptiveInvalidationRule.PROTECTED_SURFACE_MUTATION_ATTEMPT,
+            PlanFailureCondition.MUTATION_SCOPE_VIOLATION,
+        ),
+        (
+            AdaptiveInvalidationRule.SEALED_BOUNDARY_BREACH,
+            PlanFailureCondition.SEALED_BOUNDARY_BREACH,
+        ),
+    ],
+)
+def test_plan_failure_conditions_cover_every_frozen_objective_rule(
+    objective_rule: AdaptiveInvalidationRule,
+    required_condition: PlanFailureCondition,
+) -> None:
+    plan = _plan()
+    controls = replace(
+        plan.objective.adaptive_evaluation_controls,
+        invalidation_rules=tuple(sorted(AdaptiveInvalidationRule, key=lambda rule: rule.value)),
+    )
+    objective = replace(plan.objective, adaptive_evaluation_controls=controls)
+    complete = replace(
+        plan,
+        objective=objective,
+        hypothesis=_hypothesis(objective),
+        failure_conditions=tuple(
+            sorted(PlanFailureCondition, key=lambda condition: condition.value)
+        ),
+    )
+    assert objective_rule in controls.invalidation_rules
+    reduced = tuple(
+        condition for condition in complete.failure_conditions if condition is not required_condition
+    )
+
+    with pytest.raises(ResearchExperimentPlanError, match="omit frozen objective requirements"):
+        replace(complete, failure_conditions=reduced)
+'''
+          tests_text = replace_once(
+              tests_text,
+              "\n\ndef test_material_semantic_changes_change_plan_identity() -> None:\n",
+              new_tests + "\n\ndef test_material_semantic_changes_change_plan_identity() -> None:\n",
+              "adaptive control regression tests",
+          )
+
+          tests_text = replace_once(
+              tests_text,
+              "        ResearchExperimentPlan(**kwargs)  # type: ignore[arg-type]\n",
+              "        ResearchExperimentPlan(**kwargs)\n",
+              "unused mypy ignore",
+          )
+
+          source.write_text(source_text, encoding="utf-8")
+          tests.write_text(tests_text, encoding="utf-8")
+          PY
+
+      - name: Qualify hardened candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv sync --frozen
+          uv run ruff format src/medscale/mesc/_mrl_research_experiment_plan_v1.py tests/test_mesc_mrl_research_experiment_plan_v1.py
+          uv run ruff check .
+          uv run ruff format --check .
+          uv run mypy
+          uv run pytest -q tests/test_mesc_mrl_research_experiment_plan_v1.py tests/test_mesc_mrl_research_experiment_plan_v1_regressions.py
+          uv run pytest -q --cov --cov-report=term-missing
+          uv run medscale check
+
+      - name: Commit qualified hardening and self-delete workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/medscale/mesc/_mrl_research_experiment_plan_v1.py tests/test_mesc_mrl_research_experiment_plan_v1.py
+          git rm .github/workflows/mrl-stop-control-fix-once.yml
+          git commit -m "fix(mrl): bind plan controls to frozen objective"
+          git push origin HEAD:tmp/mrl-0103-format-transport
