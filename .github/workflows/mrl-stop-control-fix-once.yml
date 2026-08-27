@@ -24,7 +24,32 @@ jobs:
         uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
 
       - name: Apply hardening
-        run: python .mrl-tmp/patch_mrl0103.py
+        shell: bash
+        run: |
+          python .mrl-tmp/patch_mrl0103.py
+          python - <<'PY'
+          from pathlib import Path
+          path = Path("src/medscale/mesc/_mrl_research_experiment_plan_v1.py")
+          text = path.read_text(encoding="utf-8")
+          pairs = (
+              ("    AdaptiveStoppingRule.ADAPTIVE_QUERY_BUDGET_EXHAUSTED: PlanStopCondition.ADAPTIVE_QUERY_ALLOWANCE_EXHAUSTED,\n", "    AdaptiveStoppingRule.ADAPTIVE_QUERY_BUDGET_EXHAUSTED: (\n        PlanStopCondition.ADAPTIVE_QUERY_ALLOWANCE_EXHAUSTED\n    ),\n"),
+              ("    AdaptiveStoppingRule.EXTERNAL_GOVERNANCE_STOP: PlanStopCondition.EXTERNAL_GOVERNANCE_STOP,\n", "    AdaptiveStoppingRule.EXTERNAL_GOVERNANCE_STOP: (\n        PlanStopCondition.EXTERNAL_GOVERNANCE_STOP\n    ),\n"),
+              ("    AdaptiveStoppingRule.OBJECTIVE_INVALIDATED: PlanStopCondition.OBJECTIVE_INVALIDATED,\n", "    AdaptiveStoppingRule.OBJECTIVE_INVALIDATED: (\n        PlanStopCondition.OBJECTIVE_INVALIDATED\n    ),\n"),
+              ("    AdaptiveStoppingRule.RESOURCE_BUDGET_EXHAUSTED: PlanStopCondition.RESOURCE_CEILING_REACHED,\n", "    AdaptiveStoppingRule.RESOURCE_BUDGET_EXHAUSTED: (\n        PlanStopCondition.RESOURCE_CEILING_REACHED\n    ),\n"),
+              ("    AdaptiveStoppingRule.RESULT_EXPOSURE_BUDGET_EXHAUSTED: PlanStopCondition.RESULT_EXPOSURE_ALLOWANCE_EXHAUSTED,\n", "    AdaptiveStoppingRule.RESULT_EXPOSURE_BUDGET_EXHAUSTED: (\n        PlanStopCondition.RESULT_EXPOSURE_ALLOWANCE_EXHAUSTED\n    ),\n"),
+              ("    AdaptiveInvalidationRule.EVALUATOR_IDENTITY_CHANGED: PlanFailureCondition.EVALUATOR_IDENTITY_MISMATCH,\n", "    AdaptiveInvalidationRule.EVALUATOR_IDENTITY_CHANGED: (\n        PlanFailureCondition.EVALUATOR_IDENTITY_MISMATCH\n    ),\n"),
+              ("    AdaptiveInvalidationRule.LINEAGE_OR_CONTAMINATION_FAILURE: PlanFailureCondition.CONTAMINATION_OR_LINEAGE_FAILURE,\n", "    AdaptiveInvalidationRule.LINEAGE_OR_CONTAMINATION_FAILURE: (\n        PlanFailureCondition.CONTAMINATION_OR_LINEAGE_FAILURE\n    ),\n"),
+              ("    AdaptiveInvalidationRule.OBJECTIVE_SEMANTICS_CHANGED: PlanFailureCondition.OBJECTIVE_SEMANTICS_CHANGED,\n", "    AdaptiveInvalidationRule.OBJECTIVE_SEMANTICS_CHANGED: (\n        PlanFailureCondition.OBJECTIVE_SEMANTICS_CHANGED\n    ),\n"),
+              ("    AdaptiveInvalidationRule.PROTECTED_SURFACE_MUTATION_ATTEMPT: PlanFailureCondition.MUTATION_SCOPE_VIOLATION,\n", "    AdaptiveInvalidationRule.PROTECTED_SURFACE_MUTATION_ATTEMPT: (\n        PlanFailureCondition.MUTATION_SCOPE_VIOLATION\n    ),\n"),
+              ("    AdaptiveInvalidationRule.SEALED_BOUNDARY_BREACH: PlanFailureCondition.SEALED_BOUNDARY_BREACH,\n", "    AdaptiveInvalidationRule.SEALED_BOUNDARY_BREACH: (\n        PlanFailureCondition.SEALED_BOUNDARY_BREACH\n    ),\n"),
+          )
+          for old, new in pairs:
+              if text.count(old) != 1:
+                  raise SystemExit(f"mapping wrap expected one match: {old!r}")
+              text = text.replace(old, new, 1)
+          path.write_text(text, encoding="utf-8")
+          PY
+          git rm .mrl-tmp/patch_mrl0103.py
 
       - name: Qualify candidate
         run: |
@@ -41,7 +66,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/medscale/mesc/_mrl_research_experiment_plan_v1.py tests/test_mesc_mrl_research_experiment_plan_v1.py
-          git rm .github/workflows/mrl-stop-control-fix-once.yml .mrl-tmp/patch_mrl0103.py
+          git add src/medscale/mesc/_mrl_research_experiment_plan_v1.py tests/test_mesc_mrl_research_experiment_plan_v1.py .mrl-tmp/patch_mrl0103.py
+          git rm .github/workflows/mrl-stop-control-fix-once.yml
           git commit -m "fix(mrl): bind plan controls to frozen objective"
           git push origin HEAD:tmp/mrl-0103-format-transport
