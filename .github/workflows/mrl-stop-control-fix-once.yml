@@ -27,6 +27,7 @@ jobs:
         shell: bash
         run: |
           python .mrl-tmp/patch_mrl0103.py
+          python .mrl-tmp/fix_fixture.py
           python - <<'PY'
           from pathlib import Path
           path = Path("src/medscale/mesc/_mrl_research_experiment_plan_v1.py")
@@ -49,7 +50,7 @@ jobs:
               text = text.replace(old, new, 1)
           path.write_text(text, encoding="utf-8")
           PY
-          git rm .mrl-tmp/patch_mrl0103.py
+          git rm .mrl-tmp/patch_mrl0103.py .mrl-tmp/fix_fixture.py
 
       - name: Qualify candidate
         run: |
@@ -66,7 +67,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/medscale/mesc/_mrl_research_experiment_plan_v1.py tests/test_mesc_mrl_research_experiment_plan_v1.py .mrl-tmp/patch_mrl0103.py
+          git add src/medscale/mesc/_mrl_research_experiment_plan_v1.py tests/test_mesc_mrl_research_experiment_plan_v1.py
           git rm .github/workflows/mrl-stop-control-fix-once.yml
           git commit -m "fix(mrl): bind plan controls to frozen objective"
           git push origin HEAD:tmp/mrl-0103-format-transport
