@@ -315,6 +315,23 @@ def test_runtime_only_fields_change_manifest_identity_without_breaking_plan_matc
     assert first.content_sha256 != second.content_sha256
 
 
+@pytest.mark.parametrize("peak_vram_gb", [float("nan"), float("inf")])
+def test_non_finite_runtime_vram_is_rejected_before_manifest_identity(
+    peak_vram_gb: float,
+) -> None:
+    manifest = _manifest(
+        runner=RunnerEnv(
+            runner=RunnerClass.LOCAL,
+            python="3.11",
+            os_name="linux",
+            peak_vram_gb=peak_vram_gb,
+        )
+    )
+
+    with pytest.raises(ExperimentManifestBindingError, match="finite numeric"):
+        bind_experiment_manifest(_plan(), manifest)
+
+
 def test_binding_snapshots_inputs_and_isolated_from_later_external_tampering() -> None:
     plan = _plan()
     manifest = _manifest(model=replace(_MODEL))
