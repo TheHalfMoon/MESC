@@ -10,6 +10,7 @@ authority.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 
 from medscale.mesc._mrl_content_identity_v1 import (
@@ -164,11 +165,15 @@ def _snapshot_manifest(value: ExperimentManifest) -> ExperimentManifest:
     _require_exact_str(value.runner.os_name, "manifest.runner.os_name")
     if value.runner.gpu is not None:
         _require_exact_str(value.runner.gpu, "manifest.runner.gpu")
-    if value.runner.peak_vram_gb is not None and (
-        isinstance(value.runner.peak_vram_gb, bool)
-        or not isinstance(value.runner.peak_vram_gb, (int, float))
+    peak_vram_gb = value.runner.peak_vram_gb
+    if peak_vram_gb is not None and (
+        isinstance(peak_vram_gb, bool)
+        or not isinstance(peak_vram_gb, (int, float))
+        or not math.isfinite(peak_vram_gb)
     ):
-        raise ExperimentManifestBindingError("manifest.runner.peak_vram_gb must be numeric or None")
+        raise ExperimentManifestBindingError(
+            "manifest.runner.peak_vram_gb must be finite numeric or None"
+        )
 
     _require_exact_str(value.started_at, "manifest.started_at")
     _require_tuple_of_exact(value.results_paths, str, "manifest.results_paths")
