@@ -21,7 +21,6 @@ from medscale.mesc._mrl_research_experiment_plan_v1 import (
     ExpectedExperimentManifestBinding,
     ExpectedModelBinding,
     ResearchExperimentPlan,
-    ResearchExperimentPlanError,
 )
 from medscale.modelkit.interfaces import ModelRef
 from medscale.modelkit.manifests import DatasetSnapshot, ExperimentManifest, RunnerClass, RunnerEnv
@@ -50,6 +49,10 @@ class ExperimentManifestBinding:
     manifest: ExperimentManifest = field(repr=False)
 
     def __post_init__(self) -> None:
+        # A subclass may exist only as an untrusted object. Every trust-bearing public
+        # view rejects it before any overridable instance-method dispatch.
+        if type(self) is not ExperimentManifestBinding:
+            return
         plan = _snapshot_plan(self.plan)
         manifest = _snapshot_manifest(self.manifest)
         _require_expected_manifest_match(plan.expected_manifest, manifest)
@@ -57,39 +60,34 @@ class ExperimentManifestBinding:
         object.__setattr__(self, "manifest", manifest)
 
     def _validated_snapshot(self) -> ExperimentManifestBinding:
-        return ExperimentManifestBinding(
-            plan=_snapshot_plan(self.plan),
-            manifest=_snapshot_manifest(self.manifest),
-        )
+        """Return one exact, freshly revalidated binding snapshot."""
+        return _validated_binding_snapshot(self)
 
     def _semantic_dict_validated(self) -> dict[str, str]:
-        return {
-            "format": "MRL-EXPERIMENT-MANIFEST-BINDING-V1",
-            "experiment_plan_sha256": self.plan.content_sha256,
-            "experiment_manifest_sha256": self.manifest.manifest_id,
-        }
+        """Return semantics for an exact already-validated binding."""
+        return _binding_semantic_dict(self)
 
     def semantic_dict(self) -> dict[str, str]:
         """Return the exact validated plan/runtime-manifest identity pair."""
-        snapshot = self._validated_snapshot()
-        return snapshot._semantic_dict_validated()
+        snapshot = _validated_binding_snapshot(self)
+        return _binding_semantic_dict(snapshot)
 
     @property
     def semantic_bytes(self) -> bytes:
         """Return canonical semantic bytes without self-referential identity."""
-        snapshot = self._validated_snapshot()
-        return canonical_semantic_bytes(snapshot._semantic_dict_validated())
+        snapshot = _validated_binding_snapshot(self)
+        return canonical_semantic_bytes(_binding_semantic_dict(snapshot))
 
     @property
     def content_sha256(self) -> str:
         """Derive binding identity outside its own canonical semantic preimage."""
-        snapshot = self._validated_snapshot()
-        return derive_content_sha256(snapshot._semantic_dict_validated())
+        snapshot = _validated_binding_snapshot(self)
+        return derive_content_sha256(_binding_semantic_dict(snapshot))
 
     def to_dict(self) -> dict[str, str]:
         """Return the identity pair plus the derived binding content identity."""
-        snapshot = self._validated_snapshot()
-        data = snapshot._semantic_dict_validated()
+        snapshot = _validated_binding_snapshot(self)
+        data = _binding_semantic_dict(snapshot)
         data["content_sha256"] = derive_content_sha256(data)
         return data
 
@@ -102,11 +100,36 @@ def bind_experiment_manifest(
     return ExperimentManifestBinding(plan=plan, manifest=manifest)
 
 
+def _validated_binding_snapshot(value: ExperimentManifestBinding) -> ExperimentManifestBinding:
+    _require_exact_instance(
+        value,
+        ExperimentManifestBinding,
+        "experiment_manifest_binding",
+    )
+    return ExperimentManifestBinding(
+        plan=_snapshot_plan(value.plan),
+        manifest=_snapshot_manifest(value.manifest),
+    )
+
+
+def _binding_semantic_dict(value: ExperimentManifestBinding) -> dict[str, str]:
+    _require_exact_instance(
+        value,
+        ExperimentManifestBinding,
+        "experiment_manifest_binding",
+    )
+    return {
+        "format": "MRL-EXPERIMENT-MANIFEST-BINDING-V1",
+        "experiment_plan_sha256": value.plan.content_sha256,
+        "experiment_manifest_sha256": value.manifest.manifest_id,
+    }
+
+
 def _snapshot_plan(value: ResearchExperimentPlan) -> ResearchExperimentPlan:
     _require_exact_instance(value, ResearchExperimentPlan, "plan")
     try:
         return value._validated_snapshot()
-    except ResearchExperimentPlanError as exc:
+    except (AttributeError, TypeError, ValueError) as exc:
         raise ExperimentManifestBindingError("plan failed canonical revalidation") from exc
 
 
