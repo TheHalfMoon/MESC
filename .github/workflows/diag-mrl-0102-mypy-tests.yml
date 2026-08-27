@@ -1,0 +1,154 @@
+name: DIAG MRL-0102 Typed Tests
+
+on:
+  push:
+    branches:
+      - diag/mrl-0102-mypy-tests-1e36
+
+permissions:
+  contents: write
+
+jobs:
+  qualify:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: true
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+      - run: uv python install 3.12
+      - run: uv sync --frozen
+      - name: Replace dynamic dataclass mutators with typed mutators
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("tests/test_mesc_mrl_research_hypothesis_v1.py")
+          text = path.read_text()
+
+          old = '''@pytest.mark.parametrize(
+              ("field", "value"),
+              [
+                  ("objective_sha256", "A" * 64),
+                  ("objective_sha256", "a" * 63),
+                  ("created_from_campaign_state_sha256", "g" * 64),
+                  ("created_from_campaign_state_sha256", "b" * 65),
+              ],
+          )
+          def test_invalid_sha_bindings_fail_closed(field: str, value: str) -> None:
+              with pytest.raises(ResearchHypothesisError, match="64 lowercase hex"):
+                  replace(_hypothesis(), **{field: value})
+          '''
+          new = '''@pytest.mark.parametrize(
+              "mutate",
+              [
+                  lambda value: replace(value, objective_sha256="A" * 64),
+                  lambda value: replace(value, objective_sha256="a" * 63),
+                  lambda value: replace(value, created_from_campaign_state_sha256="g" * 64),
+                  lambda value: replace(value, created_from_campaign_state_sha256="b" * 65),
+              ],
+          )
+          def test_invalid_sha_bindings_fail_closed(
+              mutate: Callable[[ResearchHypothesis], ResearchHypothesis],
+          ) -> None:
+              with pytest.raises(ResearchHypothesisError, match="64 lowercase hex"):
+                  mutate(_hypothesis())
+          '''
+          if old not in text:
+              raise SystemExit("SHA parametrization block did not match expected source")
+          text = text.replace(old, new, 1)
+
+          old = '''@pytest.mark.parametrize(
+              "field",
+              ["predicted_effects", "predicted_failure_modes", "falsification_criteria"],
+          )
+          def test_required_scientific_statements_cannot_be_empty(field: str) -> None:
+              with pytest.raises(ResearchHypothesisError, match="cannot be empty"):
+                  replace(_hypothesis(), **{field: ()})
+          '''
+          new = '''@pytest.mark.parametrize(
+              "mutate",
+              [
+                  lambda value: replace(value, predicted_effects=()),
+                  lambda value: replace(value, predicted_failure_modes=()),
+                  lambda value: replace(value, falsification_criteria=()),
+              ],
+          )
+          def test_required_scientific_statements_cannot_be_empty(
+              mutate: Callable[[ResearchHypothesis], ResearchHypothesis],
+          ) -> None:
+              with pytest.raises(ResearchHypothesisError, match="cannot be empty"):
+                  mutate(_hypothesis())
+          '''
+          if old not in text:
+              raise SystemExit("empty-statement parametrization block did not match expected source")
+          text = text.replace(old, new, 1)
+
+          old = '''@pytest.mark.parametrize(
+              "field",
+              ["predicted_effects", "predicted_failure_modes", "falsification_criteria"],
+          )
+          def test_scientific_statements_reject_duplicates(field: str) -> None:
+              statement = "A material scientific statement."
+              with pytest.raises(ResearchHypothesisError, match="duplicate"):
+                  replace(_hypothesis(), **{field: (statement, statement)})
+          '''
+          new = '''@pytest.mark.parametrize(
+              "mutate",
+              [
+                  lambda value: replace(
+                      value,
+                      predicted_effects=(
+                          "A material scientific statement.",
+                          "A material scientific statement.",
+                      ),
+                  ),
+                  lambda value: replace(
+                      value,
+                      predicted_failure_modes=(
+                          "A material scientific statement.",
+                          "A material scientific statement.",
+                      ),
+                  ),
+                  lambda value: replace(
+                      value,
+                      falsification_criteria=(
+                          "A material scientific statement.",
+                          "A material scientific statement.",
+                      ),
+                  ),
+              ],
+          )
+          def test_scientific_statements_reject_duplicates(
+              mutate: Callable[[ResearchHypothesis], ResearchHypothesis],
+          ) -> None:
+              with pytest.raises(ResearchHypothesisError, match="duplicate"):
+                  mutate(_hypothesis())
+          '''
+          if old not in text:
+              raise SystemExit("duplicate-statement parametrization block did not match expected source")
+          text = text.replace(old, new, 1)
+
+          path.write_text(text)
+          PY
+      - name: Canonical formatting
+        run: uv run ruff format tests/test_mesc_mrl_research_hypothesis_v1.py
+      - name: Ruff lint and format check
+        run: |
+          uv run ruff check .
+          uv run ruff format --check .
+      - name: Canonical mypy
+        run: uv run mypy
+      - name: Focused MRL-0102 tests
+        run: uv run pytest -q tests/test_mesc_mrl_research_hypothesis_v1.py
+      - name: Full test suite
+        run: uv run pytest -q
+      - name: Integrity gate
+        run: uv run medscale check
+      - name: Commit qualified target file
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tests/test_mesc_mrl_research_hypothesis_v1.py
+          git commit -m "test(diag): make MRL-0102 mutators type-safe"
+          git push origin HEAD:diag/mrl-0102-mypy-tests-1e36
