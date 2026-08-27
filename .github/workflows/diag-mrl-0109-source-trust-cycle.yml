@@ -22,6 +22,8 @@ jobs:
       - run: uv sync --frozen
       - name: Apply bounded repair
         run: python .github/diag/mrl0109_source_trust_cycle.py
+      - name: Correct permission identity model
+        run: python .github/diag/mrl0109_source_trust_cycle_v2.py
       - name: Normalize target literals and test typing
         shell: python
         run: |
@@ -94,16 +96,16 @@ jobs:
         shell: bash
         run: |
           set +e
-          uv run pytest -q tests/test_mesc_mrl_research_input_admission_v1.py > focused-mrl0109.log 2>&1
+          uv run pytest -q tests/test_mesc_mrl_research_input_admission_v1.py > .github/diag/focused-mrl0109.log 2>&1
           rc=$?
-          cat focused-mrl0109.log
+          cat .github/diag/focused-mrl0109.log
           exit "$rc"
       - name: Upload focused diagnostics
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: mrl0109-focused-failure-${{ github.run_number }}
-          path: focused-mrl0109.log
+          path: .github/diag/focused-mrl0109.log
           retention-days: 1
       - name: Full test suite
         run: uv run pytest -q
