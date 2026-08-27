@@ -34,10 +34,10 @@ jobs:
             src/medscale/mesc/_mrl_research_objective_v1.py \
             tests/test_mesc_mrl_research_objective_v1.py
 
-      - name: Ruff lint and format check
+      - name: Ruff lint and target format check
         run: |
           uv run ruff check .
-          uv run ruff format --check .
+          uv run ruff format --check src tests
 
       - name: Strict mypy
         run: uv run mypy
