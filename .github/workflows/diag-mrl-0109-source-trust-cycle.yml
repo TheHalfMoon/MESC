@@ -106,7 +106,7 @@ jobs:
           cat .github/diag/ruff-mrl0109.log
           exit "$rc"
       - name: Upload Ruff diagnostics
-        if: steps.ruff.outcome == 'failure'
+        if: failure() && steps.ruff.outcome == 'failure'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: mrl0109-ruff-failure-${{ github.run_number }}
@@ -124,7 +124,7 @@ jobs:
           cat .github/diag/focused-mrl0109.log
           exit "$rc"
       - name: Upload focused diagnostics
-        if: steps.focused.outcome == 'failure'
+        if: failure() && steps.focused.outcome == 'failure'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: mrl0109-focused-failure-${{ github.run_number }}
