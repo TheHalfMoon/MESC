@@ -8,7 +8,7 @@ if text.count(import_marker) != 1:
     raise SystemExit("test import marker changed")
 text = text.replace(
     import_marker,
-    "import importlib\nfrom dataclasses import FrozenInstanceError, replace\n\nimport pytest\n",
+    "import importlib\nfrom dataclasses import FrozenInstanceError, replace\nfrom typing import cast\n\nimport pytest\n",
     1,
 )
 
@@ -27,5 +27,10 @@ new = (
 if text.count(old) != 1:
     raise SystemExit("hash instrumentation marker changed")
 text = text.replace(old, new, 1)
+
+return_marker = "        return original(payload)\n"
+if text.count(return_marker) != 1:
+    raise SystemExit("hash wrapper return marker changed")
+text = text.replace(return_marker, "        return cast(str, original(payload))\n", 1)
 
 path.write_text(text, encoding="utf-8")
