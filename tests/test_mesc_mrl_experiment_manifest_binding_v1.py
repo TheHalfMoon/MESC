@@ -332,6 +332,20 @@ def test_non_finite_runtime_vram_is_rejected_before_manifest_identity(
         bind_experiment_manifest(_plan(), manifest)
 
 
+def test_huge_runtime_vram_integer_is_normalized_to_binding_domain_error() -> None:
+    manifest = _manifest(
+        runner=RunnerEnv(
+            runner=RunnerClass.LOCAL,
+            python="3.11",
+            os_name="linux",
+            peak_vram_gb=10**10_000,
+        )
+    )
+
+    with pytest.raises(ExperimentManifestBindingError, match="finite numeric"):
+        bind_experiment_manifest(_plan(), manifest)
+
+
 def test_binding_snapshots_inputs_and_isolated_from_later_external_tampering() -> None:
     plan = _plan()
     manifest = _manifest(model=replace(_MODEL))
@@ -380,6 +394,19 @@ def test_replacing_bound_plan_and_manifest_pair_after_construction_fails_closed(
         started_at="2026-08-27T00:03:00+00:00",
         reproduction="uv run fixture-experiment --new-pair",
     )
+    with pytest.raises(AttributeError):
+        object.__setattr__(
+            binding,
+            "_construction_plan_sha256",
+            replacement_plan.content_sha256,
+        )
+    with pytest.raises(AttributeError):
+        object.__setattr__(
+            binding,
+            "_construction_manifest_sha256",
+            replacement_manifest.manifest_id,
+        )
+
     object.__setattr__(binding, "plan", replacement_plan)
     object.__setattr__(binding, "manifest", replacement_manifest)
 
