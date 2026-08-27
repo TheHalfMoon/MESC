@@ -621,7 +621,10 @@ def _require_resource_subset(
                 )
             continue
         if planned is None:
-            continue
+            raise ResearchExperimentPlanError(
+                f"resource_ceiling {name} cannot be not applicable when the frozen "
+                "objective defines a numeric ceiling"
+            )
         if planned > allowed:
             raise ResearchExperimentPlanError(
                 f"resource_ceiling {name} exceeds the frozen objective envelope"

@@ -355,6 +355,40 @@ def test_not_applicable_objective_resource_cannot_be_minted_by_plan() -> None:
         replace(plan, objective=objective, hypothesis=hypothesis)
 
 
+@pytest.mark.parametrize(
+    "resource_name",
+    [
+        "compute_seconds",
+        "input_tokens",
+        "generated_tokens",
+        "monetary_cost_microunits",
+        "evaluator_invocations",
+    ],
+)
+def test_applicable_objective_resource_cannot_be_dropped_from_plan(
+    resource_name: str,
+) -> None:
+    plan = _plan()
+    if resource_name == "compute_seconds":
+        ceiling = replace(plan.resource_ceiling, compute_seconds=None)
+    elif resource_name == "input_tokens":
+        ceiling = replace(plan.resource_ceiling, input_tokens=None)
+    elif resource_name == "generated_tokens":
+        ceiling = replace(plan.resource_ceiling, generated_tokens=None)
+    elif resource_name == "monetary_cost_microunits":
+        ceiling = replace(plan.resource_ceiling, monetary_cost_microunits=None)
+    elif resource_name == "evaluator_invocations":
+        ceiling = replace(plan.resource_ceiling, evaluator_invocations=None)
+    else:
+        raise AssertionError(f"unhandled resource field: {resource_name}")
+
+    with pytest.raises(
+        ResearchExperimentPlanError,
+        match=rf"resource_ceiling {resource_name} cannot be not applicable",
+    ):
+        replace(plan, resource_ceiling=ceiling)
+
+
 def test_expected_manifest_rq_refs_must_fit_objective() -> None:
     plan = _plan()
     with pytest.raises(ResearchExperimentPlanError, match="research-question refs"):
