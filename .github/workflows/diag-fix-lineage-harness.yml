@@ -1,0 +1,68 @@
+name: diag-fix-lineage-harness
+
+on:
+  push:
+    branches:
+      - diag/mrl-0109-lineage-linearization
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+      - name: Repair embedded Python quoting
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('.github/workflows/diag-mrl-0109-lineage-linearization.yml')
+          lines = path.read_text(encoding='utf-8').splitlines()
+          start = next(
+              (
+                  index
+                  for index, line in enumerate(lines)
+                  if 'marker =' in line and 'Authority decisions must not depend' in line
+              ),
+              None,
+          )
+          if start is None:
+              print('lineage qualification harness already repaired')
+              raise SystemExit(0)
+          end = next(
+              index
+              for index in range(start + 1, len(lines))
+              if 'if spec.count(marker)' in lines[index]
+          )
+          fixed = [
+              '          marker = (',
+              r'              "Authority decisions must not depend on caller-supplied trust\n"',
+              r'              "metadata or ordinary rebindable module names.\n"',
+              '          )',
+              '          replacement = marker + (',
+              r'              "Canonical implementations must also bound lineage depth and graph size and must\n"',
+              r'              "validate shared/deep ancestry without repeated-work amplification; pathological\n"',
+              r'              "lineage fails closed rather than consuming unbounded validation work.\n"',
+              '          )',
+          ]
+          lines[start:end] = fixed
+          path.write_text('\n'.join(lines) + '\n', encoding='utf-8')
+          PY
+          git diff --check
+          git diff -- .github/workflows/diag-mrl-0109-lineage-linearization.yml
+      - name: Commit harness repair when needed
+        shell: bash
+        run: |
+          if git diff --quiet -- .github/workflows/diag-mrl-0109-lineage-linearization.yml; then
+            exit 0
+          fi
+          git config user.name "MESC Diagnostic Qualification"
+          git config user.email "actions@users.noreply.github.com"
+          git add .github/workflows/diag-mrl-0109-lineage-linearization.yml
+          git commit -m "chore(diag): fix lineage qualification quoting [skip ci]"
+          git push
