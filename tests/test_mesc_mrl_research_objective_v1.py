@@ -160,9 +160,7 @@ def test_equivalent_objectives_have_byte_stable_identity() -> None:
         ),
         lambda value: replace(
             value,
-            hard_guardrails=(
-                replace(value.hard_guardrails[0], threshold_decimal="0.96"),
-            ),
+            hard_guardrails=(replace(value.hard_guardrails[0], threshold_decimal="0.96"),),
         ),
         lambda value: replace(
             value,
@@ -264,9 +262,7 @@ def test_metric_must_reference_a_frozen_evaluator_identity() -> None:
     with pytest.raises(ResearchObjectiveContractError, match="unknown evaluator"):
         replace(
             objective,
-            search_metrics=(
-                replace(objective.search_metrics[0], evaluator_id="eval.unknown"),
-            ),
+            search_metrics=(replace(objective.search_metrics[0], evaluator_id="eval.unknown"),),
         )
 
 
@@ -278,12 +274,8 @@ def test_metric_identity_cannot_be_reused_across_search_and_evaluation() -> None
             evaluation_metrics=(
                 replace(objective.evaluation_metrics[0], metric_id="search-score"),
             ),
-            hard_guardrails=(
-                replace(objective.hard_guardrails[0], metric_id="search-score"),
-            ),
-            subgroup_floors=(
-                replace(objective.subgroup_floors[0], metric_id="search-score"),
-            ),
+            hard_guardrails=(replace(objective.hard_guardrails[0], metric_id="search-score"),),
+            subgroup_floors=(replace(objective.subgroup_floors[0], metric_id="search-score"),),
         )
 
 
@@ -318,9 +310,7 @@ def test_floor_roles_and_metric_bindings_fail_closed() -> None:
     with pytest.raises(ResearchObjectiveContractError, match="evaluation metric"):
         replace(
             objective,
-            hard_guardrails=(
-                replace(objective.hard_guardrails[0], metric_id="search-score"),
-            ),
+            hard_guardrails=(replace(objective.hard_guardrails[0], metric_id="search-score"),),
         )
 
 
