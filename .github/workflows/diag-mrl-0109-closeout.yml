@@ -1,0 +1,70 @@
+name: DIAG MRL-0109 Closeout Candidate
+
+on:
+  push:
+    branches:
+      - diag/mrl-0109-closeout-ab1a191
+
+permissions:
+  contents: write
+
+jobs:
+  closeout:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 1
+      - name: Apply bounded MRL-0109 ledger closeout
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path("specs/mesc-research-loop-v1/tasks.md")
+          text = path.read_text()
+          old = """- [ ] **MRL-0109 — Implement `ResearchInputAdmissionContract`**
+            - Depends on: MRL-0100.
+            - Test: research artifacts and separately authorized external evaluation evidence are
+              distinguishable from rejected PHI/product/clinical-runtime learning inputs.
+            - Test: MRL observation/history/procedure/index admission fails closed on rejected input.
+          """.replace("          ", "")
+          new = """- [x] **MRL-0109 — Implement `ResearchInputAdmissionContract`**
+            - Depends on: MRL-0100.
+            - Test: research artifacts and separately authorized external evaluation evidence are
+              distinguishable from rejected PHI/product/clinical-runtime learning inputs.
+            - Test: MRL observation/history/procedure/index admission fails closed on rejected input.
+            - Closeout rule: this checkbox is a branch closeout candidate only. `MRL-0109` becomes
+              `CLOSED_CANONICAL` only if the exact final head containing it passes fresh repository
+              checks and independent review, remains the exact PR head through expected-head merge,
+              and is then present on canonical `main`.
+            - Eligibility effect: MRL-0103 remains ineligible until that canonical merge.
+          """.replace("          ", "")
+          if old in text:
+              path.write_text(text.replace(old, new, 1))
+          elif new in text:
+              print("MRL-0109 closeout candidate already present")
+          else:
+              raise SystemExit("MRL-0109 ledger marker not found exactly")
+      - name: Verify bounded diff
+        shell: bash
+        run: |
+          git diff --check
+          actual="$(git diff --name-only)"
+          if [ -z "$actual" ]; then
+            echo "No ledger mutation required"
+            exit 0
+          fi
+          test "$actual" = "specs/mesc-research-loop-v1/tasks.md"
+          git diff -- specs/mesc-research-loop-v1/tasks.md
+      - name: Commit bounded closeout candidate
+        shell: bash
+        run: |
+          if git diff --quiet -- specs/mesc-research-loop-v1/tasks.md; then
+            echo "No closeout commit required"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add specs/mesc-research-loop-v1/tasks.md
+          git commit -m "chore(mrl): mark MRL-0109 closeout candidate"
+          git push origin HEAD:diag/mrl-0109-closeout-ab1a191
