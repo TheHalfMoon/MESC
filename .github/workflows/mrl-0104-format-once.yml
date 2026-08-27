@@ -1,0 +1,34 @@
+name: MRL-0104 format once
+
+on:
+  push:
+    branches:
+      - tmp/mrl-0104-format
+
+permissions:
+  contents: write
+
+jobs:
+  format-once:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout isolated branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: tmp/mrl-0104-format
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+      - name: Format exact source file
+        run: uvx --from ruff==0.15.21 ruff format src/medscale/mesc/_mrl_experiment_manifest_binding_v1.py
+      - name: Verify formatting delta scope
+        run: |
+          git diff --check
+          changed="$(git diff --name-only)"
+          test "$changed" = "src/medscale/mesc/_mrl_experiment_manifest_binding_v1.py"
+      - name: Commit formatted source
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/medscale/mesc/_mrl_experiment_manifest_binding_v1.py
+          git commit -m "style(mrl): format manifest binding"
+          git push origin HEAD:tmp/mrl-0104-format
