@@ -16,6 +16,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Final
 
+from medscale.mesc import _mrl_research_input_permission_trust_v1 as permission_trust
 from medscale.mesc._mrl_content_identity_v1 import (
     canonical_semantic_bytes,
     derive_content_sha256,
@@ -27,6 +28,7 @@ __all__ = [
     "ResearchInputClassification",
     "ResearchInputDisposition",
     "ResearchInputParentRef",
+    "ResearchInputSourcePermission",
     "ResearchLearningSurface",
 ]
 
@@ -87,6 +89,73 @@ _REJECTED_CLASSIFICATIONS: Final[frozenset[ResearchInputClassification]] = froze
         ResearchInputClassification.UNKNOWN,
     }
 )
+
+
+@dataclass(frozen=True, slots=True)
+class ResearchInputSourcePermission:
+    """Content-addressed permission for one exact governed research-input source."""
+
+    permission_id: str
+    source_artifact_sha256: str
+    source_contract_sha256: str
+    classification: ResearchInputClassification
+    allowed_learning_surfaces: tuple[ResearchLearningSurface, ...]
+
+    def __post_init__(self) -> None:
+        _require_token(self.permission_id, "permission_id")
+        _require_sha256(self.source_artifact_sha256, "source_artifact_sha256")
+        _require_sha256(self.source_contract_sha256, "source_contract_sha256")
+        _require_exact_enum(self.classification, ResearchInputClassification, "classification")
+        _require_learning_surfaces(self.allowed_learning_surfaces)
+        disposition = _disposition_for_classification(self.classification)
+        if disposition is ResearchInputDisposition.REJECTED:
+            raise ResearchInputAdmissionError(
+                "source permissions cannot authorize a rejected classification"
+            )
+        if disposition is ResearchInputDisposition.LEARNING_ADMITTED:
+            if not self.allowed_learning_surfaces:
+                raise ResearchInputAdmissionError(
+                    "learning source permission requires at least one learning surface"
+                )
+        elif self.allowed_learning_surfaces:
+            raise ResearchInputAdmissionError(
+                "external-evaluation source permission cannot grant learning surfaces"
+            )
+
+    def _validated_snapshot(self) -> ResearchInputSourcePermission:
+        _require_exact_source_permission(self)
+        return ResearchInputSourcePermission(
+            permission_id=self.permission_id,
+            source_artifact_sha256=self.source_artifact_sha256,
+            source_contract_sha256=self.source_contract_sha256,
+            classification=self.classification,
+            allowed_learning_surfaces=self.allowed_learning_surfaces,
+        )
+
+    def _semantic_dict_validated(self) -> dict[str, object]:
+        return {
+            "format": "MRL-RESEARCH-INPUT-SOURCE-PERMISSION-V1",
+            "permission_id": self.permission_id,
+            "source_artifact_sha256": self.source_artifact_sha256,
+            "source_contract_sha256": self.source_contract_sha256,
+            "classification": self.classification.value,
+            "allowed_learning_surfaces": [
+                surface.value for surface in self.allowed_learning_surfaces
+            ],
+        }
+
+    @property
+    def content_sha256(self) -> str:
+        _require_exact_source_permission(self)
+        snapshot = self._validated_snapshot()
+        return derive_content_sha256(snapshot._semantic_dict_validated())
+
+    def to_dict(self) -> dict[str, object]:
+        _require_exact_source_permission(self)
+        snapshot = self._validated_snapshot()
+        data = snapshot._semantic_dict_validated()
+        data["content_sha256"] = derive_content_sha256(data)
+        return data
 
 
 @dataclass(frozen=True, slots=True)
@@ -174,6 +243,7 @@ class ResearchInputAdmissionContract:
     source_artifact_sha256: str | None
     source_contract_sha256: str | None
     allowed_learning_surfaces: tuple[ResearchLearningSurface, ...]
+    source_permission: ResearchInputSourcePermission | None = field(default=None, repr=False)
     transformation_kind: str | None = None
     parent_inputs: tuple[ResearchInputParentRef, ...] = ()
 
@@ -184,40 +254,56 @@ class ResearchInputAdmissionContract:
         _require_optional_sha256(self.source_artifact_sha256, "source_artifact_sha256")
         _require_optional_sha256(self.source_contract_sha256, "source_contract_sha256")
         _require_learning_surfaces(self.allowed_learning_surfaces)
-        _require_parent_refs(self.parent_inputs)
-        _require_transformation_lineage(self.transformation_kind, self.parent_inputs)
+        try:
+            _require_parent_refs(self.parent_inputs)
+            _require_transformation_lineage(self.transformation_kind, self.parent_inputs)
 
-        disposition = _disposition_for_classification(self.classification)
-        if disposition is ResearchInputDisposition.LEARNING_ADMITTED:
-            if self.source_artifact_sha256 is None or self.source_contract_sha256 is None:
-                raise ResearchInputAdmissionError(
-                    "learning-admitted input requires exact source artifact and contract identities"
-                )
-            if not self.allowed_learning_surfaces:
-                raise ResearchInputAdmissionError(
-                    "learning-admitted input requires at least one explicit learning surface"
-                )
-        elif disposition is ResearchInputDisposition.EXTERNAL_EVALUATION_ONLY:
-            if self.source_artifact_sha256 is None or self.source_contract_sha256 is None:
-                raise ResearchInputAdmissionError(
-                    "external evaluation evidence requires exact artifact and "
-                    "governing contract identities"
-                )
-            if self.allowed_learning_surfaces:
-                raise ResearchInputAdmissionError(
-                    "external evaluation evidence cannot enter an MRL learning surface"
-                )
-        else:
-            if self.source_artifact_sha256 is not None or self.source_contract_sha256 is not None:
-                raise ResearchInputAdmissionError(
-                    "rejected input cannot carry source artifact or contract identities into MRL"
-                )
-            if self.allowed_learning_surfaces:
-                raise ResearchInputAdmissionError(
-                    "rejected input cannot enter an MRL learning surface"
-                )
+            disposition = _disposition_for_classification(self.classification)
+            if disposition is ResearchInputDisposition.LEARNING_ADMITTED:
+                if self.source_artifact_sha256 is None or self.source_contract_sha256 is None:
+                    raise ResearchInputAdmissionError(
+                        "learning-admitted input requires exact source artifact and "
+                        "contract identities"
+                    )
+                if not self.allowed_learning_surfaces:
+                    raise ResearchInputAdmissionError(
+                        "learning-admitted input requires at least one explicit learning surface"
+                    )
+                _require_source_permission_binding(self)
+            elif disposition is ResearchInputDisposition.EXTERNAL_EVALUATION_ONLY:
+                if self.source_artifact_sha256 is None or self.source_contract_sha256 is None:
+                    raise ResearchInputAdmissionError(
+                        "external evaluation evidence requires exact artifact and "
+                        "governing contract identities"
+                    )
+                if self.allowed_learning_surfaces:
+                    raise ResearchInputAdmissionError(
+                        "external evaluation evidence cannot enter an MRL learning surface"
+                    )
+                _require_source_permission_binding(self)
+            else:
+                if self.source_permission is not None:
+                    raise ResearchInputAdmissionError(
+                        "rejected input cannot carry a source permission into MRL"
+                    )
+                if (
+                    self.source_artifact_sha256 is not None
+                    or self.source_contract_sha256 is not None
+                ):
+                    raise ResearchInputAdmissionError(
+                        "rejected input cannot carry source artifact or contract "
+                        "identities into MRL"
+                    )
+                if self.allowed_learning_surfaces:
+                    raise ResearchInputAdmissionError(
+                        "rejected input cannot enter an MRL learning surface"
+                    )
 
-        _require_no_lineage_laundering(disposition, self.parent_inputs)
+            _require_no_lineage_laundering(disposition, self.parent_inputs)
+        except RecursionError as exc:
+            raise ResearchInputAdmissionError(
+                "cyclic research-input parent lineage is forbidden"
+            ) from exc
 
     @property
     def disposition(self) -> ResearchInputDisposition:
@@ -255,18 +341,30 @@ class ResearchInputAdmissionContract:
 
     def _validated_snapshot(self) -> ResearchInputAdmissionContract:
         _require_exact_admission(self)
-        _require_parent_refs(self.parent_inputs)
-        parents = tuple(parent._validated_snapshot() for parent in self.parent_inputs)
-        return ResearchInputAdmissionContract(
-            input_id=self.input_id,
-            classification_policy_sha256=self.classification_policy_sha256,
-            classification=self.classification,
-            source_artifact_sha256=self.source_artifact_sha256,
-            source_contract_sha256=self.source_contract_sha256,
-            allowed_learning_surfaces=self.allowed_learning_surfaces,
-            transformation_kind=self.transformation_kind,
-            parent_inputs=parents,
-        )
+        _require_acyclic_parent_lineage(self)
+        try:
+            _require_parent_refs(self.parent_inputs)
+            parents = tuple(parent._validated_snapshot() for parent in self.parent_inputs)
+            permission = (
+                self.source_permission._validated_snapshot()
+                if self.source_permission is not None
+                else None
+            )
+            return ResearchInputAdmissionContract(
+                input_id=self.input_id,
+                classification_policy_sha256=self.classification_policy_sha256,
+                classification=self.classification,
+                source_artifact_sha256=self.source_artifact_sha256,
+                source_contract_sha256=self.source_contract_sha256,
+                allowed_learning_surfaces=self.allowed_learning_surfaces,
+                source_permission=permission,
+                transformation_kind=self.transformation_kind,
+                parent_inputs=parents,
+            )
+        except RecursionError as exc:
+            raise ResearchInputAdmissionError(
+                "cyclic research-input parent lineage is forbidden"
+            ) from exc
 
     def _semantic_dict_validated(self) -> dict[str, object]:
         disposition = _disposition_for_classification(self.classification)
@@ -281,6 +379,11 @@ class ResearchInputAdmissionContract:
             "allowed_learning_surfaces": [
                 surface.value for surface in self.allowed_learning_surfaces
             ],
+            "source_permission_sha256": (
+                derive_content_sha256(self.source_permission._semantic_dict_validated())
+                if self.source_permission is not None
+                else None
+            ),
             "transformation_kind": self.transformation_kind,
             "parent_inputs": [parent.to_dict() for parent in self.parent_inputs],
         }
@@ -325,6 +428,75 @@ def _disposition_for_classification(
     if classification in _REJECTED_CLASSIFICATIONS:
         return ResearchInputDisposition.REJECTED
     raise ResearchInputAdmissionError("unsupported research-input classification")
+
+
+def _require_acyclic_parent_lineage(root: ResearchInputAdmissionContract) -> None:
+    """Reject cyclic or pathologically deep parent graphs before recursive validation."""
+    max_depth = 128
+    active: set[int] = set()
+    visited: set[int] = set()
+    stack: list[tuple[ResearchInputAdmissionContract, int, bool]] = [(root, 0, False)]
+
+    while stack:
+        node, depth, exiting = stack.pop()
+        node_id = id(node)
+        if exiting:
+            active.remove(node_id)
+            visited.add(node_id)
+            continue
+        _require_exact_admission(node)
+        if node_id in active:
+            raise ResearchInputAdmissionError("cyclic research-input parent lineage is forbidden")
+        if node_id in visited:
+            continue
+        if depth > max_depth:
+            raise ResearchInputAdmissionError(
+                "research-input parent lineage exceeds the fail-closed depth limit"
+            )
+        parents = node.parent_inputs
+        if type(parents) is not tuple:
+            raise ResearchInputAdmissionError("parent_inputs must be an exact tuple")
+        active.add(node_id)
+        stack.append((node, depth, True))
+        for parent_ref in reversed(parents):
+            _require_exact_parent_ref(parent_ref)
+            parent = parent_ref.parent_admission
+            _require_exact_admission(parent)
+            stack.append((parent, depth + 1, False))
+
+
+def _require_source_permission_binding(contract: ResearchInputAdmissionContract) -> None:
+    permission = contract.source_permission
+    if type(permission) is not ResearchInputSourcePermission:
+        raise ResearchInputAdmissionError(
+            "admissible input requires an exact ResearchInputSourcePermission"
+        )
+    snapshot = permission._validated_snapshot()
+    permission_sha256 = derive_content_sha256(snapshot._semantic_dict_validated())
+    if contract.source_artifact_sha256 != snapshot.source_artifact_sha256:
+        raise ResearchInputAdmissionError(
+            "source permission does not bind the admitted source artifact"
+        )
+    if contract.source_contract_sha256 != snapshot.source_contract_sha256:
+        raise ResearchInputAdmissionError(
+            "source permission does not bind the governing source contract"
+        )
+    if contract.classification is not snapshot.classification:
+        raise ResearchInputAdmissionError(
+            "source permission does not authorize the admitted classification"
+        )
+    requested = frozenset(contract.allowed_learning_surfaces)
+    permitted = frozenset(snapshot.allowed_learning_surfaces)
+    if not requested.issubset(permitted):
+        raise ResearchInputAdmissionError(
+            "source permission does not authorize the requested learning surfaces"
+        )
+    try:
+        permission_trust.validate_research_input_source_permission_trust(permission_sha256)
+    except permission_trust.ResearchInputPermissionTrustError as exc:
+        raise ResearchInputAdmissionError(
+            "source permission is not trusted by canonical research-input governance"
+        ) from exc
 
 
 def _require_no_lineage_laundering(
@@ -405,6 +577,13 @@ def _require_exact_parent_ref(value: ResearchInputParentRef) -> None:
     if type(value) is not ResearchInputParentRef:
         raise ResearchInputAdmissionError(
             "parent input reference must be an exact ResearchInputParentRef instance"
+        )
+
+
+def _require_exact_source_permission(value: ResearchInputSourcePermission) -> None:
+    if type(value) is not ResearchInputSourcePermission:
+        raise ResearchInputAdmissionError(
+            "source permission must be an exact ResearchInputSourcePermission instance"
         )
 
 
