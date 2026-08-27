@@ -239,6 +239,96 @@ class ResearchInputParentRef:
         }
 
 
+def _build_admission_graph_trust_gate(
+    validate_permission_trust: Callable[[str], object],
+) -> Callable[[ResearchInputAdmissionContract], None]:
+    """Bind admission authority to one import-time canonical validator closure."""
+
+    def require_admission_graph_trust(root: ResearchInputAdmissionContract) -> None:
+        stack = [root]
+        visited: set[int] = set()
+        while stack:
+            node = stack.pop()
+            node_id = id(node)
+            if node_id in visited:
+                continue
+            visited.add(node_id)
+            _require_exact_admission(node)
+            disposition = _disposition_for_classification(node.classification)
+            if disposition is not ResearchInputDisposition.REJECTED:
+                _require_source_permission_binding(node)
+                permission = node.source_permission
+                if type(permission) is not ResearchInputSourcePermission:
+                    raise ResearchInputAdmissionError(
+                        "admissible input requires an exact ResearchInputSourcePermission"
+                    )
+                permission_snapshot = permission._validated_snapshot()
+                permission_sha256 = derive_content_sha256(
+                    permission_snapshot._semantic_dict_validated()
+                )
+                try:
+                    validate_permission_trust(permission_sha256)
+                except ResearchInputPermissionTrustError as exc:
+                    raise ResearchInputAdmissionError(
+                        "source permission is not trusted by canonical research-input governance"
+                    ) from exc
+            for parent_ref in node.parent_inputs:
+                _require_exact_parent_ref(parent_ref)
+                stack.append(parent_ref.parent_admission)
+
+    return require_admission_graph_trust
+
+
+_require_admission_graph_trust = _build_admission_graph_trust_gate(
+    _canonical_validate_permission_trust
+)
+del _build_admission_graph_trust_gate
+del _canonical_validate_permission_trust
+
+
+def _bind_learning_admission_trust(
+    trust_gate: Callable[[ResearchInputAdmissionContract], None],
+) -> Callable[
+    [Callable[[ResearchInputAdmissionContract, ResearchLearningSurface], None]],
+    Callable[[ResearchInputAdmissionContract, ResearchLearningSurface], None],
+]:
+    """Bind the canonical trust gate lexically into the public learning method."""
+
+    def decorate(
+        method: Callable[[ResearchInputAdmissionContract, ResearchLearningSurface], None],
+    ) -> Callable[[ResearchInputAdmissionContract, ResearchLearningSurface], None]:
+        def guarded(
+            self: ResearchInputAdmissionContract,
+            surface: ResearchLearningSurface,
+        ) -> None:
+            method(self, surface)
+            trust_gate(self._validated_snapshot())
+
+        return guarded
+
+    return decorate
+
+
+def _bind_external_evaluation_trust(
+    trust_gate: Callable[[ResearchInputAdmissionContract], None],
+) -> Callable[
+    [Callable[[ResearchInputAdmissionContract], None]],
+    Callable[[ResearchInputAdmissionContract], None],
+]:
+    """Bind the canonical trust gate lexically into the public evaluation method."""
+
+    def decorate(
+        method: Callable[[ResearchInputAdmissionContract], None],
+    ) -> Callable[[ResearchInputAdmissionContract], None]:
+        def guarded(self: ResearchInputAdmissionContract) -> None:
+            method(self)
+            trust_gate(self._validated_snapshot())
+
+        return guarded
+
+    return decorate
+
+
 @dataclass(frozen=True, slots=True)
 class ResearchInputAdmissionContract:
     """Immutable classification and admission envelope for one candidate MRL input."""
@@ -318,6 +408,7 @@ class ResearchInputAdmissionContract:
         snapshot = self._validated_snapshot()
         return _disposition_for_classification(snapshot.classification)
 
+    @_bind_learning_admission_trust(_require_admission_graph_trust)
     def require_learning_admission(self, surface: ResearchLearningSurface) -> None:
         """Fail closed unless this exact input may enter the requested MRL learning surface."""
         _require_exact_admission(self)
@@ -332,8 +423,8 @@ class ResearchInputAdmissionContract:
             raise ResearchInputAdmissionError(
                 f"input is not admitted to learning surface {surface.value!r}"
             )
-        _require_admission_graph_trust(snapshot)
 
+    @_bind_external_evaluation_trust(_require_admission_graph_trust)
     def require_external_evaluation_use(self) -> None:
         """Fail closed unless this input is separately classified as external evidence only."""
         _require_exact_admission(self)
@@ -345,7 +436,6 @@ class ResearchInputAdmissionContract:
             raise ResearchInputAdmissionError(
                 "input is not admitted as separately governed external evaluation evidence"
             )
-        _require_admission_graph_trust(snapshot)
 
     def _validated_snapshot(self) -> ResearchInputAdmissionContract:
         _require_exact_admission(self)
@@ -425,6 +515,11 @@ class ResearchInputAdmissionContract:
         return data
 
 
+del _bind_learning_admission_trust
+del _bind_external_evaluation_trust
+del _require_admission_graph_trust
+
+
 def _disposition_for_classification(
     classification: ResearchInputClassification,
 ) -> ResearchInputDisposition:
@@ -498,53 +593,6 @@ def _require_source_permission_binding(contract: ResearchInputAdmissionContract)
         raise ResearchInputAdmissionError(
             "source permission does not authorize the requested learning surfaces"
         )
-
-
-def _build_admission_graph_trust_gate(
-    validate_permission_trust: Callable[[str], object],
-) -> Callable[[ResearchInputAdmissionContract], None]:
-    """Bind admission authority to one import-time canonical validator closure."""
-
-    def require_admission_graph_trust(root: ResearchInputAdmissionContract) -> None:
-        stack = [root]
-        visited: set[int] = set()
-        while stack:
-            node = stack.pop()
-            node_id = id(node)
-            if node_id in visited:
-                continue
-            visited.add(node_id)
-            _require_exact_admission(node)
-            disposition = _disposition_for_classification(node.classification)
-            if disposition is not ResearchInputDisposition.REJECTED:
-                _require_source_permission_binding(node)
-                permission = node.source_permission
-                if type(permission) is not ResearchInputSourcePermission:
-                    raise ResearchInputAdmissionError(
-                        "admissible input requires an exact ResearchInputSourcePermission"
-                    )
-                permission_snapshot = permission._validated_snapshot()
-                permission_sha256 = derive_content_sha256(
-                    permission_snapshot._semantic_dict_validated()
-                )
-                try:
-                    validate_permission_trust(permission_sha256)
-                except ResearchInputPermissionTrustError as exc:
-                    raise ResearchInputAdmissionError(
-                        "source permission is not trusted by canonical research-input governance"
-                    ) from exc
-            for parent_ref in node.parent_inputs:
-                _require_exact_parent_ref(parent_ref)
-                stack.append(parent_ref.parent_admission)
-
-    return require_admission_graph_trust
-
-
-_require_admission_graph_trust = _build_admission_graph_trust_gate(
-    _canonical_validate_permission_trust
-)
-del _build_admission_graph_trust_gate
-del _canonical_validate_permission_trust
 
 
 def _require_no_lineage_laundering(
