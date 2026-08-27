@@ -732,3 +732,49 @@ def test_plan_subclass_cannot_use_canonical_semantic_views() -> None:
 
     with pytest.raises(ResearchExperimentPlanError, match="exact ResearchExperimentPlan"):
         subclass.semantic_dict()
+
+
+@pytest.mark.parametrize(
+    "forbidden_surface",
+    [
+        "tests/fixtures/mrl/../mrl/candidates",
+        "tests/fixtures/mrl//candidates",
+        "/tests/fixtures/mrl/candidates",
+        r"tests\fixtures\mrl\candidates",
+    ],
+)
+def test_plan_revalidates_malformed_forbidden_mutation_surface_before_scope_checks(
+    forbidden_surface: str,
+) -> None:
+    plan = _plan()
+    object.__setattr__(
+        plan.objective,
+        "forbidden_mutation_surfaces",
+        (forbidden_surface,),
+    )
+
+    with pytest.raises(ResearchExperimentPlanError):
+        plan.semantic_dict()
+
+
+@pytest.mark.parametrize(
+    "forbidden_surface",
+    [
+        "experiments/../experiments/results",
+        "experiments//results",
+        "/experiments/results",
+        r"experiments\results",
+    ],
+)
+def test_plan_revalidates_malformed_forbidden_surface_before_result_destination_checks(
+    forbidden_surface: str,
+) -> None:
+    plan = _plan()
+    object.__setattr__(
+        plan.objective,
+        "forbidden_mutation_surfaces",
+        (forbidden_surface,),
+    )
+
+    with pytest.raises(ResearchExperimentPlanError):
+        plan.to_dict()

@@ -359,7 +359,7 @@ class ResearchObjectiveContract:
         _require_sorted_unique_program_refs(self.research_program_refs)
         _require_sorted_unique_text(self.target_capabilities, "target_capabilities")
         _require_allowed_mutation_surfaces(self.allowed_mutation_surfaces)
-        _require_sorted_unique_text(self.forbidden_mutation_surfaces, "forbidden_mutation_surfaces")
+        _require_forbidden_mutation_surfaces(self.forbidden_mutation_surfaces)
         _require_exact_instance(self.resource_budget, ResourceBudget, "resource_budget")
         _require_exact_instance(
             self.evaluation_tier_policy, EvaluationTierPolicy, "evaluation_tier_policy"
@@ -725,6 +725,22 @@ def _require_allowed_mutation_surfaces(values: tuple[str, ...]) -> None:
             raise ResearchObjectiveContractError(
                 "allowed_mutation_surfaces may target only governed campaign-mutable roots; "
                 f"rejected {value!r}"
+            )
+
+
+def _require_forbidden_mutation_surfaces(values: tuple[str, ...]) -> None:
+    _require_sorted_unique_text(values, "forbidden_mutation_surfaces")
+    for value in values:
+        parts = value.split("/")
+        if (
+            value.startswith("/")
+            or value.endswith("/")
+            or "\x00" in value
+            or "\\" in value
+            or any(part in ("", ".", "..") for part in parts)
+        ):
+            raise ResearchObjectiveContractError(
+                f"forbidden_mutation_surfaces contains non-canonical relative path {value!r}"
             )
 
 

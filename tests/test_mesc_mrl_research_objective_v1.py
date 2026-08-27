@@ -603,3 +603,26 @@ def test_post_construction_nested_evaluator_mutation_rechecks_tier_binding() -> 
         objective.semantic_dict()
     with pytest.raises(ResearchObjectiveContractError, match="does not admit metric tier"):
         _ = objective.content_sha256
+
+
+@pytest.mark.parametrize(
+    "surface",
+    [
+        "governance/../sealed-evaluation",
+        "governance//sealed-evaluation",
+        "/governance",
+        r"governance\sealed-evaluation",
+        "governance/",
+    ],
+)
+def test_forbidden_mutation_surfaces_require_canonical_relative_paths(surface: str) -> None:
+    with pytest.raises(
+        ResearchObjectiveContractError,
+        match="forbidden_mutation_surfaces contains non-canonical relative path",
+    ):
+        replace(_objective(), forbidden_mutation_surfaces=(surface,))
+
+
+def test_forbidden_mutation_surfaces_allow_canonical_bare_roots() -> None:
+    objective = replace(_objective(), forbidden_mutation_surfaces=("governance",))
+    assert objective.forbidden_mutation_surfaces == ("governance",)
