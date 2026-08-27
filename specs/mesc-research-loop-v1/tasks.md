@@ -137,6 +137,7 @@ is then present on canonical `main`. Any head mutation burns prior exact-head ev
     representative transfer evidence, negative controls, typed applicability bounds, and
     an independent immutable review receipt.
   - Test: research/campaign agent cannot self-admit a procedure.
+
 - [ ] **MRL-0109 — Implement `ResearchInputAdmissionContract`**
   - Depends on: MRL-0100.
   - Test: research artifacts and separately authorized external evaluation evidence are
