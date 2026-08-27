@@ -72,6 +72,7 @@ def _objective() -> ResearchObjectiveContract:
             generated_tokens=2_000,
             storage_bytes=1_000_000,
             monetary_cost_microunits=500_000,
+            max_experiments=12,
             retries=3,
             known_failure_retries=1,
             evaluator_invocations=20,
@@ -150,6 +151,10 @@ def test_equivalent_objectives_have_byte_stable_identity() -> None:
         ),
         lambda value: replace(
             value,
+            resource_budget=replace(value.resource_budget, max_experiments=13),
+        ),
+        lambda value: replace(
+            value,
             adaptive_query_budget=AdaptiveQueryBudget(tier_1_queries=4, tier_2_queries=0),
         ),
         lambda value: replace(
@@ -218,6 +223,8 @@ def test_objective_and_nested_contracts_are_frozen() -> None:
         ("wall_clock_seconds", True),
         ("compute_seconds", -1),
         ("storage_bytes", -1),
+        ("max_experiments", -1),
+        ("max_experiments", True),
         ("retries", -1),
         ("evaluator_invocations", -1),
     ],
@@ -230,6 +237,7 @@ def test_invalid_resource_ceilings_fail_closed(field: str, value: object) -> Non
         "generated_tokens": 2_000,
         "storage_bytes": 1_000_000,
         "monetary_cost_microunits": 500_000,
+        "max_experiments": 12,
         "retries": 3,
         "known_failure_retries": 1,
         "evaluator_invocations": 20,
@@ -552,6 +560,24 @@ def test_post_construction_nested_budget_mutation_fails_closed_at_public_views()
     with pytest.raises(ResearchObjectiveContractError, match="retries must be a non-negative"):
         _ = objective.content_sha256
     with pytest.raises(ResearchObjectiveContractError, match="retries must be a non-negative"):
+        objective.to_dict()
+
+
+def test_post_construction_max_experiments_mutation_fails_closed_at_public_views() -> None:
+    objective = _objective()
+    object.__setattr__(objective.resource_budget, "max_experiments", -1)
+
+    with pytest.raises(
+        ResearchObjectiveContractError, match="max_experiments must be a non-negative"
+    ):
+        objective.semantic_dict()
+    with pytest.raises(
+        ResearchObjectiveContractError, match="max_experiments must be a non-negative"
+    ):
+        _ = objective.content_sha256
+    with pytest.raises(
+        ResearchObjectiveContractError, match="max_experiments must be a non-negative"
+    ):
         objective.to_dict()
 
 
