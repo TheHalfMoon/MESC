@@ -115,6 +115,7 @@ class ResourceBudget:
     generated_tokens: int | None
     storage_bytes: int
     monetary_cost_microunits: int | None
+    max_experiments: int
     retries: int
     known_failure_retries: int
     evaluator_invocations: int | None
@@ -126,6 +127,7 @@ class ResourceBudget:
         _require_optional_nonnegative_int(self.generated_tokens, "generated_tokens")
         _require_nonnegative_int(self.storage_bytes, "storage_bytes")
         _require_optional_nonnegative_int(self.monetary_cost_microunits, "monetary_cost_microunits")
+        _require_nonnegative_int(self.max_experiments, "max_experiments")
         _require_nonnegative_int(self.retries, "retries")
         _require_nonnegative_int(self.known_failure_retries, "known_failure_retries")
         _require_optional_nonnegative_int(self.evaluator_invocations, "evaluator_invocations")
@@ -140,6 +142,7 @@ class ResourceBudget:
             "generated_tokens": self.generated_tokens,
             "storage_bytes": self.storage_bytes,
             "monetary_cost_microunits": self.monetary_cost_microunits,
+            "max_experiments": self.max_experiments,
             "retries": self.retries,
             "known_failure_retries": self.known_failure_retries,
             "evaluator_invocations": self.evaluator_invocations,
@@ -601,6 +604,7 @@ def _snapshot_resource_budget(value: ResourceBudget) -> ResourceBudget:
         generated_tokens=value.generated_tokens,
         storage_bytes=value.storage_bytes,
         monetary_cost_microunits=value.monetary_cost_microunits,
+        max_experiments=value.max_experiments,
         retries=value.retries,
         known_failure_retries=value.known_failure_retries,
         evaluator_invocations=value.evaluator_invocations,
