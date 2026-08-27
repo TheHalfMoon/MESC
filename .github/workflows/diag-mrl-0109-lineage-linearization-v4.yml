@@ -19,7 +19,9 @@ jobs:
       - run: uv python install 3.12
       - run: uv sync --frozen
       - name: Apply bounded lineage repair
-        run: python .github/diagnostics/mrl_0109_lineage_linearization_v4.py
+        run: |
+          python .github/diagnostics/mrl_0109_lineage_linearization_v4.py
+          python .github/diagnostics/mrl_0109_subclass_ctor_compat.py
       - name: Canonicalize changed Python
         run: |
           uv run ruff check --fix src/medscale/mesc/_mrl_research_input_admission_v1.py tests/test_mesc_mrl_research_input_admission_v1.py
