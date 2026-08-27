@@ -1,0 +1,51 @@
+name: MRL formatter transport once
+
+on:
+  push:
+    branches:
+      - tmp/mrl-0103-format-verified
+
+permissions:
+  contents: write
+
+jobs:
+  format-once:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact temporary branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
+
+      - name: Verify transport parent
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = "874f42970c84cc42b032d7ef441f62b3e1880204"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+
+      - name: Format exact target with locked toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          target="src/medscale/mesc/_mrl_research_experiment_plan_v1.py"
+          uv sync --frozen
+          uv run ruff --version
+          uv run ruff format "$target"
+          uv run ruff format --check "$target"
+          test "$(sha256sum "$target" | awk '{print $1}')" = "1450a5d39521dba28b48c11ce38d42193873f2d82ef1e49b8feb4735649420ec"
+          test "$(git diff --name-only)" = "$target"
+
+      - name: Commit formatted blob and self-delete transport workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          target="src/medscale/mesc/_mrl_research_experiment_plan_v1.py"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$target"
+          git rm .github/workflows/mrl-format-once.yml
+          git commit -m "style(mrl): format research experiment plan"
+          git push origin HEAD:tmp/mrl-0103-format-verified
