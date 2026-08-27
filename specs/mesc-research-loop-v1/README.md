@@ -2,16 +2,30 @@
 
 Status: **CANONICAL PLANNING / MRL-0 QUALIFYING / NOT EXECUTION AUTHORITY**
 
-Canonical planning acceptance:
+Canonical planning acceptance and current MRL-0 qualification base:
 
 ```text
-PLANNING_MERGE_SHA = 74a800447ff251fa70027e0590ba2150c1e70e65
-PLANNING_MERGE_TREE = 0507920e5e6d62d73484f558451a871a7dc52bcc
+MRL_PLANNING_ACCEPTANCE_MERGE_SHA = 74a800447ff251fa70027e0590ba2150c1e70e65
+MRL_PLANNING_ACCEPTANCE_TREE = 0507920e5e6d62d73484f558451a871a7dc52bcc
+MRL_0_QUALIFICATION_BASE_SHA = 74a800447ff251fa70027e0590ba2150c1e70e65
+MRL_0_EXACT_HEAD = RESOLVED_EXTERNALLY_BY_MRL_0099_PR_AND_CHECK_EVIDENCE
 TRAINING_EXECUTION = NOT_AUTHORIZED_BY_THIS PROGRAM
 REAL_MODEL_OR_DATA_ACCESS = NOT_AUTHORIZED_BY_THIS PROGRAM
 AUTONOMOUS_GPU_EXPERIMENTATION = NOT_AUTHORIZED_BY_THIS PROGRAM
 MODEL_PROMOTION = NOT_OWNED_BY_MRL_V1
 ```
+
+The planning-acceptance SHA/tree above identify the already-canonical MRL V1 planning
+package and the base from which the current MRL-0 governance change started. They are **not**
+the identity of the MRL-0 package under review.
+
+The MRL-0 exact candidate head is intentionally not embedded in this file because adding a
+commit identity to bytes that are themselves committed would immediately create a new head
+and make the embedded value stale. `MRL-0099` therefore binds the final exact head through
+immutable PR/check/review evidence outside the candidate's semantic bytes. Before Ready and
+again before merge, live GitHub truth must prove that the reviewed/check-qualified head is
+the current PR head and contains the complete MRL-0 package. A head mutation invalidates all
+prior exact-head qualification evidence.
 
 ## Purpose
 
@@ -107,7 +121,7 @@ MRL-0 branch through:
   reserves explicit MESC/MCRL/Arabic/AMGE/Omni/MRL namespaces without fabricating new
   scientific questions;
 - `project-state-contract.md` — precedence, deterministic serialization, source binding,
-  and anti-staleness rules;
+  identity uniqueness, mandatory admission validation, and anti-staleness rules;
 - `project-state-v1.schema.json` — closed machine-readable shape requiring
   `DERIVED_NON_AUTHORITATIVE` and `can_authorize=false`;
 - `docs/research/README.md` — index/traceability reconciliation.
