@@ -1,0 +1,79 @@
+name: DIAG MRL-0109 Qualification
+
+on:
+  push:
+    branches:
+      - diag/mrl-0109-qualify-7da3128
+
+permissions:
+  contents: write
+
+jobs:
+  qualify:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: true
+          fetch-depth: 1
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+        with:
+          enable-cache: true
+      - run: uv python install 3.12
+      - run: uv sync --frozen
+      - name: Repair two Ruff line-length defects
+        shell: python
+        run: |
+          from pathlib import Path
+
+          source = Path("src/medscale/mesc/_mrl_research_input_admission_v1.py")
+          text = source.read_text(encoding="utf-8")
+          old = '                    "external evaluation evidence requires exact artifact and governing contract identities"\n'
+          new = (
+              '                    "external evaluation evidence requires exact artifact and "\n'
+              '                    "governing contract identities"\n'
+          )
+          if text.count(old) != 1:
+              raise SystemExit(f"source replacement count={text.count(old)}")
+          source.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+          tests = Path("tests/test_mesc_mrl_research_input_admission_v1.py")
+          text = tests.read_text(encoding="utf-8")
+          old = '    with pytest.raises(ResearchInputAdmissionError, match="cannot be transformed into an MRL learning"):\n'
+          new = (
+              '    with pytest.raises(\n'
+              '        ResearchInputAdmissionError,\n'
+              '        match="cannot be transformed into an MRL learning",\n'
+              '    ):\n'
+          )
+          if text.count(old) != 1:
+              raise SystemExit(f"test replacement count={text.count(old)}")
+          tests.write_text(text.replace(old, new, 1), encoding="utf-8")
+      - name: Canonical formatting
+        run: uv run ruff format src/medscale/mesc/_mrl_research_input_admission_v1.py tests/test_mesc_mrl_research_input_admission_v1.py
+      - name: Ruff lint and format check
+        run: |
+          uv run ruff check .
+          uv run ruff format --check .
+      - name: Canonical mypy
+        run: uv run mypy
+      - name: Focused MRL-0109 tests
+        run: uv run pytest -q tests/test_mesc_mrl_research_input_admission_v1.py
+      - name: Full test suite
+        run: uv run pytest -q
+      - name: Integrity gate
+        run: uv run medscale check
+      - name: Commit qualified target files
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          mapfile -t changed < <(git diff --name-only)
+          test "${#changed[@]}" -eq 2
+          test "${changed[0]}" = "src/medscale/mesc/_mrl_research_input_admission_v1.py"
+          test "${changed[1]}" = "tests/test_mesc_mrl_research_input_admission_v1.py"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/medscale/mesc/_mrl_research_input_admission_v1.py tests/test_mesc_mrl_research_input_admission_v1.py
+          git commit -m 'fix(diag): qualify MRL-0109 admission boundary'
+          git push origin HEAD:diag/mrl-0109-qualify-7da3128
