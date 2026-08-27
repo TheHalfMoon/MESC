@@ -56,81 +56,85 @@ jobs:
           objective.write_text(text)
 
           objective_tests = Path("tests/test_mesc_mrl_research_objective_v1.py")
-          with objective_tests.open("a") as handle:
-              handle.write(r'''
+          objective_tests.write_text(
+              objective_tests.read_text()
+              + r'''
 
-@pytest.mark.parametrize(
-    "surface",
-    [
-        "governance/../sealed-evaluation",
-        "governance//sealed-evaluation",
-        "/governance",
-        r"governance\sealed-evaluation",
-        "governance/",
-    ],
-)
-def test_forbidden_mutation_surfaces_require_canonical_relative_paths(surface: str) -> None:
-    with pytest.raises(
-        ResearchObjectiveContractError,
-        match="forbidden_mutation_surfaces contains non-canonical relative path",
-    ):
-        replace(_objective(), forbidden_mutation_surfaces=(surface,))
+          @pytest.mark.parametrize(
+              "surface",
+              [
+                  "governance/../sealed-evaluation",
+                  "governance//sealed-evaluation",
+                  "/governance",
+                  r"governance\sealed-evaluation",
+                  "governance/",
+              ],
+          )
+          def test_forbidden_mutation_surfaces_require_canonical_relative_paths(surface: str) -> None:
+              with pytest.raises(
+                  ResearchObjectiveContractError,
+                  match="forbidden_mutation_surfaces contains non-canonical relative path",
+              ):
+                  replace(_objective(), forbidden_mutation_surfaces=(surface,))
 
 
-def test_forbidden_mutation_surfaces_allow_canonical_bare_roots() -> None:
-    objective = replace(_objective(), forbidden_mutation_surfaces=("governance",))
-    assert objective.forbidden_mutation_surfaces == ("governance",)
-''')
+          def test_forbidden_mutation_surfaces_allow_canonical_bare_roots() -> None:
+              objective = replace(_objective(), forbidden_mutation_surfaces=("governance",))
+              assert objective.forbidden_mutation_surfaces == ("governance",)
+          '''
+          )
 
           plan_tests = Path("tests/test_mesc_mrl_research_experiment_plan_v1.py")
-          with plan_tests.open("a") as handle:
-              handle.write(r'''
+          plan_tests.write_text(
+              plan_tests.read_text()
+              + r'''
 
-@pytest.mark.parametrize(
-    "forbidden_surface",
-    [
-        "tests/fixtures/mrl/../mrl/candidates",
-        "tests/fixtures/mrl//candidates",
-        "/tests/fixtures/mrl/candidates",
-        r"tests\fixtures\mrl\candidates",
-    ],
-)
-def test_plan_revalidates_malformed_forbidden_mutation_surface_before_scope_checks(
-    forbidden_surface: str,
-) -> None:
-    plan = _plan()
-    object.__setattr__(
-        plan.objective,
-        "forbidden_mutation_surfaces",
-        (forbidden_surface,),
-    )
+          @pytest.mark.parametrize(
+              "forbidden_surface",
+              [
+                  "tests/fixtures/mrl/../mrl/candidates",
+                  "tests/fixtures/mrl//candidates",
+                  "/tests/fixtures/mrl/candidates",
+                  r"tests\fixtures\mrl\candidates",
+              ],
+          )
+          def test_plan_revalidates_malformed_forbidden_mutation_surface_before_scope_checks(
+              forbidden_surface: str,
+          ) -> None:
+              plan = _plan()
+              object.__setattr__(
+                  plan.objective,
+                  "forbidden_mutation_surfaces",
+                  (forbidden_surface,),
+              )
 
-    with pytest.raises(ResearchExperimentPlanError):
-        plan.semantic_dict()
+              with pytest.raises(ResearchExperimentPlanError):
+                  plan.semantic_dict()
 
 
-@pytest.mark.parametrize(
-    "forbidden_surface",
-    [
-        "experiments/../experiments/results",
-        "experiments//results",
-        "/experiments/results",
-        r"experiments\results",
-    ],
-)
-def test_plan_revalidates_malformed_forbidden_surface_before_result_destination_checks(
-    forbidden_surface: str,
-) -> None:
-    plan = _plan()
-    object.__setattr__(
-        plan.objective,
-        "forbidden_mutation_surfaces",
-        (forbidden_surface,),
-    )
+          @pytest.mark.parametrize(
+              "forbidden_surface",
+              [
+                  "experiments/../experiments/results",
+                  "experiments//results",
+                  "/experiments/results",
+                  r"experiments\results",
+              ],
+          )
+          def test_plan_revalidates_malformed_forbidden_surface_before_result_destination_checks(
+              forbidden_surface: str,
+          ) -> None:
+              plan = _plan()
+              object.__setattr__(
+                  plan.objective,
+                  "forbidden_mutation_surfaces",
+                  (forbidden_surface,),
+              )
 
-    with pytest.raises(ResearchExperimentPlanError):
-        plan.to_dict()
-''')
+              with pytest.raises(ResearchExperimentPlanError):
+                  plan.to_dict()
+          '''
+          )
           PY
 
       - name: Qualify candidate
