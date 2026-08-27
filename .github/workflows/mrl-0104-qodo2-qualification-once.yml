@@ -31,16 +31,22 @@ jobs:
           source_path = Path("src/medscale/mesc/_mrl_experiment_manifest_binding_v1.py")
           source = source_path.read_text()
 
+          import_anchor = "from dataclasses import dataclass, field\n"
+          import_replacement = "from dataclasses import dataclass, field\nfrom typing import cast\n"
+          if source.count(import_anchor) != 1:
+              raise SystemExit("expected exactly one typing import anchor")
+          source = source.replace(import_anchor, import_replacement)
+
           old_catch = "    except (AttributeError, OverflowError, TypeError, ValueError) as exc:\n"
           new_catch = "    except (AttributeError, OverflowError, RecursionError, TypeError, ValueError) as exc:\n"
           if source.count(old_catch) != 1:
               raise SystemExit("expected exactly one manifest reconstruction catch")
           source = source.replace(old_catch, new_catch)
 
-          old_numeric = "    if isinstance(value, bool) or not isinstance(value, (int, float)):\n"
-          new_numeric = "    if type(value) not in (int, float):\n"
+          old_numeric = '''    if isinstance(value, bool) or not isinstance(value, (int, float)):\n        raise ExperimentManifestBindingError(f"{name} must be finite numeric or None")\n    try:\n        finite = math.isfinite(value)\n'''
+          new_numeric = '''    if type(value) not in (int, float):\n        raise ExperimentManifestBindingError(f"{name} must be finite numeric or None")\n    numeric_value = cast(int | float, value)\n    try:\n        finite = math.isfinite(numeric_value)\n'''
           if source.count(old_numeric) != 1:
-              raise SystemExit("expected exactly one finite-number type gate")
+              raise SystemExit("expected exactly one finite-number validation block")
           source = source.replace(old_numeric, new_numeric)
           source_path.write_text(source)
 
