@@ -145,9 +145,7 @@ def _snapshot_manifest(value: ExperimentManifest) -> ExperimentManifest:
         isinstance(value.runner.peak_vram_gb, bool)
         or not isinstance(value.runner.peak_vram_gb, (int, float))
     ):
-        raise ExperimentManifestBindingError(
-            "manifest.runner.peak_vram_gb must be numeric or None"
-        )
+        raise ExperimentManifestBindingError("manifest.runner.peak_vram_gb must be numeric or None")
 
     _require_exact_str(value.started_at, "manifest.started_at")
     _require_tuple_of_exact(value.results_paths, str, "manifest.results_paths")
