@@ -317,7 +317,7 @@ def test_runtime_only_fields_change_manifest_identity_without_breaking_plan_matc
 
 def test_binding_snapshots_inputs_and_isolated_from_later_external_tampering() -> None:
     plan = _plan()
-    manifest = _manifest()
+    manifest = _manifest(model=replace(_MODEL))
     binding = bind_experiment_manifest(plan, manifest)
     before = binding.to_dict()
 
@@ -333,6 +333,47 @@ def test_binding_public_views_fail_closed_on_reachable_internal_tampering() -> N
 
     with pytest.raises(ExperimentManifestBindingError, match="does not match the frozen plan"):
         binding.semantic_dict()
+
+
+def test_malformed_reachable_plan_is_normalized_to_binding_domain_error() -> None:
+    binding = bind_experiment_manifest(_plan(), _manifest())
+    object.__setattr__(binding.plan, "evaluator_identities", None)
+
+    with pytest.raises(ExperimentManifestBindingError, match="plan failed canonical revalidation"):
+        binding.semantic_dict()
+    with pytest.raises(ExperimentManifestBindingError, match="plan failed canonical revalidation"):
+        _ = binding.semantic_bytes
+    with pytest.raises(ExperimentManifestBindingError, match="plan failed canonical revalidation"):
+        _ = binding.content_sha256
+    with pytest.raises(ExperimentManifestBindingError, match="plan failed canonical revalidation"):
+        binding.to_dict()
+
+
+def test_binding_subclass_private_overrides_cannot_forge_public_views() -> None:
+    class BindingSubclass(ExperimentManifestBinding):
+        def __post_init__(self) -> None:
+            pass
+
+        def _validated_snapshot(self) -> ExperimentManifestBinding:
+            raise AssertionError("overridden snapshot must never be dispatched")
+
+        def _semantic_dict_validated(self) -> dict[str, str]:
+            return {
+                "format": "ATTACKER",
+                "experiment_plan_sha256": "a" * 64,
+                "experiment_manifest_sha256": "b" * 64,
+            }
+
+    substituted = BindingSubclass(plan=_plan(), manifest=_manifest())
+
+    with pytest.raises(ExperimentManifestBindingError, match="exact ExperimentManifestBinding"):
+        substituted.semantic_dict()
+    with pytest.raises(ExperimentManifestBindingError, match="exact ExperimentManifestBinding"):
+        _ = substituted.semantic_bytes
+    with pytest.raises(ExperimentManifestBindingError, match="exact ExperimentManifestBinding"):
+        _ = substituted.content_sha256
+    with pytest.raises(ExperimentManifestBindingError, match="exact ExperimentManifestBinding"):
+        substituted.to_dict()
 
 
 def test_manifest_subclass_type_substitution_is_rejected() -> None:
