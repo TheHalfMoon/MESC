@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import importlib
 from dataclasses import FrozenInstanceError, replace
+from typing import cast
 
 import pytest
 
@@ -844,11 +846,45 @@ def test_deep_acyclic_lineage_validation_is_bounded_and_deterministic() -> None:
 def test_parent_lineage_beyond_depth_limit_fails_closed() -> None:
     current = _deep_learning_chain(128)
     parent = ResearchInputParentRef(parent_admission=current)
+    too_deep = replace(
+        _learning_contract(),
+        input_id="research-input-too-deep",
+        transformation_kind="summary",
+        parent_inputs=(parent,),
+    )
 
     with pytest.raises(ResearchInputAdmissionError, match="depth limit"):
+        too_deep.semantic_dict()
+
+
+def test_deep_lineage_hash_work_is_linear_during_construction_and_validation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    admission_module = importlib.import_module("medscale.mesc._mrl_research_input_admission_v1")
+    original = admission_module.derive_content_sha256
+    calls = 0
+
+    def counted(payload: object) -> str:
+        nonlocal calls
+        calls += 1
+        return cast(str, original(payload))
+
+    monkeypatch.setattr(admission_module, "derive_content_sha256", counted)
+    depth = 96
+    contract = _deep_learning_chain(depth)
+    assert calls <= 8 * (depth + 1)
+
+    calls = 0
+    contract.semantic_dict()
+    assert calls <= 3 * (depth + 1)
+
+
+def test_direct_parent_breadth_is_bounded_at_construction() -> None:
+    parent = ResearchInputParentRef(parent_admission=_learning_contract())
+    with pytest.raises(ResearchInputAdmissionError, match="direct-parent limit"):
         replace(
             _learning_contract(),
-            input_id="research-input-too-deep",
-            transformation_kind="summary",
-            parent_inputs=(parent,),
+            input_id="research-input-too-wide",
+            transformation_kind="merge",
+            parent_inputs=(parent,) * 4097,
         )
