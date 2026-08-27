@@ -514,8 +514,11 @@ def test_post_construction_objective_mutation_fails_public_views() -> None:
     plan = _plan()
     object.__setattr__(plan.objective, "allowed_mutation_surfaces", ("governance",))
 
-    with pytest.raises(ResearchExperimentPlanError, match="objective failed canonical revalidation"):
-        plan.content_sha256
+    with pytest.raises(
+        ResearchExperimentPlanError,
+        match="objective failed canonical revalidation",
+    ):
+        _ = plan.content_sha256
 
 
 def test_runtime_type_confusion_fails_closed() -> None:
