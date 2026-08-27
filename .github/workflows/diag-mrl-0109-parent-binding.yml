@@ -308,6 +308,12 @@ jobs:
               raise SystemExit("expected nested parent mutation test not found")
           tests = tests.replace(old_nested, new_nested)
 
+          old_frozen = '        parent.admission_sha256 = "2" * 64  # type: ignore[misc]\n'
+          new_frozen = '        parent.parent_admission = _learning_contract()  # type: ignore[misc]\n'
+          if old_frozen not in tests:
+              raise SystemExit("expected parent frozen assignment not found")
+          tests = tests.replace(old_frozen, new_frozen, 1)
+
           tests += '''\n\nclass _SnapshotBypassParentRef(ResearchInputParentRef):
               def _validated_snapshot(self) -> ResearchInputParentRef:
                   return _parent_ref(
