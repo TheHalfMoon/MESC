@@ -55,10 +55,24 @@ jobs:
               "def _reset_source_permission_trust() -> Iterator[None]:\n",
               1,
           )
-          tests = tests.replace(
+          post_mutation_old = (
+              "def test_post_construction_classification_mutation_fails_closed() -> None:\n"
+              "    contract = _learning_contract()\n"
+              "    object.__setattr__(contract, \"classification\", ResearchInputClassification.PHI_OR_PATIENT_DATA)\n\n"
+              "    with pytest.raises(ResearchInputAdmissionError, match=\"cannot carry source artifact\"):\n"
+              "        contract.semantic_dict()\n"
+              "    with pytest.raises(ResearchInputAdmissionError, match=\"cannot carry source artifact\"):\n"
+              "        _ = contract.content_sha256\n"
+              "    with pytest.raises(ResearchInputAdmissionError, match=\"cannot carry source artifact\"):\n"
+              "        contract.require_learning_admission(ResearchLearningSurface.OBSERVATION)\n"
+          )
+          post_mutation_new = post_mutation_old.replace(
               'match="cannot carry source artifact"',
               'match="cannot carry a source permission"',
           )
+          if post_mutation_old not in tests:
+              raise SystemExit("post-construction classification fixture marker missing")
+          tests = tests.replace(post_mutation_old, post_mutation_new, 1)
           tests = tests.replace(
               'match="not trusted|governing source contract"',
               'match=r"not trusted|governing source contract"',
