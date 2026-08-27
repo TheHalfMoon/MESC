@@ -87,12 +87,35 @@ jobs:
           src/medscale/mesc/_mrl_research_input_permission_trust_v1.py
           tests/test_mesc_mrl_research_input_admission_v1.py
       - name: Ruff lint and format check
+        id: ruff
+        shell: bash
         run: |
-          uv run ruff check src tests
-          uv run ruff format --check src tests
+          set +e
+          {
+            uv run ruff check src tests
+            lint_rc=$?
+            uv run ruff format --check src tests
+            format_rc=$?
+            exit_rc=$lint_rc
+            if [ "$exit_rc" -eq 0 ]; then exit_rc=$format_rc; fi
+            echo "lint_rc=$lint_rc"
+            echo "format_rc=$format_rc"
+            exit "$exit_rc"
+          } > .github/diag/ruff-mrl0109.log 2>&1
+          rc=$?
+          cat .github/diag/ruff-mrl0109.log
+          exit "$rc"
+      - name: Upload Ruff diagnostics
+        if: steps.ruff.outcome == 'failure'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: mrl0109-ruff-failure-${{ github.run_number }}
+          path: .github/diag/ruff-mrl0109.log
+          retention-days: 1
       - name: Canonical mypy
         run: uv run mypy src tests
       - name: Focused MRL-0109 tests
+        id: focused
         shell: bash
         run: |
           set +e
@@ -101,7 +124,7 @@ jobs:
           cat .github/diag/focused-mrl0109.log
           exit "$rc"
       - name: Upload focused diagnostics
-        if: failure()
+        if: steps.focused.outcome == 'failure'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: mrl0109-focused-failure-${{ github.run_number }}
