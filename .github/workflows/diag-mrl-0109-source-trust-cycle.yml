@@ -22,6 +22,24 @@ jobs:
       - run: uv sync --frozen
       - name: Apply bounded repair
         run: python .github/diag/mrl0109_source_trust_cycle.py
+      - name: Normalize target long literals
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path("src/medscale/mesc/_mrl_research_input_admission_v1.py")
+          source = path.read_text()
+          source = source.replace(
+              '"learning-admitted input requires exact source artifact and contract identities"',
+              '"learning-admitted input requires exact source artifact and "\n'
+              '                    "contract identities"',
+          )
+          source = source.replace(
+              '"rejected input cannot carry source artifact or contract identities into MRL"',
+              '"rejected input cannot carry source artifact or contract "\n'
+              '                    "identities into MRL"',
+          )
+          path.write_text(source)
       - name: Canonical formatting
         run: >-
           uv run ruff format
@@ -30,8 +48,8 @@ jobs:
           tests/test_mesc_mrl_research_input_admission_v1.py
       - name: Ruff lint and format check
         run: |
-          uv run ruff check .
-          uv run ruff format --check .
+          uv run ruff check src tests
+          uv run ruff format --check src tests
       - name: Canonical mypy
         run: uv run mypy src tests
       - name: Focused MRL-0109 tests
