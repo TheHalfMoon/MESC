@@ -24,6 +24,8 @@ from medscale.mesc._mrl_research_hypothesis_v1 import (
     ResearchHypothesisError,
 )
 from medscale.mesc._mrl_research_objective_v1 import (
+    AdaptiveInvalidationRule,
+    AdaptiveStoppingRule,
     EvaluationTier,
     EvaluatorIdentity,
     ResearchObjectiveContract,
@@ -83,7 +85,36 @@ class PlanFailureCondition(enum.Enum):
     RESULT_EXPOSURE_BUDGET_OVERRUN = "RESULT_EXPOSURE_BUDGET_OVERRUN"
     SEALED_BOUNDARY_BREACH = "SEALED_BOUNDARY_BREACH"
     CONTAMINATION_OR_LINEAGE_FAILURE = "CONTAMINATION_OR_LINEAGE_FAILURE"
+    OBJECTIVE_SEMANTICS_CHANGED = "OBJECTIVE_SEMANTICS_CHANGED"
     EXECUTION_ERROR = "EXECUTION_ERROR"
+
+
+_OBJECTIVE_STOP_CONDITION_MAP: Final[dict[AdaptiveStoppingRule, PlanStopCondition]] = {
+    AdaptiveStoppingRule.ADAPTIVE_QUERY_BUDGET_EXHAUSTED: (
+        PlanStopCondition.ADAPTIVE_QUERY_ALLOWANCE_EXHAUSTED
+    ),
+    AdaptiveStoppingRule.EXTERNAL_GOVERNANCE_STOP: (PlanStopCondition.EXTERNAL_GOVERNANCE_STOP),
+    AdaptiveStoppingRule.OBJECTIVE_INVALIDATED: (PlanStopCondition.OBJECTIVE_INVALIDATED),
+    AdaptiveStoppingRule.RESOURCE_BUDGET_EXHAUSTED: (PlanStopCondition.RESOURCE_CEILING_REACHED),
+    AdaptiveStoppingRule.RESULT_EXPOSURE_BUDGET_EXHAUSTED: (
+        PlanStopCondition.RESULT_EXPOSURE_ALLOWANCE_EXHAUSTED
+    ),
+}
+_OBJECTIVE_FAILURE_CONDITION_MAP: Final[dict[AdaptiveInvalidationRule, PlanFailureCondition]] = {
+    AdaptiveInvalidationRule.EVALUATOR_IDENTITY_CHANGED: (
+        PlanFailureCondition.EVALUATOR_IDENTITY_MISMATCH
+    ),
+    AdaptiveInvalidationRule.LINEAGE_OR_CONTAMINATION_FAILURE: (
+        PlanFailureCondition.CONTAMINATION_OR_LINEAGE_FAILURE
+    ),
+    AdaptiveInvalidationRule.OBJECTIVE_SEMANTICS_CHANGED: (
+        PlanFailureCondition.OBJECTIVE_SEMANTICS_CHANGED
+    ),
+    AdaptiveInvalidationRule.PROTECTED_SURFACE_MUTATION_ATTEMPT: (
+        PlanFailureCondition.MUTATION_SCOPE_VIOLATION
+    ),
+    AdaptiveInvalidationRule.SEALED_BOUNDARY_BREACH: (PlanFailureCondition.SEALED_BOUNDARY_BREACH),
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -432,6 +463,41 @@ def _validate_plan(plan: ResearchExperimentPlan) -> None:
         raise ResearchExperimentPlanError("stop_conditions cannot be empty")
     if not plan.failure_conditions:
         raise ResearchExperimentPlanError("failure_conditions cannot be empty")
+    _require_objective_control_conditions(plan, objective)
+
+
+def _require_objective_control_conditions(
+    plan: ResearchExperimentPlan,
+    objective: ResearchObjectiveContract,
+) -> None:
+    controls = objective.adaptive_evaluation_controls
+    try:
+        required_stops = {_OBJECTIVE_STOP_CONDITION_MAP[rule] for rule in controls.stopping_rules}
+        required_failures = {
+            _OBJECTIVE_FAILURE_CONDITION_MAP[rule] for rule in controls.invalidation_rules
+        }
+    except KeyError as exc:
+        raise ResearchExperimentPlanError(
+            "objective contains an unsupported adaptive control rule"
+        ) from exc
+
+    missing_stops = tuple(
+        sorted(condition.value for condition in required_stops.difference(plan.stop_conditions))
+    )
+    if missing_stops:
+        raise ResearchExperimentPlanError(
+            "stop_conditions omit frozen objective requirements: " + ", ".join(missing_stops)
+        )
+
+    missing_failures = tuple(
+        sorted(
+            condition.value for condition in required_failures.difference(plan.failure_conditions)
+        )
+    )
+    if missing_failures:
+        raise ResearchExperimentPlanError(
+            "failure_conditions omit frozen objective requirements: " + ", ".join(missing_failures)
+        )
 
 
 def _snapshot_objective(

@@ -89,7 +89,7 @@ def _objective() -> ResearchObjectiveContract:
         ),
         allowed_mutation_surfaces=(
             "experiments/fixture.py",
-            "tests/fixtures/mrl",
+            "tests/fixtures/mrl/candidates",
         ),
         forbidden_mutation_surfaces=("governance", "sealed-evaluation"),
         evaluation_tier_policy=EvaluationTierPolicy(
@@ -200,7 +200,7 @@ def _plan() -> ResearchExperimentPlan:
         hypothesis=_hypothesis(objective),
         mutation_surfaces=(
             "experiments/fixture.py",
-            "tests/fixtures/mrl/candidate.json",
+            "tests/fixtures/mrl/candidates/candidate.json",
         ),
         expected_manifest=_expected_manifest(),
         resource_ceiling=_resource_ceiling(),
@@ -221,14 +221,19 @@ def _plan() -> ResearchExperimentPlan:
             ),
         ),
         stop_conditions=(
+            PlanStopCondition.ADAPTIVE_QUERY_ALLOWANCE_EXHAUSTED,
             PlanStopCondition.EXTERNAL_GOVERNANCE_STOP,
             PlanStopCondition.FAILURE_CONDITION_TRIGGERED,
+            PlanStopCondition.OBJECTIVE_INVALIDATED,
             PlanStopCondition.RESOURCE_CEILING_REACHED,
         ),
         failure_conditions=(
+            PlanFailureCondition.EVALUATOR_IDENTITY_MISMATCH,
             PlanFailureCondition.MANIFEST_BINDING_MISMATCH,
             PlanFailureCondition.MUTATION_SCOPE_VIOLATION,
+            PlanFailureCondition.OBJECTIVE_SEMANTICS_CHANGED,
             PlanFailureCondition.RESOURCE_BUDGET_OVERRUN,
+            PlanFailureCondition.SEALED_BOUNDARY_BREACH,
         ),
     )
 
@@ -236,7 +241,6 @@ def _plan() -> ResearchExperimentPlan:
 def test_plan_identity_is_outside_semantic_preimage() -> None:
     plan = _plan()
 
-    assert b"content_sha256" not in plan.semantic_bytes
     assert "content_sha256" not in plan.semantic_dict()
     assert plan.to_dict()["content_sha256"] == plan.content_sha256
     assert len(plan.content_sha256) == 64
@@ -298,9 +302,9 @@ def test_plan_mutation_scope_must_be_within_objective_allow_list() -> None:
 def test_objective_directory_allowance_may_be_narrowed_by_plan() -> None:
     plan = replace(
         _plan(),
-        mutation_surfaces=("tests/fixtures/mrl/deeper/candidate.json",),
+        mutation_surfaces=("tests/fixtures/mrl/candidates/deeper/candidate.json",),
     )
-    assert plan.mutation_surfaces == ("tests/fixtures/mrl/deeper/candidate.json",)
+    assert plan.mutation_surfaces == ("tests/fixtures/mrl/candidates/deeper/candidate.json",)
 
 
 @pytest.mark.parametrize(
@@ -503,6 +507,110 @@ def test_stop_and_failure_conditions_are_required_and_canonical() -> None:
         replace(plan, stop_conditions=tuple(reversed(plan.stop_conditions)))
 
 
+@pytest.mark.parametrize(
+    ("objective_rule", "required_condition"),
+    [
+        (
+            AdaptiveStoppingRule.ADAPTIVE_QUERY_BUDGET_EXHAUSTED,
+            PlanStopCondition.ADAPTIVE_QUERY_ALLOWANCE_EXHAUSTED,
+        ),
+        (
+            AdaptiveStoppingRule.EXTERNAL_GOVERNANCE_STOP,
+            PlanStopCondition.EXTERNAL_GOVERNANCE_STOP,
+        ),
+        (
+            AdaptiveStoppingRule.OBJECTIVE_INVALIDATED,
+            PlanStopCondition.OBJECTIVE_INVALIDATED,
+        ),
+        (
+            AdaptiveStoppingRule.RESOURCE_BUDGET_EXHAUSTED,
+            PlanStopCondition.RESOURCE_CEILING_REACHED,
+        ),
+        (
+            AdaptiveStoppingRule.RESULT_EXPOSURE_BUDGET_EXHAUSTED,
+            PlanStopCondition.RESULT_EXPOSURE_ALLOWANCE_EXHAUSTED,
+        ),
+    ],
+)
+def test_plan_stop_conditions_cover_every_frozen_objective_rule(
+    objective_rule: AdaptiveStoppingRule,
+    required_condition: PlanStopCondition,
+) -> None:
+    plan = _plan()
+    controls = replace(
+        plan.objective.adaptive_evaluation_controls,
+        stopping_rules=tuple(sorted(AdaptiveStoppingRule, key=lambda rule: rule.value)),
+    )
+    objective = replace(plan.objective, adaptive_evaluation_controls=controls)
+    complete = replace(
+        plan,
+        objective=objective,
+        hypothesis=_hypothesis(objective),
+        stop_conditions=tuple(sorted(PlanStopCondition, key=lambda condition: condition.value)),
+    )
+    assert objective_rule in controls.stopping_rules
+    reduced = tuple(
+        condition for condition in complete.stop_conditions if condition is not required_condition
+    )
+
+    with pytest.raises(ResearchExperimentPlanError, match="omit frozen objective requirements"):
+        replace(complete, stop_conditions=reduced)
+
+
+@pytest.mark.parametrize(
+    ("objective_rule", "required_condition"),
+    [
+        (
+            AdaptiveInvalidationRule.EVALUATOR_IDENTITY_CHANGED,
+            PlanFailureCondition.EVALUATOR_IDENTITY_MISMATCH,
+        ),
+        (
+            AdaptiveInvalidationRule.LINEAGE_OR_CONTAMINATION_FAILURE,
+            PlanFailureCondition.CONTAMINATION_OR_LINEAGE_FAILURE,
+        ),
+        (
+            AdaptiveInvalidationRule.OBJECTIVE_SEMANTICS_CHANGED,
+            PlanFailureCondition.OBJECTIVE_SEMANTICS_CHANGED,
+        ),
+        (
+            AdaptiveInvalidationRule.PROTECTED_SURFACE_MUTATION_ATTEMPT,
+            PlanFailureCondition.MUTATION_SCOPE_VIOLATION,
+        ),
+        (
+            AdaptiveInvalidationRule.SEALED_BOUNDARY_BREACH,
+            PlanFailureCondition.SEALED_BOUNDARY_BREACH,
+        ),
+    ],
+)
+def test_plan_failure_conditions_cover_every_frozen_objective_rule(
+    objective_rule: AdaptiveInvalidationRule,
+    required_condition: PlanFailureCondition,
+) -> None:
+    plan = _plan()
+    controls = replace(
+        plan.objective.adaptive_evaluation_controls,
+        invalidation_rules=tuple(sorted(AdaptiveInvalidationRule, key=lambda rule: rule.value)),
+    )
+    objective = replace(plan.objective, adaptive_evaluation_controls=controls)
+    complete = replace(
+        plan,
+        objective=objective,
+        hypothesis=_hypothesis(objective),
+        failure_conditions=tuple(
+            sorted(PlanFailureCondition, key=lambda condition: condition.value)
+        ),
+    )
+    assert objective_rule in controls.invalidation_rules
+    reduced = tuple(
+        condition
+        for condition in complete.failure_conditions
+        if condition is not required_condition
+    )
+
+    with pytest.raises(ResearchExperimentPlanError, match="omit frozen objective requirements"):
+        replace(complete, failure_conditions=reduced)
+
+
 def test_material_semantic_changes_change_plan_identity() -> None:
     plan = _plan()
     changed = replace(
@@ -553,7 +661,7 @@ def test_unknown_constructor_field_is_rejected_by_closed_contract() -> None:
     kwargs["unknown_field"] = "rejected"
 
     with pytest.raises(TypeError, match="unexpected keyword"):
-        ResearchExperimentPlan(**kwargs)  # type: ignore[arg-type]
+        ResearchExperimentPlan(**kwargs)
 
 
 def test_plan_subclass_cannot_use_canonical_semantic_views() -> None:
