@@ -25,7 +25,7 @@ jobs:
         run: |
           ! rg -n '_replace_research_input_permission_trust_registry_for_tests|TRUSTED_RESEARCH_INPUT_SOURCE_PERMISSION_SHA256' src/medscale/mesc/_mrl_research_input_permission_trust_v1.py
       - name: Sync
-        run: uv sync --locked --all-extras
+        run: uv sync --locked
       - name: Ruff lint
         run: uv run ruff check src/medscale/mesc/_mrl_research_input_admission_v1.py src/medscale/mesc/_mrl_research_input_permission_trust_v1.py tests/test_mesc_mrl_research_input_admission_v1.py
       - name: Ruff format
