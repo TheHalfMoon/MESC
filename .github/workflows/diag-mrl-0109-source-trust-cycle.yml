@@ -53,6 +53,30 @@ jobs:
               "def _reset_source_permission_trust() -> Iterator[None]:\n",
               1,
           )
+          tests = tests.replace(
+              'match="cannot carry source artifact"',
+              'match="cannot carry a source permission"',
+          )
+          subclass_fixture = (
+              "        source_contract_sha256=base.source_contract_sha256,\n"
+              "        allowed_learning_surfaces=base.allowed_learning_surfaces,\n"
+              "    )\n\n"
+              "    with pytest.raises(ResearchInputAdmissionError, match=\"exact ResearchInputAdmissionContract\"):\n"
+          )
+          subclass_fixture_with_permission = (
+              "        source_contract_sha256=base.source_contract_sha256,\n"
+              "        allowed_learning_surfaces=base.allowed_learning_surfaces,\n"
+              "        source_permission=base.source_permission,\n"
+              "    )\n\n"
+              "    with pytest.raises(ResearchInputAdmissionError, match=\"exact ResearchInputAdmissionContract\"):\n"
+          )
+          if subclass_fixture not in tests:
+              raise SystemExit("subclass compatibility fixture marker missing")
+          tests = tests.replace(
+              subclass_fixture,
+              subclass_fixture_with_permission,
+              1,
+          )
           test_path.write_text(tests)
       - name: Canonical formatting
         run: >-
