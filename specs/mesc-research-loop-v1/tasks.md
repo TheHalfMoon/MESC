@@ -86,10 +86,15 @@ is then present on canonical `main`. Any head mutation burns prior exact-head ev
 
 ## MRL-1 — Canonical research artifacts
 
-- [ ] **MRL-0100 — Implement canonical content-identity primitive**
+- [x] **MRL-0100 — Implement canonical content-identity primitive**
   - Depends on: MRL-0099.
   - Test: deterministic canonical semantic bytes.
   - Test: `content_sha256` is derived outside its own preimage; no self-referential hash.
+  - Closeout rule: this checkbox is a branch closeout candidate only. `MRL-0100` becomes
+    `CLOSED_CANONICAL` only if the exact final head containing it passes fresh repository
+    checks and independent review, remains the exact PR head through expected-head merge,
+    and is then present on canonical `main`.
+  - Eligibility effect: MRL-0101 remains ineligible until that canonical merge.
 
 - [ ] **MRL-0101 — Implement `ResearchObjectiveContract`**
   - Depends on: MRL-0100.
