@@ -187,7 +187,7 @@ is then present on canonical `main`. Any head mutation burns prior exact-head ev
   - Negative tests: evaluator/governance/sealed-data/authorization/trust/machine-state
     authority paths rejected.
 
-- [ ] **MRL-0203 — Build structured observation envelope**
+- [x] **MRL-0203 — Build structured observation envelope**
   - Depends on: MRL-0201, MRL-0109.
   - Acceptance: raw stdout/stderr is not automatically treated as trusted control input.
 
