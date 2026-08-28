@@ -191,7 +191,7 @@ is then present on canonical `main`. Any head mutation burns prior exact-head ev
   - Depends on: MRL-0201, MRL-0109.
   - Acceptance: raw stdout/stderr is not automatically treated as trusted control input.
 
-- [ ] **MRL-0204 — Implement fixture propose/run/receipt/decision loop**
+- [x] **MRL-0204 — Implement fixture propose/run/receipt/decision loop**
   - Depends on: MRL-0202, MRL-0203.
 
 - [ ] **MRL-0205 — Implement replication and retained-lead behavior**
