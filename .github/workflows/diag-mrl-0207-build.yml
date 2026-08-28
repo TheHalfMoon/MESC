@@ -147,6 +147,7 @@ jobs:
 
       - name: Focused lint and format
         run: |
+          uv run ruff format tests/test_mesc_mrl_sealed_data_access_v1.py
           uv run ruff check tests/test_mesc_mrl_sealed_data_access_v1.py
           uv run ruff format --check tests/test_mesc_mrl_sealed_data_access_v1.py
 
