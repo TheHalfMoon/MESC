@@ -216,22 +216,22 @@ is then present on canonical `main`. Any head mutation burns prior exact-head ev
 - [x] **MRL-0210 — Add stale/mismatched receipt tests**
   - Depends on: MRL-0204.
 
-- [ ] **MRL-0211 — Add known-failure retry ceiling**
+- [x] **MRL-0211 — Add known-failure retry ceiling**
   - Depends on: MRL-0205.
 
-- [ ] **MRL-0212 — Add forbidden research-input integration tests**
+- [x] **MRL-0212 — Add forbidden research-input integration tests**
   - Depends on: MRL-0203.
   - Must prove: PHI, product telemetry, and clinical-runtime state cannot enter MRL
     observation, campaign history, procedure extraction, or search indexes.
 
-- [ ] **MRL-0213 — Add authority-fabrication negative tests**
+- [x] **MRL-0213 — Add authority-fabrication negative tests**
   - Depends on: MRL-0204.
   - Must prove: fixture agent cannot construct `PROMOTED`, self-review, or self-admit a
     procedure.
 
 ### MRL-2 gate
 
-- [ ] **MRL-0299 — Fixture loop exact-head qualification**
+- [x] **MRL-0299 — Fixture loop exact-head qualification**
   - Requires: MRL-0201..0213.
   - Exit: `MRL_FIXTURE_LOOP_PROVEN`.
 
