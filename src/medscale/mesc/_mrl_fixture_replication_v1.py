@@ -137,9 +137,7 @@ def assess_fixture_replication(
     elif state is ResearchDecisionState.INVALID:
         reason = "Independent fixture replication was invalid under the frozen plan."
     else:
-        raise FixtureReplicationError(
-            "replica contains an unsupported MRL-0204 decision state"
-        )
+        raise FixtureReplicationError("replica contains an unsupported MRL-0204 decision state")
 
     evidence = tuple(
         sorted(
@@ -246,9 +244,7 @@ def apply_fixture_replication(
     )
 
     branch_outcomes = list(parent.branch_outcomes)
-    branch_outcomes.extend(
-        _negative_outcomes_for_decision(outcome, _decision_node_id(outcome))
-    )
+    branch_outcomes.extend(_negative_outcomes_for_decision(outcome, _decision_node_id(outcome)))
     next_outcomes = tuple(sorted(branch_outcomes, key=lambda item: item.terminal_node_id))
 
     retained = parent.retained_alternative_node_ids
@@ -539,9 +535,7 @@ def _add_tier_usage(
     current: tuple[CampaignTierTotals, ...],
     added: tuple[TierAccounting, ...],
 ) -> tuple[CampaignTierTotals, ...]:
-    totals = {
-        item.tier: (item.queries_used, item.result_exposures_used) for item in current
-    }
+    totals = {item.tier: (item.queries_used, item.result_exposures_used) for item in current}
     for item in added:
         queries, exposures = totals.get(item.tier, (0, 0))
         totals[item.tier] = (
@@ -581,9 +575,7 @@ def _require_campaign_budget(
                 "fixture campaign exposes results on an unconfigured tier"
             )
         if max_exposures is not None and totals.result_exposures_used > max_exposures:
-            raise FixtureReplicationError(
-                "fixture campaign exceeds frozen result-exposure budget"
-            )
+            raise FixtureReplicationError("fixture campaign exceeds frozen result-exposure budget")
         if tier is EvaluationTier.SEARCH:
             max_queries = objective.adaptive_query_budget.tier_1_queries
         elif tier is EvaluationTier.REPLICATION:
@@ -591,9 +583,7 @@ def _require_campaign_budget(
         else:
             max_queries = 0
         if totals.queries_used > max_queries:
-            raise FixtureReplicationError(
-                "fixture campaign exceeds frozen adaptive-query budget"
-            )
+            raise FixtureReplicationError("fixture campaign exceeds frozen adaptive-query budget")
 
 
 def _require_resource_budget(
@@ -642,9 +632,7 @@ def _require_resource_budget(
 def _require_optional_ceiling(value: int, ceiling: int | None, label: str) -> None:
     if ceiling is None:
         if value != 0:
-            raise FixtureReplicationError(
-                f"{label} is not applicable to the frozen objective"
-            )
+            raise FixtureReplicationError(f"{label} is not applicable to the frozen objective")
         return
     _require_ceiling(value, ceiling, label)
 
