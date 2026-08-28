@@ -543,11 +543,15 @@ def _require_receipt_chain(
         if evaluation is None:
             raise FixtureLoopError("successful fixture observation is missing its evaluation")
         if evaluation.surface_sha256 != proposal.research_surface_sha256:
-            raise FixtureLoopError("fixture observation does not bind the proposal research surface")
+            raise FixtureLoopError(
+                "fixture observation does not bind the proposal research surface"
+            )
         if evaluation.candidate_sha256 != proposal.candidate.content_sha256:
             raise FixtureLoopError("fixture observation does not bind the proposal candidate")
         if len(receipt.metric_artifacts) != 1:
-            raise FixtureLoopError("successful fixture receipt must bind one fixture metric artifact")
+            raise FixtureLoopError(
+                "successful fixture receipt must bind one fixture metric artifact"
+            )
         metric_artifact = receipt.metric_artifacts[0]
         if metric_artifact.artifact_sha256 != evaluation.content_sha256:
             raise FixtureLoopError("fixture receipt does not bind the observation metric artifact")
