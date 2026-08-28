@@ -17,19 +17,21 @@ jobs:
           ref: test/mrl-0206-metric-tampering
           fetch-depth: 0
 
-      - name: Require canonical starting head
-        run: test "$(git rev-parse HEAD)" = "3c6e2d15b875e264103a0d7ee0cb0c8976db5e9a"
+      - name: Require exact reviewed head
+        run: test "$(git rev-parse HEAD)" = "2ec624d4bee93cb5a32cb58490c6e663da95ef32"
 
-      - name: Append MRL-0206 adversarial tests
+      - name: Add missing MRL-0206 adversarial cases
         run: |
           cat >> tests/test_mesc_mrl_fixture_loop_v1.py <<'PY'
 
 
-          def test_mrl_0206_metric_fabrication_cannot_reuse_canonical_receipt() -> None:
-              result = _complete()
+          def test_mrl_0206_fabricated_favorable_metric_cannot_create_evidence_candidate() -> None:
+              result = _complete(alpha=1, beta=0)
+              assert result.decision.state is ResearchDecisionState.REJECT
               evaluation = result.observation.evaluation
               assert evaluation is not None
-              object.__setattr__(evaluation, "score", 0)
+              assert evaluation.score < evaluation.max_score
+              object.__setattr__(evaluation, "score", evaluation.max_score)
 
               with pytest.raises(FixtureLoopError, match="canonical revalidation"):
                   decide_fixture_experiment(
@@ -39,39 +41,17 @@ jobs:
                   )
 
 
-          def test_mrl_0206_modified_evaluator_cannot_build_valid_receipt() -> None:
+          def test_mrl_0206_forged_sealed_metric_tier_is_rejected() -> None:
               result = _complete()
-              trusted = _evaluator()
-              modified = FixtureEvaluator(
-                  evaluator_id=trusted.evaluator_id,
-                  metric_id=trusted.metric_id,
-                  target_values=(
-                      FixtureParameterValue(parameter_id="alpha", value=0),
-                      FixtureParameterValue(parameter_id="beta", value=0),
-                  ),
-              )
+              metric_artifact = result.receipt.metric_artifacts[0]
+              object.__setattr__(metric_artifact, "tier", EvaluationTier.SEALED)
 
-              with pytest.raises(FixtureLoopError, match="evaluator artifact"):
-                  build_fixture_experiment_receipt(
-                      _plan(),
-                      modified,
+              with pytest.raises(FixtureLoopError, match="canonical revalidation"):
+                  decide_fixture_experiment(
+                      result.proposal,
                       result.observation,
-                      _manifest(),
-                      _code_identity(),
+                      result.receipt,
                   )
-
-
-          def test_mrl_0206_fixture_metrics_never_claim_sealed_or_promotion_authority() -> None:
-              result = _complete()
-              payload = result.to_dict()
-
-              assert result.receipt.metric_artifacts[0].tier is EvaluationTier.DEVELOPMENT
-              assert result.decision.can_authorize_promotion is False
-              assert payload["non_evidence"] is True
-              assert payload["can_update_campaign"] is False
-              assert payload["can_authorize_real_execution"] is False
-              assert payload["can_authorize_training"] is False
-              assert payload["can_authorize_model_promotion"] is False
           PY
 
       - name: Install uv
@@ -95,6 +75,6 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add tests/test_mesc_mrl_fixture_loop_v1.py
-          git commit -m "test(mrl): add metric tampering adversarial coverage"
+          git commit -m "test(mrl): complete metric tampering adversarial coverage"
           git push origin HEAD:refs/heads/test/mrl-0206-metric-tampering
           echo "FINAL_HEAD=$(git rev-parse HEAD)"
