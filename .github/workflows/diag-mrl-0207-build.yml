@@ -154,13 +154,13 @@ jobs:
       - name: Focused MRL-0207 tests
         run: uv run pytest -q tests/test_mesc_mrl_sealed_data_access_v1.py
 
-      - name: Prove test-only delta and push
+      - name: Prove staged test-only delta and push
         run: |
-          git diff --check
-          test "$(git diff --name-only)" = "tests/test_mesc_mrl_sealed_data_access_v1.py"
+          git add tests/test_mesc_mrl_sealed_data_access_v1.py
+          git diff --cached --check
+          test "$(git diff --cached --name-only)" = "tests/test_mesc_mrl_sealed_data_access_v1.py"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add tests/test_mesc_mrl_sealed_data_access_v1.py
           git commit -m "test(mrl): add sealed-data access adversarial coverage"
           git push origin HEAD:refs/heads/test/mrl-0207-sealed-data-access
           echo "FINAL_HEAD=$(git rev-parse HEAD)"
