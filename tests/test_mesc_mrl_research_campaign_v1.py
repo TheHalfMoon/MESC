@@ -6,6 +6,7 @@ from dataclasses import replace
 
 import pytest
 
+import medscale.mesc._mrl_research_campaign_v1 as campaign_module
 from medscale.mesc._mrl_research_campaign_v1 import (
     CampaignBranchOutcome,
     CampaignBranchOutcomeKind,
@@ -154,6 +155,27 @@ def test_campaign_node_graph_cycle_fails_closed() -> None:
         _campaign(nodes=nodes, outcomes=(), frontier=())
 
 
+def test_deep_acyclic_campaign_dag_does_not_use_python_recursion() -> None:
+    node_count = 1_500
+    nodes = tuple(
+        _node(
+            f"node-{index:04d}",
+            CampaignNodeKind.HYPOTHESIS,
+            "b" * 64,
+            () if index == 0 else (f"node-{index - 1:04d}",),
+        )
+        for index in range(node_count)
+    )
+
+    campaign = _campaign(
+        nodes=nodes,
+        outcomes=(),
+        frontier=(f"node-{node_count - 1:04d}",),
+    )
+
+    assert campaign.current_frontier_node_ids == (f"node-{node_count - 1:04d}",)
+
+
 def test_frontier_retained_and_replication_references_must_exist() -> None:
     with pytest.raises(ResearchCampaignError, match="current_frontier_node_ids"):
         _campaign(frontier=("missing",))
@@ -293,6 +315,37 @@ def test_parent_campaign_identity_and_objective_must_match() -> None:
     altered_parent = replace(parent, objective_sha256="9" * 64)
     with pytest.raises(ResearchCampaignError, match="objective identity"):
         _campaign(parent=altered_parent)
+
+
+def test_trust_view_validates_each_parent_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    depth = 8
+    campaign = _campaign()
+    for offset in range(1, depth):
+        campaign = _campaign(
+            parent=campaign,
+            resources=_resources(wall_clock_seconds=10 + offset),
+            tier_usage=_tier_usage(search_queries=2 + offset),
+        )
+
+    calls = 0
+    original = campaign_module._validate_campaign_local
+
+    def counting_validate_campaign_local(value: ResearchCampaign) -> None:
+        nonlocal calls
+        calls += 1
+        original(value)
+
+    monkeypatch.setattr(
+        campaign_module,
+        "_validate_campaign_local",
+        counting_validate_campaign_local,
+    )
+
+    _ = campaign.content_sha256
+
+    assert calls == depth
 
 
 def test_parent_chain_cycle_created_by_tampering_fails_on_trust_view() -> None:
