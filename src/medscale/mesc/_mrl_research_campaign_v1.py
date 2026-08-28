@@ -78,7 +78,9 @@ class CampaignNode:
         _require_sha256(self.artifact_sha256, "artifact_sha256")
         _require_sorted_unique_node_ids(self.parent_node_ids, "parent_node_ids")
         if self.node_id in self.parent_node_ids:
-            raise ResearchCampaignError("campaign node cannot reference itself as a parent")
+            raise ResearchCampaignError(
+                "campaign node cannot reference itself as a parent"
+            )
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -459,9 +461,7 @@ def _require_tier_totals(values: tuple[CampaignTierTotals, ...]) -> None:
     if type(values) is not tuple:
         raise ResearchCampaignError("cumulative_tier_usage must be an exact tuple")
     if any(type(item) is not CampaignTierTotals for item in values):
-        raise ResearchCampaignError(
-            "cumulative_tier_usage contains invalid item types"
-        )
+        raise ResearchCampaignError("cumulative_tier_usage contains invalid item types")
     rebuilt = tuple(_rebuild_tier_totals(item) for item in values)
     tiers = tuple(int(item.tier) for item in rebuilt)
     if tiers != tuple(sorted(set(tiers))):
@@ -478,9 +478,7 @@ def _require_known_node_ids(
     _require_sorted_unique_node_ids(values, label)
     for node_id in values:
         if node_id not in node_by_id:
-            raise ResearchCampaignError(
-                f"{label} references unknown node {node_id!r}"
-            )
+            raise ResearchCampaignError(f"{label} references unknown node {node_id!r}")
 
 
 def _require_append_only_nodes(
@@ -646,9 +644,7 @@ def _require_campaign_id(value: str) -> None:
 def _require_node_id(value: str, label: str) -> None:
     _require_text(value, label)
     if not _NODE_ID.fullmatch(value):
-        raise ResearchCampaignError(
-            f"{label} must use lowercase kebab-case semantics"
-        )
+        raise ResearchCampaignError(f"{label} must use lowercase kebab-case semantics")
 
 
 def _require_sorted_unique_node_ids(values: tuple[str, ...], label: str) -> None:
@@ -680,9 +676,7 @@ def _require_sha256(value: str, label: str) -> None:
 
 def _require_nonnegative_int(value: int, label: str) -> None:
     if type(value) is not int or value < 0:
-        raise ResearchCampaignError(
-            f"{label} must be an exact non-negative integer"
-        )
+        raise ResearchCampaignError(f"{label} must be an exact non-negative integer")
 
 
 def _require_text(value: str, label: str) -> None:
