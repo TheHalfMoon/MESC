@@ -504,7 +504,9 @@ def test_mrl_0209_prompt_injection_cannot_change_receipt_or_decision_semantics()
     assert injected.receipt.guardrail_results == baseline.receipt.guardrail_results
     assert injected.receipt.observed_resource_use == baseline.receipt.observed_resource_use
     assert injected.receipt.tier_accounting == baseline.receipt.tier_accounting
-    assert injected.receipt.raw_output_artifact_sha256s == baseline.receipt.raw_output_artifact_sha256s
+    assert (
+        injected.receipt.raw_output_artifact_sha256s == baseline.receipt.raw_output_artifact_sha256s
+    )
     assert injected.receipt.content_sha256 == baseline.receipt.content_sha256
     assert b"PROMOTED" not in injected.receipt.semantic_bytes
 
