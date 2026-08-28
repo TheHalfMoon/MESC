@@ -316,7 +316,10 @@ def test_campaign_subclass_fails_closed_during_construction() -> None:
         pass
 
     base = _campaign()
-    with pytest.raises(ResearchCampaignError, match="campaign parent chain contains an invalid type"):
+    with pytest.raises(
+        ResearchCampaignError,
+        match="campaign parent chain contains an invalid type",
+    ):
         CampaignSubclass(
             campaign_id=base.campaign_id,
             objective_sha256=base.objective_sha256,
