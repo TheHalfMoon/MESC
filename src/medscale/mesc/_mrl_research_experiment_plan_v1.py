@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import enum
 import re
+import weakref
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Final
 
@@ -252,7 +254,7 @@ class PlanTierAllowance:
         }
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, weakref_slot=True)
 class ResearchExperimentPlan:
     """One frozen, content-addressed experiment plan bounded by a canonical objective."""
 
@@ -270,6 +272,7 @@ class ResearchExperimentPlan:
 
     def __post_init__(self) -> None:
         _validate_plan(self)
+        _register_original_plan_budget_bindings(self)
 
     def _validated_snapshot(self) -> ResearchExperimentPlan:
         """Rebuild all mutable-reachable nested values before every public semantic view."""
@@ -278,6 +281,7 @@ class ResearchExperimentPlan:
             ResearchExperimentPlan,
             "research_experiment_plan",
         )
+        _require_original_plan_budget_bindings(self)
         objective = _snapshot_objective(self.objective)
         hypothesis = _snapshot_hypothesis(self.hypothesis)
         expected_manifest = _snapshot_expected_manifest(self.expected_manifest)
@@ -352,6 +356,97 @@ class ResearchExperimentPlan:
         data = snapshot._semantic_dict_validated()
         data["content_sha256"] = derive_content_sha256(data)
         return data
+
+
+_ResourceFreezeBinding = tuple[int | None, ...]
+_TierFreezeBinding = tuple[tuple[int, int, int, tuple[str, ...]], ...]
+_PlanFreezeRecord = tuple[
+    weakref.ReferenceType[ResearchExperimentPlan],
+    _ResourceFreezeBinding,
+    _TierFreezeBinding,
+]
+
+
+def _resource_ceiling_freeze_binding(value: ResourceBudget) -> _ResourceFreezeBinding:
+    _require_exact_instance(value, ResourceBudget, "resource_ceiling")
+    return (
+        value.wall_clock_seconds,
+        value.compute_seconds,
+        value.input_tokens,
+        value.generated_tokens,
+        value.storage_bytes,
+        value.monetary_cost_microunits,
+        value.max_experiments,
+        value.retries,
+        value.known_failure_retries,
+        value.evaluator_invocations,
+    )
+
+
+def _tier_allowance_freeze_binding(
+    values: tuple[PlanTierAllowance, ...],
+) -> _TierFreezeBinding:
+    _require_exact_instances(values, PlanTierAllowance, "tier_allowances")
+    return tuple(
+        (
+            int(value.tier),
+            value.max_queries,
+            value.max_result_exposures,
+            value.allowed_result_fields,
+        )
+        for value in values
+    )
+
+
+def _build_plan_freeze_registry() -> tuple[
+    Callable[[ResearchExperimentPlan], None],
+    Callable[[ResearchExperimentPlan], None],
+]:
+    records: dict[int, _PlanFreezeRecord] = {}
+
+    def register(plan: ResearchExperimentPlan) -> None:
+        key = id(plan)
+
+        def discard(reference: weakref.ReferenceType[ResearchExperimentPlan]) -> None:
+            current = records.get(key)
+            if current is not None and current[0] is reference:
+                records.pop(key, None)
+
+        reference = weakref.ref(plan, discard)
+        existing = records.get(key)
+        if existing is not None and existing[0]() is plan:
+            raise ResearchExperimentPlanError(
+                "research experiment plan original budget binding is already registered"
+            )
+        records[key] = (
+            reference,
+            _resource_ceiling_freeze_binding(plan.resource_ceiling),
+            _tier_allowance_freeze_binding(plan.tier_allowances),
+        )
+
+    def require(plan: ResearchExperimentPlan) -> None:
+        record = records.get(id(plan))
+        if record is None or record[0]() is not plan:
+            raise ResearchExperimentPlanError(
+                "research experiment plan is missing its original frozen budget binding"
+            )
+        _, bound_resource_ceiling, bound_tier_allowances = record
+        if bound_resource_ceiling != _resource_ceiling_freeze_binding(plan.resource_ceiling):
+            raise ResearchExperimentPlanError(
+                "resource_ceiling changed after the research experiment plan was frozen"
+            )
+        if bound_tier_allowances != _tier_allowance_freeze_binding(plan.tier_allowances):
+            raise ResearchExperimentPlanError(
+                "tier_allowances changed after the research experiment plan was frozen"
+            )
+
+    return register, require
+
+
+(
+    _register_original_plan_budget_bindings,
+    _require_original_plan_budget_bindings,
+) = _build_plan_freeze_registry()
 
 
 def _validate_plan(plan: ResearchExperimentPlan) -> None:

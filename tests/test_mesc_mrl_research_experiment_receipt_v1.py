@@ -671,3 +671,34 @@ def test_receipt_itself_rejects_subclass_trust_views() -> None:
     )
     with pytest.raises(ResearchExperimentReceiptError, match="subclasses/type substitution"):
         _ = subclassed.content_sha256
+
+
+def test_mrl_0208_success_receipt_cannot_hide_compute_overrun() -> None:
+    with pytest.raises(ResearchExperimentReceiptError, match="matching failure"):
+        _receipt(observed_resource_use=_resource_use(compute_seconds=121))
+
+
+def test_mrl_0208_success_receipt_cannot_hide_query_or_exposure_overrun() -> None:
+    query_overrun = (
+        TierAccounting(
+            tier=EvaluationTier.SEARCH,
+            queries_used=4,
+            result_exposures_used=1,
+            exposed_result_fields=("aggregate_score",),
+        ),
+        _receipt().tier_accounting[1],
+    )
+    with pytest.raises(ResearchExperimentReceiptError, match="matching failure"):
+        _receipt(tier_accounting=query_overrun)
+
+    exposure_overrun = (
+        TierAccounting(
+            tier=EvaluationTier.SEARCH,
+            queries_used=1,
+            result_exposures_used=4,
+            exposed_result_fields=("aggregate_score",),
+        ),
+        _receipt().tier_accounting[1],
+    )
+    with pytest.raises(ResearchExperimentReceiptError, match="matching failure"):
+        _receipt(tier_accounting=exposure_overrun)
