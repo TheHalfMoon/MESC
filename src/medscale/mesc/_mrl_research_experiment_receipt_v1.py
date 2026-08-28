@@ -792,8 +792,7 @@ def _require_overrun_classification(
     if failure not in unique:
         names = ", ".join(condition.value for condition in unique)
         raise ResearchExperimentReceiptError(
-            "observed accounting overrun must have one matching failure classification: "
-            + names
+            "observed accounting overrun must have one matching failure classification: " + names
         )
 
 
