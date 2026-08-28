@@ -49,6 +49,9 @@ jobs:
       - name: Sync (locked)
         run: uv sync --frozen
 
+      - name: Apply exact Ruff formatting
+        run: uv run ruff format tests/test_mesc_mrl_fixture_replication_v1.py
+
       - name: Qualify repair locally
         run: |
           uv run ruff check tests/test_mesc_mrl_fixture_replication_v1.py
