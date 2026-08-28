@@ -82,6 +82,7 @@ class FixtureReplicationCycle:
         outcome = _snapshot_decision(self.retained_decision, "retained_decision")
         campaign = _snapshot_campaign(self.campaign)
         _validate_replication_chain(primary, request, replica, outcome)
+        _require_exact_cycle_campaign(campaign, primary, request, replica, outcome)
         _validate_campaign_contains_cycle(campaign, primary, request, replica, outcome)
         return {
             "format": "MRL-FIXTURE-REPLICATION-CYCLE-V1",
@@ -311,6 +312,7 @@ def _validate_cycle(value: FixtureReplicationCycle) -> None:
     outcome = _snapshot_decision(value.retained_decision, "retained_decision")
     campaign = _snapshot_campaign(value.campaign)
     _validate_replication_chain(primary, request, replica, outcome)
+    _require_exact_cycle_campaign(campaign, primary, request, replica, outcome)
     _validate_campaign_contains_cycle(campaign, primary, request, replica, outcome)
 
 
@@ -364,6 +366,22 @@ def _validate_replication_chain(
     if outcome.content_sha256 != expected.content_sha256:
         raise FixtureReplicationError(
             "retained decision does not match the exact replica assessment"
+        )
+
+
+def _require_exact_cycle_campaign(
+    campaign: ResearchCampaign,
+    primary: FixtureLoopResult,
+    request: ResearchDecision,
+    replica: FixtureLoopResult,
+    outcome: ResearchDecision,
+) -> None:
+    """Require the exact receipt-derived child transition for one fixture replication cycle."""
+    initial = start_fixture_campaign(campaign.campaign_id, primary)
+    expected = apply_fixture_replication(initial, primary, request, replica, outcome)
+    if campaign.content_sha256 != expected.content_sha256:
+        raise FixtureReplicationError(
+            "replication cycle campaign does not match the exact receipt-derived transition"
         )
 
 
