@@ -137,7 +137,7 @@ is then present on canonical `main`. Any head mutation burns prior exact-head ev
   - Test: plan/manifest/code/metrics/guardrail/resource/tier accounting identities cannot
     be mismatched.
 
-- [ ] **MRL-0106 — Implement `ResearchDecision`**
+- [x] **MRL-0106 — Implement `ResearchDecision`**
   - Depends on: MRL-0105.
   - Required states: INVALID, REJECT, REPLICATE, RETAIN_LEAD, EVIDENCE_CANDIDATE, BLOCKED.
   - Test: `EVIDENCE_CANDIDATE` cannot be interpreted as model promotion.
