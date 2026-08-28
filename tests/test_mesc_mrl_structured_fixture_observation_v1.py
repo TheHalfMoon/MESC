@@ -360,5 +360,8 @@ def test_derived_admission_is_rejected_before_snapshot_dispatch() -> None:
         parent_inputs=trusted.parent_inputs,
     )
 
-    with pytest.raises(FixtureObservationError, match="must be exact ResearchInputAdmissionContract"):
+    with pytest.raises(
+        FixtureObservationError,
+        match="must be exact ResearchInputAdmissionContract",
+    ):
         replace(_success_observation(), input_admission=derived)
