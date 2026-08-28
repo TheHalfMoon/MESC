@@ -167,6 +167,7 @@ is then present on canonical `main`. Any head mutation burns prior exact-head ev
   - Eligibility effect: MRL-0103 remains ineligible until that canonical merge.
 
 ### MRL-1 gate
+
 - [ ] **MRL-0199 — Artifact-core exact-head qualification**
   - Requires: MRL-0100..0109.
   - Gates: Ruff, format, strict mypy, focused tests, full pytest/coverage, `medscale check`,
@@ -337,6 +338,7 @@ is then present on canonical `main`. Any head mutation burns prior exact-head ev
 
 - [ ] **MRL-0502 — Implement retained-alternative branches**
   - Depends on: MRL-0501.
+
 - [ ] **MRL-0503 — Implement replication branch semantics**
   - Depends on: MRL-0501.
 
