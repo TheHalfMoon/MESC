@@ -45,20 +45,18 @@ def _base_nodes() -> tuple[CampaignNode, ...]:
     )
 
 
-def _resources(**overrides: int) -> CampaignResourceTotals:
-    values = {
-        "wall_clock_seconds": 10,
-        "compute_seconds": 8,
-        "input_tokens": 100,
-        "generated_tokens": 20,
-        "storage_bytes": 1_000,
-        "monetary_cost_microunits": 500,
-        "retries": 1,
-        "known_failure_retries": 0,
-        "evaluator_invocations": 2,
-    }
-    values.update(overrides)
-    return CampaignResourceTotals(**values)
+def _resources(*, wall_clock_seconds: int = 10) -> CampaignResourceTotals:
+    return CampaignResourceTotals(
+        wall_clock_seconds=wall_clock_seconds,
+        compute_seconds=8,
+        input_tokens=100,
+        generated_tokens=20,
+        storage_bytes=1_000,
+        monetary_cost_microunits=500,
+        retries=1,
+        known_failure_retries=0,
+        evaluator_invocations=2,
+    )
 
 
 def _tier_usage(
@@ -205,7 +203,9 @@ def test_failed_null_invalid_and_rejected_outcomes_are_first_class() -> None:
 
 def test_child_campaign_cannot_delete_prior_node() -> None:
     parent = _campaign()
-    child_nodes = tuple(node for node in _base_nodes() if node.node_id != "receipt-a")
+    child_nodes = tuple(
+        node for node in _base_nodes() if node.node_id == "hypothesis-a"
+    )
 
     with pytest.raises(ResearchCampaignError, match="cannot delete a prior node"):
         _campaign(parent=parent, nodes=child_nodes, outcomes=(), frontier=())
