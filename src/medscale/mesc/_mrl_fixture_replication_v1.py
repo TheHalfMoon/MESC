@@ -203,6 +203,7 @@ def apply_fixture_replication(
     outcome = _snapshot_decision(retained_decision, "retained_decision")
     _validate_replication_chain(source, request, repeated, outcome)
     _require_source_in_campaign(parent, source)
+    _require_exact_initial_campaign(parent, source)
 
     objective = repeated.receipt.binding.plan.objective
     if parent.objective_sha256 != objective.content_sha256:
@@ -405,6 +406,18 @@ def _require_source_in_campaign(
             raise FixtureReplicationError(
                 "campaign does not contain the exact primary result chain"
             )
+
+
+def _require_exact_initial_campaign(
+    campaign: ResearchCampaign,
+    primary: FixtureLoopResult,
+) -> None:
+    """Reject caller-supplied parent history or counters not derived from the primary receipt."""
+    expected = start_fixture_campaign(campaign.campaign_id, primary)
+    if campaign.content_sha256 != expected.content_sha256:
+        raise FixtureReplicationError(
+            "fixture replication requires the exact receipt-derived initial campaign"
+        )
 
 
 def _result_nodes(result: FixtureLoopResult) -> tuple[CampaignNode, ...]:
