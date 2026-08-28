@@ -143,7 +143,7 @@ is then present on canonical `main`. Any head mutation burns prior exact-head ev
   - Test: `EVIDENCE_CANDIDATE` cannot be interpreted as model promotion.
   - Negative test: `PROMOTED` and equivalent promotion-authority states are rejected.
 
-- [ ] **MRL-0107 — Implement `ResearchCampaign` DAG**
+- [x] **MRL-0107 — Implement `ResearchCampaign` DAG**
   - Depends on: MRL-0106.
   - Test: failed/null/invalid branches remain canonical; reference integrity enforced.
   - Test: cumulative resource/query/result-exposure accounting cannot move backward.
