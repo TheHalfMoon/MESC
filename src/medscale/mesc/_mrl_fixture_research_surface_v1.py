@@ -68,15 +68,11 @@ class FixtureParameterDomain:
     def __post_init__(self) -> None:
         _require_id(self.parameter_id, "parameter_id")
         if type(self.allowed_values) is not tuple or not self.allowed_values:
-            raise FixtureResearchSurfaceError(
-                "allowed_values must be a non-empty exact tuple"
-            )
+            raise FixtureResearchSurfaceError("allowed_values must be a non-empty exact tuple")
         for value in self.allowed_values:
             _require_parameter_int(value, "allowed_values")
         if self.allowed_values != tuple(sorted(set(self.allowed_values))):
-            raise FixtureResearchSurfaceError(
-                "allowed_values must be unique and strictly sorted"
-            )
+            raise FixtureResearchSurfaceError("allowed_values must be unique and strictly sorted")
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -182,9 +178,7 @@ class FixtureResearchSurface:
         return {
             "format": "MRL-FIXTURE-RESEARCH-SURFACE-V1",
             "surface_id": self.surface_id,
-            "parameter_domains": [
-                domain.to_dict() for domain in self.parameter_domains
-            ],
+            "parameter_domains": [domain.to_dict() for domain in self.parameter_domains],
             "evaluator_sha256": self.evaluator_sha256,
             "fixture_only": self.fixture_only,
             "non_evidence": self.non_evidence,
@@ -244,9 +238,7 @@ class FixtureCandidate:
         return {
             "format": "MRL-FIXTURE-CANDIDATE-V1",
             "surface_sha256": self.surface_sha256,
-            "parameter_values": [
-                value.to_dict() for value in self.parameter_values
-            ],
+            "parameter_values": [value.to_dict() for value in self.parameter_values],
             "fixture_only": True,
             "non_evidence": True,
             "can_authorize_real_execution": False,
@@ -375,19 +367,14 @@ def evaluate_fixture_candidate(
     candidate_snapshot = FixtureCandidate._validated_snapshot(candidate)
     _require_fixture_binding(surface_snapshot, evaluator_snapshot)
     if candidate_snapshot.surface_sha256 != surface_snapshot.content_sha256:
-        raise FixtureResearchSurfaceError(
-            "candidate does not bind the supplied fixture surface"
-        )
+        raise FixtureResearchSurfaceError("candidate does not bind the supplied fixture surface")
     _require_candidate_matches_surface(
         surface_snapshot,
         candidate_snapshot.parameter_values,
     )
-    targets = {
-        value.parameter_id: value.value for value in evaluator_snapshot.target_values
-    }
+    targets = {value.parameter_id: value.value for value in evaluator_snapshot.target_values}
     score = sum(
-        targets[value.parameter_id] == value.value
-        for value in candidate_snapshot.parameter_values
+        targets[value.parameter_id] == value.value for value in candidate_snapshot.parameter_values
     )
     return FixtureEvaluation(
         surface_sha256=surface_snapshot.content_sha256,
@@ -405,9 +392,7 @@ def _validate_surface(surface: FixtureResearchSurface) -> None:
     _require_true(surface.fixture_only, "fixture_only")
     _require_true(surface.non_evidence, "non_evidence")
     if type(surface.parameter_domains) is not tuple or not surface.parameter_domains:
-        raise FixtureResearchSurfaceError(
-            "parameter_domains must be a non-empty exact tuple"
-        )
+        raise FixtureResearchSurfaceError("parameter_domains must be a non-empty exact tuple")
     for domain in surface.parameter_domains:
         _require_exact_type(domain, FixtureParameterDomain, "parameter_domain")
         FixtureParameterDomain(
@@ -434,12 +419,8 @@ def _require_fixture_binding(
     evaluator: FixtureEvaluator,
 ) -> None:
     if surface.evaluator_sha256 != evaluator.content_sha256:
-        raise FixtureResearchSurfaceError(
-            "fixture surface does not bind the supplied evaluator"
-        )
-    domain_by_id = {
-        domain.parameter_id: domain for domain in surface.parameter_domains
-    }
+        raise FixtureResearchSurfaceError("fixture surface does not bind the supplied evaluator")
+    domain_by_id = {domain.parameter_id: domain for domain in surface.parameter_domains}
     target_ids = tuple(value.parameter_id for value in evaluator.target_values)
     if target_ids != tuple(domain_by_id):
         raise FixtureResearchSurfaceError(
@@ -456,9 +437,7 @@ def _require_candidate_matches_surface(
     surface: FixtureResearchSurface,
     parameter_values: tuple[FixtureParameterValue, ...],
 ) -> None:
-    domain_by_id = {
-        domain.parameter_id: domain for domain in surface.parameter_domains
-    }
+    domain_by_id = {domain.parameter_id: domain for domain in surface.parameter_domains}
     value_ids = tuple(value.parameter_id for value in parameter_values)
     if value_ids != tuple(domain_by_id):
         raise FixtureResearchSurfaceError(
@@ -501,9 +480,7 @@ def _require_parameter_int(value: object, label: str) -> None:
 
 def _require_nonnegative_int(value: object, label: str) -> None:
     if type(value) is not int or value < 0:
-        raise FixtureResearchSurfaceError(
-            f"{label} must be an exact non-negative integer"
-        )
+        raise FixtureResearchSurfaceError(f"{label} must be an exact non-negative integer")
 
 
 def _require_true(value: object, label: str) -> None:
@@ -520,9 +497,7 @@ def _require_id(value: object, label: str) -> None:
 
 def _require_sha256(value: object, label: str) -> None:
     if type(value) is not str or not _SHA256.fullmatch(value):
-        raise FixtureResearchSurfaceError(
-            f"{label} must be exactly 64 lowercase hex characters"
-        )
+        raise FixtureResearchSurfaceError(f"{label} must be exactly 64 lowercase hex characters")
 
 
 def _require_exact_type(value: object, expected: type[object], label: str) -> None:
