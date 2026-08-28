@@ -206,7 +206,7 @@ is then present on canonical `main`. Any head mutation burns prior exact-head ev
   - Depends on: MRL-0204.
   - Must prove: search process cannot read Tier 3 item-level content.
 
-- [ ] **MRL-0208 — Add resource/adaptive-budget escape test**
+- [x] **MRL-0208 — Add resource/adaptive-budget escape test**
   - Depends on: MRL-0204.
   - Must prove: compute/query/result-exposure ceilings cannot be self-expanded.
 
