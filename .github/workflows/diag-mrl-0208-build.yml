@@ -1,4 +1,4 @@
-name: Diagnostic MRL-0208 Build
+name: Diagnostic MRL-0208 Repair
 
 on:
   push:
@@ -8,97 +8,103 @@ permissions:
   contents: write
 
 jobs:
-  build:
+  repair:
     runs-on: ubuntu-latest
     steps:
-      - name: Check out target feature branch
+      - name: Check out exact reviewed feature head
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: test/mrl-0208-budget-escape
           fetch-depth: 0
 
-      - name: Require canonical starting head
-        run: test "$(git rev-parse HEAD)" = "f8ca6a4118e216adeee0720245a1fb8f1d57adee"
+      - name: Require reviewed starting head
+        run: test "$(git rev-parse HEAD)" = "731bfe5b759966dfde85610b8ca2efae634201da"
 
-      - name: Add MRL-0208 adversarial budget escape coverage
+      - name: Bind exact plan-time resource and adaptive ceilings
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("src/medscale/mesc/_mrl_research_experiment_plan_v1.py")
+          text = path.read_text()
+
+          old_fields = '''    tier_allowances: tuple[PlanTierAllowance, ...]\n    stop_conditions: tuple[PlanStopCondition, ...]\n    failure_conditions: tuple[PlanFailureCondition, ...]\n\n    def __post_init__(self) -> None:\n        _validate_plan(self)\n'''
+          new_fields = '''    tier_allowances: tuple[PlanTierAllowance, ...]\n    stop_conditions: tuple[PlanStopCondition, ...]\n    failure_conditions: tuple[PlanFailureCondition, ...]\n    _bound_resource_ceiling: tuple[int | None, ...] = field(\n        init=False, repr=False, compare=False\n    )\n    _bound_tier_allowances: tuple[tuple[int, int, int, tuple[str, ...]], ...] = field(\n        init=False, repr=False, compare=False\n    )\n\n    def __post_init__(self) -> None:\n        _validate_plan(self)\n        object.__setattr__(\n            self,\n            "_bound_resource_ceiling",\n            _resource_ceiling_freeze_binding(self.resource_ceiling),\n        )\n        object.__setattr__(\n            self,\n            "_bound_tier_allowances",\n            _tier_allowance_freeze_binding(self.tier_allowances),\n        )\n'''
+          if text.count(old_fields) != 1:
+              raise SystemExit("ResearchExperimentPlan field/post-init anchor mismatch")
+          text = text.replace(old_fields, new_fields, 1)
+
+          old_snapshot = '''        _require_exact_instance(\n            self,\n            ResearchExperimentPlan,\n            "research_experiment_plan",\n        )\n        objective = _snapshot_objective(self.objective)\n'''
+          new_snapshot = '''        _require_exact_instance(\n            self,\n            ResearchExperimentPlan,\n            "research_experiment_plan",\n        )\n        _require_original_plan_budget_bindings(self)\n        objective = _snapshot_objective(self.objective)\n'''
+          if text.count(old_snapshot) != 1:
+              raise SystemExit("validated snapshot anchor mismatch")
+          text = text.replace(old_snapshot, new_snapshot, 1)
+
+          anchor = '''\n\ndef _validate_plan(plan: ResearchExperimentPlan) -> None:\n'''
+          helpers = '''\n\ndef _resource_ceiling_freeze_binding(value: ResourceBudget) -> tuple[int | None, ...]:\n    _require_exact_instance(value, ResourceBudget, "resource_ceiling")\n    return (\n        value.wall_clock_seconds,\n        value.compute_seconds,\n        value.input_tokens,\n        value.generated_tokens,\n        value.storage_bytes,\n        value.monetary_cost_microunits,\n        value.max_experiments,\n        value.retries,\n        value.known_failure_retries,\n        value.evaluator_invocations,\n    )\n\n\ndef _tier_allowance_freeze_binding(\n    values: tuple[PlanTierAllowance, ...],\n) -> tuple[tuple[int, int, int, tuple[str, ...]], ...]:\n    _require_exact_instances(values, PlanTierAllowance, "tier_allowances")\n    return tuple(\n        (\n            int(value.tier),\n            value.max_queries,\n            value.max_result_exposures,\n            value.allowed_result_fields,\n        )\n        for value in values\n    )\n\n\ndef _require_original_plan_budget_bindings(plan: ResearchExperimentPlan) -> None:\n    try:\n        bound_resource_ceiling = plan._bound_resource_ceiling\n        bound_tier_allowances = plan._bound_tier_allowances\n    except AttributeError as exc:\n        raise ResearchExperimentPlanError(\n            "research experiment plan is missing its original frozen budget bindings"\n        ) from exc\n\n    if bound_resource_ceiling != _resource_ceiling_freeze_binding(plan.resource_ceiling):\n        raise ResearchExperimentPlanError(\n            "resource_ceiling changed after the research experiment plan was frozen"\n        )\n    if bound_tier_allowances != _tier_allowance_freeze_binding(plan.tier_allowances):\n        raise ResearchExperimentPlanError(\n            "tier_allowances changed after the research experiment plan was frozen"\n        )\n\n\ndef _validate_plan(plan: ResearchExperimentPlan) -> None:\n'''
+          if text.count(anchor) != 1:
+              raise SystemExit("validate plan anchor mismatch")
+          text = text.replace(anchor, helpers, 1)
+          path.write_text(text)
+          PY
+
+      - name: Add in-envelope hostile rebinding adversarial tests
         run: |
           cat >> tests/test_mesc_mrl_research_experiment_plan_v1.py <<'PY'
 
 
-          def test_mrl_0208_compute_ceiling_cannot_be_self_expanded_after_freeze() -> None:
+          def test_mrl_0208_in_envelope_compute_rebinding_fails_original_freeze() -> None:
               plan = _plan()
+              original_sha256 = plan.content_sha256
+              assert plan.resource_ceiling.compute_seconds == 120
+
               object.__setattr__(
                   plan,
                   "resource_ceiling",
-                  replace(plan.resource_ceiling, compute_seconds=301),
+                  replace(plan.resource_ceiling, compute_seconds=121),
               )
 
-              with pytest.raises(ResearchExperimentPlanError, match="compute_seconds exceeds"):
+              with pytest.raises(ResearchExperimentPlanError, match="changed after.*frozen"):
                   _ = plan.content_sha256
+              assert original_sha256
 
 
-          def test_mrl_0208_query_ceiling_cannot_be_self_expanded_after_freeze() -> None:
+          def test_mrl_0208_in_envelope_query_rebinding_fails_original_freeze() -> None:
               plan = _plan()
+              original_sha256 = plan.content_sha256
+              assert plan.tier_allowances[0].max_queries == 3
+
               object.__setattr__(
                   plan,
                   "tier_allowances",
                   (
-                      replace(plan.tier_allowances[0], max_queries=6),
+                      replace(plan.tier_allowances[0], max_queries=4),
                       plan.tier_allowances[1],
                   ),
               )
 
-              with pytest.raises(ResearchExperimentPlanError, match="query allowance exceeds"):
+              with pytest.raises(ResearchExperimentPlanError, match="changed after.*frozen"):
                   _ = plan.content_sha256
+              assert original_sha256
 
 
-          def test_mrl_0208_result_exposure_ceiling_cannot_be_self_expanded_after_freeze() -> None:
+          def test_mrl_0208_in_envelope_exposure_rebinding_fails_original_freeze() -> None:
               plan = _plan()
+              original_sha256 = plan.content_sha256
+              assert plan.tier_allowances[0].max_result_exposures == 3
+
               object.__setattr__(
                   plan,
                   "tier_allowances",
                   (
-                      replace(plan.tier_allowances[0], max_result_exposures=6),
+                      replace(plan.tier_allowances[0], max_result_exposures=4),
                       plan.tier_allowances[1],
                   ),
               )
 
-              with pytest.raises(ResearchExperimentPlanError, match="result exposure exceeds"):
+              with pytest.raises(ResearchExperimentPlanError, match="changed after.*frozen"):
                   _ = plan.content_sha256
-          PY
-
-          cat >> tests/test_mesc_mrl_research_experiment_receipt_v1.py <<'PY'
-
-
-          def test_mrl_0208_success_receipt_cannot_hide_compute_overrun() -> None:
-              with pytest.raises(ResearchExperimentReceiptError, match="matching failure"):
-                  _receipt(observed_resource_use=_resource_use(compute_seconds=121))
-
-
-          def test_mrl_0208_success_receipt_cannot_hide_query_or_exposure_overrun() -> None:
-              query_overrun = (
-                  TierAccounting(
-                      tier=EvaluationTier.SEARCH,
-                      queries_used=4,
-                      result_exposures_used=1,
-                      exposed_result_fields=("aggregate_score",),
-                  ),
-                  _receipt().tier_accounting[1],
-              )
-              with pytest.raises(ResearchExperimentReceiptError, match="matching failure"):
-                  _receipt(tier_accounting=query_overrun)
-
-              exposure_overrun = (
-                  TierAccounting(
-                      tier=EvaluationTier.SEARCH,
-                      queries_used=1,
-                      result_exposures_used=4,
-                      exposed_result_fields=("aggregate_score",),
-                  ),
-                  _receipt().tier_accounting[1],
-              )
-              with pytest.raises(ResearchExperimentReceiptError, match="matching failure"):
-                  _receipt(tier_accounting=exposure_overrun)
+              assert original_sha256
           PY
 
       - name: Install uv
@@ -107,24 +113,23 @@ jobs:
       - name: Sync locked environment
         run: uv sync --frozen
 
-      - name: Focused lint and format
+      - name: Format and qualify repaired scope
         run: |
-          uv run ruff format tests/test_mesc_mrl_research_experiment_plan_v1.py tests/test_mesc_mrl_research_experiment_receipt_v1.py
-          uv run ruff check tests/test_mesc_mrl_research_experiment_plan_v1.py tests/test_mesc_mrl_research_experiment_receipt_v1.py
-          uv run ruff format --check tests/test_mesc_mrl_research_experiment_plan_v1.py tests/test_mesc_mrl_research_experiment_receipt_v1.py
+          uv run ruff format src/medscale/mesc/_mrl_research_experiment_plan_v1.py tests/test_mesc_mrl_research_experiment_plan_v1.py tests/test_mesc_mrl_research_experiment_receipt_v1.py
+          uv run ruff check src/medscale/mesc/_mrl_research_experiment_plan_v1.py tests/test_mesc_mrl_research_experiment_plan_v1.py tests/test_mesc_mrl_research_experiment_receipt_v1.py
+          uv run ruff format --check src/medscale/mesc/_mrl_research_experiment_plan_v1.py tests/test_mesc_mrl_research_experiment_plan_v1.py tests/test_mesc_mrl_research_experiment_receipt_v1.py
+          uv run mypy --strict src/medscale/mesc/_mrl_research_experiment_plan_v1.py
+          uv run pytest -q tests/test_mesc_mrl_research_experiment_plan_v1.py tests/test_mesc_mrl_research_experiment_receipt_v1.py -k 'mrl_0208'
 
-      - name: Focused MRL-0208 tests
-        run: uv run pytest -q tests/test_mesc_mrl_research_experiment_plan_v1.py tests/test_mesc_mrl_research_experiment_receipt_v1.py -k 'mrl_0208'
-
-      - name: Prove test-only delta and push
+      - name: Prove bounded repair and push
         run: |
           git diff --check
           changed="$(git diff --name-only | sort)"
-          expected="$(printf '%s\n' tests/test_mesc_mrl_research_experiment_plan_v1.py tests/test_mesc_mrl_research_experiment_receipt_v1.py | sort)"
+          expected="$(printf '%s\n' src/medscale/mesc/_mrl_research_experiment_plan_v1.py tests/test_mesc_mrl_research_experiment_plan_v1.py | sort)"
           test "$changed" = "$expected"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add tests/test_mesc_mrl_research_experiment_plan_v1.py tests/test_mesc_mrl_research_experiment_receipt_v1.py
-          git commit -m "test(mrl): add budget escape adversarial coverage"
+          git add src/medscale/mesc/_mrl_research_experiment_plan_v1.py tests/test_mesc_mrl_research_experiment_plan_v1.py
+          git commit -m "fix(mrl): preserve exact frozen plan budgets"
           git push origin HEAD:refs/heads/test/mrl-0208-budget-escape
           echo "FINAL_HEAD=$(git rev-parse HEAD)"
