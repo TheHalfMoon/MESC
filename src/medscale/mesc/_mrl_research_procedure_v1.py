@@ -161,9 +161,7 @@ class ResearchProcedureAdmissionReport:
             "applicability_bounds": self.applicability_bounds.to_dict(),
             "replay_evidence_sha256s": list(self.replay_evidence_sha256s),
             "transfer_evidence_sha256s": list(self.transfer_evidence_sha256s),
-            "negative_control_evidence_sha256s": list(
-                self.negative_control_evidence_sha256s
-            ),
+            "negative_control_evidence_sha256s": list(self.negative_control_evidence_sha256s),
             "author_kind": self.author_kind.value,
             "author_id": self.author_id,
             "reviewer_authority_id": self.reviewer_authority_id,
@@ -273,9 +271,7 @@ class ResearchProcedure:
     def semantic_dict(self) -> dict[str, object]:
         """Return canonical procedure semantics from one freshly revalidated snapshot."""
         snapshot = self._validated_snapshot()
-        return snapshot._semantic_dict_with_report_sha256(
-            snapshot.admission_report_sha256
-        )
+        return snapshot._semantic_dict_with_report_sha256(snapshot.admission_report_sha256)
 
     @property
     def semantic_bytes(self) -> bytes:
@@ -302,9 +298,7 @@ class ResearchProcedure:
     def to_dict(self) -> dict[str, object]:
         """Return semantic procedure envelope plus derived identities."""
         snapshot = self._validated_snapshot()
-        data = snapshot._semantic_dict_with_report_sha256(
-            snapshot.admission_report_sha256
-        )
+        data = snapshot._semantic_dict_with_report_sha256(snapshot.admission_report_sha256)
         data["admission_subject_sha256"] = derive_content_sha256(
             snapshot._semantic_dict_with_report_sha256(None)
         )
@@ -360,9 +354,7 @@ def _validate_procedure(procedure: ResearchProcedure) -> None:
 
     if procedure.admission_report_sha256 is None:
         if procedure.admission_report is not None:
-            raise ResearchProcedureError(
-                "admission_report requires admission_report_sha256"
-            )
+            raise ResearchProcedureError("admission_report requires admission_report_sha256")
         return
     _require_sha256(procedure.admission_report_sha256, "admission_report_sha256")
     report = procedure.admission_report
@@ -380,9 +372,7 @@ def _validate_procedure(procedure: ResearchProcedure) -> None:
             "admission report does not bind the procedure admission subject"
         )
     if report.applicability_bounds.to_dict() != applicability.to_dict():
-        raise ResearchProcedureError(
-            "admission report applicability does not match the procedure"
-        )
+        raise ResearchProcedureError("admission report applicability does not match the procedure")
 
 
 def _validate_report(report: ResearchProcedureAdmissionReport) -> None:
@@ -420,9 +410,7 @@ def _validate_report_chain(
         _validate_report_local(report)
         if parent is None:
             if report.state is not ProcedureAdmissionState.DISCOVERED:
-                raise ResearchProcedureError(
-                    "admission lifecycle must begin at DISCOVERED"
-                )
+                raise ResearchProcedureError("admission lifecycle must begin at DISCOVERED")
         else:
             _validate_report_transition(parent, report)
         parent = report
@@ -465,43 +453,42 @@ def _validate_report_local(report: ResearchProcedureAdmissionReport) -> None:
     )
 
     ordinal = _STATE_ORDER[report.state.value]
-    if ordinal >= _STATE_ORDER[ProcedureAdmissionState.REPLAYED.value]:
-        if not report.replay_evidence_sha256s:
-            raise ResearchProcedureError("REPLAYED or later requires replay evidence")
-    if ordinal >= _STATE_ORDER[ProcedureAdmissionState.TRANSFER_TESTED.value]:
-        if not report.transfer_evidence_sha256s:
-            raise ResearchProcedureError(
-                "TRANSFER_TESTED or later requires representative transfer evidence"
-            )
+    if (
+        ordinal >= _STATE_ORDER[ProcedureAdmissionState.REPLAYED.value]
+        and not report.replay_evidence_sha256s
+    ):
+        raise ResearchProcedureError("REPLAYED or later requires replay evidence")
+    if (
+        ordinal >= _STATE_ORDER[ProcedureAdmissionState.TRANSFER_TESTED.value]
+        and not report.transfer_evidence_sha256s
+    ):
+        raise ResearchProcedureError(
+            "TRANSFER_TESTED or later requires representative transfer evidence"
+        )
     if ordinal >= _STATE_ORDER[ProcedureAdmissionState.REVIEWED.value]:
         _require_review_authority(report)
         if not report.negative_control_evidence_sha256s:
-            raise ResearchProcedureError(
-                "REVIEWED or ADMITTED requires negative-control evidence"
-            )
+            raise ResearchProcedureError("REVIEWED or ADMITTED requires negative-control evidence")
     else:
         if report.reviewer_authority_id is not None:
-            raise ResearchProcedureError(
-                "pre-REVIEWED reports cannot claim reviewer authority"
-            )
+            raise ResearchProcedureError("pre-REVIEWED reports cannot claim reviewer authority")
         if report.review_receipt_sha256 is not None:
             raise ResearchProcedureError(
                 "pre-REVIEWED reports cannot claim an immutable review receipt"
             )
         if report.decision is not ProcedureAdmissionDecision.CONTINUE:
-            raise ResearchProcedureError(
-                "pre-REVIEWED admission reports must use CONTINUE"
-            )
+            raise ResearchProcedureError("pre-REVIEWED admission reports must use CONTINUE")
 
-    if report.state is ProcedureAdmissionState.REVIEWED:
-        if report.decision not in (
-            ProcedureAdmissionDecision.REJECT,
-            ProcedureAdmissionDecision.ADMIT,
-        ):
-            raise ResearchProcedureError("REVIEWED report must decide REJECT or ADMIT")
-    if report.state is ProcedureAdmissionState.ADMITTED:
-        if report.decision is not ProcedureAdmissionDecision.ADMIT:
-            raise ResearchProcedureError("ADMITTED report must decide ADMIT")
+    if report.state is ProcedureAdmissionState.REVIEWED and report.decision not in (
+        ProcedureAdmissionDecision.REJECT,
+        ProcedureAdmissionDecision.ADMIT,
+    ):
+        raise ResearchProcedureError("REVIEWED report must decide REJECT or ADMIT")
+    if (
+        report.state is ProcedureAdmissionState.ADMITTED
+        and report.decision is not ProcedureAdmissionDecision.ADMIT
+    ):
+        raise ResearchProcedureError("ADMITTED report must decide ADMIT")
 
 
 def _require_review_authority(report: ResearchProcedureAdmissionReport) -> None:
@@ -520,9 +507,7 @@ def _require_review_authority(report: ResearchProcedureAdmissionReport) -> None:
     _require_text(reviewer_id, "reviewer_authority_id")
     review_receipt = report.review_receipt_sha256
     if review_receipt is None:
-        raise ResearchProcedureError(
-            "REVIEWED or ADMITTED requires an immutable review receipt"
-        )
+        raise ResearchProcedureError("REVIEWED or ADMITTED requires an immutable review receipt")
     _require_sha256(review_receipt, "review_receipt_sha256")
 
 
@@ -558,9 +543,7 @@ def _validate_report_transition(
         if parent.state is not ProcedureAdmissionState.REVIEWED:
             raise ResearchProcedureError("ADMITTED requires an exact REVIEWED parent")
         if parent.decision is not ProcedureAdmissionDecision.ADMIT:
-            raise ResearchProcedureError(
-                "ADMITTED requires the REVIEWED parent to decide ADMIT"
-            )
+            raise ResearchProcedureError("ADMITTED requires the REVIEWED parent to decide ADMIT")
         if report.reviewer_authority_id != parent.reviewer_authority_id:
             raise ResearchProcedureError("ADMITTED cannot rewrite reviewer authority")
         if report.review_receipt_sha256 != parent.review_receipt_sha256:
@@ -679,9 +662,7 @@ def _require_evaluation_tiers(values: tuple[EvaluationTier, ...]) -> None:
         raise ResearchProcedureError("evaluation_tiers contain invalid enum types")
     tier_values = tuple(int(value) for value in values)
     if tier_values != tuple(sorted(set(tier_values))):
-        raise ResearchProcedureError(
-            "evaluation_tiers must be unique and strictly sorted"
-        )
+        raise ResearchProcedureError("evaluation_tiers must be unique and strictly sorted")
 
 
 def _require_sorted_texts(
