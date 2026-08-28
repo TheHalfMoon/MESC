@@ -194,7 +194,7 @@ is then present on canonical `main`. Any head mutation burns prior exact-head ev
 - [x] **MRL-0204 — Implement fixture propose/run/receipt/decision loop**
   - Depends on: MRL-0202, MRL-0203.
 
-- [ ] **MRL-0205 — Implement replication and retained-lead behavior**
+- [x] **MRL-0205 — Implement replication and retained-lead behavior**
   - Depends on: MRL-0204.
 
 - [ ] **MRL-0206 — Add metric-tampering adversarial test**
