@@ -52,17 +52,36 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
+
           path = Path("tests/test_mesc_mrl_research_experiment_plan_v1.py")
           text = path.read_text()
-          replacements = (
-              ('match="compute_seconds exceeds"', 'match="resource_ceiling changed after"'),
-              ('match="query allowance exceeds"', 'match="tier_allowances changed after"'),
-              ('match="result exposure exceeds"', 'match="tier_allowances changed after"'),
+          cases = (
+              (
+                  "test_mrl_0208_compute_ceiling_cannot_be_self_expanded_after_freeze",
+                  'match="compute_seconds exceeds"',
+                  'match="resource_ceiling changed after"',
+              ),
+              (
+                  "test_mrl_0208_query_ceiling_cannot_be_self_expanded_after_freeze",
+                  'match="query allowance exceeds"',
+                  'match="tier_allowances changed after"',
+              ),
+              (
+                  "test_mrl_0208_result_exposure_ceiling_cannot_be_self_expanded_after_freeze",
+                  'match="result exposure exceeds"',
+                  'match="tier_allowances changed after"',
+              ),
           )
-          for old, new in replacements:
-              if old not in text:
-                  raise SystemExit(f"missing expected MRL-0208 message anchor: {old}")
-              text = text.replace(old, new, 1)
+          for function_name, old, new in cases:
+              start = text.index(f"def {function_name}")
+              end = text.find("\ndef ", start + 1)
+              if end == -1:
+                  end = len(text)
+              block = text[start:end]
+              if old not in block:
+                  raise SystemExit(f"missing expected MRL-0208 message in {function_name}: {old}")
+              block = block.replace(old, new, 1)
+              text = text[:start] + block + text[end:]
           path.write_text(text)
           PY
 
