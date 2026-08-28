@@ -182,7 +182,7 @@ is then present on canonical `main`. Any head mutation burns prior exact-head ev
   - Depends on: MRL-0199.
   - Constraint: no real model/data/network/GPU/training.
 
-- [ ] **MRL-0202 — Build allow-listed mutation policy**
+- [x] **MRL-0202 — Build allow-listed mutation policy**
   - Depends on: MRL-0201.
   - Negative tests: evaluator/governance/sealed-data/authorization/trust/machine-state
     authority paths rejected.
