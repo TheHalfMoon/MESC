@@ -780,3 +780,32 @@ def test_mrl_0206_fixture_metrics_never_claim_sealed_or_promotion_authority() ->
     assert payload["can_authorize_real_execution"] is False
     assert payload["can_authorize_training"] is False
     assert payload["can_authorize_model_promotion"] is False
+
+
+def test_mrl_0206_fabricated_favorable_metric_cannot_create_evidence_candidate() -> None:
+    result = _complete(alpha=1, beta=0)
+    assert result.decision.state is ResearchDecisionState.REJECT
+    evaluation = result.observation.evaluation
+    assert evaluation is not None
+    assert evaluation.score < evaluation.max_score
+    object.__setattr__(evaluation, "score", evaluation.max_score)
+
+    with pytest.raises(FixtureLoopError, match="canonical revalidation"):
+        decide_fixture_experiment(
+            result.proposal,
+            result.observation,
+            result.receipt,
+        )
+
+
+def test_mrl_0206_forged_sealed_metric_tier_is_rejected() -> None:
+    result = _complete()
+    metric_artifact = result.receipt.metric_artifacts[0]
+    object.__setattr__(metric_artifact, "tier", EvaluationTier.SEALED)
+
+    with pytest.raises(FixtureLoopError, match="canonical revalidation"):
+        decide_fixture_experiment(
+            result.proposal,
+            result.observation,
+            result.receipt,
+        )
