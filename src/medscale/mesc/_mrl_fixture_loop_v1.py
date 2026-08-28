@@ -28,8 +28,8 @@ from medscale.mesc._mrl_fixture_mutation_policy_v1 import (
 )
 from medscale.mesc._mrl_fixture_research_surface_v1 import (
     FixtureCandidate,
-    FixtureEvaluator,
     FixtureEvaluation,
+    FixtureEvaluator,
     FixtureParameterValue,
     FixtureResearchSurface,
     build_fixture_candidate,
