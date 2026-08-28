@@ -14,7 +14,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from medscale.mesc._mrl_fixture_loop_v1 import FixtureLoopResult
+from medscale.mesc._mrl_fixture_loop_v1 import (
+    FixtureLoopResult,
+    decide_fixture_experiment,
+)
 from medscale.mesc._mrl_research_campaign_v1 import (
     CampaignBranchOutcome,
     CampaignBranchOutcomeKind,
@@ -134,7 +137,9 @@ def assess_fixture_replication(
     elif state is ResearchDecisionState.INVALID:
         reason = "Independent fixture replication was invalid under the frozen plan."
     else:
-        raise FixtureReplicationError("replica contains an unsupported MRL-0204 decision state")
+        raise FixtureReplicationError(
+            "replica contains an unsupported MRL-0204 decision state"
+        )
 
     evidence = tuple(
         sorted(
@@ -393,7 +398,10 @@ def _validate_campaign_contains_cycle(
         raise FixtureReplicationError("campaign is missing the exact replication relationship")
 
 
-def _require_source_in_campaign(campaign: ResearchCampaign, primary: FixtureLoopResult) -> None:
+def _require_source_in_campaign(
+    campaign: ResearchCampaign,
+    primary: FixtureLoopResult,
+) -> None:
     by_id = {node.node_id: node for node in campaign.nodes}
     for node in _result_nodes(primary):
         existing = by_id.get(node.node_id)
@@ -476,7 +484,9 @@ def _negative_outcomes_for_decision(
     )
 
 
-def _resource_totals_from_receipt(receipt: ResearchExperimentReceipt) -> CampaignResourceTotals:
+def _resource_totals_from_receipt(
+    receipt: ResearchExperimentReceipt,
+) -> CampaignResourceTotals:
     usage = receipt.observed_resource_use
     return CampaignResourceTotals(
         wall_clock_seconds=usage.wall_clock_seconds,
@@ -530,8 +540,7 @@ def _add_tier_usage(
     added: tuple[TierAccounting, ...],
 ) -> tuple[CampaignTierTotals, ...]:
     totals = {
-        item.tier: (item.queries_used, item.result_exposures_used)
-        for item in current
+        item.tier: (item.queries_used, item.result_exposures_used) for item in current
     }
     for item in added:
         queries, exposures = totals.get(item.tier, (0, 0))
@@ -572,7 +581,9 @@ def _require_campaign_budget(
                 "fixture campaign exposes results on an unconfigured tier"
             )
         if max_exposures is not None and totals.result_exposures_used > max_exposures:
-            raise FixtureReplicationError("fixture campaign exceeds frozen result-exposure budget")
+            raise FixtureReplicationError(
+                "fixture campaign exceeds frozen result-exposure budget"
+            )
         if tier is EvaluationTier.SEARCH:
             max_queries = objective.adaptive_query_budget.tier_1_queries
         elif tier is EvaluationTier.REPLICATION:
@@ -580,17 +591,35 @@ def _require_campaign_budget(
         else:
             max_queries = 0
         if totals.queries_used > max_queries:
-            raise FixtureReplicationError("fixture campaign exceeds frozen adaptive-query budget")
+            raise FixtureReplicationError(
+                "fixture campaign exceeds frozen adaptive-query budget"
+            )
 
 
 def _require_resource_budget(
     totals: CampaignResourceTotals,
     budget: ResourceBudget,
 ) -> None:
-    _require_ceiling(totals.wall_clock_seconds, budget.wall_clock_seconds, "wall_clock_seconds")
-    _require_optional_ceiling(totals.compute_seconds, budget.compute_seconds, "compute_seconds")
-    _require_optional_ceiling(totals.input_tokens, budget.input_tokens, "input_tokens")
-    _require_optional_ceiling(totals.generated_tokens, budget.generated_tokens, "generated_tokens")
+    _require_ceiling(
+        totals.wall_clock_seconds,
+        budget.wall_clock_seconds,
+        "wall_clock_seconds",
+    )
+    _require_optional_ceiling(
+        totals.compute_seconds,
+        budget.compute_seconds,
+        "compute_seconds",
+    )
+    _require_optional_ceiling(
+        totals.input_tokens,
+        budget.input_tokens,
+        "input_tokens",
+    )
+    _require_optional_ceiling(
+        totals.generated_tokens,
+        budget.generated_tokens,
+        "generated_tokens",
+    )
     _require_ceiling(totals.storage_bytes, budget.storage_bytes, "storage_bytes")
     _require_optional_ceiling(
         totals.monetary_cost_microunits,
@@ -613,7 +642,9 @@ def _require_resource_budget(
 def _require_optional_ceiling(value: int, ceiling: int | None, label: str) -> None:
     if ceiling is None:
         if value != 0:
-            raise FixtureReplicationError(f"{label} is not applicable to the frozen objective")
+            raise FixtureReplicationError(
+                f"{label} is not applicable to the frozen objective"
+            )
         return
     _require_ceiling(value, ceiling, label)
 
@@ -639,9 +670,20 @@ def _snapshot_loop_result(value: FixtureLoopResult, label: str) -> FixtureLoopRe
     if type(value) is not FixtureLoopResult:
         raise FixtureReplicationError(f"{label} must be an exact FixtureLoopResult")
     try:
-        return FixtureLoopResult._validated_snapshot(value)
+        snapshot = FixtureLoopResult._validated_snapshot(value)
+        expected = decide_fixture_experiment(
+            snapshot.proposal,
+            snapshot.observation,
+            snapshot.receipt,
+        )
     except (AttributeError, TypeError, ValueError) as exc:
         raise FixtureReplicationError(f"{label} failed canonical revalidation") from exc
+    if snapshot.decision.content_sha256 != expected.content_sha256:
+        raise FixtureReplicationError(
+            f"{label} decision does not match canonical MRL-0204 decision logic; "
+            f"canonical state is {expected.state.value}"
+        )
+    return snapshot
 
 
 def _snapshot_decision(value: ResearchDecision, label: str) -> ResearchDecision:
