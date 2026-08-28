@@ -213,7 +213,7 @@ is then present on canonical `main`. Any head mutation burns prior exact-head ev
 - [x] **MRL-0209 — Add raw-log prompt-injection test**
   - Depends on: MRL-0203.
 
-- [ ] **MRL-0210 — Add stale/mismatched receipt tests**
+- [x] **MRL-0210 — Add stale/mismatched receipt tests**
   - Depends on: MRL-0204.
 
 - [ ] **MRL-0211 — Add known-failure retry ceiling**
