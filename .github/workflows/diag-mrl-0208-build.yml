@@ -32,14 +32,11 @@ jobs:
               if text.count("import re\n") != 1:
                   raise SystemExit("import re anchor mismatch")
               text = text.replace("import re\n", "import re\nimport weakref\n", 1)
-          if "from typing import Callable, Final\n" not in text:
-              if text.count("from typing import Final\n") != 1:
-                  raise SystemExit("typing import anchor mismatch")
-              text = text.replace(
-                  "from typing import Final\n",
-                  "from typing import Callable, Final\n",
-                  1,
-              )
+          if "from collections.abc import Callable\n" not in text:
+              anchor = "import weakref\n"
+              if text.count(anchor) != 1:
+                  raise SystemExit("weakref import anchor mismatch")
+              text = text.replace(anchor, anchor + "from collections.abc import Callable\n", 1)
 
           decorator_anchor = '''@dataclass(frozen=True, slots=True)\nclass ResearchExperimentPlan:\n'''
           if text.count(decorator_anchor) != 1:
