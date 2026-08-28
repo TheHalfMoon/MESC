@@ -222,25 +222,23 @@ def _require_reference(value: object, field: str) -> None:
         raise CapabilityMatrixError(f"{field} must contain canonical non-empty text")
 
 
-def _require_sorted_unique_paths(values: object, field: str) -> None:
+def _require_sorted_unique_paths(values: tuple[str, ...], field: str) -> None:
     if type(values) is not tuple:
         raise CapabilityMatrixError(f"{field} must be an exact tuple")
-    typed_values = tuple(values)
-    if not typed_values:
+    if not values:
         raise CapabilityMatrixError(f"{field} cannot be empty")
-    for value in typed_values:
+    for value in values:
         _require_source_path(value)
-    if tuple(sorted(typed_values)) != typed_values or len(set(typed_values)) != len(typed_values):
+    if tuple(sorted(values)) != values or len(set(values)) != len(values):
         raise CapabilityMatrixError(f"{field} must be sorted and unique")
 
 
-def _require_sorted_unique_refs(values: object, field: str) -> None:
+def _require_sorted_unique_refs(values: tuple[str, ...], field: str) -> None:
     if type(values) is not tuple:
         raise CapabilityMatrixError(f"{field} must be an exact tuple")
-    typed_values = tuple(values)
-    for value in typed_values:
+    for value in values:
         _require_reference(value, field)
-    if tuple(sorted(typed_values)) != typed_values or len(set(typed_values)) != len(typed_values):
+    if tuple(sorted(values)) != values or len(set(values)) != len(values):
         raise CapabilityMatrixError(f"{field} must be sorted and unique")
 
 
