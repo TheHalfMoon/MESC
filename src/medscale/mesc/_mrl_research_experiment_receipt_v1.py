@@ -323,9 +323,7 @@ class ResearchExperimentReceipt:
         return ResearchExperimentReceipt(
             binding=_snapshot_binding(self.binding),
             code_identity=_snapshot_code_identity(self.code_identity),
-            observed_resource_use=_snapshot_resource_use(
-                self.observed_resource_use
-            ),
+            observed_resource_use=_snapshot_resource_use(self.observed_resource_use),
             metric_artifacts=tuple(
                 _snapshot_metric_artifact(result)
                 for result in _require_exact_tuple_items(
@@ -370,38 +368,22 @@ class ResearchExperimentReceipt:
         binding_semantics = self.binding.semantic_dict()
         return {
             "format": "MRL-RESEARCH-EXPERIMENT-RECEIPT-V1",
-            "experiment_plan_sha256": binding_semantics[
-                "experiment_plan_sha256"
-            ],
-            "experiment_manifest_sha256": binding_semantics[
-                "experiment_manifest_sha256"
-            ],
+            "experiment_plan_sha256": binding_semantics["experiment_plan_sha256"],
+            "experiment_manifest_sha256": binding_semantics["experiment_manifest_sha256"],
             "code_identity": self.code_identity.to_dict(),
             "observed_resource_use": self.observed_resource_use.to_dict(),
-            "metric_artifacts": [
-                result.to_dict() for result in self.metric_artifacts
-            ],
-            "guardrail_results": [
-                result.to_dict() for result in self.guardrail_results
-            ],
-            "subgroup_results": [
-                result.to_dict() for result in self.subgroup_results
-            ],
+            "metric_artifacts": [result.to_dict() for result in self.metric_artifacts],
+            "guardrail_results": [result.to_dict() for result in self.guardrail_results],
+            "subgroup_results": [result.to_dict() for result in self.subgroup_results],
             "failure_classification": (
                 None
                 if self.failure_classification is None
                 else self.failure_classification.value
             ),
-            "contamination_lineage_audit": (
-                self.contamination_lineage_audit.to_dict()
-            ),
+            "contamination_lineage_audit": self.contamination_lineage_audit.to_dict(),
             "reproduction": self.reproduction.to_dict(),
-            "raw_output_artifact_sha256s": list(
-                self.raw_output_artifact_sha256s
-            ),
-            "tier_accounting": [
-                accounting.to_dict() for accounting in self.tier_accounting
-            ],
+            "raw_output_artifact_sha256s": list(self.raw_output_artifact_sha256s),
+            "tier_accounting": [accounting.to_dict() for accounting in self.tier_accounting],
         }
 
     def semantic_dict(self) -> dict[str, object]:
@@ -518,9 +500,7 @@ def _validate_receipt(receipt: ResearchExperimentReceipt) -> None:
         complete=receipt.failure_classification is None,
     )
 
-    contamination = _snapshot_contamination_audit(
-        receipt.contamination_lineage_audit
-    )
+    contamination = _snapshot_contamination_audit(receipt.contamination_lineage_audit)
     if (
         receipt.failure_classification
         is PlanFailureCondition.CONTAMINATION_OR_LINEAGE_FAILURE
@@ -590,9 +570,7 @@ def _snapshot_resource_use(value: ObservedResourceUse) -> ObservedResourceUse:
     )
 
 
-def _snapshot_metric_artifact(
-    value: MetricArtifactResult,
-) -> MetricArtifactResult:
+def _snapshot_metric_artifact(value: MetricArtifactResult) -> MetricArtifactResult:
     _require_exact_instance(value, MetricArtifactResult, "metric artifact")
     return MetricArtifactResult(
         metric_id=value.metric_id,
@@ -648,9 +626,7 @@ def _applicable_metric_contracts(
     plan: ResearchExperimentPlan,
 ) -> dict[str, MetricContract]:
     tiers = set(plan.evaluation_tiers)
-    contracts = tuple(plan.objective.search_metrics) + tuple(
-        plan.objective.evaluation_metrics
-    )
+    contracts = tuple(plan.objective.search_metrics) + tuple(plan.objective.evaluation_metrics)
     return {
         contract.metric_id: contract
         for contract in contracts
@@ -697,9 +673,7 @@ def _require_floor_results(
     result_ids = tuple(result.floor_id for result in results)
     _require_strictly_sorted_ids(result_ids, name)
     floor_by_id = {
-        floor.floor_id: floor
-        for floor in floors
-        if floor.metric_id in metric_by_id
+        floor.floor_id: floor for floor in floors if floor.metric_id in metric_by_id
     }
     actual_ids = set(result_ids)
     expected_ids = set(floor_by_id)
@@ -798,13 +772,9 @@ def _require_tier_accounting(
     for item in accounting:
         allowance = allowance_by_tier[item.tier]
         if item.queries_used > allowance.max_queries:
-            overruns.append(
-                PlanFailureCondition.ADAPTIVE_QUERY_BUDGET_OVERRUN
-            )
+            overruns.append(PlanFailureCondition.ADAPTIVE_QUERY_BUDGET_OVERRUN)
         if item.result_exposures_used > allowance.max_result_exposures:
-            overruns.append(
-                PlanFailureCondition.RESULT_EXPOSURE_BUDGET_OVERRUN
-            )
+            overruns.append(PlanFailureCondition.RESULT_EXPOSURE_BUDGET_OVERRUN)
         if not set(item.exposed_result_fields).issubset(
             set(allowance.allowed_result_fields)
         ):
@@ -855,9 +825,7 @@ def _require_exact_instance(
 
 def _require_exact_enum(value: object, expected_type: type[enum.Enum], name: str) -> None:
     if type(value) is not expected_type:
-        raise ResearchExperimentReceiptError(
-            f"{name} must be exact {expected_type.__name__}"
-        )
+        raise ResearchExperimentReceiptError(f"{name} must be exact {expected_type.__name__}")
 
 
 _T = TypeVar("_T")
@@ -872,17 +840,13 @@ def _require_exact_tuple_items(
         raise ResearchExperimentReceiptError(f"{name} must be an exact tuple")
     items = cast(tuple[object, ...], value)
     if any(type(item) is not item_type for item in items):
-        raise ResearchExperimentReceiptError(
-            f"{name} contains invalid item types"
-        )
+        raise ResearchExperimentReceiptError(f"{name} contains invalid item types")
     return cast(tuple[_T, ...], items)
 
 
 def _require_token(value: object, name: str) -> None:
     if type(value) is not str or not value:
-        raise ResearchExperimentReceiptError(
-            f"{name} must be an exact non-empty string"
-        )
+        raise ResearchExperimentReceiptError(f"{name} must be an exact non-empty string")
     if any(character.isspace() for character in value):
         raise ResearchExperimentReceiptError(f"{name} cannot contain whitespace")
 
@@ -935,9 +899,7 @@ def _require_sorted_unique_tokens(
     for item in items:
         _require_token(item, f"{name} item")
     if items != tuple(sorted(set(items))):
-        raise ResearchExperimentReceiptError(
-            f"{name} must be unique and strictly sorted"
-        )
+        raise ResearchExperimentReceiptError(f"{name} must be unique and strictly sorted")
 
 
 def _require_sorted_unique_sha256s(value: object, name: str) -> None:
@@ -946,6 +908,4 @@ def _require_sorted_unique_sha256s(value: object, name: str) -> None:
     for item in value:
         _require_sha256(item, f"{name} item")
     if value != tuple(sorted(set(value))):
-        raise ResearchExperimentReceiptError(
-            f"{name} must be unique and strictly sorted"
-        )
+        raise ResearchExperimentReceiptError(f"{name} must be unique and strictly sorted")
