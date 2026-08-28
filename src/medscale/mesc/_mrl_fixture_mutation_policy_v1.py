@@ -97,9 +97,7 @@ class FixtureMutationPolicy:
             "experiment_plan_sha256": self.experiment_plan_sha256,
             "allowed_surfaces": list(self.allowed_surfaces),
             "forbidden_surfaces": list(self.forbidden_surfaces),
-            "protected_authority_surfaces": list(
-                self.protected_authority_surfaces
-            ),
+            "protected_authority_surfaces": list(self.protected_authority_surfaces),
             "fixture_only": self.fixture_only,
             "non_evidence": self.non_evidence,
             "can_apply_mutation": False,
@@ -164,15 +162,11 @@ def assess_fixture_mutation_path(
         return FixtureMutationDisposition.REJECT_PROTECTED_AUTHORITY
 
     if any(
-        _paths_overlap(path, surface)
-        for surface in policy_snapshot.forbidden_surfaces
+        _paths_overlap(path, surface) for surface in policy_snapshot.forbidden_surfaces
     ):
         return FixtureMutationDisposition.REJECT_PROTECTED_AUTHORITY
 
-    if any(
-        _path_contains(surface, path)
-        for surface in policy_snapshot.allowed_surfaces
-    ):
+    if any(_path_contains(surface, path) for surface in policy_snapshot.allowed_surfaces):
         return FixtureMutationDisposition.ALLOW
 
     return FixtureMutationDisposition.REJECT_OUTSIDE_ALLOW_LIST
@@ -270,9 +264,7 @@ def _require_paths(
     for value in values:
         _require_canonical_relative_path(value, label)
     if values != tuple(sorted(set(values))):
-        raise FixtureMutationPolicyError(
-            f"{label} must be unique and strictly sorted"
-        )
+        raise FixtureMutationPolicyError(f"{label} must be unique and strictly sorted")
 
 
 def _require_canonical_relative_path(value: str, label: str) -> None:
@@ -320,6 +312,4 @@ def _require_true(value: bool, label: str) -> None:
 
 def _require_exact_type(value: object, expected: type[object], label: str) -> None:
     if type(value) is not expected:
-        raise FixtureMutationPolicyError(
-            f"{label} must be exact {expected.__name__}"
-        )
+        raise FixtureMutationPolicyError(f"{label} must be exact {expected.__name__}")
