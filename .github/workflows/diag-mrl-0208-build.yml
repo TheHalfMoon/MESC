@@ -28,12 +28,18 @@ jobs:
           path = Path("src/medscale/mesc/_mrl_research_experiment_plan_v1.py")
           text = path.read_text()
 
-          text = text.replace("import re\n", "import re\nimport weakref\n", 1)
-          text = text.replace(
-              "from typing import Final, TypeVar\n",
-              "from typing import Callable, Final, TypeVar\n",
-              1,
-          )
+          if "import weakref\n" not in text:
+              if text.count("import re\n") != 1:
+                  raise SystemExit("import re anchor mismatch")
+              text = text.replace("import re\n", "import re\nimport weakref\n", 1)
+          if "from typing import Callable, Final, TypeVar\n" not in text:
+              if text.count("from typing import Final, TypeVar\n") != 1:
+                  raise SystemExit("typing import anchor mismatch")
+              text = text.replace(
+                  "from typing import Final, TypeVar\n",
+                  "from typing import Callable, Final, TypeVar\n",
+                  1,
+              )
 
           decorator_anchor = '''@dataclass(frozen=True, slots=True)\nclass ResearchExperimentPlan:\n'''
           if text.count(decorator_anchor) != 1:
@@ -44,11 +50,11 @@ jobs:
               1,
           )
 
-          old_fields = '''    failure_conditions: tuple[PlanFailureCondition, ...]\n    _bound_resource_ceiling: tuple[int | None, ...] = field(\n        init=False, repr=False, compare=False\n    )\n    _bound_tier_allowances: tuple[tuple[int, int, int, tuple[str, ...]], ...] = field(\n        init=False, repr=False, compare=False\n    )\n\n    def __post_init__(self) -> None:\n        _validate_plan(self)\n        object.__setattr__(\n            self,\n            "_bound_resource_ceiling",\n            _resource_ceiling_freeze_binding(self.resource_ceiling),\n        )\n        object.__setattr__(\n            self,\n            "_bound_tier_allowances",\n            _tier_allowance_freeze_binding(self.tier_allowances),\n        )\n'''
-          new_fields = '''    failure_conditions: tuple[PlanFailureCondition, ...]\n\n    def __post_init__(self) -> None:\n        _validate_plan(self)\n        _register_original_plan_budget_bindings(self)\n'''
-          if text.count(old_fields) != 1:
-              raise SystemExit("object-bound freeze fields anchor mismatch")
-          text = text.replace(old_fields, new_fields, 1)
+          class_start = text.index("class ResearchExperimentPlan:")
+          fields_start = text.index("    failure_conditions: tuple[PlanFailureCondition, ...]", class_start)
+          snapshot_start = text.index("    def _validated_snapshot(self) -> ResearchExperimentPlan:", fields_start)
+          replacement_fields = '''    failure_conditions: tuple[PlanFailureCondition, ...]\n\n    def __post_init__(self) -> None:\n        _validate_plan(self)\n        _register_original_plan_budget_bindings(self)\n\n'''
+          text = text[:fields_start] + replacement_fields + text[snapshot_start:]
 
           start = text.index("def _resource_ceiling_freeze_binding(")
           end = text.index("def _validate_plan(plan: ResearchExperimentPlan) -> None:")
