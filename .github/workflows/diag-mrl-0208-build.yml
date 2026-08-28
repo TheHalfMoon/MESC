@@ -64,7 +64,7 @@ jobs:
                   replace(plan.resource_ceiling, compute_seconds=121),
               )
 
-              with pytest.raises(ResearchExperimentPlanError, match="changed after.*frozen"):
+              with pytest.raises(ResearchExperimentPlanError, match=r"changed after.*frozen"):
                   _ = plan.content_sha256
               assert original_sha256
 
@@ -83,7 +83,7 @@ jobs:
                   ),
               )
 
-              with pytest.raises(ResearchExperimentPlanError, match="changed after.*frozen"):
+              with pytest.raises(ResearchExperimentPlanError, match=r"changed after.*frozen"):
                   _ = plan.content_sha256
               assert original_sha256
 
@@ -102,7 +102,7 @@ jobs:
                   ),
               )
 
-              with pytest.raises(ResearchExperimentPlanError, match="changed after.*frozen"):
+              with pytest.raises(ResearchExperimentPlanError, match=r"changed after.*frozen"):
                   _ = plan.content_sha256
               assert original_sha256
           PY
