@@ -20,6 +20,10 @@ _ROADMAP_PATH = "ROADMAP.md"
 _RECONCILIATION_PATH = "docs/strategy/mesc_pr122_post_b0_reconciliation_2026-08-19.md"
 
 
+class _StringSubclass(str):
+    pass
+
+
 def _repository() -> CapabilityRepositoryBinding:
     return CapabilityRepositoryBinding(commit_sha="a" * 40, tree_sha="b" * 40)
 
@@ -186,6 +190,17 @@ def test_unknown_state_vocabulary_fails_closed() -> None:
         replace(baseline, evidence_state="CLAIMED")
     with pytest.raises(CapabilityMatrixError, match="authority_state is outside"):
         replace(baseline, authority_state="SELF_AUTHORIZED")
+
+
+def test_state_vocabulary_requires_exact_strings() -> None:
+    baseline = _rows()[2]
+
+    with pytest.raises(CapabilityMatrixError, match="implementation_state is outside"):
+        replace(baseline, implementation_state=_StringSubclass("NOT_STARTED"))
+    with pytest.raises(CapabilityMatrixError, match="evidence_state is outside"):
+        replace(baseline, evidence_state=_StringSubclass("UNPROVEN"))
+    with pytest.raises(CapabilityMatrixError, match="authority_state is outside"):
+        replace(baseline, authority_state=_StringSubclass("NOT_AUTHORIZED"))
 
 
 @pytest.mark.parametrize(
