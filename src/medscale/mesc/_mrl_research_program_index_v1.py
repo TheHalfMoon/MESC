@@ -105,6 +105,8 @@ class ResearchQuestionIndexEntry:
             raise ResearchProgramIndexError(
                 "question_id is not a canonical MRL research identifier"
             )
+        if is_namespaced and self.question_id.endswith("-0000"):
+            raise ResearchProgramIndexError("namespaced question numbering starts at 0001")
 
     @property
     def is_foundational(self) -> bool:
@@ -326,13 +328,21 @@ def _require_namespaced_questions_registered(
     questions: tuple[ResearchQuestionIndexEntry, ...],
     namespaces: tuple[ResearchProgramNamespace, ...],
 ) -> None:
-    prefixes = tuple(namespace.namespace_prefix for namespace in namespaces)
     for question in questions:
         if question.is_foundational:
             continue
-        if not any(question.question_id.startswith(prefix) for prefix in prefixes):
+        matching = tuple(
+            namespace
+            for namespace in namespaces
+            if question.question_id.startswith(namespace.namespace_prefix)
+        )
+        if len(matching) != 1:
             raise ResearchProgramIndexError(
-                "namespaced question is not covered by a registered namespace"
+                "namespaced question is not covered by exactly one registered namespace"
+            )
+        if question.program != matching[0].program:
+            raise ResearchProgramIndexError(
+                "namespaced question program does not match registered namespace"
             )
 
 
