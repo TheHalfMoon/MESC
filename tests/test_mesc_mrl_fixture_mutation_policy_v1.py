@@ -448,7 +448,7 @@ def test_noncanonical_paths_fail_closed(path: str) -> None:
 
     with pytest.raises(
         FixtureMutationPolicyError,
-        match="non-canonical|non-empty",
+        match=r"non-canonical|non-empty",
     ):
         assess_fixture_mutation_path(plan, policy, path)
 
