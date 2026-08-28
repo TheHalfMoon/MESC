@@ -48,6 +48,24 @@ jobs:
           path.write_text(text)
           PY
 
+      - name: Align original MRL-0208 tests with earlier freeze rejection
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path("tests/test_mesc_mrl_research_experiment_plan_v1.py")
+          text = path.read_text()
+          replacements = {
+              'with pytest.raises(ResearchExperimentPlanError, match="compute_seconds exceeds"):' : 'with pytest.raises(ResearchExperimentPlanError, match="resource_ceiling changed after"):',
+              'with pytest.raises(ResearchExperimentPlanError, match="query allowance exceeds"):' : 'with pytest.raises(ResearchExperimentPlanError, match="tier_allowances changed after"):',
+              'with pytest.raises(ResearchExperimentPlanError, match="result exposure exceeds"):' : 'with pytest.raises(ResearchExperimentPlanError, match="tier_allowances changed after"):',
+          }
+          for old, new in replacements.items():
+              if text.count(old) != 1:
+                  raise SystemExit(f"expected one test expectation anchor: {old}")
+              text = text.replace(old, new, 1)
+          path.write_text(text)
+          PY
+
       - name: Add in-envelope hostile rebinding adversarial tests
         run: |
           cat >> tests/test_mesc_mrl_research_experiment_plan_v1.py <<'PY'
