@@ -176,9 +176,7 @@ def test_parameter_domains_require_exact_sorted_finite_integer_values() -> None:
 
 def test_surface_rejects_non_fixture_or_evidence_claims() -> None:
     evaluator = _evaluator()
-    domains = (
-        FixtureParameterDomain(parameter_id="alpha", allowed_values=(1, 2, 3)),
-    )
+    domains = (FixtureParameterDomain(parameter_id="alpha", allowed_values=(1, 2, 3)),)
 
     with pytest.raises(FixtureResearchSurfaceError, match="fixture_only"):
         FixtureResearchSurface(
@@ -228,9 +226,7 @@ def test_evaluator_binding_must_match_exact_surface_identity() -> None:
 
 
 def test_evaluator_targets_must_cover_exact_surface_domains() -> None:
-    evaluator = _evaluator(
-        targets=(FixtureParameterValue(parameter_id="alpha", value=2),)
-    )
+    evaluator = _evaluator(targets=(FixtureParameterValue(parameter_id="alpha", value=2),))
     surface = _surface(evaluator)
     candidate = build_fixture_candidate(surface, _values())
 
