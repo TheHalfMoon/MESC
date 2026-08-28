@@ -55,12 +55,12 @@ from medscale.mesc._mrl_research_experiment_receipt_v1 import (
     ResearchExperimentReceipt,
     TierAccounting,
 )
+from medscale.mesc._mrl_research_input_admission_v1 import (
+    ResearchInputAdmissionContract,
+)
 from medscale.mesc._mrl_research_objective_v1 import (
     EvaluationTier,
     FloorComparator,
-)
-from medscale.mesc._mrl_research_input_admission_v1 import (
-    ResearchInputAdmissionContract,
 )
 from medscale.mesc._mrl_structured_fixture_observation_v1 import (
     FixtureObservationDiagnostic,
