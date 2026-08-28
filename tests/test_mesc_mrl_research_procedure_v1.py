@@ -17,6 +17,7 @@ from medscale.mesc._mrl_research_procedure_v1 import (
     ResearchProcedureError,
 )
 
+_REPLAY_SHA_2 = "a" * 64
 _REPLAY_SHA = "b" * 64
 _TRANSFER_SHA = "c" * 64
 _NEGATIVE_SHA = "d" * 64
@@ -82,7 +83,11 @@ def _report(
     )
 
 
-def _admitted_report(subject_sha256: str) -> ResearchProcedureAdmissionReport:
+def _admitted_report(
+    subject_sha256: str,
+    *,
+    replay_evidence_sha256s: tuple[str, ...] = (_REPLAY_SHA,),
+) -> ResearchProcedureAdmissionReport:
     discovered = _report(
         ProcedureAdmissionState.DISCOVERED,
         procedure_sha256=subject_sha256,
@@ -96,13 +101,13 @@ def _admitted_report(subject_sha256: str) -> ResearchProcedureAdmissionReport:
         ProcedureAdmissionState.REPLAYED,
         procedure_sha256=subject_sha256,
         parent=candidate,
-        replay=(_REPLAY_SHA,),
+        replay=replay_evidence_sha256s,
     )
     transferred = _report(
         ProcedureAdmissionState.TRANSFER_TESTED,
         procedure_sha256=subject_sha256,
         parent=replayed,
-        replay=(_REPLAY_SHA,),
+        replay=replay_evidence_sha256s,
         transfer=(_TRANSFER_SHA,),
     )
     reviewed = _report(
@@ -114,7 +119,7 @@ def _admitted_report(subject_sha256: str) -> ResearchProcedureAdmissionReport:
         reviewer_authority_id="reviewer-authority-1",
         review_receipt_sha256=_REVIEW_SHA,
         decision=ProcedureAdmissionDecision.ADMIT,
-        replay=(_REPLAY_SHA,),
+        replay=replay_evidence_sha256s,
         transfer=(_TRANSFER_SHA,),
         negative=(_NEGATIVE_SHA,),
     )
@@ -127,7 +132,7 @@ def _admitted_report(subject_sha256: str) -> ResearchProcedureAdmissionReport:
         reviewer_authority_id="reviewer-authority-1",
         review_receipt_sha256=_REVIEW_SHA,
         decision=ProcedureAdmissionDecision.ADMIT,
-        replay=(_REPLAY_SHA,),
+        replay=replay_evidence_sha256s,
         transfer=(_TRANSFER_SHA,),
         negative=(_NEGATIVE_SHA,),
     )
@@ -371,7 +376,10 @@ def test_admitted_cannot_rewrite_reviewer_identity_or_receipt() -> None:
 
 def test_admission_evidence_is_append_only() -> None:
     subject = _candidate_procedure().admission_subject_sha256
-    admitted = _admitted_report(subject)
+    admitted = _admitted_report(
+        subject,
+        replay_evidence_sha256s=(_REPLAY_SHA_2, _REPLAY_SHA),
+    )
     reviewed = admitted.parent_report
     assert reviewed is not None
 
@@ -385,7 +393,7 @@ def test_admission_evidence_is_append_only() -> None:
             reviewer_authority_id="reviewer-authority-1",
             review_receipt_sha256=_REVIEW_SHA,
             decision=ProcedureAdmissionDecision.ADMIT,
-            replay=(),
+            replay=(_REPLAY_SHA,),
             transfer=(_TRANSFER_SHA,),
             negative=(_NEGATIVE_SHA,),
         )
@@ -507,19 +515,18 @@ def test_procedure_and_report_subclasses_cannot_produce_trust_views() -> None:
 
     subject = candidate.admission_subject_sha256
     base = _report(ProcedureAdmissionState.DISCOVERED, procedure_sha256=subject)
-    subclassed = ReportSubclass(
-        procedure_sha256=base.procedure_sha256,
-        state=base.state,
-        applicability_bounds=base.applicability_bounds,
-        replay_evidence_sha256s=base.replay_evidence_sha256s,
-        transfer_evidence_sha256s=base.transfer_evidence_sha256s,
-        negative_control_evidence_sha256s=base.negative_control_evidence_sha256s,
-        author_kind=base.author_kind,
-        author_id=base.author_id,
-        reviewer_authority_id=base.reviewer_authority_id,
-        review_receipt_sha256=base.review_receipt_sha256,
-        decision=base.decision,
-        reason=base.reason,
-    )
-    with pytest.raises(ResearchProcedureError, match="exact ResearchProcedureAdmissionReport"):
-        _ = subclassed.content_sha256
+    with pytest.raises(ResearchProcedureError, match="invalid type"):
+        ReportSubclass(
+            procedure_sha256=base.procedure_sha256,
+            state=base.state,
+            applicability_bounds=base.applicability_bounds,
+            replay_evidence_sha256s=base.replay_evidence_sha256s,
+            transfer_evidence_sha256s=base.transfer_evidence_sha256s,
+            negative_control_evidence_sha256s=base.negative_control_evidence_sha256s,
+            author_kind=base.author_kind,
+            author_id=base.author_id,
+            reviewer_authority_id=base.reviewer_authority_id,
+            review_receipt_sha256=base.review_receipt_sha256,
+            decision=base.decision,
+            reason=base.reason,
+        )
