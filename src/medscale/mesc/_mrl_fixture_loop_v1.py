@@ -489,7 +489,9 @@ def _validate_proposal_local(proposal: FixtureExperimentProposal) -> None:
     _require_sha256(proposal.research_surface_sha256, "research_surface_sha256")
     if type(proposal.mutation_path) is not str or not proposal.mutation_path:
         raise FixtureLoopError("mutation_path must be a non-empty exact str")
-    _snapshot_candidate(proposal.candidate)
+    candidate = _snapshot_candidate(proposal.candidate)
+    if candidate.surface_sha256 != proposal.research_surface_sha256:
+        raise FixtureLoopError("fixture proposal candidate does not bind the research surface")
     _require_true(proposal.fixture_only, "fixture_only")
     _require_true(proposal.non_evidence, "non_evidence")
 
@@ -502,6 +504,11 @@ def _validate_result(result: FixtureLoopResult) -> None:
     receipt = _snapshot_receipt(result.receipt)
     decision = _snapshot_decision(result.decision)
     _require_receipt_chain(proposal, observation, receipt)
+    if decision.state in (
+        ResearchDecisionState.REPLICATE,
+        ResearchDecisionState.RETAIN_LEAD,
+    ):
+        raise FixtureLoopError("MRL-0204 fixture loop cannot emit MRL-0205 decision states")
     if decision.receipt_sha256 != receipt.content_sha256:
         raise FixtureLoopError("fixture decision does not bind the exact receipt")
     if decision.evidence_sha256s != (observation.content_sha256,):
@@ -535,11 +542,19 @@ def _require_receipt_chain(
         evaluation = observation.evaluation
         if evaluation is None:
             raise FixtureLoopError("successful fixture observation is missing its evaluation")
+        if evaluation.surface_sha256 != proposal.research_surface_sha256:
+            raise FixtureLoopError("fixture observation does not bind the proposal research surface")
         if evaluation.candidate_sha256 != proposal.candidate.content_sha256:
             raise FixtureLoopError("fixture observation does not bind the proposal candidate")
-        metric_hashes = tuple(item.artifact_sha256 for item in receipt.metric_artifacts)
-        if metric_hashes != (evaluation.content_sha256,):
+        if len(receipt.metric_artifacts) != 1:
+            raise FixtureLoopError("successful fixture receipt must bind one fixture metric artifact")
+        metric_artifact = receipt.metric_artifacts[0]
+        if metric_artifact.artifact_sha256 != evaluation.content_sha256:
             raise FixtureLoopError("fixture receipt does not bind the observation metric artifact")
+        if metric_artifact.metric_id != evaluation.metric_id:
+            raise FixtureLoopError("fixture receipt metric id does not match the observation")
+        if metric_artifact.evaluator_artifact_sha256 != evaluation.evaluator_sha256:
+            raise FixtureLoopError("fixture receipt evaluator does not match the observation")
     elif receipt.failure_classification is None:
         raise FixtureLoopError("failed fixture observation requires a failed canonical receipt")
 
