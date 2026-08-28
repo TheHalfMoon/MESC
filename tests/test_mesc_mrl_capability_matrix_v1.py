@@ -177,26 +177,15 @@ def test_proven_evidence_state_requires_evidence_reference() -> None:
         )
 
 
-@pytest.mark.parametrize(
-    ("field", "value"),
-    (
-        ("implementation_state", "PROMOTED"),
-        ("evidence_state", "CLAIMED"),
-        ("authority_state", "SELF_AUTHORIZED"),
-    ),
-)
-def test_unknown_state_vocabulary_fails_closed(field: str, value: str) -> None:
-    kwargs = {
-        "capability_id": "TRAINING_EXECUTION",
-        "implementation_state": "NOT_STARTED",
-        "evidence_state": "UNPROVEN",
-        "authority_state": "NOT_AUTHORIZED",
-        "canonical_source_paths": (_RECONCILIATION_PATH,),
-    }
-    kwargs[field] = value
+def test_unknown_state_vocabulary_fails_closed() -> None:
+    baseline = _rows()[2]
 
-    with pytest.raises(CapabilityMatrixError, match=f"{field} is outside"):
-        CapabilityMatrixEntry(**kwargs)
+    with pytest.raises(CapabilityMatrixError, match="implementation_state is outside"):
+        replace(baseline, implementation_state="PROMOTED")
+    with pytest.raises(CapabilityMatrixError, match="evidence_state is outside"):
+        replace(baseline, evidence_state="CLAIMED")
+    with pytest.raises(CapabilityMatrixError, match="authority_state is outside"):
+        replace(baseline, authority_state="SELF_AUTHORIZED")
 
 
 @pytest.mark.parametrize(
