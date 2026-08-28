@@ -1,0 +1,26 @@
+name: diag-mrl0701-ruff
+
+on:
+  push:
+    branches: ["diag/mrl-0701-ruff-c95"]
+
+permissions:
+  contents: read
+
+jobs:
+  ruff-diff:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+      - name: Install Python
+        run: uv python install 3.11
+      - name: Sync
+        run: uv sync --frozen
+      - name: Emit exact Ruff formatting diff
+        run: |
+          uv run ruff format src/medscale/mesc/_mrl_research_program_index_v1.py
+          git diff --no-ext-diff --unified=120 -- src/medscale/mesc/_mrl_research_program_index_v1.py
