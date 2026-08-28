@@ -315,8 +315,7 @@ def _require_foundational_identity_set(
     if identifiers != expected:
         raise ResearchProgramIndexError("projection must preserve foundational RQ1-RQ7 exactly")
     if any(
-        question.canonical_source_path != _FOUNDATIONAL_SOURCE_PATH
-        for question in foundational
+        question.canonical_source_path != _FOUNDATIONAL_SOURCE_PATH for question in foundational
     ):
         raise ResearchProgramIndexError(
             "foundational RQ1-RQ7 must bind the canonical research question source"
