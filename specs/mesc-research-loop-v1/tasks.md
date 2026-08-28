@@ -157,7 +157,8 @@ is then present on canonical `main`. Any head mutation burns prior exact-head ev
 
 - [x] **MRL-0109 — Implement `ResearchInputAdmissionContract`**
   - Depends on: MRL-0100.
-  - Test: research artifacts and separately authorized external evaluation evidence are distinguishable from rejected PHI/product/clinical-runtime learning inputs.
+  - Test: research artifacts and separately authorized external evaluation evidence are
+    distinguishable from rejected PHI/product/clinical-runtime learning inputs.
   - Test: MRL observation/history/procedure/index admission fails closed on rejected input.
   - Closeout rule: this checkbox is a branch closeout candidate only. `MRL-0109` becomes
     `CLOSED_CANONICAL` only if the exact final head containing it passes fresh repository
@@ -316,6 +317,7 @@ is then present on canonical `main`. Any head mutation burns prior exact-head ev
 - [ ] **MRL-0408 — Build rebuildable non-authoritative procedure search index**
   - Depends on: MRL-0407, MRL-0109.
   - Acceptance: index enforces research-input admission and is never canonical authority.
+
 - [ ] **MRL-0409 — Compare memory vs no-memory fixture research cost**
   - Depends on: MRL-0408.
   - Acceptance: demonstrate a reproducible efficiency gain without increased invalid or
@@ -476,6 +478,7 @@ training-authorization evidence may begin before MRL-0800 is `CLOSED_CANONICAL`.
   - Depends on: MRL-0800 plus selected real experiment.
   - Acceptance: compute/resource/adaptive-query/result-exposure budgets are exact and
     externally frozen.
+
 - [ ] **MRL-0807 — Freeze evaluator and sealed Tier 3 identities**
   - Depends on: MRL-0800 plus real evaluation assets.
   - Acceptance: evidence contract remains non-promotional; model promotion is outside MRL
