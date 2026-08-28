@@ -311,24 +311,22 @@ def test_post_construction_nested_tampering_fails_on_next_trust_view() -> None:
         _ = campaign.semantic_dict()
 
 
-def test_campaign_subclass_cannot_produce_trust_bearing_views() -> None:
+def test_campaign_subclass_fails_closed_during_construction() -> None:
     class CampaignSubclass(ResearchCampaign):
         pass
 
     base = _campaign()
-    subclassed = CampaignSubclass(
-        campaign_id=base.campaign_id,
-        objective_sha256=base.objective_sha256,
-        parent=base.parent,
-        nodes=base.nodes,
-        replications=base.replications,
-        retained_alternative_node_ids=base.retained_alternative_node_ids,
-        branch_outcomes=base.branch_outcomes,
-        current_frontier_node_ids=base.current_frontier_node_ids,
-        procedure_candidate_node_ids=base.procedure_candidate_node_ids,
-        cumulative_resource_usage=base.cumulative_resource_usage,
-        cumulative_tier_usage=base.cumulative_tier_usage,
-    )
-
-    with pytest.raises(ResearchCampaignError, match="exact ResearchCampaign instance"):
-        _ = subclassed.content_sha256
+    with pytest.raises(ResearchCampaignError, match="campaign parent chain contains an invalid type"):
+        CampaignSubclass(
+            campaign_id=base.campaign_id,
+            objective_sha256=base.objective_sha256,
+            parent=base.parent,
+            nodes=base.nodes,
+            replications=base.replications,
+            retained_alternative_node_ids=base.retained_alternative_node_ids,
+            branch_outcomes=base.branch_outcomes,
+            current_frontier_node_ids=base.current_frontier_node_ids,
+            procedure_candidate_node_ids=base.procedure_candidate_node_ids,
+            cumulative_resource_usage=base.cumulative_resource_usage,
+            cumulative_tier_usage=base.cumulative_tier_usage,
+        )
