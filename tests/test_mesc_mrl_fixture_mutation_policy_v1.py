@@ -107,9 +107,7 @@ def _objective() -> ResearchObjectiveContract:
             tier_2_queries=0,
         ),
         adaptive_evaluation_controls=AdaptiveEvaluationControls(
-            repeated_candidate_evaluation=(
-                RepeatedEvaluationPolicy.PERMITTED_WITHIN_FROZEN_BUDGET
-            ),
+            repeated_candidate_evaluation=(RepeatedEvaluationPolicy.PERMITTED_WITHIN_FROZEN_BUDGET),
             stopping_rules=(
                 AdaptiveStoppingRule.ADAPTIVE_QUERY_BUDGET_EXHAUSTED,
                 AdaptiveStoppingRule.EXTERNAL_GOVERNANCE_STOP,
@@ -158,9 +156,7 @@ def _plan() -> ResearchExperimentPlan:
         mechanism="A bounded fixture mutation may improve the search metric.",
         predicted_effects=("Search score increases without violating safety floors.",),
         predicted_failure_modes=("The mutation may have no measurable effect.",),
-        falsification_criteria=(
-            "Search score does not improve under the frozen evaluator.",
-        ),
+        falsification_criteria=("Search score does not improve under the frozen evaluator.",),
         evidence_refs=("fixture:evidence-001",),
         parent_hypothesis_ids=(),
         created_from_campaign_state_sha256="c" * 64,
@@ -277,10 +273,7 @@ def test_exact_plan_allow_list_paths_are_allowed(path: str) -> None:
     plan = _plan()
     policy = build_fixture_mutation_policy(plan)
 
-    assert (
-        assess_fixture_mutation_path(plan, policy, path)
-        is FixtureMutationDisposition.ALLOW
-    )
+    assert assess_fixture_mutation_path(plan, policy, path) is FixtureMutationDisposition.ALLOW
     require_fixture_mutation_allowed(plan, policy, path)
 
 
