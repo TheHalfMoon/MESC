@@ -314,18 +314,62 @@ def test_post_construction_evaluator_tampering_fails_closed() -> None:
         _ = evaluator.content_sha256
 
 
-def test_subclass_cannot_supply_trust_bearing_semantic_view() -> None:
-    class DerivedSurface(FixtureResearchSurface):
-        pass
-
+def test_subclass_cannot_override_surface_snapshot_or_semantic_view() -> None:
     evaluator = _evaluator()
+    trusted = _surface(evaluator)
+
+    class DerivedSurface(FixtureResearchSurface):
+        def _validated_snapshot(self) -> FixtureResearchSurface:
+            return trusted
+
+        def semantic_dict(self) -> dict[str, object]:
+            return trusted.semantic_dict()
+
     derived = DerivedSurface(
-        surface_id="toy-surface",
-        parameter_domains=(
-            FixtureParameterDomain(parameter_id="alpha", allowed_values=(1, 2)),
-        ),
-        evaluator_sha256=evaluator.content_sha256,
+        surface_id=trusted.surface_id,
+        parameter_domains=trusted.parameter_domains,
+        evaluator_sha256=trusted.evaluator_sha256,
     )
 
     with pytest.raises(FixtureResearchSurfaceError, match="invalid exact type"):
         _ = derived.content_sha256
+
+    with pytest.raises(FixtureResearchSurfaceError, match="invalid exact type"):
+        build_fixture_candidate(derived, _values())
+
+
+def test_subclass_cannot_override_evaluator_snapshot() -> None:
+    trusted = _evaluator()
+
+    class DerivedEvaluator(FixtureEvaluator):
+        def _validated_snapshot(self) -> FixtureEvaluator:
+            return trusted
+
+    derived = DerivedEvaluator(
+        evaluator_id=trusted.evaluator_id,
+        metric_id=trusted.metric_id,
+        target_values=trusted.target_values,
+    )
+    surface = _surface(trusted)
+    candidate = build_fixture_candidate(surface, _values())
+
+    with pytest.raises(FixtureResearchSurfaceError, match="invalid exact type"):
+        evaluate_fixture_candidate(surface, derived, candidate)
+
+
+def test_subclass_cannot_override_candidate_snapshot() -> None:
+    evaluator = _evaluator()
+    surface = _surface(evaluator)
+    trusted = build_fixture_candidate(surface, _values())
+
+    class DerivedCandidate(FixtureCandidate):
+        def _validated_snapshot(self) -> FixtureCandidate:
+            return trusted
+
+    derived = DerivedCandidate(
+        surface_sha256=trusted.surface_sha256,
+        parameter_values=trusted.parameter_values,
+    )
+
+    with pytest.raises(FixtureResearchSurfaceError, match="invalid exact type"):
+        evaluate_fixture_candidate(surface, evaluator, derived)
