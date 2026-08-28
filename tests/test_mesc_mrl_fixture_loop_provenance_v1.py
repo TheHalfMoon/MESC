@@ -385,7 +385,7 @@ def test_loop_result_rejects_observation_from_different_valid_surface() -> None:
     alternate_surface = _surface("fixture-surface-alt")
     alternate_proposal = _proposal(plan, alternate_surface)
 
-    with pytest.raises(FixtureLoopError, match="observation does not bind.*research surface"):
+    with pytest.raises(FixtureLoopError, match=r"observation does not bind.*research surface"):
         FixtureLoopResult(
             proposal=alternate_proposal,
             observation=result.observation,
