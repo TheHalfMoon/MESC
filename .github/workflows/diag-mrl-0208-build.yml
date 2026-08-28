@@ -1,0 +1,130 @@
+name: Diagnostic MRL-0208 Build
+
+on:
+  push:
+    branches: [diag/mrl-0208-build-f8ca]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out target feature branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: test/mrl-0208-budget-escape
+          fetch-depth: 0
+
+      - name: Require canonical starting head
+        run: test "$(git rev-parse HEAD)" = "f8ca6a4118e216adeee0720245a1fb8f1d57adee"
+
+      - name: Add MRL-0208 adversarial budget escape coverage
+        run: |
+          cat >> tests/test_mesc_mrl_research_experiment_plan_v1.py <<'PY'
+
+
+          def test_mrl_0208_compute_ceiling_cannot_be_self_expanded_after_freeze() -> None:
+              plan = _plan()
+              object.__setattr__(
+                  plan,
+                  "resource_ceiling",
+                  replace(plan.resource_ceiling, compute_seconds=301),
+              )
+
+              with pytest.raises(ResearchExperimentPlanError, match="compute_seconds exceeds"):
+                  _ = plan.content_sha256
+
+
+          def test_mrl_0208_query_ceiling_cannot_be_self_expanded_after_freeze() -> None:
+              plan = _plan()
+              object.__setattr__(
+                  plan,
+                  "tier_allowances",
+                  (
+                      replace(plan.tier_allowances[0], max_queries=6),
+                      plan.tier_allowances[1],
+                  ),
+              )
+
+              with pytest.raises(ResearchExperimentPlanError, match="query allowance exceeds"):
+                  _ = plan.content_sha256
+
+
+          def test_mrl_0208_result_exposure_ceiling_cannot_be_self_expanded_after_freeze() -> None:
+              plan = _plan()
+              object.__setattr__(
+                  plan,
+                  "tier_allowances",
+                  (
+                      replace(plan.tier_allowances[0], max_result_exposures=6),
+                      plan.tier_allowances[1],
+                  ),
+              )
+
+              with pytest.raises(ResearchExperimentPlanError, match="result exposure exceeds"):
+                  _ = plan.content_sha256
+          PY
+
+          cat >> tests/test_mesc_mrl_research_experiment_receipt_v1.py <<'PY'
+
+
+          def test_mrl_0208_success_receipt_cannot_hide_compute_overrun() -> None:
+              with pytest.raises(ResearchExperimentReceiptError, match="matching failure"):
+                  _receipt(observed_resource_use=_resource_use(compute_seconds=121))
+
+
+          def test_mrl_0208_success_receipt_cannot_hide_query_or_exposure_overrun() -> None:
+              query_overrun = (
+                  TierAccounting(
+                      tier=EvaluationTier.SEARCH,
+                      queries_used=4,
+                      result_exposures_used=1,
+                      exposed_result_fields=("aggregate_score",),
+                  ),
+                  _receipt().tier_accounting[1],
+              )
+              with pytest.raises(ResearchExperimentReceiptError, match="matching failure"):
+                  _receipt(tier_accounting=query_overrun)
+
+              exposure_overrun = (
+                  TierAccounting(
+                      tier=EvaluationTier.SEARCH,
+                      queries_used=1,
+                      result_exposures_used=4,
+                      exposed_result_fields=("aggregate_score",),
+                  ),
+                  _receipt().tier_accounting[1],
+              )
+              with pytest.raises(ResearchExperimentReceiptError, match="matching failure"):
+                  _receipt(tier_accounting=exposure_overrun)
+          PY
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+
+      - name: Sync locked environment
+        run: uv sync --frozen
+
+      - name: Focused lint and format
+        run: |
+          uv run ruff format tests/test_mesc_mrl_research_experiment_plan_v1.py tests/test_mesc_mrl_research_experiment_receipt_v1.py
+          uv run ruff check tests/test_mesc_mrl_research_experiment_plan_v1.py tests/test_mesc_mrl_research_experiment_receipt_v1.py
+          uv run ruff format --check tests/test_mesc_mrl_research_experiment_plan_v1.py tests/test_mesc_mrl_research_experiment_receipt_v1.py
+
+      - name: Focused MRL-0208 tests
+        run: uv run pytest -q tests/test_mesc_mrl_research_experiment_plan_v1.py tests/test_mesc_mrl_research_experiment_receipt_v1.py -k 'mrl_0208'
+
+      - name: Prove test-only delta and push
+        run: |
+          git diff --check
+          changed="$(git diff --name-only | sort)"
+          expected="$(printf '%s\n' tests/test_mesc_mrl_research_experiment_plan_v1.py tests/test_mesc_mrl_research_experiment_receipt_v1.py | sort)"
+          test "$changed" = "$expected"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tests/test_mesc_mrl_research_experiment_plan_v1.py tests/test_mesc_mrl_research_experiment_receipt_v1.py
+          git commit -m "test(mrl): add budget escape adversarial coverage"
+          git push origin HEAD:refs/heads/test/mrl-0208-budget-escape
+          echo "FINAL_HEAD=$(git rev-parse HEAD)"
