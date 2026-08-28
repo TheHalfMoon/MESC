@@ -32,12 +32,12 @@ jobs:
               if text.count("import re\n") != 1:
                   raise SystemExit("import re anchor mismatch")
               text = text.replace("import re\n", "import re\nimport weakref\n", 1)
-          if "from typing import Callable, Final, TypeVar\n" not in text:
-              if text.count("from typing import Final, TypeVar\n") != 1:
+          if "from typing import Callable, Final\n" not in text:
+              if text.count("from typing import Final\n") != 1:
                   raise SystemExit("typing import anchor mismatch")
               text = text.replace(
-                  "from typing import Final, TypeVar\n",
-                  "from typing import Callable, Final, TypeVar\n",
+                  "from typing import Final\n",
+                  "from typing import Callable, Final\n",
                   1,
               )
 
