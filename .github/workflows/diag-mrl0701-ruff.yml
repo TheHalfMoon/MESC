@@ -14,7 +14,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-          ref: f3e2b8b4ba393ec87173f5d4b97ebb6fe4fead84
+          ref: 228d9d4ca9a109c84ee465bd301043e972842751
       - name: Install uv
         uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
       - name: Install Python
@@ -23,5 +23,5 @@ jobs:
         run: uv sync --frozen
       - name: Emit exact Ruff formatting diff
         run: |
-          uv run ruff format src/medscale/mesc/_mrl_capability_matrix_v1.py
-          git diff --no-ext-diff --unified=120 -- src/medscale/mesc/_mrl_capability_matrix_v1.py
+          uv run ruff format src/medscale/mesc/_mrl_research_program_index_v1.py tests/test_mesc_mrl_research_program_index_v1.py
+          git diff --no-ext-diff --unified=120 -- src/medscale/mesc/_mrl_research_program_index_v1.py tests/test_mesc_mrl_research_program_index_v1.py
