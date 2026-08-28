@@ -197,7 +197,7 @@ is then present on canonical `main`. Any head mutation burns prior exact-head ev
 - [x] **MRL-0205 — Implement replication and retained-lead behavior**
   - Depends on: MRL-0204.
 
-- [ ] **MRL-0206 — Add metric-tampering adversarial test**
+- [x] **MRL-0206 — Add metric-tampering adversarial test**
   - Depends on: MRL-0204.
   - Must prove: agent-controlled metric fabrication/evaluator modification cannot produce
     valid sealed evidence or an authority-bearing state.

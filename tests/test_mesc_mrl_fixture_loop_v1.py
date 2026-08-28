@@ -731,3 +731,81 @@ def test_loop_exposes_no_campaign_update_or_promotion_authority() -> None:
     assert result.decision.can_authorize_promotion is False
     assert payload["can_update_campaign"] is False
     assert payload["can_authorize_model_promotion"] is False
+
+
+def test_mrl_0206_metric_fabrication_cannot_reuse_canonical_receipt() -> None:
+    result = _complete()
+    evaluation = result.observation.evaluation
+    assert evaluation is not None
+    object.__setattr__(evaluation, "score", 0)
+
+    with pytest.raises(FixtureLoopError, match="canonical revalidation"):
+        decide_fixture_experiment(
+            result.proposal,
+            result.observation,
+            result.receipt,
+        )
+
+
+def test_mrl_0206_modified_evaluator_cannot_build_valid_receipt() -> None:
+    result = _complete()
+    trusted = _evaluator()
+    modified = FixtureEvaluator(
+        evaluator_id=trusted.evaluator_id,
+        metric_id=trusted.metric_id,
+        target_values=(
+            FixtureParameterValue(parameter_id="alpha", value=0),
+            FixtureParameterValue(parameter_id="beta", value=0),
+        ),
+    )
+
+    with pytest.raises(FixtureLoopError, match="evaluator artifact"):
+        build_fixture_experiment_receipt(
+            _plan(),
+            modified,
+            result.observation,
+            _manifest(),
+            _code_identity(),
+        )
+
+
+def test_mrl_0206_fixture_metrics_never_claim_sealed_or_promotion_authority() -> None:
+    result = _complete()
+    payload = result.to_dict()
+
+    assert result.receipt.metric_artifacts[0].tier is EvaluationTier.DEVELOPMENT
+    assert result.decision.can_authorize_promotion is False
+    assert payload["non_evidence"] is True
+    assert payload["can_update_campaign"] is False
+    assert payload["can_authorize_real_execution"] is False
+    assert payload["can_authorize_training"] is False
+    assert payload["can_authorize_model_promotion"] is False
+
+
+def test_mrl_0206_fabricated_favorable_metric_cannot_create_evidence_candidate() -> None:
+    result = _complete(alpha=1, beta=0)
+    assert result.decision.state is ResearchDecisionState.REJECT
+    evaluation = result.observation.evaluation
+    assert evaluation is not None
+    assert evaluation.score < evaluation.max_score
+    object.__setattr__(evaluation, "score", evaluation.max_score)
+
+    with pytest.raises(FixtureLoopError, match="canonical revalidation"):
+        decide_fixture_experiment(
+            result.proposal,
+            result.observation,
+            result.receipt,
+        )
+
+
+def test_mrl_0206_forged_sealed_metric_tier_is_rejected() -> None:
+    result = _complete()
+    metric_artifact = result.receipt.metric_artifacts[0]
+    object.__setattr__(metric_artifact, "tier", EvaluationTier.SEALED)
+
+    with pytest.raises(FixtureLoopError, match="canonical revalidation"):
+        decide_fixture_experiment(
+            result.proposal,
+            result.observation,
+            result.receipt,
+        )
