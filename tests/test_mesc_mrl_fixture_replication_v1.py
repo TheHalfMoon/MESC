@@ -8,6 +8,7 @@ from dataclasses import replace
 import pytest
 
 from medscale.mesc._mrl_fixture_loop_v1 import (
+    FixtureExperimentProposal,
     FixtureLoopResult,
     complete_fixture_loop,
     propose_fixture_experiment,
@@ -319,7 +320,7 @@ def _manifest(label: str) -> ExperimentManifest:
     )
 
 
-def _admission(label: str, proposal) -> ResearchInputAdmissionContract:
+def _admission(label: str, proposal: FixtureExperimentProposal) -> ResearchInputAdmissionContract:
     evaluation = evaluate_fixture_candidate(_surface(), _evaluator(), proposal.candidate)
     permission = ResearchInputSourcePermission(
         permission_id=f"fixture-output-{label}",
