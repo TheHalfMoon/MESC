@@ -1,4 +1,4 @@
-name: Diagnostic MRL-0207 Build
+name: Diagnostic MRL-0207 Closeout
 
 on:
   push:
@@ -8,159 +8,39 @@ permissions:
   contents: write
 
 jobs:
-  build:
+  closeout:
     runs-on: ubuntu-latest
     steps:
-      - name: Check out target feature branch
+      - name: Check out exact qualified feature head
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: test/mrl-0207-sealed-data-access
           fetch-depth: 0
 
-      - name: Require canonical starting head
-        run: test "$(git rev-parse HEAD)" = "7d1cdc4565b2478a83d9faec5c7605749d1acc10"
+      - name: Require exact qualified implementation head
+        run: test "$(git rev-parse HEAD)" = "d7229ecbc2669f9a05e31cf740aba1e097305c0f"
 
-      - name: Add MRL-0207 sealed-data adversarial tests
+      - name: Close only MRL-0207 in canonical task ledger candidate
         run: |
-          cat > tests/test_mesc_mrl_sealed_data_access_v1.py <<'PY'
-          from __future__ import annotations
-
-          import pytest
-
-          from medscale.mesc._mrl_research_experiment_plan_v1 import (
-              PlanTierAllowance,
-              ResearchExperimentPlanError,
-          )
-          from medscale.mesc._mrl_research_input_admission_v1 import (
-              ResearchInputAdmissionContract,
-              ResearchInputAdmissionError,
-              ResearchInputClassification,
-              ResearchInputDisposition,
-              ResearchInputParentRef,
-              ResearchInputSourcePermission,
-              ResearchLearningSurface,
-          )
-          from medscale.mesc._mrl_research_objective_v1 import (
-              EvaluationTier,
-              ResearchObjectiveContractError,
-              TierResultExposure,
-          )
-
-
-          def _sealed_item() -> ResearchInputAdmissionContract:
-              return ResearchInputAdmissionContract(
-                  input_id="sealed-tier3-item-001",
-                  classification_policy_sha256="a" * 64,
-                  classification=ResearchInputClassification.SEALED_TIER3_ITEM_CONTENT,
-                  source_artifact_sha256=None,
-                  source_contract_sha256=None,
-                  allowed_learning_surfaces=(),
-              )
-
-
-          def test_mrl_0207_sealed_item_cannot_enter_research_search_index() -> None:
-              sealed = _sealed_item()
-
-              assert sealed.disposition is ResearchInputDisposition.REJECTED
-              assert sealed.source_artifact_sha256 is None
-              assert sealed.source_contract_sha256 is None
-              with pytest.raises(ResearchInputAdmissionError, match="not admitted as an MRL learning"):
-                  sealed.require_learning_admission(
-                      ResearchLearningSurface.RESEARCH_SEARCH_INDEX
-                  )
-
-
-          def test_mrl_0207_permission_cannot_authorize_sealed_item_for_search() -> None:
-              with pytest.raises(
-                  ResearchInputAdmissionError,
-                  match="source permissions cannot authorize a rejected classification",
-              ):
-                  ResearchInputSourcePermission(
-                      permission_id="permission-sealed-search",
-                      source_artifact_sha256="b" * 64,
-                      source_contract_sha256="c" * 64,
-                      classification=ResearchInputClassification.SEALED_TIER3_ITEM_CONTENT,
-                      allowed_learning_surfaces=(
-                          ResearchLearningSurface.RESEARCH_SEARCH_INDEX,
-                      ),
-                  )
-
-
-          def test_mrl_0207_sealed_item_cannot_be_laundered_into_search_artifact() -> None:
-              sealed_parent = ResearchInputParentRef(parent_admission=_sealed_item())
-              search_surfaces = (ResearchLearningSurface.RESEARCH_SEARCH_INDEX,)
-              permission = ResearchInputSourcePermission(
-                  permission_id="permission-derived-search-artifact",
-                  source_artifact_sha256="d" * 64,
-                  source_contract_sha256="e" * 64,
-                  classification=ResearchInputClassification.RESEARCH_ARTIFACT,
-                  allowed_learning_surfaces=search_surfaces,
-              )
-
-              with pytest.raises(
-                  ResearchInputAdmissionError,
-                  match="rejected parent cannot be transformed into an admissible MRL input",
-              ):
-                  ResearchInputAdmissionContract(
-                      input_id="derived-sealed-search-artifact",
-                      classification_policy_sha256="a" * 64,
-                      classification=ResearchInputClassification.RESEARCH_ARTIFACT,
-                      source_artifact_sha256="d" * 64,
-                      source_contract_sha256="e" * 64,
-                      allowed_learning_surfaces=search_surfaces,
-                      source_permission=permission,
-                      transformation_kind="sealed-item-summary",
-                      parent_inputs=(sealed_parent,),
-                  )
-
-
-          def test_mrl_0207_search_process_cannot_query_sealed_tier() -> None:
-              with pytest.raises(
-                  ResearchExperimentPlanError,
-                  match="only Tier 1 SEARCH and Tier 2 REPLICATION may consume adaptive queries",
-              ):
-                  PlanTierAllowance(
-                      tier=EvaluationTier.SEALED,
-                      max_queries=1,
-                      max_result_exposures=0,
-                      allowed_result_fields=(),
-                  )
-
-
-          def test_mrl_0207_sealed_tier_cannot_expose_item_level_fields() -> None:
-              with pytest.raises(
-                  ResearchObjectiveContractError,
-                  match="Tier 3/4 cannot expose iterative agent-visible result fields",
-              ):
-                  TierResultExposure(
-                      tier=EvaluationTier.SEALED,
-                      max_exposures=1,
-                      allowed_result_fields=("item_id", "item_text"),
-                  )
+          python - <<'PY'
+          from pathlib import Path
+          path = Path("specs/mesc-research-loop-v1/tasks.md")
+          text = path.read_text()
+          old = "- [ ] **MRL-0207 — Add sealed-data access adversarial test**"
+          new = "- [x] **MRL-0207 — Add sealed-data access adversarial test**"
+          if text.count(old) != 1:
+              raise SystemExit("expected exactly one open MRL-0207 checkbox")
+          path.write_text(text.replace(old, new, 1))
           PY
+          git diff --check
+          test "$(git diff --name-only)" = "specs/mesc-research-loop-v1/tasks.md"
+          git diff --unified=0 -- specs/mesc-research-loop-v1/tasks.md
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
-
-      - name: Sync locked environment
-        run: uv sync --frozen
-
-      - name: Focused lint and format
+      - name: Commit and push ledger-only closeout
         run: |
-          uv run ruff format tests/test_mesc_mrl_sealed_data_access_v1.py
-          uv run ruff check tests/test_mesc_mrl_sealed_data_access_v1.py
-          uv run ruff format --check tests/test_mesc_mrl_sealed_data_access_v1.py
-
-      - name: Focused MRL-0207 tests
-        run: uv run pytest -q tests/test_mesc_mrl_sealed_data_access_v1.py
-
-      - name: Prove staged test-only delta and push
-        run: |
-          git add tests/test_mesc_mrl_sealed_data_access_v1.py
-          git diff --cached --check
-          test "$(git diff --cached --name-only)" = "tests/test_mesc_mrl_sealed_data_access_v1.py"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "test(mrl): add sealed-data access adversarial coverage"
+          git add specs/mesc-research-loop-v1/tasks.md
+          git commit -m "docs(mrl): close MRL-0207"
           git push origin HEAD:refs/heads/test/mrl-0207-sealed-data-access
           echo "FINAL_HEAD=$(git rev-parse HEAD)"
