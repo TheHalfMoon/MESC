@@ -36,6 +36,7 @@ from medscale.mesc._mrl_research_experiment_receipt_v1 import (
 )
 from medscale.mesc._mrl_research_objective_v1 import (
     EvaluationTier,
+    RepeatedEvaluationPolicy,
     ResearchObjectiveContract,
     ResourceBudget,
 )
@@ -249,13 +250,11 @@ def apply_fixture_replication(
     if outcome.state is ResearchDecisionState.RETAIN_LEAD:
         retained = tuple(
             sorted(
-                set(
-                    (
-                        *retained,
-                        _decision_node_id(source.decision),
-                        _decision_node_id(repeated.decision),
-                    )
-                )
+                {
+                    *retained,
+                    _decision_node_id(source.decision),
+                    _decision_node_id(repeated.decision),
+                }
             )
         )
 
@@ -335,6 +334,13 @@ def _validate_replication_pair(
 
     source_plan = primary.receipt.binding.plan
     replica_plan = replica.receipt.binding.plan
+    if (
+        source_plan.objective.adaptive_evaluation_controls.repeated_candidate_evaluation
+        is not RepeatedEvaluationPolicy.PERMITTED_WITHIN_FROZEN_BUDGET
+    ):
+        raise FixtureReplicationError(
+            "frozen objective does not permit repeated candidate evaluation"
+        )
     if replica_plan.objective.content_sha256 != source_plan.objective.content_sha256:
         raise FixtureReplicationError("replica must remain inside the same frozen objective")
     if replica_plan.hypothesis.content_sha256 != source_plan.hypothesis.content_sha256:
