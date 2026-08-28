@@ -177,6 +177,7 @@ is then present on canonical `main`. Any head mutation burns prior exact-head ev
 ---
 
 ## MRL-2 — Fixture-only governed loop
+
 - [ ] **MRL-0201 — Build deterministic fixture research surface**
   - Depends on: MRL-0199.
   - Constraint: no real model/data/network/GPU/training.
