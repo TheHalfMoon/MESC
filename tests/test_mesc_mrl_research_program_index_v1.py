@@ -21,6 +21,10 @@ _REGISTRY_PATH = "docs/research/research_program_registry.md"
 _QUESTIONS_PATH = "docs/research/research_questions.md"
 
 
+class _StringSubclass(str):
+    pass
+
+
 def _repository() -> RepositoryBinding:
     return RepositoryBinding(commit_sha="a" * 40, tree_sha="b" * 40)
 
@@ -126,6 +130,7 @@ def test_projection_preserves_foundational_rq1_through_rq7_exactly() -> None:
         "RQ7",
     ]
     assert all(question["is_foundational"] is True for question in questions)
+    assert all(question["canonical_source_path"] == _QUESTIONS_PATH for question in questions)
 
     with pytest.raises(
         ResearchProgramIndexError,
@@ -135,6 +140,21 @@ def test_projection_preserves_foundational_rq1_through_rq7_exactly() -> None:
             repository=_repository(),
             sources=_sources(),
             questions=_foundational_questions()[:-1],
+            namespaces=(_namespace(),),
+        )
+
+    changed_source = replace(
+        _foundational_questions()[0],
+        canonical_source_path=_REGISTRY_PATH,
+    )
+    with pytest.raises(
+        ResearchProgramIndexError,
+        match="must bind the canonical research question source",
+    ):
+        ResearchProgramIndexProjection(
+            repository=_repository(),
+            sources=_sources(),
+            questions=(changed_source, *_foundational_questions()[1:]),
             namespaces=(_namespace(),),
         )
 
@@ -189,6 +209,33 @@ def test_invalid_question_identifiers_fail_closed(question_id: str) -> None:
             program="Invalid fixture",
             status="PROPOSED",
             canonical_source_path=_REGISTRY_PATH,
+        )
+
+
+def test_question_and_namespace_identity_text_require_exact_strings() -> None:
+    with pytest.raises(ResearchProgramIndexError, match="question_id must be canonical"):
+        ResearchQuestionIndexEntry(
+            question_id=_StringSubclass("RQ1"),
+            program="Foundational MESC research",
+            status="OPEN",
+            canonical_source_path=_QUESTIONS_PATH,
+        )
+
+    with pytest.raises(ResearchProgramIndexError, match="status must be canonical"):
+        ResearchQuestionIndexEntry(
+            question_id="RQ1",
+            program="Foundational MESC research",
+            status=_StringSubclass("OPEN"),
+            canonical_source_path=_QUESTIONS_PATH,
+        )
+
+    with pytest.raises(ResearchProgramIndexError, match="question_namespace must be canonical"):
+        ResearchProgramNamespace(
+            program="MESC Research Loop",
+            question_namespace=_StringSubclass("MRL-RQ-<NNNN>"),
+            program_status="GOVERNED PROGRAM — MRL V1",
+            canonical_source_paths=(_REGISTRY_PATH,),
+            question_catalog_status="RESERVED",
         )
 
 
