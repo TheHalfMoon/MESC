@@ -30,8 +30,8 @@ from medscale.mesc._mrl_research_experiment_plan_v1 import (
 )
 from medscale.mesc._mrl_research_objective_v1 import (
     EvaluationTier,
-    EvidenceFloor,
     EvaluatorIdentity,
+    EvidenceFloor,
     MetricContract,
     ResourceBudget,
 )
@@ -40,13 +40,13 @@ __all__ = [
     "CodePatchIdentity",
     "ContaminationLineageAudit",
     "ContaminationLineageStatus",
+    "EvidenceFloorResult",
     "MetricArtifactResult",
     "ObservedResourceUse",
     "ReproductionResult",
     "ReproductionStatus",
     "ResearchExperimentReceipt",
     "ResearchExperimentReceiptError",
-    "EvidenceFloorResult",
     "TierAccounting",
 ]
 
@@ -791,7 +791,7 @@ def _require_tier_accounting(
         raise ResearchExperimentReceiptError(
             "tier_accounting must define exactly every plan tier in ascending order"
         )
-    allowance_by_tier = {
+    allowance_by_tier: dict[EvaluationTier, PlanTierAllowance] = {
         allowance.tier: allowance for allowance in plan.tier_allowances
     }
     overruns: list[PlanFailureCondition] = []
@@ -834,7 +834,7 @@ def _require_overrun_classification(
                 "overrun failure_classification requires matching observed accounting"
             )
         return
-    if len(unique) != 1 or failure is not unique[0]:
+    if failure not in unique:
         names = ", ".join(condition.value for condition in unique)
         raise ResearchExperimentReceiptError(
             "observed accounting overrun must have one matching failure classification: "
