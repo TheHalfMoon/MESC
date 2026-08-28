@@ -579,7 +579,7 @@ def test_resource_blocked_observation_maps_to_blocked_decision() -> None:
         input_admission=_negative_admission(raw_sha256),
         run_status=FixtureObservationRunStatus.FAILED,
         evaluation=None,
-        resource_use=_resource_use(operation_count=11, evaluator_invocations=0),
+        resource_use=_resource_use(evaluator_invocations=0, storage_bytes=1_001),
         failure_class=FixtureObservationFailureClass.RESOURCE_BLOCKED,
         raw_output_artifacts=(
             FixtureRawOutputArtifact(

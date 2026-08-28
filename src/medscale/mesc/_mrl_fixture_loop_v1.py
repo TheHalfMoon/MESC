@@ -359,7 +359,7 @@ def build_fixture_experiment_receipt(
         sorted({item.artifact_sha256 for item in observation_snapshot.raw_output_artifacts})
     )
     observed_resources = ObservedResourceUse(
-        wall_clock_seconds=observation_snapshot.resource_use.operation_count,
+        wall_clock_seconds=0,
         compute_seconds=None,
         input_tokens=None,
         generated_tokens=None,
