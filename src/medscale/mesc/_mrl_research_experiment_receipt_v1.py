@@ -496,8 +496,7 @@ def _validate_receipt(receipt: ResearchExperimentReceipt) -> None:
 
     contamination = _snapshot_contamination_audit(receipt.contamination_lineage_audit)
     if (
-        receipt.failure_classification
-        is PlanFailureCondition.CONTAMINATION_OR_LINEAGE_FAILURE
+        receipt.failure_classification is PlanFailureCondition.CONTAMINATION_OR_LINEAGE_FAILURE
     ) != (contamination.status is ContaminationLineageStatus.FAILED):
         raise ResearchExperimentReceiptError(
             "contamination failure classification and audit status must agree"

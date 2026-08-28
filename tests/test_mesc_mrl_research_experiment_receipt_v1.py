@@ -471,9 +471,7 @@ def test_resource_overrun_requires_exact_matching_failure_classification() -> No
 
 def test_false_resource_overrun_classification_fails_closed() -> None:
     with pytest.raises(ResearchExperimentReceiptError, match="requires matching observed"):
-        _receipt(
-            failure_classification=PlanFailureCondition.RESOURCE_BUDGET_OVERRUN
-        )
+        _receipt(failure_classification=PlanFailureCondition.RESOURCE_BUDGET_OVERRUN)
 
 
 def test_resource_not_applicable_semantics_cannot_be_changed() -> None:
@@ -503,10 +501,7 @@ def test_query_overrun_requires_matching_frozen_failure_classification() -> None
         tier_accounting=accounting,
         failure_classification=PlanFailureCondition.ADAPTIVE_QUERY_BUDGET_OVERRUN,
     )
-    assert (
-        receipt.failure_classification
-        is PlanFailureCondition.ADAPTIVE_QUERY_BUDGET_OVERRUN
-    )
+    assert receipt.failure_classification is PlanFailureCondition.ADAPTIVE_QUERY_BUDGET_OVERRUN
 
 
 def test_result_exposure_overrun_requires_matching_failure_classification() -> None:
@@ -528,10 +523,7 @@ def test_result_exposure_overrun_requires_matching_failure_classification() -> N
         tier_accounting=accounting,
         failure_classification=PlanFailureCondition.RESULT_EXPOSURE_BUDGET_OVERRUN,
     )
-    assert (
-        receipt.failure_classification
-        is PlanFailureCondition.RESULT_EXPOSURE_BUDGET_OVERRUN
-    )
+    assert receipt.failure_classification is PlanFailureCondition.RESULT_EXPOSURE_BUDGET_OVERRUN
 
 
 def test_tier_accounting_must_match_plan_tiers_exactly() -> None:
@@ -575,9 +567,7 @@ def test_failure_classification_must_have_been_frozen_in_plan() -> None:
 
 def test_contamination_failure_classification_and_audit_must_agree() -> None:
     with pytest.raises(ResearchExperimentReceiptError, match="must agree"):
-        _receipt(
-            failure_classification=PlanFailureCondition.CONTAMINATION_OR_LINEAGE_FAILURE
-        )
+        _receipt(failure_classification=PlanFailureCondition.CONTAMINATION_OR_LINEAGE_FAILURE)
 
     receipt = _receipt(
         failure_classification=PlanFailureCondition.CONTAMINATION_OR_LINEAGE_FAILURE,
@@ -586,10 +576,7 @@ def test_contamination_failure_classification_and_audit_must_agree() -> None:
             artifact_sha256="8" * 64,
         ),
     )
-    assert (
-        receipt.contamination_lineage_audit.status
-        is ContaminationLineageStatus.FAILED
-    )
+    assert receipt.contamination_lineage_audit.status is ContaminationLineageStatus.FAILED
 
 
 def test_audit_and_reproduction_cannot_claim_artifacts_when_not_performed() -> None:
