@@ -13,12 +13,15 @@ from medscale.mesc._mrl_fixture_replication_v1 import (
     request_fixture_replication,
     start_fixture_campaign,
 )
-from medscale.mesc._mrl_research_campaign_v1 import CampaignTierTotals
+from medscale.mesc._mrl_research_campaign_v1 import (
+    CampaignTierTotals,
+    ResearchCampaign,
+)
 from medscale.mesc._mrl_research_objective_v1 import EvaluationTier
 from test_mesc_mrl_fixture_replication_v1 import _complete
 
 
-def _apply_with_parent(parent):
+def _apply_with_parent(parent: ResearchCampaign) -> ResearchCampaign:
     primary = _complete("primary-accounting")
     replica = _complete("replica-accounting")
     request = request_fixture_replication(primary)
