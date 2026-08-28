@@ -124,7 +124,8 @@ def _require_exact_decision(value: ResearchDecision) -> None:
 def _require_exact_state(value: ResearchDecisionState) -> None:
     if type(value) is not ResearchDecisionState:
         raise ResearchDecisionError(
-            "state must be an exact ResearchDecisionState; promotion-authority states are not allowed"
+            "state must be an exact ResearchDecisionState; "
+            "promotion-authority states are not allowed"
         )
 
 
