@@ -128,7 +128,7 @@ is then present on canonical `main`. Any head mutation burns prior exact-head ev
   - Eligibility effect: MRL-0104 remains ineligible until MRL-0103 is
     `CLOSED_CANONICAL` on canonical `main`.
 
-- [ ] **MRL-0104 — Bind existing `ExperimentManifest`**
+- [x] **MRL-0104 — Bind existing `ExperimentManifest`**
   - Depends on: MRL-0103.
   - Acceptance: no duplicate competing runtime experiment manifest is introduced.
 
