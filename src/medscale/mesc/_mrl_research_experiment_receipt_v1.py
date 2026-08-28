@@ -461,9 +461,7 @@ def _validate_receipt(receipt: ResearchExperimentReceipt) -> None:
             "failed receipt contains a metric outside its frozen plan tiers"
         )
 
-    evaluator_by_id = {
-        identity.evaluator_id: identity for identity in plan.evaluator_identities
-    }
+    evaluator_by_id = {identity.evaluator_id: identity for identity in plan.evaluator_identities}
     metric_by_id = {result.metric_id: result for result in metrics}
     for result in metrics:
         contract = expected_metrics[result.metric_id]
@@ -570,7 +568,9 @@ def _snapshot_resource_use(value: ObservedResourceUse) -> ObservedResourceUse:
     )
 
 
-def _snapshot_metric_artifact(value: MetricArtifactResult) -> MetricArtifactResult:
+def _snapshot_metric_artifact(
+    value: MetricArtifactResult,
+) -> MetricArtifactResult:
     _require_exact_instance(value, MetricArtifactResult, "metric artifact")
     return MetricArtifactResult(
         metric_id=value.metric_id,
@@ -627,11 +627,7 @@ def _applicable_metric_contracts(
 ) -> dict[str, MetricContract]:
     tiers = set(plan.evaluation_tiers)
     contracts = tuple(plan.objective.search_metrics) + tuple(plan.objective.evaluation_metrics)
-    return {
-        contract.metric_id: contract
-        for contract in contracts
-        if contract.tier in tiers
-    }
+    return {contract.metric_id: contract for contract in contracts if contract.tier in tiers}
 
 
 def _require_metric_binding(
@@ -853,9 +849,7 @@ def _require_token(value: object, name: str) -> None:
 
 def _require_sha256(value: object, name: str) -> None:
     if type(value) is not str or _SHA256.fullmatch(value) is None:
-        raise ResearchExperimentReceiptError(
-            f"{name} must be an exact lowercase 64-hex SHA-256"
-        )
+        raise ResearchExperimentReceiptError(f"{name} must be an exact lowercase 64-hex SHA-256")
 
 
 def _require_git_sha40(value: object, name: str) -> None:
@@ -867,9 +861,7 @@ def _require_git_sha40(value: object, name: str) -> None:
 
 def _require_nonnegative_int(value: object, name: str) -> None:
     if type(value) is not int or value < 0:
-        raise ResearchExperimentReceiptError(
-            f"{name} must be an exact non-negative integer"
-        )
+        raise ResearchExperimentReceiptError(f"{name} must be an exact non-negative integer")
 
 
 def _require_optional_nonnegative_int(value: object, name: str) -> None:
@@ -880,9 +872,7 @@ def _require_optional_nonnegative_int(value: object, name: str) -> None:
 
 def _require_strictly_sorted_ids(values: tuple[str, ...], name: str) -> None:
     if values != tuple(sorted(set(values))):
-        raise ResearchExperimentReceiptError(
-            f"{name} must be unique and strictly sorted by id"
-        )
+        raise ResearchExperimentReceiptError(f"{name} must be unique and strictly sorted by id")
 
 
 def _require_sorted_unique_tokens(
