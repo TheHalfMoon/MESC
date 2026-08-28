@@ -283,7 +283,9 @@ def _validate_observation(observation: StructuredFixtureObservation) -> None:
     if admission.disposition is not ResearchInputDisposition.LEARNING_ADMITTED:
         raise FixtureObservationError("observation input must be structurally learning-admitted")
     if ResearchLearningSurface.OBSERVATION not in admission.allowed_learning_surfaces:
-        raise FixtureObservationError("observation input is not admitted to the OBSERVATION surface")
+        raise FixtureObservationError(
+            "observation input is not admitted to the OBSERVATION surface"
+        )
 
     _snapshot_resource_use(observation.resource_use)
     raw_outputs = tuple(
@@ -329,7 +331,10 @@ def _validate_observation(observation: StructuredFixtureObservation) -> None:
     _require_exact_enum(observation.failure_class, FixtureObservationFailureClass, "failure_class")
     if observation.evaluation is not None:
         raise FixtureObservationError("failed observation cannot claim a successful evaluation")
-    if admission.classification is not ResearchInputClassification.NEGATIVE_OR_INVALID_RESEARCH_RESULT:
+    if (
+        admission.classification
+        is not ResearchInputClassification.NEGATIVE_OR_INVALID_RESEARCH_RESULT
+    ):
         raise FixtureObservationError(
             "failed fixture observation requires NEGATIVE_OR_INVALID_RESEARCH_RESULT input"
         )
