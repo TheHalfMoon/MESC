@@ -159,7 +159,7 @@ def test_projection_preserves_foundational_rq1_through_rq7_exactly() -> None:
         )
 
 
-def test_registered_namespace_admits_only_namespaced_question_shape() -> None:
+def test_registered_namespace_admits_only_matching_namespaced_question() -> None:
     namespaced = ResearchQuestionIndexEntry(
         question_id="MRL-RQ-0001",
         program="MESC Research Loop",
@@ -180,7 +180,7 @@ def test_registered_namespace_admits_only_namespaced_question_shape() -> None:
 
     with pytest.raises(
         ResearchProgramIndexError,
-        match="not covered by a registered namespace",
+        match="not covered by exactly one registered namespace",
     ):
         ResearchProgramIndexProjection(
             repository=_repository(),
@@ -195,6 +195,31 @@ def test_registered_namespace_admits_only_namespaced_question_shape() -> None:
                 *_foundational_questions(),
             ),
             namespaces=(_namespace(),),
+        )
+
+    wrong_program = replace(namespaced, program="Medical Omni")
+    with pytest.raises(
+        ResearchProgramIndexError,
+        match="program does not match registered namespace",
+    ):
+        ResearchProgramIndexProjection(
+            repository=_repository(),
+            sources=_sources(),
+            questions=(wrong_program, *_foundational_questions()),
+            namespaces=(_namespace(),),
+        )
+
+
+def test_namespaced_question_numbering_starts_at_0001() -> None:
+    with pytest.raises(
+        ResearchProgramIndexError,
+        match="numbering starts at 0001",
+    ):
+        ResearchQuestionIndexEntry(
+            question_id="MRL-RQ-0000",
+            program="MESC Research Loop",
+            status="PROPOSED",
+            canonical_source_path=_REGISTRY_PATH,
         )
 
 
