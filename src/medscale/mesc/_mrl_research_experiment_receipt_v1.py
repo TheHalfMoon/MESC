@@ -126,9 +126,7 @@ class ObservedResourceUse:
             "evaluator_invocations",
         )
         if self.known_failure_retries > self.retries:
-            raise ResearchExperimentReceiptError(
-                "known_failure_retries cannot exceed retries"
-            )
+            raise ResearchExperimentReceiptError("known_failure_retries cannot exceed retries")
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -247,9 +245,7 @@ class ReproductionResult:
                 )
             return
         if self.artifact_sha256 is None:
-            raise ResearchExperimentReceiptError(
-                "attempted reproduction requires artifact_sha256"
-            )
+            raise ResearchExperimentReceiptError("attempted reproduction requires artifact_sha256")
         _require_sha256(self.artifact_sha256, "reproduction artifact_sha256")
 
     def to_dict(self) -> dict[str, object]:
@@ -535,9 +531,7 @@ def _snapshot_binding(value: ExperimentManifestBinding) -> ExperimentManifestBin
     try:
         return value._validated_snapshot()
     except (AttributeError, TypeError, ValueError) as exc:
-        raise ResearchExperimentReceiptError(
-            "binding failed canonical revalidation"
-        ) from exc
+        raise ResearchExperimentReceiptError("binding failed canonical revalidation") from exc
 
 
 def _snapshot_code_identity(value: CodePatchIdentity) -> CodePatchIdentity:
@@ -668,9 +662,7 @@ def _require_floor_results(
 ) -> None:
     result_ids = tuple(result.floor_id for result in results)
     _require_strictly_sorted_ids(result_ids, name)
-    floor_by_id = {
-        floor.floor_id: floor for floor in floors if floor.metric_id in metric_by_id
-    }
+    floor_by_id = {floor.floor_id: floor for floor in floors if floor.metric_id in metric_by_id}
     actual_ids = set(result_ids)
     expected_ids = set(floor_by_id)
     if complete:
@@ -771,9 +763,7 @@ def _require_tier_accounting(
             overruns.append(PlanFailureCondition.ADAPTIVE_QUERY_BUDGET_OVERRUN)
         if item.result_exposures_used > allowance.max_result_exposures:
             overruns.append(PlanFailureCondition.RESULT_EXPOSURE_BUDGET_OVERRUN)
-        if not set(item.exposed_result_fields).issubset(
-            set(allowance.allowed_result_fields)
-        ):
+        if not set(item.exposed_result_fields).issubset(set(allowance.allowed_result_fields)):
             raise ResearchExperimentReceiptError(
                 f"tier {int(item.tier)} exposes a result field outside the frozen allowance"
             )
