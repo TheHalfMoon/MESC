@@ -1,0 +1,26 @@
+name: Diagnostic MRL-0205 Ruff Format
+
+on:
+  push:
+    branches:
+      - diag/mrl-0205-ruff-format
+
+permissions:
+  contents: read
+
+jobs:
+  format-diff:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+
+      - name: Sync (locked)
+        run: uv sync --frozen
+
+      - name: Print exact Ruff formatter diff
+        run: uv run ruff format --diff src/medscale/mesc/_mrl_fixture_replication_v1.py
