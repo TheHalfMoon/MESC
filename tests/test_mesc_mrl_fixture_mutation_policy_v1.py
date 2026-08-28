@@ -156,12 +156,8 @@ def _plan() -> ResearchExperimentPlan:
         hypothesis_id="fixture-hypothesis",
         objective_sha256=objective.content_sha256,
         mechanism="A bounded fixture mutation may improve the search metric.",
-        predicted_effects=(
-            "Search score increases without violating safety floors.",
-        ),
-        predicted_failure_modes=(
-            "The mutation may have no measurable effect.",
-        ),
+        predicted_effects=("Search score increases without violating safety floors.",),
+        predicted_failure_modes=("The mutation may have no measurable effect.",),
         falsification_criteria=(
             "Search score does not improve under the frozen evaluator.",
         ),
@@ -197,9 +193,7 @@ def _plan() -> ResearchExperimentPlan:
             model_tier=1,
             code_sha="1" * 40,
             seeds=(7, 11),
-            results_paths=(
-                "experiments/results/fixture-experiment-001.json",
-            ),
+            results_paths=("experiments/results/fixture-experiment-001.json",),
         ),
         resource_ceiling=ResourceBudget(
             wall_clock_seconds=300,
@@ -306,10 +300,7 @@ def test_paths_outside_plan_allow_list_are_rejected(path: str) -> None:
         assess_fixture_mutation_path(plan, policy, path)
         is FixtureMutationDisposition.REJECT_OUTSIDE_ALLOW_LIST
     )
-    with pytest.raises(
-        FixtureMutationPolicyError,
-        match="REJECT_OUTSIDE_ALLOW_LIST",
-    ):
+    with pytest.raises(FixtureMutationPolicyError, match="REJECT_OUTSIDE_ALLOW_LIST"):
         require_fixture_mutation_allowed(plan, policy, path)
 
 
@@ -346,10 +337,7 @@ def test_paths_outside_plan_allow_list_are_rejected(path: str) -> None:
         ),
     ],
 )
-def test_authority_bearing_paths_are_rejected(
-    authority: str,
-    path: str,
-) -> None:
+def test_authority_bearing_paths_are_rejected(authority: str, path: str) -> None:
     del authority
     plan = _plan()
     policy = build_fixture_mutation_policy(plan)
@@ -358,10 +346,7 @@ def test_authority_bearing_paths_are_rejected(
         assess_fixture_mutation_path(plan, policy, path)
         is FixtureMutationDisposition.REJECT_PROTECTED_AUTHORITY
     )
-    with pytest.raises(
-        FixtureMutationPolicyError,
-        match="REJECT_PROTECTED_AUTHORITY",
-    ):
+    with pytest.raises(FixtureMutationPolicyError, match="REJECT_PROTECTED_AUTHORITY"):
         require_fixture_mutation_allowed(plan, policy, path)
 
 
@@ -391,10 +376,7 @@ def test_policy_cannot_add_a_protected_path_to_its_allow_list() -> None:
 def test_policy_must_stay_bound_to_the_exact_plan_allow_list() -> None:
     plan = _plan()
     policy = build_fixture_mutation_policy(plan)
-    narrowed = replace(
-        policy,
-        allowed_surfaces=("experiments/fixture.py",),
-    )
+    narrowed = replace(policy, allowed_surfaces=("experiments/fixture.py",))
 
     with pytest.raises(
         FixtureMutationPolicyError,
@@ -446,10 +428,7 @@ def test_noncanonical_paths_fail_closed(path: str) -> None:
     plan = _plan()
     policy = build_fixture_mutation_policy(plan)
 
-    with pytest.raises(
-        FixtureMutationPolicyError,
-        match=r"non-canonical|non-empty",
-    ):
+    with pytest.raises(FixtureMutationPolicyError, match=r"non-canonical|non-empty"):
         assess_fixture_mutation_path(plan, policy, path)
 
 
