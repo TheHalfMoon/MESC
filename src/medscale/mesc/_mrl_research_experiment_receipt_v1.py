@@ -372,9 +372,7 @@ class ResearchExperimentReceipt:
             "guardrail_results": [result.to_dict() for result in self.guardrail_results],
             "subgroup_results": [result.to_dict() for result in self.subgroup_results],
             "failure_classification": (
-                None
-                if self.failure_classification is None
-                else self.failure_classification.value
+                None if self.failure_classification is None else self.failure_classification.value
             ),
             "contamination_lineage_audit": self.contamination_lineage_audit.to_dict(),
             "reproduction": self.reproduction.to_dict(),
