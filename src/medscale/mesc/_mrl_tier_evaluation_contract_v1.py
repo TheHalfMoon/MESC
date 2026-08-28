@@ -101,7 +101,10 @@ class TierEvaluationContract:
             "evaluator_identities": [identity.to_dict() for identity in evaluators],
             "metric_contracts": [metric.to_dict() for metric in metrics],
             "iterative_agent_result_stream": self.tier
-            not in (EvaluationTier.SEALED, EvaluationTier.EXTERNAL_ASSURANCE),
+            not in (
+                EvaluationTier.SEALED,
+                EvaluationTier.EXTERNAL_ASSURANCE,
+            ),
             "sealed_item_level_search_context": False,
             "can_expand_budget": False,
             "can_replace_evaluator": False,
