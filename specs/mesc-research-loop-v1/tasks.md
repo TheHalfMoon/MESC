@@ -132,7 +132,7 @@ is then present on canonical `main`. Any head mutation burns prior exact-head ev
   - Depends on: MRL-0103.
   - Acceptance: no duplicate competing runtime experiment manifest is introduced.
 
-- [ ] **MRL-0105 — Implement `ResearchExperimentReceipt`**
+- [x] **MRL-0105 — Implement `ResearchExperimentReceipt`**
   - Depends on: MRL-0104.
   - Test: plan/manifest/code/metrics/guardrail/resource/tier accounting identities cannot
     be mismatched.
