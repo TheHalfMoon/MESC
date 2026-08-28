@@ -210,7 +210,7 @@ is then present on canonical `main`. Any head mutation burns prior exact-head ev
   - Depends on: MRL-0204.
   - Must prove: compute/query/result-exposure ceilings cannot be self-expanded.
 
-- [ ] **MRL-0209 — Add raw-log prompt-injection test**
+- [x] **MRL-0209 — Add raw-log prompt-injection test**
   - Depends on: MRL-0203.
 
 - [ ] **MRL-0210 — Add stale/mismatched receipt tests**
