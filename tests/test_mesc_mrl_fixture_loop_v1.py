@@ -809,3 +809,50 @@ def test_mrl_0206_forged_sealed_metric_tier_is_rejected() -> None:
             result.observation,
             result.receipt,
         )
+
+
+def test_mrl_0210_stale_receipt_is_rejected_by_decision_chain() -> None:
+    current = _complete()
+    stale = _complete(beta=0)
+
+    with pytest.raises(
+        FixtureLoopError,
+        match="fixture receipt does not bind the observation metric artifact",
+    ):
+        decide_fixture_experiment(
+            current.proposal,
+            current.observation,
+            stale.receipt,
+        )
+
+
+def test_mrl_0210_stale_receipt_cannot_form_a_current_loop_result() -> None:
+    current = _complete()
+    stale = _complete(beta=0)
+
+    with pytest.raises(
+        FixtureLoopError,
+        match="fixture receipt does not bind the observation metric artifact",
+    ):
+        FixtureLoopResult(
+            proposal=current.proposal,
+            observation=current.observation,
+            receipt=stale.receipt,
+            decision=current.decision,
+        )
+
+
+def test_mrl_0210_stale_decision_cannot_bind_a_current_receipt() -> None:
+    current = _complete()
+    stale = _complete(beta=0)
+
+    with pytest.raises(
+        FixtureLoopError,
+        match="fixture decision does not bind the exact receipt",
+    ):
+        FixtureLoopResult(
+            proposal=current.proposal,
+            observation=current.observation,
+            receipt=current.receipt,
+            decision=stale.decision,
+        )
