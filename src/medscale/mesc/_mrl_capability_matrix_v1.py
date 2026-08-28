@@ -108,12 +108,13 @@ class CapabilityMatrixEntry:
             or _CAPABILITY_ID_PATTERN.fullmatch(self.capability_id) is None
         ):
             raise CapabilityMatrixError("capability_id must be canonical uppercase identifier text")
-        if self.implementation_state not in _IMPLEMENTATION_STATES:
-            raise CapabilityMatrixError("implementation_state is outside the frozen vocabulary")
-        if self.evidence_state not in _EVIDENCE_STATES:
-            raise CapabilityMatrixError("evidence_state is outside the frozen vocabulary")
-        if self.authority_state not in _AUTHORITY_STATES:
-            raise CapabilityMatrixError("authority_state is outside the frozen vocabulary")
+        _require_state(
+            self.implementation_state,
+            "implementation_state",
+            _IMPLEMENTATION_STATES,
+        )
+        _require_state(self.evidence_state, "evidence_state", _EVIDENCE_STATES)
+        _require_state(self.authority_state, "authority_state", _AUTHORITY_STATES)
         _require_sorted_unique_paths(self.canonical_source_paths, "canonical_source_paths")
         _require_sorted_unique_refs(self.evidence_refs, "evidence_refs")
         _require_sorted_unique_refs(self.authority_refs, "authority_refs")
@@ -200,6 +201,11 @@ def _require_git_sha(value: object, field: str) -> None:
 def _require_sha256(value: object, field: str) -> None:
     if type(value) is not str or _SHA256_PATTERN.fullmatch(value) is None:
         raise CapabilityMatrixError(f"{field} must be 64 lowercase hex characters")
+
+
+def _require_state(value: object, field: str, allowed: frozenset[str]) -> None:
+    if type(value) is not str or value not in allowed:
+        raise CapabilityMatrixError(f"{field} is outside the frozen vocabulary")
 
 
 def _require_source_path(path: object) -> None:
