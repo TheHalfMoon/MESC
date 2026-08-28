@@ -202,7 +202,7 @@ is then present on canonical `main`. Any head mutation burns prior exact-head ev
   - Must prove: agent-controlled metric fabrication/evaluator modification cannot produce
     valid sealed evidence or an authority-bearing state.
 
-- [ ] **MRL-0207 — Add sealed-data access adversarial test**
+- [x] **MRL-0207 — Add sealed-data access adversarial test**
   - Depends on: MRL-0204.
   - Must prove: search process cannot read Tier 3 item-level content.
 
