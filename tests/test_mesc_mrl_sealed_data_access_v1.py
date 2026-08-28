@@ -108,3 +108,15 @@ def test_mrl_0207_sealed_tier_cannot_expose_item_level_fields() -> None:
             max_exposures=1,
             allowed_result_fields=("item_id", "item_text"),
         )
+
+
+def test_mrl_0207_sealed_tier_cannot_expose_fields_with_zero_exposures() -> None:
+    with pytest.raises(
+        ResearchObjectiveContractError,
+        match="Tier 3/4 cannot expose iterative agent-visible result fields",
+    ):
+        TierResultExposure(
+            tier=EvaluationTier.SEALED,
+            max_exposures=0,
+            allowed_result_fields=("item_id", "item_text"),
+        )
