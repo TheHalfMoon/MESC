@@ -20,6 +20,7 @@ from medscale.mesc._canonical_json_v1 import canonical_json_bytes, canonical_sha
 
 _SCHEMA_VERSION: Final = "MRL-RESEARCH-PROGRAM-INDEX-V1"
 _PROJECTION_KIND: Final = "DERIVED_NON_AUTHORITATIVE"
+_FOUNDATIONAL_SOURCE_PATH: Final = "docs/research/research_questions.md"
 _GIT_SHA_PATTERN: Final = re.compile(r"^[0-9a-f]{40}$")
 _SHA256_PATTERN: Final = re.compile(r"^[0-9a-f]{64}$")
 _FOUNDATIONAL_ID_PATTERN: Final = re.compile(r"^RQ[1-7]$")
@@ -92,7 +93,9 @@ class ResearchQuestionIndexEntry:
     canonical_source_path: str
 
     def __post_init__(self) -> None:
+        _require_text(self.question_id, "question_id")
         _require_text(self.program, "program")
+        _require_text(self.status, "status")
         _require_source_path(self.canonical_source_path)
         if self.status not in _ALLOWED_QUESTION_STATUSES:
             raise ResearchProgramIndexError("question status is outside the frozen vocabulary")
@@ -131,6 +134,7 @@ class ResearchProgramNamespace:
 
     def __post_init__(self) -> None:
         _require_text(self.program, "program")
+        _require_text(self.question_namespace, "question_namespace")
         _require_text(self.program_status, "program_status")
         _require_text(self.question_catalog_status, "question_catalog_status")
         if _NAMESPACE_PATTERN.fullmatch(self.question_namespace) is None:
@@ -305,10 +309,18 @@ def _require_unique_sorted_namespaces(
 def _require_foundational_identity_set(
     questions: tuple[ResearchQuestionIndexEntry, ...],
 ) -> None:
-    foundational = tuple(question.question_id for question in questions if question.is_foundational)
+    foundational = tuple(question for question in questions if question.is_foundational)
+    identifiers = tuple(question.question_id for question in foundational)
     expected = ("RQ1", "RQ2", "RQ3", "RQ4", "RQ5", "RQ6", "RQ7")
-    if foundational != expected:
+    if identifiers != expected:
         raise ResearchProgramIndexError("projection must preserve foundational RQ1-RQ7 exactly")
+    if any(
+        question.canonical_source_path != _FOUNDATIONAL_SOURCE_PATH
+        for question in foundational
+    ):
+        raise ResearchProgramIndexError(
+            "foundational RQ1-RQ7 must bind the canonical research question source"
+        )
 
 
 def _require_namespaced_questions_registered(
