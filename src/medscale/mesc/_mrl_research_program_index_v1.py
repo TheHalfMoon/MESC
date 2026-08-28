@@ -144,18 +144,12 @@ class ResearchProgramNamespace:
         sorted_paths = tuple(sorted(self.canonical_source_paths))
         unique_path_count = len(set(self.canonical_source_paths))
         if sorted_paths != self.canonical_source_paths:
-            raise ResearchProgramIndexError(
-                "canonical_source_paths must be sorted and unique"
-            )
+            raise ResearchProgramIndexError("canonical_source_paths must be sorted and unique")
         if unique_path_count != len(self.canonical_source_paths):
-            raise ResearchProgramIndexError(
-                "canonical_source_paths must be sorted and unique"
-            )
+            raise ResearchProgramIndexError("canonical_source_paths must be sorted and unique")
         for path in self.canonical_source_paths:
             if type(path) is not str:
-                raise ResearchProgramIndexError(
-                    "canonical_source_paths must contain exact strings"
-                )
+                raise ResearchProgramIndexError("canonical_source_paths must contain exact strings")
             _require_source_path(path)
 
     @property
@@ -311,9 +305,7 @@ def _require_unique_sorted_namespaces(
 def _require_foundational_identity_set(
     questions: tuple[ResearchQuestionIndexEntry, ...],
 ) -> None:
-    foundational = tuple(
-        question.question_id for question in questions if question.is_foundational
-    )
+    foundational = tuple(question.question_id for question in questions if question.is_foundational)
     expected = ("RQ1", "RQ2", "RQ3", "RQ4", "RQ5", "RQ6", "RQ7")
     if foundational != expected:
         raise ResearchProgramIndexError("projection must preserve foundational RQ1-RQ7 exactly")
