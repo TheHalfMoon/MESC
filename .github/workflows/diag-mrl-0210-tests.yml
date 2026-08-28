@@ -1,0 +1,90 @@
+name: Diagnostic MRL-0210 Stale Receipt Tests
+
+on:
+  push:
+    branches:
+      - diag/mrl-0210-tests-d388
+
+permissions:
+  contents: write
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: test/mrl-0210-stale-receipt
+          fetch-depth: 0
+          persist-credentials: true
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+      - name: Add and qualify exact-head tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected='d388c7378022d06a12804d2be6ff6eb76653eb19'
+          test "$(git rev-parse HEAD)" = "$expected"
+          cat >> tests/test_mesc_mrl_fixture_loop_v1.py <<'PY'
+
+
+def test_mrl_0210_stale_receipt_is_rejected_by_decision_chain() -> None:
+    current = _complete()
+    stale = _complete(beta=0)
+
+    with pytest.raises(
+        FixtureLoopError,
+        match="fixture receipt does not bind the observation metric artifact",
+    ):
+        decide_fixture_experiment(
+            current.proposal,
+            current.observation,
+            stale.receipt,
+        )
+
+
+def test_mrl_0210_stale_receipt_cannot_form_a_current_loop_result() -> None:
+    current = _complete()
+    stale = _complete(beta=0)
+
+    with pytest.raises(
+        FixtureLoopError,
+        match="fixture receipt does not bind the observation metric artifact",
+    ):
+        FixtureLoopResult(
+            proposal=current.proposal,
+            observation=current.observation,
+            receipt=stale.receipt,
+            decision=current.decision,
+        )
+
+
+def test_mrl_0210_stale_decision_cannot_bind_a_current_receipt() -> None:
+    current = _complete()
+    stale = _complete(beta=0)
+
+    with pytest.raises(
+        FixtureLoopError,
+        match="fixture decision does not bind the exact receipt",
+    ):
+        FixtureLoopResult(
+            proposal=current.proposal,
+            observation=current.observation,
+            receipt=current.receipt,
+            decision=stale.decision,
+        )
+PY
+          uv sync --frozen
+          uv run ruff format tests/test_mesc_mrl_fixture_loop_v1.py
+          uv run ruff check tests/test_mesc_mrl_fixture_loop_v1.py
+          uv run ruff format --check tests/test_mesc_mrl_fixture_loop_v1.py
+          uv run mypy
+          uv run pytest -q tests/test_mesc_mrl_fixture_loop_v1.py
+          git diff --check
+          test "$(git diff --name-only | wc -l)" -eq 1
+          test "$(git diff --name-only)" = 'tests/test_mesc_mrl_fixture_loop_v1.py'
+          git diff -- tests/test_mesc_mrl_fixture_loop_v1.py
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add tests/test_mesc_mrl_fixture_loop_v1.py
+          git commit -m 'test(mrl): reject stale fixture receipt chains'
+          git push origin HEAD:test/mrl-0210-stale-receipt
