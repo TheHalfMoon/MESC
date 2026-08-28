@@ -101,11 +101,12 @@ class CampaignReplicationRelation:
         _require_node_id(self.source_node_id, "source_node_id")
         _require_node_id(self.replica_node_id, "replica_node_id")
         if self.source_node_id == self.replica_node_id:
-            raise ResearchCampaignError("replication source and replica must be different nodes")
+            raise ResearchCampaignError(
+                "replication source and replica must be different nodes"
+            )
         _require_sorted_unique_sha256s(
             self.evidence_sha256s,
             "replication evidence_sha256s",
-            allow_empty=True,
         )
 
     def to_dict(self) -> dict[str, object]:
@@ -131,7 +132,6 @@ class CampaignBranchOutcome:
         _require_sorted_unique_sha256s(
             self.evidence_sha256s,
             "branch outcome evidence_sha256s",
-            allow_empty=True,
         )
         _require_text(self.reason, "branch outcome reason")
 
@@ -231,13 +231,21 @@ class ResearchCampaign:
             objective_sha256=self.objective_sha256,
             parent=parent,
             nodes=tuple(_rebuild_node(node) for node in self.nodes),
-            replications=tuple(_rebuild_replication(item) for item in self.replications),
+            replications=tuple(
+                _rebuild_replication(item) for item in self.replications
+            ),
             retained_alternative_node_ids=self.retained_alternative_node_ids,
-            branch_outcomes=tuple(_rebuild_branch_outcome(item) for item in self.branch_outcomes),
+            branch_outcomes=tuple(
+                _rebuild_branch_outcome(item) for item in self.branch_outcomes
+            ),
             current_frontier_node_ids=self.current_frontier_node_ids,
             procedure_candidate_node_ids=self.procedure_candidate_node_ids,
-            cumulative_resource_usage=_rebuild_resource_totals(self.cumulative_resource_usage),
-            cumulative_tier_usage=tuple(_rebuild_tier_totals(item) for item in self.cumulative_tier_usage),
+            cumulative_resource_usage=_rebuild_resource_totals(
+                self.cumulative_resource_usage
+            ),
+            cumulative_tier_usage=tuple(
+                _rebuild_tier_totals(item) for item in self.cumulative_tier_usage
+            ),
         )
 
     def _semantic_dict_validated(self) -> dict[str, object]:
@@ -255,7 +263,9 @@ class ResearchCampaign:
             "current_frontier_node_ids": list(self.current_frontier_node_ids),
             "procedure_candidate_node_ids": list(self.procedure_candidate_node_ids),
             "cumulative_resource_usage": self.cumulative_resource_usage.to_dict(),
-            "cumulative_tier_usage": [item.to_dict() for item in self.cumulative_tier_usage],
+            "cumulative_tier_usage": [
+                item.to_dict() for item in self.cumulative_tier_usage
+            ],
         }
 
     def semantic_dict(self) -> dict[str, object]:
@@ -323,14 +333,27 @@ def _validate_campaign(campaign: ResearchCampaign) -> None:
         raise ResearchCampaignError("parent must be an exact ResearchCampaign or None")
     parent = campaign.parent._validated_snapshot()
     if parent.campaign_id != campaign.campaign_id:
-        raise ResearchCampaignError("parent campaign_id must match the child campaign_id")
+        raise ResearchCampaignError(
+            "parent campaign_id must match the child campaign_id"
+        )
     if parent.objective_sha256 != campaign.objective_sha256:
-        raise ResearchCampaignError("parent objective identity must match the child campaign")
+        raise ResearchCampaignError(
+            "parent objective identity must match the child campaign"
+        )
     _require_append_only_nodes(parent.nodes, campaign.nodes)
     _require_append_only_replications(parent.replications, campaign.replications)
-    _require_append_only_branch_outcomes(parent.branch_outcomes, campaign.branch_outcomes)
-    _require_resource_monotonic(parent.cumulative_resource_usage, campaign.cumulative_resource_usage)
-    _require_tier_monotonic(parent.cumulative_tier_usage, campaign.cumulative_tier_usage)
+    _require_append_only_branch_outcomes(
+        parent.branch_outcomes,
+        campaign.branch_outcomes,
+    )
+    _require_resource_monotonic(
+        parent.cumulative_resource_usage,
+        campaign.cumulative_resource_usage,
+    )
+    _require_tier_monotonic(
+        parent.cumulative_tier_usage,
+        campaign.cumulative_tier_usage,
+    )
 
 
 def _require_parent_chain_acyclic(campaign: ResearchCampaign) -> None:
@@ -338,7 +361,9 @@ def _require_parent_chain_acyclic(campaign: ResearchCampaign) -> None:
     current: ResearchCampaign | None = campaign
     while current is not None:
         if type(current) is not ResearchCampaign:
-            raise ResearchCampaignError("campaign parent chain contains an invalid type")
+            raise ResearchCampaignError(
+                "campaign parent chain contains an invalid type"
+            )
         identity = id(current)
         if identity in seen:
             raise ResearchCampaignError("campaign parent chain cannot contain a cycle")
@@ -354,7 +379,9 @@ def _require_nodes(nodes: tuple[CampaignNode, ...]) -> None:
     rebuilt = tuple(_rebuild_node(node) for node in nodes)
     node_ids = tuple(node.node_id for node in rebuilt)
     if node_ids != tuple(sorted(set(node_ids))):
-        raise ResearchCampaignError("nodes must be unique and strictly sorted by node_id")
+        raise ResearchCampaignError(
+            "nodes must be unique and strictly sorted by node_id"
+        )
 
 
 def _require_dag(node_by_id: dict[str, CampaignNode]) -> None:
@@ -398,8 +425,13 @@ def _require_replications(
             "replications must be unique and strictly sorted by source/replica node"
         )
     for item in rebuilt:
-        if item.source_node_id not in node_by_id or item.replica_node_id not in node_by_id:
-            raise ResearchCampaignError("replication relationship references an unknown node")
+        if (
+            item.source_node_id not in node_by_id
+            or item.replica_node_id not in node_by_id
+        ):
+            raise ResearchCampaignError(
+                "replication relationship references an unknown node"
+            )
 
 
 def _require_branch_outcomes(
@@ -418,14 +450,18 @@ def _require_branch_outcomes(
         )
     for item in rebuilt:
         if item.terminal_node_id not in node_by_id:
-            raise ResearchCampaignError("branch outcome references an unknown terminal node")
+            raise ResearchCampaignError(
+                "branch outcome references an unknown terminal node"
+            )
 
 
 def _require_tier_totals(values: tuple[CampaignTierTotals, ...]) -> None:
     if type(values) is not tuple:
         raise ResearchCampaignError("cumulative_tier_usage must be an exact tuple")
     if any(type(item) is not CampaignTierTotals for item in values):
-        raise ResearchCampaignError("cumulative_tier_usage contains invalid item types")
+        raise ResearchCampaignError(
+            "cumulative_tier_usage contains invalid item types"
+        )
     rebuilt = tuple(_rebuild_tier_totals(item) for item in values)
     tiers = tuple(int(item.tier) for item in rebuilt)
     if tiers != tuple(sorted(set(tiers))):
@@ -442,7 +478,9 @@ def _require_known_node_ids(
     _require_sorted_unique_node_ids(values, label)
     for node_id in values:
         if node_id not in node_by_id:
-            raise ResearchCampaignError(f"{label} references unknown node {node_id!r}")
+            raise ResearchCampaignError(
+                f"{label} references unknown node {node_id!r}"
+            )
 
 
 def _require_append_only_nodes(
@@ -458,13 +496,23 @@ def _require_append_only_nodes(
             raise ResearchCampaignError("campaign history cannot rewrite a prior node")
 
 
+def _replication_key(
+    item: CampaignReplicationRelation,
+) -> tuple[str, str, tuple[str, ...]]:
+    return (
+        item.source_node_id,
+        item.replica_node_id,
+        item.evidence_sha256s,
+    )
+
+
 def _require_append_only_replications(
     previous: tuple[CampaignReplicationRelation, ...],
     current: tuple[CampaignReplicationRelation, ...],
 ) -> None:
-    current_semantics = {repr(item.to_dict()) for item in current}
+    current_semantics = {_replication_key(item) for item in current}
     for item in previous:
-        if repr(item.to_dict()) not in current_semantics:
+        if _replication_key(item) not in current_semantics:
             raise ResearchCampaignError(
                 "campaign history cannot delete or rewrite a prior replication relationship"
             )
@@ -478,9 +526,13 @@ def _require_append_only_branch_outcomes(
     for item in previous:
         candidate = current_by_node.get(item.terminal_node_id)
         if candidate is None:
-            raise ResearchCampaignError("campaign history cannot delete a prior branch outcome")
+            raise ResearchCampaignError(
+                "campaign history cannot delete a prior branch outcome"
+            )
         if candidate.to_dict() != item.to_dict():
-            raise ResearchCampaignError("campaign history cannot rewrite a prior branch outcome")
+            raise ResearchCampaignError(
+                "campaign history cannot rewrite a prior branch outcome"
+            )
 
 
 def _require_resource_monotonic(
@@ -490,7 +542,9 @@ def _require_resource_monotonic(
     previous_items = dict(previous._items())
     for label, value in current._items():
         if value < previous_items[label]:
-            raise ResearchCampaignError(f"cumulative resource counter {label} cannot move backward")
+            raise ResearchCampaignError(
+                f"cumulative resource counter {label} cannot move backward"
+            )
 
 
 def _require_tier_monotonic(
@@ -501,9 +555,13 @@ def _require_tier_monotonic(
     for prior in previous:
         candidate = current_by_tier.get(prior.tier)
         if candidate is None:
-            raise ResearchCampaignError("cumulative tier accounting cannot delete a prior tier")
+            raise ResearchCampaignError(
+                "cumulative tier accounting cannot delete a prior tier"
+            )
         if candidate.queries_used < prior.queries_used:
-            raise ResearchCampaignError("cumulative tier query accounting cannot move backward")
+            raise ResearchCampaignError(
+                "cumulative tier query accounting cannot move backward"
+            )
         if candidate.result_exposures_used < prior.result_exposures_used:
             raise ResearchCampaignError(
                 "cumulative tier result-exposure accounting cannot move backward"
@@ -521,7 +579,9 @@ def _rebuild_node(node: CampaignNode) -> CampaignNode:
     )
 
 
-def _rebuild_replication(item: CampaignReplicationRelation) -> CampaignReplicationRelation:
+def _rebuild_replication(
+    item: CampaignReplicationRelation,
+) -> CampaignReplicationRelation:
     if type(item) is not CampaignReplicationRelation:
         raise ResearchCampaignError("replication relationship has an invalid type")
     return CampaignReplicationRelation(
@@ -545,7 +605,17 @@ def _rebuild_branch_outcome(item: CampaignBranchOutcome) -> CampaignBranchOutcom
 def _rebuild_resource_totals(value: CampaignResourceTotals) -> CampaignResourceTotals:
     if type(value) is not CampaignResourceTotals:
         raise ResearchCampaignError("cumulative resource usage has an invalid type")
-    return CampaignResourceTotals(**value.to_dict())
+    return CampaignResourceTotals(
+        wall_clock_seconds=value.wall_clock_seconds,
+        compute_seconds=value.compute_seconds,
+        input_tokens=value.input_tokens,
+        generated_tokens=value.generated_tokens,
+        storage_bytes=value.storage_bytes,
+        monetary_cost_microunits=value.monetary_cost_microunits,
+        retries=value.retries,
+        known_failure_retries=value.known_failure_retries,
+        evaluator_invocations=value.evaluator_invocations,
+    )
 
 
 def _rebuild_tier_totals(value: CampaignTierTotals) -> CampaignTierTotals:
@@ -568,13 +638,17 @@ def _require_exact_campaign(value: ResearchCampaign) -> None:
 def _require_campaign_id(value: str) -> None:
     _require_text(value, "campaign_id")
     if not _CAMPAIGN_ID.fullmatch(value):
-        raise ResearchCampaignError("campaign_id must use lowercase kebab-case semantics")
+        raise ResearchCampaignError(
+            "campaign_id must use lowercase kebab-case semantics"
+        )
 
 
 def _require_node_id(value: str, label: str) -> None:
     _require_text(value, label)
     if not _NODE_ID.fullmatch(value):
-        raise ResearchCampaignError(f"{label} must use lowercase kebab-case semantics")
+        raise ResearchCampaignError(
+            f"{label} must use lowercase kebab-case semantics"
+        )
 
 
 def _require_sorted_unique_node_ids(values: tuple[str, ...], label: str) -> None:
@@ -589,13 +663,9 @@ def _require_sorted_unique_node_ids(values: tuple[str, ...], label: str) -> None
 def _require_sorted_unique_sha256s(
     values: tuple[str, ...],
     label: str,
-    *,
-    allow_empty: bool,
 ) -> None:
     if type(values) is not tuple:
         raise ResearchCampaignError(f"{label} must be an exact tuple")
-    if not values and not allow_empty:
-        raise ResearchCampaignError(f"{label} cannot be empty")
     for value in values:
         _require_sha256(value, label)
     if values != tuple(sorted(set(values))):
@@ -610,16 +680,24 @@ def _require_sha256(value: str, label: str) -> None:
 
 def _require_nonnegative_int(value: int, label: str) -> None:
     if type(value) is not int or value < 0:
-        raise ResearchCampaignError(f"{label} must be an exact non-negative integer")
+        raise ResearchCampaignError(
+            f"{label} must be an exact non-negative integer"
+        )
 
 
 def _require_text(value: str, label: str) -> None:
     if type(value) is not str:
         raise ResearchCampaignError(f"{label} must be an exact string")
-    if not value or value != value.strip() or any(char in value for char in "\x00\r\n\t"):
+    if not value or value != value.strip() or any(
+        char in value for char in "\x00\r\n\t"
+    ):
         raise ResearchCampaignError(f"{label} must be non-empty canonical text")
 
 
-def _require_exact_enum(value: object, enum_type: type[enum.Enum], label: str) -> None:
+def _require_exact_enum(
+    value: object,
+    enum_type: type[enum.Enum],
+    label: str,
+) -> None:
     if type(value) is not enum_type:
         raise ResearchCampaignError(f"{label} has an invalid enum type")
