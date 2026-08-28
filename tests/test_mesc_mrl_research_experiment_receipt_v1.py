@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import fields, replace
+from typing import cast
 
 import pytest
 
@@ -359,6 +360,8 @@ def test_receipt_binds_exact_plan_manifest_code_metric_and_tier_identities() -> 
     receipt = _receipt()
     payload = receipt.semantic_dict()
     binding = receipt.binding.semantic_dict()
+    metric_artifacts = cast(list[dict[str, object]], payload["metric_artifacts"])
+    tier_accounting = cast(list[dict[str, object]], payload["tier_accounting"])
 
     assert payload["experiment_plan_sha256"] == binding["experiment_plan_sha256"]
     assert payload["experiment_manifest_sha256"] == binding["experiment_manifest_sha256"]
@@ -367,11 +370,11 @@ def test_receipt_binds_exact_plan_manifest_code_metric_and_tier_identities() -> 
         "tree_sha": "2" * 40,
         "patch_sha256": "3" * 64,
     }
-    assert [item["metric_id"] for item in payload["metric_artifacts"]] == [
+    assert [item["metric_id"] for item in metric_artifacts] == [
         "safety",
         "search-score",
     ]
-    assert [item["tier"] for item in payload["tier_accounting"]] == [1, 3]
+    assert [item["tier"] for item in tier_accounting] == [1, 3]
 
 
 def test_material_semantic_change_changes_receipt_identity() -> None:
@@ -429,7 +432,14 @@ def test_metric_identity_substitution_fails_closed(
     pattern: str,
 ) -> None:
     metrics = list(_metrics())
-    metrics[0] = replace(metrics[0], **{field: value})
+    if field == "evaluator_id":
+        metrics[0] = replace(metrics[0], evaluator_id=cast(str, value))
+    elif field == "evaluator_artifact_sha256":
+        metrics[0] = replace(metrics[0], evaluator_artifact_sha256=cast(str, value))
+    elif field == "tier":
+        metrics[0] = replace(metrics[0], tier=cast(EvaluationTier, value))
+    else:
+        raise AssertionError(f"unexpected field: {field}")
     with pytest.raises(ResearchExperimentReceiptError, match=pattern):
         _receipt(metric_artifacts=tuple(metrics))
 
