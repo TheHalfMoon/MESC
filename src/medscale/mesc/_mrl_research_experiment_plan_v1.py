@@ -267,9 +267,23 @@ class ResearchExperimentPlan:
     tier_allowances: tuple[PlanTierAllowance, ...]
     stop_conditions: tuple[PlanStopCondition, ...]
     failure_conditions: tuple[PlanFailureCondition, ...]
+    _bound_resource_ceiling: tuple[int | None, ...] = field(init=False, repr=False, compare=False)
+    _bound_tier_allowances: tuple[tuple[int, int, int, tuple[str, ...]], ...] = field(
+        init=False, repr=False, compare=False
+    )
 
     def __post_init__(self) -> None:
         _validate_plan(self)
+        object.__setattr__(
+            self,
+            "_bound_resource_ceiling",
+            _resource_ceiling_freeze_binding(self.resource_ceiling),
+        )
+        object.__setattr__(
+            self,
+            "_bound_tier_allowances",
+            _tier_allowance_freeze_binding(self.tier_allowances),
+        )
 
     def _validated_snapshot(self) -> ResearchExperimentPlan:
         """Rebuild all mutable-reachable nested values before every public semantic view."""
@@ -278,6 +292,7 @@ class ResearchExperimentPlan:
             ResearchExperimentPlan,
             "research_experiment_plan",
         )
+        _require_original_plan_budget_bindings(self)
         objective = _snapshot_objective(self.objective)
         hypothesis = _snapshot_hypothesis(self.hypothesis)
         expected_manifest = _snapshot_expected_manifest(self.expected_manifest)
@@ -352,6 +367,56 @@ class ResearchExperimentPlan:
         data = snapshot._semantic_dict_validated()
         data["content_sha256"] = derive_content_sha256(data)
         return data
+
+
+def _resource_ceiling_freeze_binding(value: ResourceBudget) -> tuple[int | None, ...]:
+    _require_exact_instance(value, ResourceBudget, "resource_ceiling")
+    return (
+        value.wall_clock_seconds,
+        value.compute_seconds,
+        value.input_tokens,
+        value.generated_tokens,
+        value.storage_bytes,
+        value.monetary_cost_microunits,
+        value.max_experiments,
+        value.retries,
+        value.known_failure_retries,
+        value.evaluator_invocations,
+    )
+
+
+def _tier_allowance_freeze_binding(
+    values: tuple[PlanTierAllowance, ...],
+) -> tuple[tuple[int, int, int, tuple[str, ...]], ...]:
+    _require_exact_instances(values, PlanTierAllowance, "tier_allowances")
+    return tuple(
+        (
+            int(value.tier),
+            value.max_queries,
+            value.max_result_exposures,
+            value.allowed_result_fields,
+        )
+        for value in values
+    )
+
+
+def _require_original_plan_budget_bindings(plan: ResearchExperimentPlan) -> None:
+    try:
+        bound_resource_ceiling = plan._bound_resource_ceiling
+        bound_tier_allowances = plan._bound_tier_allowances
+    except AttributeError as exc:
+        raise ResearchExperimentPlanError(
+            "research experiment plan is missing its original frozen budget bindings"
+        ) from exc
+
+    if bound_resource_ceiling != _resource_ceiling_freeze_binding(plan.resource_ceiling):
+        raise ResearchExperimentPlanError(
+            "resource_ceiling changed after the research experiment plan was frozen"
+        )
+    if bound_tier_allowances != _tier_allowance_freeze_binding(plan.tier_allowances):
+        raise ResearchExperimentPlanError(
+            "tier_allowances changed after the research experiment plan was frozen"
+        )
 
 
 def _validate_plan(plan: ResearchExperimentPlan) -> None:

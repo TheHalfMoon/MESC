@@ -788,7 +788,7 @@ def test_mrl_0208_compute_ceiling_cannot_be_self_expanded_after_freeze() -> None
         replace(plan.resource_ceiling, compute_seconds=301),
     )
 
-    with pytest.raises(ResearchExperimentPlanError, match="compute_seconds exceeds"):
+    with pytest.raises(ResearchExperimentPlanError, match="resource_ceiling changed after"):
         _ = plan.content_sha256
 
 
@@ -803,7 +803,7 @@ def test_mrl_0208_query_ceiling_cannot_be_self_expanded_after_freeze() -> None:
         ),
     )
 
-    with pytest.raises(ResearchExperimentPlanError, match="query allowance exceeds"):
+    with pytest.raises(ResearchExperimentPlanError, match="tier_allowances changed after"):
         _ = plan.content_sha256
 
 
@@ -818,5 +818,59 @@ def test_mrl_0208_result_exposure_ceiling_cannot_be_self_expanded_after_freeze()
         ),
     )
 
-    with pytest.raises(ResearchExperimentPlanError, match="result exposure exceeds"):
+    with pytest.raises(ResearchExperimentPlanError, match="tier_allowances changed after"):
         _ = plan.content_sha256
+
+
+def test_mrl_0208_in_envelope_compute_rebinding_fails_original_freeze() -> None:
+    plan = _plan()
+    original_sha256 = plan.content_sha256
+    assert plan.resource_ceiling.compute_seconds == 120
+
+    object.__setattr__(
+        plan,
+        "resource_ceiling",
+        replace(plan.resource_ceiling, compute_seconds=121),
+    )
+
+    with pytest.raises(ResearchExperimentPlanError, match=r"changed after.*frozen"):
+        _ = plan.content_sha256
+    assert original_sha256
+
+
+def test_mrl_0208_in_envelope_query_rebinding_fails_original_freeze() -> None:
+    plan = _plan()
+    original_sha256 = plan.content_sha256
+    assert plan.tier_allowances[0].max_queries == 3
+
+    object.__setattr__(
+        plan,
+        "tier_allowances",
+        (
+            replace(plan.tier_allowances[0], max_queries=4),
+            plan.tier_allowances[1],
+        ),
+    )
+
+    with pytest.raises(ResearchExperimentPlanError, match=r"changed after.*frozen"):
+        _ = plan.content_sha256
+    assert original_sha256
+
+
+def test_mrl_0208_in_envelope_exposure_rebinding_fails_original_freeze() -> None:
+    plan = _plan()
+    original_sha256 = plan.content_sha256
+    assert plan.tier_allowances[0].max_result_exposures == 3
+
+    object.__setattr__(
+        plan,
+        "tier_allowances",
+        (
+            replace(plan.tier_allowances[0], max_result_exposures=4),
+            plan.tier_allowances[1],
+        ),
+    )
+
+    with pytest.raises(ResearchExperimentPlanError, match=r"changed after.*frozen"):
+        _ = plan.content_sha256
+    assert original_sha256
