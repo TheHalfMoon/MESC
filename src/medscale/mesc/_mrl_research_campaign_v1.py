@@ -81,6 +81,7 @@ class CampaignNode:
             raise ResearchCampaignError("campaign node cannot reference itself as a parent")
 
     def to_dict(self) -> dict[str, object]:
+        """Return canonical node semantics."""
         return {
             "node_id": self.node_id,
             "kind": self.kind.value,
@@ -108,6 +109,7 @@ class CampaignReplicationRelation:
         )
 
     def to_dict(self) -> dict[str, object]:
+        """Return canonical replication semantics."""
         return {
             "source_node_id": self.source_node_id,
             "replica_node_id": self.replica_node_id,
@@ -134,6 +136,7 @@ class CampaignBranchOutcome:
         _require_text(self.reason, "branch outcome reason")
 
     def to_dict(self) -> dict[str, object]:
+        """Return canonical branch-outcome semantics."""
         return {
             "terminal_node_id": self.terminal_node_id,
             "outcome": self.outcome.value,
@@ -176,6 +179,7 @@ class CampaignResourceTotals:
         )
 
     def to_dict(self) -> dict[str, int]:
+        """Return canonical cumulative resource totals."""
         return dict(self._items())
 
 
@@ -193,6 +197,7 @@ class CampaignTierTotals:
         _require_nonnegative_int(self.result_exposures_used, "result_exposures_used")
 
     def to_dict(self) -> dict[str, int]:
+        """Return canonical cumulative tier totals."""
         return {
             "tier": int(self.tier),
             "queries_used": self.queries_used,
@@ -220,29 +225,23 @@ class ResearchCampaign:
         _validate_campaign(self)
 
     def _validated_snapshot(self) -> ResearchCampaign:
-        """Rebuild all reachable semantic state before every trust-bearing view."""
+        """Revalidate and rebuild the complete parent chain exactly once per ancestor."""
         _require_exact_campaign(self)
-        _require_parent_chain_acyclic(self)
-        parent = None if self.parent is None else self.parent._validated_snapshot()
-        return ResearchCampaign(
-            campaign_id=self.campaign_id,
-            objective_sha256=self.objective_sha256,
-            parent=parent,
-            nodes=tuple(_rebuild_node(node) for node in self.nodes),
-            replications=tuple(_rebuild_replication(item) for item in self.replications),
-            retained_alternative_node_ids=self.retained_alternative_node_ids,
-            branch_outcomes=tuple(_rebuild_branch_outcome(item) for item in self.branch_outcomes),
-            current_frontier_node_ids=self.current_frontier_node_ids,
-            procedure_candidate_node_ids=self.procedure_candidate_node_ids,
-            cumulative_resource_usage=_rebuild_resource_totals(self.cumulative_resource_usage),
-            cumulative_tier_usage=tuple(
-                _rebuild_tier_totals(item) for item in self.cumulative_tier_usage
-            ),
-        )
+        chain = _collect_campaign_chain(self)
+        _validate_campaign_chain(chain)
 
-    def _semantic_dict_validated(self) -> dict[str, object]:
-        """Serialize one campaign snapshot that has already passed complete validation."""
-        parent_sha256 = None if self.parent is None else self.parent.content_sha256
+        rebuilt_parent: ResearchCampaign | None = None
+        for campaign in chain:
+            rebuilt_parent = _rebuild_campaign_unchecked(campaign, rebuilt_parent)
+        if rebuilt_parent is None:
+            raise ResearchCampaignError("campaign chain cannot be empty")
+        return rebuilt_parent
+
+    def _semantic_dict_with_parent_sha256(
+        self,
+        parent_sha256: str | None,
+    ) -> dict[str, object]:
+        """Serialize validated local semantics with one already-derived parent identity."""
         return {
             "format": "MRL-RESEARCH-CAMPAIGN-V1",
             "campaign_id": self.campaign_id,
@@ -258,6 +257,11 @@ class ResearchCampaign:
             "cumulative_tier_usage": [item.to_dict() for item in self.cumulative_tier_usage],
         }
 
+    def _semantic_dict_validated(self) -> dict[str, object]:
+        """Serialize one snapshot without recursively re-entering parent trust views."""
+        parent_sha256 = _derive_campaign_content_sha256_validated(self.parent)
+        return self._semantic_dict_with_parent_sha256(parent_sha256)
+
     def semantic_dict(self) -> dict[str, object]:
         """Return complete semantics from one freshly revalidated campaign snapshot."""
         snapshot = self._validated_snapshot()
@@ -271,9 +275,12 @@ class ResearchCampaign:
 
     @property
     def content_sha256(self) -> str:
-        """Derive campaign identity outside its own semantic preimage."""
+        """Derive campaign identity with one iterative pass across validated ancestors."""
         snapshot = self._validated_snapshot()
-        return derive_content_sha256(snapshot._semantic_dict_validated())
+        content_sha256 = _derive_campaign_content_sha256_validated(snapshot)
+        if content_sha256 is None:
+            raise ResearchCampaignError("campaign chain cannot be empty")
+        return content_sha256
 
     def to_dict(self) -> dict[str, object]:
         """Return semantic envelope plus the derived campaign identity."""
@@ -284,9 +291,44 @@ class ResearchCampaign:
 
 
 def _validate_campaign(campaign: ResearchCampaign) -> None:
+    """Validate the exact campaign chain without recursive snapshot reconstruction."""
+    chain = _collect_campaign_chain(campaign)
+    _validate_campaign_chain(chain)
+
+
+def _collect_campaign_chain(campaign: ResearchCampaign) -> tuple[ResearchCampaign, ...]:
+    """Return oldest-to-newest exact campaign objects after iterative cycle checks."""
+    reverse_chain: list[ResearchCampaign] = []
+    seen: set[int] = set()
+    current: ResearchCampaign | None = campaign
+    while current is not None:
+        if type(current) is not ResearchCampaign:
+            raise ResearchCampaignError("campaign parent chain contains an invalid type")
+        identity = id(current)
+        if identity in seen:
+            raise ResearchCampaignError("campaign parent chain cannot contain a cycle")
+        seen.add(identity)
+        reverse_chain.append(current)
+        current = current.parent
+    return tuple(reversed(reverse_chain))
+
+
+def _validate_campaign_chain(chain: tuple[ResearchCampaign, ...]) -> None:
+    """Validate each ancestor once and then validate each append-only transition once."""
+    if not chain:
+        raise ResearchCampaignError("campaign chain cannot be empty")
+    previous: ResearchCampaign | None = None
+    for campaign in chain:
+        _validate_campaign_local(campaign)
+        if previous is not None:
+            _validate_campaign_transition(previous, campaign)
+        previous = campaign
+
+
+def _validate_campaign_local(campaign: ResearchCampaign) -> None:
+    """Validate one campaign's local fields without traversing its parent chain."""
     _require_campaign_id(campaign.campaign_id)
     _require_sha256(campaign.objective_sha256, "objective_sha256")
-    _require_parent_chain_acyclic(campaign)
     _require_nodes(campaign.nodes)
     node_by_id = {node.node_id: node for node in campaign.nodes}
     _require_dag(node_by_id)
@@ -317,11 +359,14 @@ def _validate_campaign(campaign: ResearchCampaign) -> None:
     _ = _rebuild_resource_totals(campaign.cumulative_resource_usage)
     _require_tier_totals(campaign.cumulative_tier_usage)
 
-    if campaign.parent is None:
-        return
-    if type(campaign.parent) is not ResearchCampaign:
-        raise ResearchCampaignError("parent must be an exact ResearchCampaign or None")
-    parent = campaign.parent._validated_snapshot()
+
+def _validate_campaign_transition(
+    parent: ResearchCampaign,
+    campaign: ResearchCampaign,
+) -> None:
+    """Validate one child against an already locally validated exact parent."""
+    if campaign.parent is not parent:
+        raise ResearchCampaignError("campaign parent chain identity is inconsistent")
     if parent.campaign_id != campaign.campaign_id:
         raise ResearchCampaignError("parent campaign_id must match the child campaign_id")
     if parent.objective_sha256 != campaign.objective_sha256:
@@ -342,17 +387,70 @@ def _validate_campaign(campaign: ResearchCampaign) -> None:
     )
 
 
+def _rebuild_campaign_unchecked(
+    campaign: ResearchCampaign,
+    parent: ResearchCampaign | None,
+) -> ResearchCampaign:
+    """Copy a fully validated campaign without recursively invoking ``__post_init__``."""
+    snapshot = object.__new__(ResearchCampaign)
+    object.__setattr__(snapshot, "campaign_id", campaign.campaign_id)
+    object.__setattr__(snapshot, "objective_sha256", campaign.objective_sha256)
+    object.__setattr__(snapshot, "parent", parent)
+    object.__setattr__(snapshot, "nodes", tuple(_rebuild_node(node) for node in campaign.nodes))
+    object.__setattr__(
+        snapshot,
+        "replications",
+        tuple(_rebuild_replication(item) for item in campaign.replications),
+    )
+    object.__setattr__(
+        snapshot,
+        "retained_alternative_node_ids",
+        campaign.retained_alternative_node_ids,
+    )
+    object.__setattr__(
+        snapshot,
+        "branch_outcomes",
+        tuple(_rebuild_branch_outcome(item) for item in campaign.branch_outcomes),
+    )
+    object.__setattr__(
+        snapshot,
+        "current_frontier_node_ids",
+        campaign.current_frontier_node_ids,
+    )
+    object.__setattr__(
+        snapshot,
+        "procedure_candidate_node_ids",
+        campaign.procedure_candidate_node_ids,
+    )
+    object.__setattr__(
+        snapshot,
+        "cumulative_resource_usage",
+        _rebuild_resource_totals(campaign.cumulative_resource_usage),
+    )
+    object.__setattr__(
+        snapshot,
+        "cumulative_tier_usage",
+        tuple(_rebuild_tier_totals(item) for item in campaign.cumulative_tier_usage),
+    )
+    return snapshot
+
+
+def _derive_campaign_content_sha256_validated(
+    campaign: ResearchCampaign | None,
+) -> str | None:
+    """Derive a campaign-chain identity iteratively from already validated snapshots."""
+    if campaign is None:
+        return None
+    parent_sha256: str | None = None
+    for current in _collect_campaign_chain(campaign):
+        payload = current._semantic_dict_with_parent_sha256(parent_sha256)
+        parent_sha256 = derive_content_sha256(payload)
+    return parent_sha256
+
+
 def _require_parent_chain_acyclic(campaign: ResearchCampaign) -> None:
-    seen: set[int] = set()
-    current: ResearchCampaign | None = campaign
-    while current is not None:
-        if type(current) is not ResearchCampaign:
-            raise ResearchCampaignError("campaign parent chain contains an invalid type")
-        identity = id(current)
-        if identity in seen:
-            raise ResearchCampaignError("campaign parent chain cannot contain a cycle")
-        seen.add(identity)
-        current = current.parent
+    """Validate exact parent types and acyclicity iteratively."""
+    _ = _collect_campaign_chain(campaign)
 
 
 def _require_nodes(nodes: tuple[CampaignNode, ...]) -> None:
@@ -374,22 +472,30 @@ def _require_dag(node_by_id: dict[str, CampaignNode]) -> None:
                     f"node {node.node_id!r} references unknown parent node {parent_id!r}"
                 )
 
-    visiting: set[str] = set()
-    visited: set[str] = set()
-
-    def visit(node_id: str) -> None:
-        if node_id in visited:
-            return
-        if node_id in visiting:
-            raise ResearchCampaignError("campaign node graph must be acyclic")
-        visiting.add(node_id)
-        for parent_id in node_by_id[node_id].parent_node_ids:
-            visit(parent_id)
-        visiting.remove(node_id)
-        visited.add(node_id)
-
-    for node_id in node_by_id:
-        visit(node_id)
+    state: dict[str, int] = {}
+    for root_id in node_by_id:
+        if state.get(root_id) == 2:
+            continue
+        stack: list[tuple[str, bool]] = [(root_id, False)]
+        while stack:
+            node_id, expanded = stack.pop()
+            current_state = state.get(node_id, 0)
+            if expanded:
+                if current_state == 1:
+                    state[node_id] = 2
+                continue
+            if current_state == 2:
+                continue
+            if current_state == 1:
+                raise ResearchCampaignError("campaign node graph must be acyclic")
+            state[node_id] = 1
+            stack.append((node_id, True))
+            for parent_id in reversed(node_by_id[node_id].parent_node_ids):
+                parent_state = state.get(parent_id, 0)
+                if parent_state == 1:
+                    raise ResearchCampaignError("campaign node graph must be acyclic")
+                if parent_state != 2:
+                    stack.append((parent_id, False))
 
 
 def _require_replications(
