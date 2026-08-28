@@ -95,9 +95,7 @@ class ResearchQuestionIndexEntry:
         _require_text(self.program, "program")
         _require_source_path(self.canonical_source_path)
         if self.status not in _ALLOWED_QUESTION_STATUSES:
-            raise ResearchProgramIndexError(
-                "question status is outside the frozen vocabulary"
-            )
+            raise ResearchProgramIndexError("question status is outside the frozen vocabulary")
         if not (
             _FOUNDATIONAL_ID_PATTERN.fullmatch(self.question_id)
             or _NAMESPACED_QUESTION_PATTERN.fullmatch(self.question_id)
@@ -141,16 +139,12 @@ class ResearchProgramNamespace:
                 "question_namespace is not a registered namespace shape"
             )
         if type(self.canonical_source_paths) is not tuple:
-            raise ResearchProgramIndexError(
-                "canonical_source_paths must be an exact tuple"
-            )
+            raise ResearchProgramIndexError("canonical_source_paths must be an exact tuple")
         if not self.canonical_source_paths:
             raise ResearchProgramIndexError("canonical_source_paths cannot be empty")
-        if (
-            tuple(sorted(self.canonical_source_paths)) != self.canonical_source_paths
-            or len(set(self.canonical_source_paths))
-            != len(self.canonical_source_paths)
-        ):
+        if tuple(sorted(self.canonical_source_paths)) != self.canonical_source_paths or len(
+            set(self.canonical_source_paths)
+        ) != len(self.canonical_source_paths):
             raise ResearchProgramIndexError(
                 "canonical_source_paths must be sorted and unique"
             )
@@ -188,9 +182,7 @@ class ResearchProgramIndexProjection:
 
     def __post_init__(self) -> None:
         if type(self.repository) is not RepositoryBinding:
-            raise ResearchProgramIndexError(
-                "repository must be an exact RepositoryBinding"
-            )
+            raise ResearchProgramIndexError("repository must be an exact RepositoryBinding")
         if type(self.sources) is not tuple:
             raise ResearchProgramIndexError("sources must be an exact tuple")
         if type(self.questions) is not tuple:
@@ -201,30 +193,16 @@ class ResearchProgramIndexProjection:
             raise ResearchProgramIndexError("sources cannot be empty")
         if any(type(source) is not SourceBinding for source in self.sources):
             raise ResearchProgramIndexError("sources contains an invalid member type")
-        if any(
-            type(question) is not ResearchQuestionIndexEntry
-            for question in self.questions
-        ):
-            raise ResearchProgramIndexError(
-                "questions contains an invalid member type"
-            )
-        if any(
-            type(namespace) is not ResearchProgramNamespace
-            for namespace in self.namespaces
-        ):
-            raise ResearchProgramIndexError(
-                "namespaces contains an invalid member type"
-            )
+        if any(type(question) is not ResearchQuestionIndexEntry for question in self.questions):
+            raise ResearchProgramIndexError("questions contains an invalid member type")
+        if any(type(namespace) is not ResearchProgramNamespace for namespace in self.namespaces):
+            raise ResearchProgramIndexError("namespaces contains an invalid member type")
         _require_unique_sorted_sources(self.sources)
         _require_unique_sorted_questions(self.questions)
         _require_unique_sorted_namespaces(self.namespaces)
         _require_foundational_identity_set(self.questions)
         _require_namespaced_questions_registered(self.questions, self.namespaces)
-        _require_projection_sources_cover_records(
-            self.sources,
-            self.questions,
-            self.namespaces,
-        )
+        _require_projection_sources_cover_records(self.sources, self.questions, self.namespaces)
 
     @property
     def can_authorize(self) -> bool:
@@ -257,16 +235,12 @@ class ResearchProgramIndexProjection:
 
 def _require_git_sha(value: object, field: str) -> None:
     if type(value) is not str or _GIT_SHA_PATTERN.fullmatch(value) is None:
-        raise ResearchProgramIndexError(
-            f"{field} must be 40 lowercase hex characters"
-        )
+        raise ResearchProgramIndexError(f"{field} must be 40 lowercase hex characters")
 
 
 def _require_sha256(value: object, field: str) -> None:
     if type(value) is not str or _SHA256_PATTERN.fullmatch(value) is None:
-        raise ResearchProgramIndexError(
-            f"{field} must be 64 lowercase hex characters"
-        )
+        raise ResearchProgramIndexError(f"{field} must be 64 lowercase hex characters")
 
 
 def _require_text(value: object, field: str) -> None:
@@ -277,37 +251,25 @@ def _require_text(value: object, field: str) -> None:
         or "\n" in value
         or "\r" in value
     ):
-        raise ResearchProgramIndexError(
-            f"{field} must be canonical non-empty text"
-        )
+        raise ResearchProgramIndexError(f"{field} must be canonical non-empty text")
 
 
 def _require_source_path(path: object) -> None:
     if type(path) is not str or not path or not path.isascii():
-        raise ResearchProgramIndexError(
-            "source path must be non-empty ASCII text"
-        )
+        raise ResearchProgramIndexError("source path must be non-empty ASCII text")
     if path.startswith("/") or "\\" in path:
-        raise ResearchProgramIndexError(
-            "source path must be repository-relative POSIX form"
-        )
+        raise ResearchProgramIndexError("source path must be repository-relative POSIX form")
     components = path.split("/")
     if any(component in ("", ".", "..") for component in components):
-        raise ResearchProgramIndexError(
-            "source path contains an ambiguous component"
-        )
+        raise ResearchProgramIndexError("source path contains an ambiguous component")
     if path.strip() != path or "\n" in path or "\r" in path:
         raise ResearchProgramIndexError("source path must use canonical text")
 
 
-def _require_unique_sorted_sources(
-    sources: tuple[SourceBinding, ...],
-) -> None:
+def _require_unique_sorted_sources(sources: tuple[SourceBinding, ...]) -> None:
     paths = tuple(source.path for source in sources)
     if tuple(sorted(paths)) != paths or len(set(paths)) != len(paths):
-        raise ResearchProgramIndexError(
-            "sources must be sorted by path and path-unique"
-        )
+        raise ResearchProgramIndexError("sources must be sorted by path and path-unique")
 
 
 def _require_unique_sorted_questions(
@@ -336,13 +298,9 @@ def _require_unique_sorted_namespaces(
 def _require_foundational_identity_set(
     questions: tuple[ResearchQuestionIndexEntry, ...],
 ) -> None:
-    foundational = tuple(
-        question.question_id for question in questions if question.is_foundational
-    )
+    foundational = tuple(question.question_id for question in questions if question.is_foundational)
     if foundational != ("RQ1", "RQ2", "RQ3", "RQ4", "RQ5", "RQ6", "RQ7"):
-        raise ResearchProgramIndexError(
-            "projection must preserve foundational RQ1-RQ7 exactly"
-        )
+        raise ResearchProgramIndexError("projection must preserve foundational RQ1-RQ7 exactly")
 
 
 def _require_namespaced_questions_registered(
@@ -365,17 +323,12 @@ def _require_projection_sources_cover_records(
     namespaces: tuple[ResearchProgramNamespace, ...],
 ) -> None:
     source_paths = {source.path for source in sources}
-    referenced_paths = {
-        question.canonical_source_path for question in questions
-    }
+    referenced_paths = {question.canonical_source_path for question in questions}
     referenced_paths.update(
-        path
-        for namespace in namespaces
-        for path in namespace.canonical_source_paths
+        path for namespace in namespaces for path in namespace.canonical_source_paths
     )
     missing = sorted(referenced_paths - source_paths)
     if missing:
         raise ResearchProgramIndexError(
-            "projection source bindings omit referenced canonical source: "
-            f"{missing[0]}"
+            "projection source bindings omit referenced canonical source: " f"{missing[0]}"
         )
