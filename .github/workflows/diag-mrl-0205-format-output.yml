@@ -1,0 +1,43 @@
+name: Diagnostic MRL-0205 Formatted Output
+
+on:
+  push:
+    branches:
+      - diag/mrl-0205-ruff-format
+
+permissions:
+  contents: write
+
+jobs:
+  format-output:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: feat/mrl-0205-replication-retained-lead
+          fetch-depth: 0
+
+      - name: Require exact implementation head
+        run: test "$(git rev-parse HEAD)" = "b0a9d43201c8d92a1e9b48579ea22c68e07847b2"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+
+      - name: Sync (locked)
+        run: uv sync --frozen
+
+      - name: Apply exact Ruff formatting
+        run: uv run ruff format src/medscale/mesc/_mrl_fixture_replication_v1.py
+
+      - name: Commit formatted source only
+        run: |
+          git diff -- src/medscale/mesc/_mrl_fixture_replication_v1.py
+          test -z "$(git status --porcelain --untracked-files=no | grep -v '^ M src/medscale/mesc/_mrl_fixture_replication_v1.py$')"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/medscale/mesc/_mrl_fixture_replication_v1.py
+          git commit -m "style(mrl): format fixture replication source"
+          echo "FORMATTED_COMMIT=$(git rev-parse HEAD)"
+
+      - name: Publish isolated formatted commit
+        run: git push --force-with-lease origin HEAD:refs/heads/diag/mrl-0205-formatted-output
