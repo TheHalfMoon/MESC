@@ -778,3 +778,45 @@ def test_plan_revalidates_malformed_forbidden_surface_before_result_destination_
 
     with pytest.raises(ResearchExperimentPlanError):
         plan.to_dict()
+
+
+def test_mrl_0208_compute_ceiling_cannot_be_self_expanded_after_freeze() -> None:
+    plan = _plan()
+    object.__setattr__(
+        plan,
+        "resource_ceiling",
+        replace(plan.resource_ceiling, compute_seconds=301),
+    )
+
+    with pytest.raises(ResearchExperimentPlanError, match="compute_seconds exceeds"):
+        _ = plan.content_sha256
+
+
+def test_mrl_0208_query_ceiling_cannot_be_self_expanded_after_freeze() -> None:
+    plan = _plan()
+    object.__setattr__(
+        plan,
+        "tier_allowances",
+        (
+            replace(plan.tier_allowances[0], max_queries=6),
+            plan.tier_allowances[1],
+        ),
+    )
+
+    with pytest.raises(ResearchExperimentPlanError, match="query allowance exceeds"):
+        _ = plan.content_sha256
+
+
+def test_mrl_0208_result_exposure_ceiling_cannot_be_self_expanded_after_freeze() -> None:
+    plan = _plan()
+    object.__setattr__(
+        plan,
+        "tier_allowances",
+        (
+            replace(plan.tier_allowances[0], max_result_exposures=6),
+            plan.tier_allowances[1],
+        ),
+    )
+
+    with pytest.raises(ResearchExperimentPlanError, match="result exposure exceeds"):
+        _ = plan.content_sha256
