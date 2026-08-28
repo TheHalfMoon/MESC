@@ -103,9 +103,10 @@ class CapabilityMatrixEntry:
     authority_refs: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
-        if type(self.capability_id) is not str or _CAPABILITY_ID_PATTERN.fullmatch(
-            self.capability_id
-        ) is None:
+        if (
+            type(self.capability_id) is not str
+            or _CAPABILITY_ID_PATTERN.fullmatch(self.capability_id) is None
+        ):
             raise CapabilityMatrixError("capability_id must be canonical uppercase identifier text")
         if self.implementation_state not in _IMPLEMENTATION_STATES:
             raise CapabilityMatrixError("implementation_state is outside the frozen vocabulary")
@@ -148,9 +149,7 @@ class CapabilityMatrixProjection:
 
     def __post_init__(self) -> None:
         if type(self.repository) is not CapabilityRepositoryBinding:
-            raise CapabilityMatrixError(
-                "repository must be an exact CapabilityRepositoryBinding"
-            )
+            raise CapabilityMatrixError("repository must be an exact CapabilityRepositoryBinding")
         if type(self.sources) is not tuple:
             raise CapabilityMatrixError("sources must be an exact tuple")
         if type(self.capabilities) is not tuple:
@@ -261,9 +260,7 @@ def _require_projection_sources_cover_rows(
     capabilities: tuple[CapabilityMatrixEntry, ...],
 ) -> None:
     source_paths = {source.path for source in sources}
-    referenced_paths = {
-        path for row in capabilities for path in row.canonical_source_paths
-    }
+    referenced_paths = {path for row in capabilities for path in row.canonical_source_paths}
     missing = sorted(referenced_paths - source_paths)
     if missing:
         raise CapabilityMatrixError(
