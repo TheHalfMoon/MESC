@@ -39,6 +39,7 @@ jobs:
           path.write_text(text.replace(old, new))
           PY
           uv sync --frozen
+          uv run ruff format tests/test_mesc_mrl_raw_log_prompt_injection_v1.py
           uv run ruff check tests/test_mesc_mrl_raw_log_prompt_injection_v1.py
           uv run ruff format --check tests/test_mesc_mrl_raw_log_prompt_injection_v1.py
           uv run pytest -q tests/test_mesc_mrl_raw_log_prompt_injection_v1.py
