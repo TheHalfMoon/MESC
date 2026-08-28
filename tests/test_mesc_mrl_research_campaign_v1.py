@@ -203,9 +203,7 @@ def test_failed_null_invalid_and_rejected_outcomes_are_first_class() -> None:
 
 def test_child_campaign_cannot_delete_prior_node() -> None:
     parent = _campaign()
-    child_nodes = tuple(
-        node for node in _base_nodes() if node.node_id == "hypothesis-a"
-    )
+    child_nodes = tuple(node for node in _base_nodes() if node.node_id == "hypothesis-a")
 
     with pytest.raises(ResearchCampaignError, match="cannot delete a prior node"):
         _campaign(parent=parent, nodes=child_nodes, outcomes=(), frontier=())
@@ -223,15 +221,11 @@ def test_child_campaign_cannot_rewrite_prior_node() -> None:
 def test_child_campaign_cannot_delete_or_rewrite_prior_negative_outcome() -> None:
     parent = _campaign()
 
-    with pytest.raises(
-        ResearchCampaignError, match="cannot delete a prior branch outcome"
-    ):
+    with pytest.raises(ResearchCampaignError, match="cannot delete a prior branch outcome"):
         _campaign(parent=parent, outcomes=())
 
     rewritten = replace(_outcome(), reason="A different later explanation.")
-    with pytest.raises(
-        ResearchCampaignError, match="cannot rewrite a prior branch outcome"
-    ):
+    with pytest.raises(ResearchCampaignError, match="cannot rewrite a prior branch outcome"):
         _campaign(parent=parent, outcomes=(rewritten,))
 
 
@@ -250,9 +244,7 @@ def test_child_campaign_cannot_delete_prior_replication_relation() -> None:
 def test_cumulative_resource_accounting_cannot_move_backward() -> None:
     parent = _campaign()
 
-    with pytest.raises(
-        ResearchCampaignError, match="wall_clock_seconds cannot move backward"
-    ):
+    with pytest.raises(ResearchCampaignError, match="wall_clock_seconds cannot move backward"):
         _campaign(parent=parent, resources=_resources(wall_clock_seconds=9))
 
     child = _campaign(parent=parent, resources=_resources(wall_clock_seconds=11))
@@ -262,9 +254,7 @@ def test_cumulative_resource_accounting_cannot_move_backward() -> None:
 def test_cumulative_query_and_exposure_accounting_cannot_move_backward() -> None:
     parent = _campaign()
 
-    with pytest.raises(
-        ResearchCampaignError, match="query accounting cannot move backward"
-    ):
+    with pytest.raises(ResearchCampaignError, match="query accounting cannot move backward"):
         _campaign(parent=parent, tier_usage=_tier_usage(search_queries=1))
 
     with pytest.raises(
@@ -309,9 +299,7 @@ def test_parent_chain_cycle_created_by_tampering_fails_on_trust_view() -> None:
     campaign = _campaign()
     object.__setattr__(campaign, "parent", campaign)
 
-    with pytest.raises(
-        ResearchCampaignError, match="parent chain cannot contain a cycle"
-    ):
+    with pytest.raises(ResearchCampaignError, match="parent chain cannot contain a cycle"):
         _ = campaign.content_sha256
 
 
