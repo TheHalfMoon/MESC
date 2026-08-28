@@ -128,19 +128,23 @@ class FixtureEvaluator:
         }
 
     def semantic_dict(self) -> dict[str, object]:
-        snapshot = self._validated_snapshot()
+        _require_exact_type(self, FixtureEvaluator, "fixture_evaluator")
+        snapshot = FixtureEvaluator._validated_snapshot(self)
         return snapshot._semantic_dict_validated()
 
     @property
     def semantic_bytes(self) -> bytes:
-        return canonical_semantic_bytes(self.semantic_dict())
+        _require_exact_type(self, FixtureEvaluator, "fixture_evaluator")
+        return canonical_semantic_bytes(FixtureEvaluator.semantic_dict(self))
 
     @property
     def content_sha256(self) -> str:
-        return derive_content_sha256(self.semantic_dict())
+        _require_exact_type(self, FixtureEvaluator, "fixture_evaluator")
+        return derive_content_sha256(FixtureEvaluator.semantic_dict(self))
 
     def to_dict(self) -> dict[str, object]:
-        data = self.semantic_dict()
+        _require_exact_type(self, FixtureEvaluator, "fixture_evaluator")
+        data = FixtureEvaluator.semantic_dict(self)
         data["content_sha256"] = derive_content_sha256(data)
         return data
 
@@ -191,19 +195,23 @@ class FixtureResearchSurface:
         }
 
     def semantic_dict(self) -> dict[str, object]:
-        snapshot = self._validated_snapshot()
+        _require_exact_type(self, FixtureResearchSurface, "fixture_research_surface")
+        snapshot = FixtureResearchSurface._validated_snapshot(self)
         return snapshot._semantic_dict_validated()
 
     @property
     def semantic_bytes(self) -> bytes:
-        return canonical_semantic_bytes(self.semantic_dict())
+        _require_exact_type(self, FixtureResearchSurface, "fixture_research_surface")
+        return canonical_semantic_bytes(FixtureResearchSurface.semantic_dict(self))
 
     @property
     def content_sha256(self) -> str:
-        return derive_content_sha256(self.semantic_dict())
+        _require_exact_type(self, FixtureResearchSurface, "fixture_research_surface")
+        return derive_content_sha256(FixtureResearchSurface.semantic_dict(self))
 
     def to_dict(self) -> dict[str, object]:
-        data = self.semantic_dict()
+        _require_exact_type(self, FixtureResearchSurface, "fixture_research_surface")
+        data = FixtureResearchSurface.semantic_dict(self)
         data["content_sha256"] = derive_content_sha256(data)
         return data
 
@@ -247,19 +255,23 @@ class FixtureCandidate:
         }
 
     def semantic_dict(self) -> dict[str, object]:
-        snapshot = self._validated_snapshot()
+        _require_exact_type(self, FixtureCandidate, "fixture_candidate")
+        snapshot = FixtureCandidate._validated_snapshot(self)
         return snapshot._semantic_dict_validated()
 
     @property
     def semantic_bytes(self) -> bytes:
-        return canonical_semantic_bytes(self.semantic_dict())
+        _require_exact_type(self, FixtureCandidate, "fixture_candidate")
+        return canonical_semantic_bytes(FixtureCandidate.semantic_dict(self))
 
     @property
     def content_sha256(self) -> str:
-        return derive_content_sha256(self.semantic_dict())
+        _require_exact_type(self, FixtureCandidate, "fixture_candidate")
+        return derive_content_sha256(FixtureCandidate.semantic_dict(self))
 
     def to_dict(self) -> dict[str, object]:
-        data = self.semantic_dict()
+        _require_exact_type(self, FixtureCandidate, "fixture_candidate")
+        data = FixtureCandidate.semantic_dict(self)
         data["content_sha256"] = derive_content_sha256(data)
         return data
 
@@ -317,14 +329,17 @@ class FixtureEvaluation:
 
     @property
     def semantic_bytes(self) -> bytes:
-        return canonical_semantic_bytes(self.semantic_dict())
+        _require_exact_type(self, FixtureEvaluation, "fixture_evaluation")
+        return canonical_semantic_bytes(FixtureEvaluation.semantic_dict(self))
 
     @property
     def content_sha256(self) -> str:
-        return derive_content_sha256(self.semantic_dict())
+        _require_exact_type(self, FixtureEvaluation, "fixture_evaluation")
+        return derive_content_sha256(FixtureEvaluation.semantic_dict(self))
 
     def to_dict(self) -> dict[str, object]:
-        data = self.semantic_dict()
+        _require_exact_type(self, FixtureEvaluation, "fixture_evaluation")
+        data = FixtureEvaluation.semantic_dict(self)
         data["content_sha256"] = derive_content_sha256(data)
         return data
 
@@ -335,7 +350,8 @@ def build_fixture_candidate(
 ) -> FixtureCandidate:
     """Build one bounded candidate after validating exact surface-domain membership."""
 
-    surface_snapshot = surface._validated_snapshot()
+    _require_exact_type(surface, FixtureResearchSurface, "fixture_research_surface")
+    surface_snapshot = FixtureResearchSurface._validated_snapshot(surface)
     _require_parameter_values(parameter_values, "parameter_values")
     _require_candidate_matches_surface(surface_snapshot, parameter_values)
     return FixtureCandidate(
@@ -351,9 +367,12 @@ def evaluate_fixture_candidate(
 ) -> FixtureEvaluation:
     """Score one candidate deterministically against the separately frozen evaluator."""
 
-    surface_snapshot = surface._validated_snapshot()
-    evaluator_snapshot = evaluator._validated_snapshot()
-    candidate_snapshot = candidate._validated_snapshot()
+    _require_exact_type(surface, FixtureResearchSurface, "fixture_research_surface")
+    _require_exact_type(evaluator, FixtureEvaluator, "fixture_evaluator")
+    _require_exact_type(candidate, FixtureCandidate, "fixture_candidate")
+    surface_snapshot = FixtureResearchSurface._validated_snapshot(surface)
+    evaluator_snapshot = FixtureEvaluator._validated_snapshot(evaluator)
+    candidate_snapshot = FixtureCandidate._validated_snapshot(candidate)
     _require_fixture_binding(surface_snapshot, evaluator_snapshot)
     if candidate_snapshot.surface_sha256 != surface_snapshot.content_sha256:
         raise FixtureResearchSurfaceError(
