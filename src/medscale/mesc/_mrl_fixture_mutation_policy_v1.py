@@ -156,14 +156,11 @@ def assess_fixture_mutation_path(
     _require_canonical_relative_path(path, "path")
 
     if any(
-        _paths_overlap(path, surface)
-        for surface in policy_snapshot.protected_authority_surfaces
+        _paths_overlap(path, surface) for surface in policy_snapshot.protected_authority_surfaces
     ):
         return FixtureMutationDisposition.REJECT_PROTECTED_AUTHORITY
 
-    if any(
-        _paths_overlap(path, surface) for surface in policy_snapshot.forbidden_surfaces
-    ):
+    if any(_paths_overlap(path, surface) for surface in policy_snapshot.forbidden_surfaces):
         return FixtureMutationDisposition.REJECT_PROTECTED_AUTHORITY
 
     if any(_path_contains(surface, path) for surface in policy_snapshot.allowed_surfaces):
@@ -181,9 +178,7 @@ def require_fixture_mutation_allowed(
 
     disposition = assess_fixture_mutation_path(plan, policy, path)
     if disposition is not FixtureMutationDisposition.ALLOW:
-        raise FixtureMutationPolicyError(
-            f"mutation path {path!r} rejected: {disposition.value}"
-        )
+        raise FixtureMutationPolicyError(f"mutation path {path!r} rejected: {disposition.value}")
 
 
 def _validate_policy(policy: FixtureMutationPolicy) -> None:
@@ -203,16 +198,12 @@ def _validate_policy(policy: FixtureMutationPolicy) -> None:
         )
     for allowed in policy.allowed_surfaces:
         if any(
-            _paths_overlap(allowed, protected)
-            for protected in policy.protected_authority_surfaces
+            _paths_overlap(allowed, protected) for protected in policy.protected_authority_surfaces
         ):
             raise FixtureMutationPolicyError(
                 f"allowed surface {allowed!r} overlaps protected authority"
             )
-        if any(
-            _paths_overlap(allowed, forbidden)
-            for forbidden in policy.forbidden_surfaces
-        ):
+        if any(_paths_overlap(allowed, forbidden) for forbidden in policy.forbidden_surfaces):
             raise FixtureMutationPolicyError(
                 f"allowed surface {allowed!r} overlaps a frozen forbidden surface"
             )
@@ -278,9 +269,7 @@ def _require_canonical_relative_path(value: str, label: str) -> None:
         or "\\" in value
         or any(part in ("", ".", "..") for part in parts)
     ):
-        raise FixtureMutationPolicyError(
-            f"{label} contains non-canonical relative path {value!r}"
-        )
+        raise FixtureMutationPolicyError(f"{label} contains non-canonical relative path {value!r}")
 
 
 def _path_contains(envelope: str, candidate: str) -> bool:
@@ -293,16 +282,12 @@ def _paths_overlap(left: str, right: str) -> bool:
 
 def _require_id(value: str, label: str) -> None:
     if type(value) is not str or not _ID.fullmatch(value):
-        raise FixtureMutationPolicyError(
-            f"{label} must be lowercase kebab-case [a-z0-9-]"
-        )
+        raise FixtureMutationPolicyError(f"{label} must be lowercase kebab-case [a-z0-9-]")
 
 
 def _require_sha256(value: str, label: str) -> None:
     if type(value) is not str or not _SHA256.fullmatch(value):
-        raise FixtureMutationPolicyError(
-            f"{label} must be a lowercase 64-character SHA-256 digest"
-        )
+        raise FixtureMutationPolicyError(f"{label} must be a lowercase 64-character SHA-256 digest")
 
 
 def _require_true(value: bool, label: str) -> None:
