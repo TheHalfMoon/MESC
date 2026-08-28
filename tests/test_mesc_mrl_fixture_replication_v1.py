@@ -116,7 +116,13 @@ def _surface() -> FixtureResearchSurface:
     )
 
 
-def _objective(*, max_exposures: int = 2) -> ResearchObjectiveContract:
+def _objective(
+    *,
+    max_exposures: int = 2,
+    repeated_evaluation: RepeatedEvaluationPolicy = (
+        RepeatedEvaluationPolicy.PERMITTED_WITHIN_FROZEN_BUDGET
+    ),
+) -> ResearchObjectiveContract:
     evaluator = _evaluator()
     return ResearchObjectiveContract(
         objective_id="fixture-replication-objective",
@@ -166,7 +172,7 @@ def _objective(*, max_exposures: int = 2) -> ResearchObjectiveContract:
         ),
         adaptive_query_budget=AdaptiveQueryBudget(tier_1_queries=0, tier_2_queries=0),
         adaptive_evaluation_controls=AdaptiveEvaluationControls(
-            repeated_candidate_evaluation=RepeatedEvaluationPolicy.FORBIDDEN,
+            repeated_candidate_evaluation=repeated_evaluation,
             stopping_rules=(
                 AdaptiveStoppingRule.EXTERNAL_GOVERNANCE_STOP,
                 AdaptiveStoppingRule.OBJECTIVE_INVALIDATED,
@@ -223,8 +229,18 @@ def _hypothesis(objective: ResearchObjectiveContract) -> ResearchHypothesis:
     )
 
 
-def _plan(label: str, *, max_exposures: int = 2) -> ResearchExperimentPlan:
-    objective = _objective(max_exposures=max_exposures)
+def _plan(
+    label: str,
+    *,
+    max_exposures: int = 2,
+    repeated_evaluation: RepeatedEvaluationPolicy = (
+        RepeatedEvaluationPolicy.PERMITTED_WITHIN_FROZEN_BUDGET
+    ),
+) -> ResearchExperimentPlan:
+    objective = _objective(
+        max_exposures=max_exposures,
+        repeated_evaluation=repeated_evaluation,
+    )
     evaluator = _evaluator()
     return ResearchExperimentPlan(
         experiment_plan_id=f"fixture-plan-{label}",
@@ -323,8 +339,19 @@ def _admission(label: str, proposal) -> ResearchInputAdmissionContract:
     )
 
 
-def _complete(label: str, *, max_exposures: int = 2) -> FixtureLoopResult:
-    plan = _plan(label, max_exposures=max_exposures)
+def _complete(
+    label: str,
+    *,
+    max_exposures: int = 2,
+    repeated_evaluation: RepeatedEvaluationPolicy = (
+        RepeatedEvaluationPolicy.PERMITTED_WITHIN_FROZEN_BUDGET
+    ),
+) -> FixtureLoopResult:
+    plan = _plan(
+        label,
+        max_exposures=max_exposures,
+        repeated_evaluation=repeated_evaluation,
+    )
     policy = build_fixture_mutation_policy(plan)
     proposal = propose_fixture_experiment(
         plan,
@@ -491,3 +518,18 @@ def test_non_evidence_candidate_cannot_request_replication() -> None:
 
     with pytest.raises(FixtureReplicationError, match="EVIDENCE_CANDIDATE"):
         request_fixture_replication(forged)
+
+
+def test_replication_requires_frozen_repeated_evaluation_permission() -> None:
+    primary = _complete(
+        "primary",
+        repeated_evaluation=RepeatedEvaluationPolicy.FORBIDDEN,
+    )
+    replica = _complete(
+        "replica",
+        repeated_evaluation=RepeatedEvaluationPolicy.FORBIDDEN,
+    )
+    request = request_fixture_replication(primary)
+
+    with pytest.raises(FixtureReplicationError, match="repeated candidate evaluation"):
+        assess_fixture_replication(primary, request, replica)
