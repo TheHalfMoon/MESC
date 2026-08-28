@@ -1,0 +1,47 @@
+name: Diagnostic MRL-0209 Ledger Closeout
+
+on:
+  push:
+    branches:
+      - diag/mrl-0209-ledger-3fa18
+
+permissions:
+  contents: write
+
+jobs:
+  closeout:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: test/mrl-0209-raw-log-prompt-injection
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Close exact MRL-0209 ledger candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected='3fa18e8ef5204fa3410c3002992a137e5f0f0ff3'
+          test "$(git rev-parse HEAD)" = "$expected"
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('specs/mesc-research-loop-v1/tasks.md')
+          text = path.read_text()
+          old = '- [ ] **MRL-0209 — Add raw-log prompt-injection test**'
+          new = '- [x] **MRL-0209 — Add raw-log prompt-injection test**'
+          if text.count(old) != 1:
+              raise SystemExit(f'expected exactly one open MRL-0209 checkbox, found {text.count(old)}')
+          if new in text:
+              raise SystemExit('MRL-0209 is already checked')
+          path.write_text(text.replace(old, new))
+          PY
+          git diff --check
+          test "$(git diff --name-only | wc -l)" -eq 1
+          test "$(git diff --name-only)" = 'specs/mesc-research-loop-v1/tasks.md'
+          git diff --numstat | grep -Fx '1	1	specs/mesc-research-loop-v1/tasks.md'
+          git diff -- specs/mesc-research-loop-v1/tasks.md
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add specs/mesc-research-loop-v1/tasks.md
+          git commit -m 'chore(mrl): close MRL-0209 ledger'
+          git push origin HEAD:test/mrl-0209-raw-log-prompt-injection
