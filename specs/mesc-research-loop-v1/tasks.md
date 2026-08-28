@@ -148,7 +148,7 @@ is then present on canonical `main`. Any head mutation burns prior exact-head ev
   - Test: failed/null/invalid branches remain canonical; reference integrity enforced.
   - Test: cumulative resource/query/result-exposure accounting cannot move backward.
 
-- [ ] **MRL-0108 — Implement `ResearchProcedure` and admission report types**
+- [x] **MRL-0108 — Implement `ResearchProcedure` and admission report types**
   - Depends on: MRL-0107.
   - Test: procedure cannot claim `REVIEWED`/`ADMITTED` without replay evidence,
     representative transfer evidence, negative controls, typed applicability bounds, and
@@ -177,7 +177,6 @@ is then present on canonical `main`. Any head mutation burns prior exact-head ev
 ---
 
 ## MRL-2 — Fixture-only governed loop
-
 - [ ] **MRL-0201 — Build deterministic fixture research surface**
   - Depends on: MRL-0199.
   - Constraint: no real model/data/network/GPU/training.
