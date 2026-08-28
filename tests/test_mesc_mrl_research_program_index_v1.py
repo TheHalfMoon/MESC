@@ -152,8 +152,10 @@ def test_registered_namespace_admits_only_namespaced_question_shape() -> None:
         questions=(namespaced, *_foundational_questions()),
         namespaces=(_namespace(),),
     )
+    projected_questions = projection.to_dict()["questions"]
 
-    assert projection.to_dict()["questions"][0] == namespaced.to_dict()
+    assert isinstance(projected_questions, list)
+    assert projected_questions[0] == namespaced.to_dict()
     assert namespaced.is_foundational is False
 
     with pytest.raises(
