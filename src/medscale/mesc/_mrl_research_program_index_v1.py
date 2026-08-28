@@ -96,10 +96,9 @@ class ResearchQuestionIndexEntry:
         _require_source_path(self.canonical_source_path)
         if self.status not in _ALLOWED_QUESTION_STATUSES:
             raise ResearchProgramIndexError("question status is outside the frozen vocabulary")
-        if not (
-            _FOUNDATIONAL_ID_PATTERN.fullmatch(self.question_id)
-            or _NAMESPACED_QUESTION_PATTERN.fullmatch(self.question_id)
-        ):
+        is_foundational = _FOUNDATIONAL_ID_PATTERN.fullmatch(self.question_id) is not None
+        is_namespaced = _NAMESPACED_QUESTION_PATTERN.fullmatch(self.question_id) is not None
+        if not is_foundational and not is_namespaced:
             raise ResearchProgramIndexError(
                 "question_id is not a canonical MRL research identifier"
             )
@@ -142,9 +141,13 @@ class ResearchProgramNamespace:
             raise ResearchProgramIndexError("canonical_source_paths must be an exact tuple")
         if not self.canonical_source_paths:
             raise ResearchProgramIndexError("canonical_source_paths cannot be empty")
-        if tuple(sorted(self.canonical_source_paths)) != self.canonical_source_paths or len(
-            set(self.canonical_source_paths)
-        ) != len(self.canonical_source_paths):
+        sorted_paths = tuple(sorted(self.canonical_source_paths))
+        unique_path_count = len(set(self.canonical_source_paths))
+        if sorted_paths != self.canonical_source_paths:
+            raise ResearchProgramIndexError(
+                "canonical_source_paths must be sorted and unique"
+            )
+        if unique_path_count != len(self.canonical_source_paths):
             raise ResearchProgramIndexError(
                 "canonical_source_paths must be sorted and unique"
             )
@@ -193,16 +196,26 @@ class ResearchProgramIndexProjection:
             raise ResearchProgramIndexError("sources cannot be empty")
         if any(type(source) is not SourceBinding for source in self.sources):
             raise ResearchProgramIndexError("sources contains an invalid member type")
-        if any(type(question) is not ResearchQuestionIndexEntry for question in self.questions):
+        invalid_question_type = any(
+            type(question) is not ResearchQuestionIndexEntry for question in self.questions
+        )
+        if invalid_question_type:
             raise ResearchProgramIndexError("questions contains an invalid member type")
-        if any(type(namespace) is not ResearchProgramNamespace for namespace in self.namespaces):
+        invalid_namespace_type = any(
+            type(namespace) is not ResearchProgramNamespace for namespace in self.namespaces
+        )
+        if invalid_namespace_type:
             raise ResearchProgramIndexError("namespaces contains an invalid member type")
         _require_unique_sorted_sources(self.sources)
         _require_unique_sorted_questions(self.questions)
         _require_unique_sorted_namespaces(self.namespaces)
         _require_foundational_identity_set(self.questions)
         _require_namespaced_questions_registered(self.questions, self.namespaces)
-        _require_projection_sources_cover_records(self.sources, self.questions, self.namespaces)
+        _require_projection_sources_cover_records(
+            self.sources,
+            self.questions,
+            self.namespaces,
+        )
 
     @property
     def can_authorize(self) -> bool:
@@ -298,8 +311,11 @@ def _require_unique_sorted_namespaces(
 def _require_foundational_identity_set(
     questions: tuple[ResearchQuestionIndexEntry, ...],
 ) -> None:
-    foundational = tuple(question.question_id for question in questions if question.is_foundational)
-    if foundational != ("RQ1", "RQ2", "RQ3", "RQ4", "RQ5", "RQ6", "RQ7"):
+    foundational = tuple(
+        question.question_id for question in questions if question.is_foundational
+    )
+    expected = ("RQ1", "RQ2", "RQ3", "RQ4", "RQ5", "RQ6", "RQ7")
+    if foundational != expected:
         raise ResearchProgramIndexError("projection must preserve foundational RQ1-RQ7 exactly")
 
 
@@ -324,11 +340,11 @@ def _require_projection_sources_cover_records(
 ) -> None:
     source_paths = {source.path for source in sources}
     referenced_paths = {question.canonical_source_path for question in questions}
-    referenced_paths.update(
+    namespace_paths = {
         path for namespace in namespaces for path in namespace.canonical_source_paths
-    )
+    }
+    referenced_paths.update(namespace_paths)
     missing = sorted(referenced_paths - source_paths)
     if missing:
-        raise ResearchProgramIndexError(
-            "projection source bindings omit referenced canonical source: " f"{missing[0]}"
-        )
+        message = "projection source bindings omit referenced canonical source"
+        raise ResearchProgramIndexError(f"{message}: {missing[0]}")
