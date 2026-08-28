@@ -75,6 +75,8 @@ def test_contract_is_deterministic_content_addressed_and_non_authoritative() -> 
 def test_search_tier_derives_exact_frozen_query_exposure_evaluator_and_metric_policy() -> None:
     contract = TierEvaluationContract(objective=_objective(), tier=EvaluationTier.SEARCH)
     payload = contract.to_dict()
+    evaluators = cast(list[dict[str, object]], payload["evaluator_identities"])
+    metrics = cast(list[dict[str, object]], payload["metric_contracts"])
 
     assert payload["objective_sha256"] == _objective().content_sha256
     assert payload["tier"] == 1
@@ -86,10 +88,8 @@ def test_search_tier_derives_exact_frozen_query_exposure_evaluator_and_metric_po
         "max_exposures": 5,
         "allowed_result_fields": ["aggregate_score", "cost_microunits"],
     }
-    assert [item["evaluator_id"] for item in payload["evaluator_identities"]] == [
-        "eval.search"
-    ]
-    assert [item["metric_id"] for item in payload["metric_contracts"]] == ["search-score"]
+    assert [item["evaluator_id"] for item in evaluators] == ["eval.search"]
+    assert [item["metric_id"] for item in metrics] == ["search-score"]
     assert payload["iterative_agent_result_stream"] is True
     assert payload["sealed_item_level_search_context"] is False
 
@@ -97,6 +97,8 @@ def test_search_tier_derives_exact_frozen_query_exposure_evaluator_and_metric_po
 def test_sealed_tier_has_no_adaptive_query_or_iterative_result_stream() -> None:
     contract = TierEvaluationContract(objective=_objective(), tier=EvaluationTier.SEALED)
     payload = contract.to_dict()
+    evaluators = cast(list[dict[str, object]], payload["evaluator_identities"])
+    metrics = cast(list[dict[str, object]], payload["metric_contracts"])
 
     assert payload["interaction_mode"] == TierInteractionMode.SEALED_INDEPENDENT_EVIDENCE.value
     assert payload["adaptive_query_ceiling"] == 0
@@ -105,10 +107,8 @@ def test_sealed_tier_has_no_adaptive_query_or_iterative_result_stream() -> None:
         "max_exposures": 0,
         "allowed_result_fields": [],
     }
-    assert [item["evaluator_id"] for item in payload["evaluator_identities"]] == [
-        "eval.sealed"
-    ]
-    assert [item["metric_id"] for item in payload["metric_contracts"]] == ["safety"]
+    assert [item["evaluator_id"] for item in evaluators] == ["eval.sealed"]
+    assert [item["metric_id"] for item in metrics] == ["safety"]
     assert payload["iterative_agent_result_stream"] is False
     assert payload["sealed_item_level_search_context"] is False
 
