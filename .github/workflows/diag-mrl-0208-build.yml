@@ -1,4 +1,4 @@
-name: Diagnostic MRL-0208 Repair
+name: Diagnostic MRL-0208 External Freeze Repair
 
 on:
   push:
@@ -18,9 +18,9 @@ jobs:
           fetch-depth: 0
 
       - name: Require reviewed starting head
-        run: test "$(git rev-parse HEAD)" = "731bfe5b759966dfde85610b8ca2efae634201da"
+        run: test "$(git rev-parse HEAD)" = "ef96ca02d50f187e3aa415733885821df5e07f1a"
 
-      - name: Bind exact plan-time resource and adaptive ceilings
+      - name: Move original plan freeze binding outside the plan object
         run: |
           python - <<'PY'
           from pathlib import Path
@@ -28,120 +28,56 @@ jobs:
           path = Path("src/medscale/mesc/_mrl_research_experiment_plan_v1.py")
           text = path.read_text()
 
-          old_fields = '''    tier_allowances: tuple[PlanTierAllowance, ...]\n    stop_conditions: tuple[PlanStopCondition, ...]\n    failure_conditions: tuple[PlanFailureCondition, ...]\n\n    def __post_init__(self) -> None:\n        _validate_plan(self)\n'''
-          new_fields = '''    tier_allowances: tuple[PlanTierAllowance, ...]\n    stop_conditions: tuple[PlanStopCondition, ...]\n    failure_conditions: tuple[PlanFailureCondition, ...]\n    _bound_resource_ceiling: tuple[int | None, ...] = field(\n        init=False, repr=False, compare=False\n    )\n    _bound_tier_allowances: tuple[tuple[int, int, int, tuple[str, ...]], ...] = field(\n        init=False, repr=False, compare=False\n    )\n\n    def __post_init__(self) -> None:\n        _validate_plan(self)\n        object.__setattr__(\n            self,\n            "_bound_resource_ceiling",\n            _resource_ceiling_freeze_binding(self.resource_ceiling),\n        )\n        object.__setattr__(\n            self,\n            "_bound_tier_allowances",\n            _tier_allowance_freeze_binding(self.tier_allowances),\n        )\n'''
+          text = text.replace("import re\n", "import re\nimport weakref\n", 1)
+          text = text.replace(
+              "from typing import Final, TypeVar\n",
+              "from typing import Callable, Final, TypeVar\n",
+              1,
+          )
+
+          decorator_anchor = '''@dataclass(frozen=True, slots=True)\nclass ResearchExperimentPlan:\n'''
+          if text.count(decorator_anchor) != 1:
+              raise SystemExit("ResearchExperimentPlan decorator anchor mismatch")
+          text = text.replace(
+              decorator_anchor,
+              '''@dataclass(frozen=True, slots=True, weakref_slot=True)\nclass ResearchExperimentPlan:\n''',
+              1,
+          )
+
+          old_fields = '''    failure_conditions: tuple[PlanFailureCondition, ...]\n    _bound_resource_ceiling: tuple[int | None, ...] = field(\n        init=False, repr=False, compare=False\n    )\n    _bound_tier_allowances: tuple[tuple[int, int, int, tuple[str, ...]], ...] = field(\n        init=False, repr=False, compare=False\n    )\n\n    def __post_init__(self) -> None:\n        _validate_plan(self)\n        object.__setattr__(\n            self,\n            "_bound_resource_ceiling",\n            _resource_ceiling_freeze_binding(self.resource_ceiling),\n        )\n        object.__setattr__(\n            self,\n            "_bound_tier_allowances",\n            _tier_allowance_freeze_binding(self.tier_allowances),\n        )\n'''
+          new_fields = '''    failure_conditions: tuple[PlanFailureCondition, ...]\n\n    def __post_init__(self) -> None:\n        _validate_plan(self)\n        _register_original_plan_budget_bindings(self)\n'''
           if text.count(old_fields) != 1:
-              raise SystemExit("ResearchExperimentPlan field/post-init anchor mismatch")
+              raise SystemExit("object-bound freeze fields anchor mismatch")
           text = text.replace(old_fields, new_fields, 1)
 
-          old_snapshot = '''        _require_exact_instance(\n            self,\n            ResearchExperimentPlan,\n            "research_experiment_plan",\n        )\n        objective = _snapshot_objective(self.objective)\n'''
-          new_snapshot = '''        _require_exact_instance(\n            self,\n            ResearchExperimentPlan,\n            "research_experiment_plan",\n        )\n        _require_original_plan_budget_bindings(self)\n        objective = _snapshot_objective(self.objective)\n'''
-          if text.count(old_snapshot) != 1:
-              raise SystemExit("validated snapshot anchor mismatch")
-          text = text.replace(old_snapshot, new_snapshot, 1)
-
-          anchor = '''\n\ndef _validate_plan(plan: ResearchExperimentPlan) -> None:\n'''
-          helpers = '''\n\ndef _resource_ceiling_freeze_binding(value: ResourceBudget) -> tuple[int | None, ...]:\n    _require_exact_instance(value, ResourceBudget, "resource_ceiling")\n    return (\n        value.wall_clock_seconds,\n        value.compute_seconds,\n        value.input_tokens,\n        value.generated_tokens,\n        value.storage_bytes,\n        value.monetary_cost_microunits,\n        value.max_experiments,\n        value.retries,\n        value.known_failure_retries,\n        value.evaluator_invocations,\n    )\n\n\ndef _tier_allowance_freeze_binding(\n    values: tuple[PlanTierAllowance, ...],\n) -> tuple[tuple[int, int, int, tuple[str, ...]], ...]:\n    _require_exact_instances(values, PlanTierAllowance, "tier_allowances")\n    return tuple(\n        (\n            int(value.tier),\n            value.max_queries,\n            value.max_result_exposures,\n            value.allowed_result_fields,\n        )\n        for value in values\n    )\n\n\ndef _require_original_plan_budget_bindings(plan: ResearchExperimentPlan) -> None:\n    try:\n        bound_resource_ceiling = plan._bound_resource_ceiling\n        bound_tier_allowances = plan._bound_tier_allowances\n    except AttributeError as exc:\n        raise ResearchExperimentPlanError(\n            "research experiment plan is missing its original frozen budget bindings"\n        ) from exc\n\n    if bound_resource_ceiling != _resource_ceiling_freeze_binding(plan.resource_ceiling):\n        raise ResearchExperimentPlanError(\n            "resource_ceiling changed after the research experiment plan was frozen"\n        )\n    if bound_tier_allowances != _tier_allowance_freeze_binding(plan.tier_allowances):\n        raise ResearchExperimentPlanError(\n            "tier_allowances changed after the research experiment plan was frozen"\n        )\n\n\ndef _validate_plan(plan: ResearchExperimentPlan) -> None:\n'''
-          if text.count(anchor) != 1:
-              raise SystemExit("validate plan anchor mismatch")
-          text = text.replace(anchor, helpers, 1)
+          start = text.index("def _resource_ceiling_freeze_binding(")
+          end = text.index("def _validate_plan(plan: ResearchExperimentPlan) -> None:")
+          replacement = '''_ResourceFreezeBinding = tuple[int | None, ...]\n_TierFreezeBinding = tuple[tuple[int, int, int, tuple[str, ...]], ...]\n_PlanFreezeRecord = tuple[\n    weakref.ReferenceType[ResearchExperimentPlan],\n    _ResourceFreezeBinding,\n    _TierFreezeBinding,\n]\n\n\ndef _resource_ceiling_freeze_binding(value: ResourceBudget) -> _ResourceFreezeBinding:\n    _require_exact_instance(value, ResourceBudget, "resource_ceiling")\n    return (\n        value.wall_clock_seconds,\n        value.compute_seconds,\n        value.input_tokens,\n        value.generated_tokens,\n        value.storage_bytes,\n        value.monetary_cost_microunits,\n        value.max_experiments,\n        value.retries,\n        value.known_failure_retries,\n        value.evaluator_invocations,\n    )\n\n\ndef _tier_allowance_freeze_binding(\n    values: tuple[PlanTierAllowance, ...],\n) -> _TierFreezeBinding:\n    _require_exact_instances(values, PlanTierAllowance, "tier_allowances")\n    return tuple(\n        (\n            int(value.tier),\n            value.max_queries,\n            value.max_result_exposures,\n            value.allowed_result_fields,\n        )\n        for value in values\n    )\n\n\ndef _build_plan_freeze_registry() -> tuple[\n    Callable[[ResearchExperimentPlan], None],\n    Callable[[ResearchExperimentPlan], None],\n]:\n    records: dict[int, _PlanFreezeRecord] = {}\n\n    def register(plan: ResearchExperimentPlan) -> None:\n        key = id(plan)\n\n        def discard(reference: weakref.ReferenceType[ResearchExperimentPlan]) -> None:\n            current = records.get(key)\n            if current is not None and current[0] is reference:\n                records.pop(key, None)\n\n        reference = weakref.ref(plan, discard)\n        existing = records.get(key)\n        if existing is not None and existing[0]() is plan:\n            raise ResearchExperimentPlanError(\n                "research experiment plan original budget binding is already registered"\n            )\n        records[key] = (\n            reference,\n            _resource_ceiling_freeze_binding(plan.resource_ceiling),\n            _tier_allowance_freeze_binding(plan.tier_allowances),\n        )\n\n    def require(plan: ResearchExperimentPlan) -> None:\n        record = records.get(id(plan))\n        if record is None or record[0]() is not plan:\n            raise ResearchExperimentPlanError(\n                "research experiment plan is missing its original frozen budget binding"\n            )\n        _, bound_resource_ceiling, bound_tier_allowances = record\n        if bound_resource_ceiling != _resource_ceiling_freeze_binding(plan.resource_ceiling):\n            raise ResearchExperimentPlanError(\n                "resource_ceiling changed after the research experiment plan was frozen"\n            )\n        if bound_tier_allowances != _tier_allowance_freeze_binding(plan.tier_allowances):\n            raise ResearchExperimentPlanError(\n                "tier_allowances changed after the research experiment plan was frozen"\n            )\n\n    return register, require\n\n\n(\n    _register_original_plan_budget_bindings,\n    _require_original_plan_budget_bindings,\n) = _build_plan_freeze_registry()\n\n\n'''
+          text = text[:start] + replacement + text[end:]
           path.write_text(text)
           PY
 
-      - name: Align original MRL-0208 tests with earlier freeze rejection
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-
-          path = Path("tests/test_mesc_mrl_research_experiment_plan_v1.py")
-          text = path.read_text()
-          cases = (
-              (
-                  "test_mrl_0208_compute_ceiling_cannot_be_self_expanded_after_freeze",
-                  'match="compute_seconds exceeds"',
-                  'match="resource_ceiling changed after"',
-              ),
-              (
-                  "test_mrl_0208_query_ceiling_cannot_be_self_expanded_after_freeze",
-                  'match="query allowance exceeds"',
-                  'match="tier_allowances changed after"',
-              ),
-              (
-                  "test_mrl_0208_result_exposure_ceiling_cannot_be_self_expanded_after_freeze",
-                  'match="result exposure exceeds"',
-                  'match="tier_allowances changed after"',
-              ),
-          )
-          for function_name, old, new in cases:
-              start = text.index(f"def {function_name}")
-              end = text.find("\ndef ", start + 1)
-              if end == -1:
-                  end = len(text)
-              block = text[start:end]
-              if old not in block:
-                  raise SystemExit(f"missing expected MRL-0208 message in {function_name}: {old}")
-              block = block.replace(old, new, 1)
-              text = text[:start] + block + text[end:]
-          path.write_text(text)
-          PY
-
-      - name: Add in-envelope hostile rebinding adversarial tests
+      - name: Add hostile binding-poisoning coverage
         run: |
           cat >> tests/test_mesc_mrl_research_experiment_plan_v1.py <<'PY'
 
 
-          def test_mrl_0208_in_envelope_compute_rebinding_fails_original_freeze() -> None:
+          @pytest.mark.parametrize(
+              "private_name",
+              ("_bound_resource_ceiling", "_bound_tier_allowances"),
+          )
+          def test_mrl_0208_plan_cannot_poison_original_freeze_binding(private_name: str) -> None:
               plan = _plan()
-              original_sha256 = plan.content_sha256
-              assert plan.resource_ceiling.compute_seconds == 120
-
               object.__setattr__(
                   plan,
                   "resource_ceiling",
                   replace(plan.resource_ceiling, compute_seconds=121),
               )
 
+              with pytest.raises(AttributeError):
+                  object.__setattr__(plan, private_name, ())
               with pytest.raises(ResearchExperimentPlanError, match=r"changed after.*frozen"):
                   _ = plan.content_sha256
-              assert original_sha256
-
-
-          def test_mrl_0208_in_envelope_query_rebinding_fails_original_freeze() -> None:
-              plan = _plan()
-              original_sha256 = plan.content_sha256
-              assert plan.tier_allowances[0].max_queries == 3
-
-              object.__setattr__(
-                  plan,
-                  "tier_allowances",
-                  (
-                      replace(plan.tier_allowances[0], max_queries=4),
-                      plan.tier_allowances[1],
-                  ),
-              )
-
-              with pytest.raises(ResearchExperimentPlanError, match=r"changed after.*frozen"):
-                  _ = plan.content_sha256
-              assert original_sha256
-
-
-          def test_mrl_0208_in_envelope_exposure_rebinding_fails_original_freeze() -> None:
-              plan = _plan()
-              original_sha256 = plan.content_sha256
-              assert plan.tier_allowances[0].max_result_exposures == 3
-
-              object.__setattr__(
-                  plan,
-                  "tier_allowances",
-                  (
-                      replace(plan.tier_allowances[0], max_result_exposures=4),
-                      plan.tier_allowances[1],
-                  ),
-              )
-
-              with pytest.raises(ResearchExperimentPlanError, match=r"changed after.*frozen"):
-                  _ = plan.content_sha256
-              assert original_sha256
           PY
 
       - name: Install uv
@@ -150,11 +86,11 @@ jobs:
       - name: Sync locked environment
         run: uv sync --frozen
 
-      - name: Format and qualify repaired scope
+      - name: Qualify repaired scope
         run: |
-          uv run ruff format src/medscale/mesc/_mrl_research_experiment_plan_v1.py tests/test_mesc_mrl_research_experiment_plan_v1.py tests/test_mesc_mrl_research_experiment_receipt_v1.py
-          uv run ruff check src/medscale/mesc/_mrl_research_experiment_plan_v1.py tests/test_mesc_mrl_research_experiment_plan_v1.py tests/test_mesc_mrl_research_experiment_receipt_v1.py
-          uv run ruff format --check src/medscale/mesc/_mrl_research_experiment_plan_v1.py tests/test_mesc_mrl_research_experiment_plan_v1.py tests/test_mesc_mrl_research_experiment_receipt_v1.py
+          uv run ruff format src/medscale/mesc/_mrl_research_experiment_plan_v1.py tests/test_mesc_mrl_research_experiment_plan_v1.py
+          uv run ruff check src/medscale/mesc/_mrl_research_experiment_plan_v1.py tests/test_mesc_mrl_research_experiment_plan_v1.py
+          uv run ruff format --check src/medscale/mesc/_mrl_research_experiment_plan_v1.py tests/test_mesc_mrl_research_experiment_plan_v1.py
           uv run mypy --strict src/medscale/mesc/_mrl_research_experiment_plan_v1.py
           uv run pytest -q tests/test_mesc_mrl_research_experiment_plan_v1.py tests/test_mesc_mrl_research_experiment_receipt_v1.py -k 'mrl_0208'
 
@@ -167,6 +103,6 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add src/medscale/mesc/_mrl_research_experiment_plan_v1.py tests/test_mesc_mrl_research_experiment_plan_v1.py
-          git commit -m "fix(mrl): preserve exact frozen plan budgets"
+          git commit -m "fix(mrl): anchor plan freeze outside mutable state"
           git push origin HEAD:refs/heads/test/mrl-0208-budget-escape
           echo "FINAL_HEAD=$(git rev-parse HEAD)"
