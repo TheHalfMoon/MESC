@@ -874,3 +874,21 @@ def test_mrl_0208_in_envelope_exposure_rebinding_fails_original_freeze() -> None
     with pytest.raises(ResearchExperimentPlanError, match=r"changed after.*frozen"):
         _ = plan.content_sha256
     assert original_sha256
+
+
+@pytest.mark.parametrize(
+    "private_name",
+    ("_bound_resource_ceiling", "_bound_tier_allowances"),
+)
+def test_mrl_0208_plan_cannot_poison_original_freeze_binding(private_name: str) -> None:
+    plan = _plan()
+    object.__setattr__(
+        plan,
+        "resource_ceiling",
+        replace(plan.resource_ceiling, compute_seconds=121),
+    )
+
+    with pytest.raises(AttributeError):
+        object.__setattr__(plan, private_name, ())
+    with pytest.raises(ResearchExperimentPlanError, match=r"changed after.*frozen"):
+        _ = plan.content_sha256
