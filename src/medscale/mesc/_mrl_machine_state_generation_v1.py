@@ -47,9 +47,7 @@ __all__ = [
 _REGISTRY_PATH: Final = "docs/research/research_program_registry.md"
 _QUESTIONS_PATH: Final = "docs/research/research_questions.md"
 _ROADMAP_PATH: Final = "ROADMAP.md"
-_RECONCILIATION_PATH: Final = (
-    "docs/strategy/mesc_pr122_post_b0_reconciliation_2026-08-19.md"
-)
+_RECONCILIATION_PATH: Final = "docs/strategy/mesc_pr122_post_b0_reconciliation_2026-08-19.md"
 _TASKS_PATH: Final = "specs/mesc-research-loop-v1/tasks.md"
 _SOURCE_PATHS: Final = (
     _ROADMAP_PATH,
@@ -64,9 +62,7 @@ _OUTPUT_NAMES: Final = (
     "RESEARCH_PROGRAM_INDEX.json",
 )
 _TASK_PATTERN: Final = re.compile(r"^- \[([ x])\] \*\*(MRL-[0-9]{4}) — ")
-_DEPENDENCY_PATTERN: Final = re.compile(
-    r"MRL-([0-9]{4})(?:\.\.(?:MRL-)?([0-9]{4}))?"
-)
+_DEPENDENCY_PATTERN: Final = re.compile(r"MRL-([0-9]{4})(?:\.\.(?:MRL-)?([0-9]{4}))?")
 
 
 class MachineStateGenerationError(ValueError):
@@ -213,9 +209,7 @@ def _parse_foundational_questions(text: str) -> tuple[ResearchQuestionIndexEntry
             )
         )
     result = tuple(sorted(rows, key=lambda item: item.question_id))
-    if tuple(item.question_id for item in result) != tuple(
-        f"RQ{index}" for index in range(1, 8)
-    ):
+    if tuple(item.question_id for item in result) != tuple(f"RQ{index}" for index in range(1, 8)):
         raise MachineStateGenerationError(
             "research registry must preserve exactly one RQ1-RQ7 foundational row"
         )
@@ -387,9 +381,7 @@ def _parse_task_records(text: str) -> tuple[tuple[str, bool, tuple[str, ...]], .
 
 
 def _extract_dependencies(lines: list[str], task_id: str) -> tuple[str, ...]:
-    relevant = "\n".join(
-        line for line in lines if "Depends on:" in line or "Requires:" in line
-    )
+    relevant = "\n".join(line for line in lines if "Depends on:" in line or "Requires:" in line)
     dependencies: set[str] = set()
     for match in _DEPENDENCY_PATTERN.finditer(relevant):
         start = int(match.group(1))
@@ -452,9 +444,7 @@ def _run_git_bytes(root: Path, *arguments: str) -> bytes:
             capture_output=True,
         )
     except (OSError, subprocess.CalledProcessError) as exc:
-        raise MachineStateGenerationError(
-            f"Git command failed: git {' '.join(arguments)}"
-        ) from exc
+        raise MachineStateGenerationError(f"Git command failed: git {' '.join(arguments)}") from exc
     return completed.stdout
 
 
@@ -501,6 +491,4 @@ def _check_outputs(output_dir: Path, render_set: MachineStateRenderSet) -> None:
         )
     )
     if unexpected:
-        raise MachineStateGenerationError(
-            f"unexpected machine-state JSON output: {unexpected[0]}"
-        )
+        raise MachineStateGenerationError(f"unexpected machine-state JSON output: {unexpected[0]}")
