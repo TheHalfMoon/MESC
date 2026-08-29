@@ -110,7 +110,10 @@ def test_contamination_report_from_another_lineage_fails_closed() -> None:
     other_lineage = build_training_example_lineage(_example(source_sha256="c" * 64))
     other_contamination = build_contamination_evidence_report(other_lineage, _checks())
 
-    with pytest.raises(BenchmarkDerivedGenerationError, match="contamination report does not bind"):
+    with pytest.raises(
+        BenchmarkDerivedGenerationError,
+        match="contamination report does not bind",
+    ):
         build_benchmark_derived_generation_flags(
             lineage,
             other_contamination,
@@ -129,7 +132,10 @@ def test_transformation_from_another_lineage_fails_closed() -> None:
         transformation_artifact_sha256="7" * 64,
     )
 
-    with pytest.raises(BenchmarkDerivedGenerationError, match="transformation binding does not bind"):
+    with pytest.raises(
+        BenchmarkDerivedGenerationError,
+        match="transformation binding does not bind",
+    ):
         build_benchmark_derived_generation_flags(
             lineage,
             contamination,
