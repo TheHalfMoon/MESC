@@ -128,7 +128,11 @@ class ReplicationSet:
     max_summary_exposures: int
 
     def __post_init__(self) -> None:
-        if type(self.objective_sha256) is not str or _SHA256.fullmatch(self.objective_sha256) is None:
+        invalid_objective_sha = (
+            type(self.objective_sha256) is not str
+            or _SHA256.fullmatch(self.objective_sha256) is None
+        )
+        if invalid_objective_sha:
             raise ReplicationSetPolicyError("objective_sha256 must be 64 lowercase hex")
         if type(self.members) is not tuple or not self.members:
             raise ReplicationSetPolicyError("members must be a non-empty exact tuple")
@@ -183,7 +187,9 @@ def _exposure_for(
 ) -> TierResultExposure:
     matches = [policy for policy in objective.tier_result_exposure_policy if policy.tier is tier]
     if len(matches) != 1:
-        raise ReplicationSetPolicyError("objective must define exactly one exposure policy per tier")
+        raise ReplicationSetPolicyError(
+            "objective must define exactly one exposure policy per tier"
+        )
     policy = matches[0]
     return TierResultExposure(
         tier=policy.tier,
