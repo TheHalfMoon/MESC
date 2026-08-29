@@ -60,8 +60,7 @@ def _sealed_report(
     return build_sealed_evaluation_evidence_report(contract, request, handoff, evidence)
 
 
-def test_report_is_deterministic_binds_exact_evidence_and_satisfies_all_frozen_floors(
-) -> None:
+def test_report_is_deterministic_binds_exact_evidence_and_satisfies_all_frozen_floors() -> None:
     objective = _objective()
     sealed = _sealed_report(objective)
     first = evaluate_hard_medical_non_regression(objective, sealed)
@@ -136,9 +135,7 @@ def test_objective_and_sealed_report_identity_mismatch_fails_closed() -> None:
     original = _objective()
     changed = replace(
         original,
-        hard_guardrails=(
-            replace(original.hard_guardrails[0], threshold_decimal="0.96"),
-        ),
+        hard_guardrails=(replace(original.hard_guardrails[0], threshold_decimal="0.96"),),
     )
 
     with pytest.raises(HardMedicalNonRegressionError, match="does not match"):
