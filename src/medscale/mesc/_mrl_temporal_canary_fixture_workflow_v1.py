@@ -1,8 +1,9 @@
 """R2-compatible sealed temporal-canary fixture workflow for MRL V1.
 
 MRL-0606 binds one exact MRL-0605 temporal-canary manifest to the canonical pure in-memory
-fixture evaluator and records only content identities plus aggregate fixture metrics. It
-never reads canary content and cannot place a canary into training or research search.
+fixture evaluator and records only content identities plus aggregate fixture metrics. The
+executed fixture candidate must exactly match the sealed canary artifact identity; receipts
+never expose item-level canary content and cannot place a canary into training or search.
 """
 
 from __future__ import annotations
@@ -169,13 +170,19 @@ def run_temporal_canary_fixture_workflow(
     evaluator: FixtureEvaluator,
     parameter_values: tuple[FixtureParameterValue, ...],
 ) -> TemporalCanaryFixtureReceipt:
-    """Evaluate a sealed canary identity on the pure in-memory fixture surface only."""
+    """Evaluate one exact sealed-canary fixture candidate in memory."""
     if type(manifest) is not TemporalCanaryManifest:
-        raise TemporalCanaryFixtureWorkflowError("manifest must be an exact TemporalCanaryManifest")
+        raise TemporalCanaryFixtureWorkflowError(
+            "manifest must be an exact TemporalCanaryManifest"
+        )
     if type(surface) is not FixtureResearchSurface:
-        raise TemporalCanaryFixtureWorkflowError("surface must be an exact FixtureResearchSurface")
+        raise TemporalCanaryFixtureWorkflowError(
+            "surface must be an exact FixtureResearchSurface"
+        )
     if type(evaluator) is not FixtureEvaluator:
-        raise TemporalCanaryFixtureWorkflowError("evaluator must be an exact FixtureEvaluator")
+        raise TemporalCanaryFixtureWorkflowError(
+            "evaluator must be an exact FixtureEvaluator"
+        )
     if type(parameter_values) is not tuple:
         raise TemporalCanaryFixtureWorkflowError("parameter_values must be an exact tuple")
 
@@ -195,6 +202,11 @@ def run_temporal_canary_fixture_workflow(
                 "temporal-canary manifest evaluator identity does not match supplied fixture evaluator"
             )
         candidate: FixtureCandidate = build_fixture_candidate(surface, parameter_values)
+        candidate_sha256 = candidate.content_sha256
+        if manifest_snapshot.canary_artifact_sha256 != candidate_sha256:
+            raise TemporalCanaryFixtureWorkflowError(
+                "temporal-canary manifest artifact identity does not match supplied fixture candidate"
+            )
         evaluation: FixtureEvaluation = evaluate_fixture_candidate(
             surface,
             evaluator,
@@ -211,7 +223,7 @@ def run_temporal_canary_fixture_workflow(
         source_kind=manifest_snapshot.source_kind,
         surface_sha256=surface.content_sha256,
         evaluator_sha256=evaluator_sha256,
-        candidate_sha256=candidate.content_sha256,
+        candidate_sha256=candidate_sha256,
         evaluation_sha256=evaluation.content_sha256,
         metric_id=evaluation.metric_id,
         observed_score=evaluation.score,
