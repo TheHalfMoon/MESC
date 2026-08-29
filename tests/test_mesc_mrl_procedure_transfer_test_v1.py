@@ -117,6 +117,27 @@ def test_transfer_rejects_duplicate_replay_evidence_under_distinct_case_ids() ->
         build_procedure_transfer_test_report(procedure, tuple(cases))
 
 
+def test_transfer_rejects_same_candidate_with_distinct_replay_metadata() -> None:
+    procedure = _candidate_procedure()
+    evaluator = _evaluator()
+    surface = _surface(evaluator)
+    cases = list(_cases())
+    same_candidate_new_replay = replay_procedure_fixture(
+        procedure,
+        surface,
+        evaluator,
+        _values(),
+        expected_score=0,
+        expected_max_score=2,
+    )
+    assert same_candidate_new_replay.content_sha256 != cases[0].replay_receipt.content_sha256
+    assert same_candidate_new_replay.candidate_sha256 == cases[0].replay_receipt.candidate_sha256
+    cases[1] = replace(cases[1], replay_receipt=same_candidate_new_replay)
+
+    with pytest.raises(ProcedureTransferTestError, match="distinct fixture candidate"):
+        build_procedure_transfer_test_report(procedure, tuple(cases))
+
+
 def test_transfer_case_cannot_escape_procedure_applicability() -> None:
     procedure = _candidate_procedure()
     cases = list(_cases())
