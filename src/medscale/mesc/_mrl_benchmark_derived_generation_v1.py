@@ -76,8 +76,7 @@ class BenchmarkDerivedGenerationFlags:
                     "benchmark-derived classification requires an exact benchmark artifact identity"
                 )
         elif (
-            self.classification
-            is BenchmarkDerivedGenerationClassification.NOT_BENCHMARK_DERIVED
+            self.classification is BenchmarkDerivedGenerationClassification.NOT_BENCHMARK_DERIVED
             and self.benchmark_artifact_sha256 is not None
         ):
             raise BenchmarkDerivedGenerationError(
