@@ -92,7 +92,8 @@ def test_multiple_exhausted_ceilings_have_deterministic_block_reasons() -> None:
         )
 
 
-def test_disallowed_adaptive_tier_is_blocked_without_fabricating_budget_exhaustion() -> None:
+def test_disallowed_adaptive_tier_is_blocked_without_fabricating_budget_exhaustion(
+) -> None:
     objective = _objective()
     campaign = _campaign(objective, include_replication=False)
     report = build_adaptive_budget_disposition(objective, campaign)
@@ -151,7 +152,10 @@ def test_exact_contract_and_tier_types_are_required() -> None:
     objective = _all_tier_objective()
     campaign = _campaign(objective)
 
-    with pytest.raises(AdaptiveBudgetExhaustionError, match="exact ResearchObjectiveContract"):
+    with pytest.raises(
+        AdaptiveBudgetExhaustionError,
+        match="exact ResearchObjectiveContract",
+    ):
         build_adaptive_budget_disposition(
             cast(ResearchObjectiveContract, object()),
             campaign,
