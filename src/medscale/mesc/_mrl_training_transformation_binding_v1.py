@@ -144,9 +144,7 @@ def build_training_transformation_binding(
 
 def _require_text(value: object, label: str) -> None:
     if type(value) is not str or not value or value.strip() != value:
-        raise TrainingTransformationBindingError(
-            f"{label} must be canonical non-empty text"
-        )
+        raise TrainingTransformationBindingError(f"{label} must be canonical non-empty text")
     if any(character.isspace() for character in value):
         raise TrainingTransformationBindingError(f"{label} cannot contain whitespace")
 
