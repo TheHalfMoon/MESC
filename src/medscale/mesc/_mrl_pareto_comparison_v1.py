@@ -97,9 +97,7 @@ class ParetoMetricComparison:
             "candidate_evidence_artifact_sha256",
         )
         if type(self.relation) is not MetricComparisonRelation:
-            raise ParetoComparisonError(
-                "relation must be an exact MetricComparisonRelation"
-            )
+            raise ParetoComparisonError("relation must be an exact MetricComparisonRelation")
         expected = _metric_relation(
             self.direction,
             self.reference_value_decimal,
@@ -178,9 +176,7 @@ class ParetoComparisonReport:
                 "admissible Pareto comparison requires at least one frozen metric"
             )
         if self.metrics and self.relation is not _pareto_relation(self.metrics):
-            raise ParetoComparisonError(
-                "relation must equal the deterministic Pareto relation"
-            )
+            raise ParetoComparisonError("relation must equal the deterministic Pareto relation")
 
     @property
     def can_authorize(self) -> bool:
@@ -244,12 +240,8 @@ def compare_pareto_evidence(
     try:
         objective.semantic_dict()
         objective_sha256 = objective.content_sha256
-        reference_hard_gates = evaluate_hard_medical_non_regression(
-            objective, reference_report
-        )
-        candidate_hard_gates = evaluate_hard_medical_non_regression(
-            objective, candidate_report
-        )
+        reference_hard_gates = evaluate_hard_medical_non_regression(objective, reference_report)
+        candidate_hard_gates = evaluate_hard_medical_non_regression(objective, candidate_report)
     except (AttributeError, TypeError, ValueError) as exc:
         raise ParetoComparisonError(
             "objective or sealed evidence failed hard-gate revalidation"
@@ -268,14 +260,10 @@ def compare_pareto_evidence(
         )
 
     metric_contracts = tuple(
-        metric
-        for metric in objective.evaluation_metrics
-        if metric.tier is EvaluationTier.SEALED
+        metric for metric in objective.evaluation_metrics if metric.tier is EvaluationTier.SEALED
     )
     if not metric_contracts:
-        raise ParetoComparisonError(
-            "objective has no frozen Tier 3 metrics for Pareto comparison"
-        )
+        raise ParetoComparisonError("objective has no frozen Tier 3 metrics for Pareto comparison")
 
     reference_metrics = _global_metric_evidence(reference_report)
     candidate_metrics = _global_metric_evidence(candidate_report)
@@ -312,9 +300,7 @@ def _hard_gate_relation(
 def _global_metric_evidence(
     report: SealedEvaluationEvidenceReport,
 ) -> dict[str, SealedMetricEvidence]:
-    values = {
-        item.metric_id: item for item in report.metric_evidence if item.subgroup is None
-    }
+    values = {item.metric_id: item for item in report.metric_evidence if item.subgroup is None}
     if len(values) != sum(item.subgroup is None for item in report.metric_evidence):
         raise ParetoComparisonError("global metric evidence contains duplicate metric ids")
     return values
@@ -380,12 +366,8 @@ def _metric_relation(
 
 
 def _pareto_relation(metrics: tuple[ParetoMetricComparison, ...]) -> ParetoRelation:
-    has_better = any(
-        metric.relation is MetricComparisonRelation.BETTER for metric in metrics
-    )
-    has_worse = any(
-        metric.relation is MetricComparisonRelation.WORSE for metric in metrics
-    )
+    has_better = any(metric.relation is MetricComparisonRelation.BETTER for metric in metrics)
+    has_worse = any(metric.relation is MetricComparisonRelation.WORSE for metric in metrics)
     if not has_better and not has_worse:
         return ParetoRelation.EQUIVALENT
     if has_better and not has_worse:
