@@ -100,6 +100,21 @@ def test_mutated_binding_identity_fails_closed_on_semantic_and_hash_views() -> N
         _ = binding.content_sha256
 
 
+def test_valid_binding_identity_mutation_fails_closed() -> None:
+    lineage = build_training_example_lineage(_example())
+    binding = build_training_transformation_binding(
+        lineage,
+        transformation_kind="normalization",
+        transformation_artifact_sha256="1" * 64,
+    )
+    object.__setattr__(binding, "transformation_artifact_sha256", "f" * 64)
+
+    with pytest.raises(TrainingTransformationBindingError, match="identity changed"):
+        binding.semantic_dict()
+    with pytest.raises(TrainingTransformationBindingError, match="identity changed"):
+        _ = binding.content_sha256
+
+
 def test_mutated_teacher_pair_fails_closed_on_semantic_and_hash_views() -> None:
     lineage = build_training_example_lineage(_example())
     binding = build_training_transformation_binding(
