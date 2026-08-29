@@ -318,6 +318,7 @@ def _build_project_state(
     checked = {task_id for task_id, is_checked, _ in records if is_checked}
     entries: list[ProjectStateEntry] = []
     for task_id, is_checked, dependencies in records:
+        evidence_refs: tuple[str, ...]
         if is_checked:
             lifecycle_state = "CLOSED_CANONICAL"
             evidence_refs = (f"ledger:{tasks.git_blob_sha}:{task_id}",)
