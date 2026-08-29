@@ -59,12 +59,23 @@ def _sealed_report(
             subgroup="critical-cohort",
         ),
     )
-    return build_sealed_evaluation_evidence_report(contract, request, handoff, evidence)
+    return build_sealed_evaluation_evidence_report(
+        contract,
+        request,
+        handoff,
+        evidence,
+    )
 
 
 def test_gate_is_deterministic_evidence_only_and_comparison_eligible_when_all_floors_hold() -> None:
-    first = evaluate_medical_non_regression_gates(_objective(), _sealed_report(_objective()))
-    second = evaluate_medical_non_regression_gates(_objective(), _sealed_report(_objective()))
+    first = evaluate_medical_non_regression_gates(
+        _objective(),
+        _sealed_report(_objective()),
+    )
+    second = evaluate_medical_non_regression_gates(
+        _objective(),
+        _sealed_report(_objective()),
+    )
 
     assert first.semantic_bytes == second.semantic_bytes
     assert first.content_sha256 == second.content_sha256
@@ -148,7 +159,10 @@ def test_objective_identity_mismatch_fails_closed() -> None:
     changed = replace(
         _objective(),
         hard_guardrails=(
-            replace(_objective().hard_guardrails[0], threshold_decimal="0.96"),
+            replace(
+                _objective().hard_guardrails[0],
+                threshold_decimal="0.96",
+            ),
         ),
     )
 
@@ -166,7 +180,10 @@ def test_fabricated_report_missing_frozen_subgroup_evidence_fails_closed() -> No
 
 def test_fabricated_evaluator_artifact_or_metric_binding_fails_closed() -> None:
     original = _sealed_report(_objective())
-    wrong_artifact = replace(original, evaluator_artifacts=(("eval.sealed", "1" * 64),))
+    wrong_artifact = replace(
+        original,
+        evaluator_artifacts=(("eval.sealed", "1" * 64),),
+    )
     wrong_metric = replace(
         original.metric_evidence[0],
         evaluator_id="eval.search",
@@ -183,7 +200,10 @@ def test_fabricated_evaluator_artifact_or_metric_binding_fails_closed() -> None:
 
 
 def test_exact_contract_types_are_required() -> None:
-    with pytest.raises(MedicalNonRegressionGateError, match="exact ResearchObjectiveContract"):
+    with pytest.raises(
+        MedicalNonRegressionGateError,
+        match="exact ResearchObjectiveContract",
+    ):
         evaluate_medical_non_regression_gates(
             cast(ResearchObjectiveContract, object()),
             _sealed_report(_objective()),
