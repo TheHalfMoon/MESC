@@ -60,7 +60,8 @@ def _sealed_report(
     return build_sealed_evaluation_evidence_report(contract, request, handoff, evidence)
 
 
-def test_report_is_deterministic_binds_exact_evidence_and_satisfies_all_frozen_floors() -> None:
+def test_report_is_deterministic_binds_exact_evidence_and_satisfies_all_frozen_floors(
+) -> None:
     objective = _objective()
     sealed = _sealed_report(objective)
     first = evaluate_hard_medical_non_regression(objective, sealed)
@@ -183,7 +184,10 @@ def test_exact_contract_types_are_required() -> None:
     objective = _objective()
     sealed = _sealed_report(objective)
 
-    with pytest.raises(HardMedicalNonRegressionError, match="exact ResearchObjectiveContract"):
+    with pytest.raises(
+        HardMedicalNonRegressionError,
+        match="exact ResearchObjectiveContract",
+    ):
         evaluate_hard_medical_non_regression(
             cast(ResearchObjectiveContract, object()),
             sealed,
