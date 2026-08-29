@@ -81,6 +81,24 @@ class TemporalCanaryFixtureReceipt:
                 "observed scores must satisfy 0 <= score <= max_score"
             )
 
+    def _validated_snapshot(self) -> TemporalCanaryFixtureReceipt:
+        if type(self) is not TemporalCanaryFixtureReceipt:
+            raise TemporalCanaryFixtureWorkflowError(
+                "receipt must be an exact TemporalCanaryFixtureReceipt"
+            )
+        return TemporalCanaryFixtureReceipt(
+            manifest_sha256=self.manifest_sha256,
+            canary_artifact_sha256=self.canary_artifact_sha256,
+            source_kind=self.source_kind,
+            surface_sha256=self.surface_sha256,
+            evaluator_sha256=self.evaluator_sha256,
+            candidate_sha256=self.candidate_sha256,
+            evaluation_sha256=self.evaluation_sha256,
+            metric_id=self.metric_id,
+            observed_score=self.observed_score,
+            observed_max_score=self.observed_max_score,
+        )
+
     @property
     def sealed(self) -> bool:
         return True
@@ -105,7 +123,7 @@ class TemporalCanaryFixtureReceipt:
     def can_authorize(self) -> bool:
         return False
 
-    def semantic_dict(self) -> dict[str, object]:
+    def _semantic_dict_validated(self) -> dict[str, object]:
         return {
             "can_authorize": False,
             "can_enter_search": False,
@@ -126,6 +144,10 @@ class TemporalCanaryFixtureReceipt:
             "surface_sha256": self.surface_sha256,
             "workflow_mode": "R2_FIXTURE_ONLY",
         }
+
+    def semantic_dict(self) -> dict[str, object]:
+        snapshot = TemporalCanaryFixtureReceipt._validated_snapshot(self)
+        return snapshot._semantic_dict_validated()
 
     @property
     def semantic_bytes(self) -> bytes:
