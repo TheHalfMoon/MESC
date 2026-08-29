@@ -78,9 +78,7 @@ class AdaptiveTierDisposition:
         if type(self.tier) is not EvaluationTier or self.tier not in _ADAPTIVE_TIERS:
             raise AdaptiveBudgetExhaustionError("tier must be SEARCH or REPLICATION")
         if type(self.state) is not AdaptiveTierUseState:
-            raise AdaptiveBudgetExhaustionError(
-                "state must be an exact AdaptiveTierUseState"
-            )
+            raise AdaptiveBudgetExhaustionError("state must be an exact AdaptiveTierUseState")
         if type(self.reasons) is not tuple:
             raise AdaptiveBudgetExhaustionError("reasons must be an exact tuple")
         if any(type(reason) is not AdaptiveBudgetBlockReason for reason in self.reasons):
@@ -95,9 +93,7 @@ class AdaptiveTierDisposition:
         )
         if self.state is AdaptiveTierUseState.AVAILABLE:
             if self.reasons:
-                raise AdaptiveBudgetExhaustionError(
-                    "AVAILABLE tier cannot carry block reasons"
-                )
+                raise AdaptiveBudgetExhaustionError("AVAILABLE tier cannot carry block reasons")
             if self.queries_remaining == 0 or self.result_exposures_remaining == 0:
                 raise AdaptiveBudgetExhaustionError(
                     "AVAILABLE tier must retain query and exposure capacity"
@@ -140,9 +136,7 @@ class AdaptiveBudgetDispositionReport:
     @property
     def blocked_tiers(self) -> tuple[EvaluationTier, ...]:
         """Return every adaptive tier that cannot be used further."""
-        return tuple(
-            item.tier for item in self.tiers if item.state is AdaptiveTierUseState.BLOCKED
-        )
+        return tuple(item.tier for item in self.tiers if item.state is AdaptiveTierUseState.BLOCKED)
 
     @property
     def can_authorize(self) -> bool:
@@ -196,18 +190,14 @@ def build_adaptive_budget_disposition(
 ) -> AdaptiveBudgetDispositionReport:
     """Derive fail-closed adaptive-use state from exact frozen campaign accounting."""
     if type(objective) is not ResearchObjectiveContract:
-        raise AdaptiveBudgetExhaustionError(
-            "objective must be an exact ResearchObjectiveContract"
-        )
+        raise AdaptiveBudgetExhaustionError("objective must be an exact ResearchObjectiveContract")
     if type(campaign) is not ResearchCampaign:
         raise AdaptiveBudgetExhaustionError("campaign must be an exact ResearchCampaign")
 
     try:
         accounting = build_adaptive_campaign_accounting(objective, campaign)
     except (AttributeError, TypeError, ValueError) as exc:
-        raise AdaptiveBudgetExhaustionError(
-            "adaptive campaign accounting failed closed"
-        ) from exc
+        raise AdaptiveBudgetExhaustionError("adaptive campaign accounting failed closed") from exc
 
     if objective.budget_exhaustion_disposition is not BudgetExhaustionDisposition.BLOCKED:
         raise AdaptiveBudgetExhaustionError(
@@ -215,9 +205,7 @@ def build_adaptive_budget_disposition(
         )
 
     allowed_tiers = set(objective.evaluation_tier_policy.allowed_tiers)
-    dispositions = tuple(
-        _derive_tier_disposition(item, allowed_tiers) for item in accounting.tiers
-    )
+    dispositions = tuple(_derive_tier_disposition(item, allowed_tiers) for item in accounting.tiers)
     return AdaptiveBudgetDispositionReport(
         objective_sha256=accounting.objective_sha256,
         campaign_sha256=accounting.campaign_sha256,
@@ -238,9 +226,7 @@ def require_adaptive_tier_available(
     disposition = next(item for item in report.tiers if item.tier is tier)
     if disposition.state is AdaptiveTierUseState.BLOCKED:
         reasons = ",".join(reason.value for reason in disposition.reasons)
-        raise AdaptiveBudgetExhaustionError(
-            f"adaptive tier {tier.name} is BLOCKED: {reasons}"
-        )
+        raise AdaptiveBudgetExhaustionError(f"adaptive tier {tier.name} is BLOCKED: {reasons}")
     return disposition
 
 
@@ -269,9 +255,7 @@ def _derive_tier_disposition(
 
 def _require_nonnegative_int(value: object, label: str) -> None:
     if type(value) is not int or value < 0:
-        raise AdaptiveBudgetExhaustionError(
-            f"{label} must be a non-negative exact integer"
-        )
+        raise AdaptiveBudgetExhaustionError(f"{label} must be a non-negative exact integer")
 
 
 def _require_sha256(value: object, label: str) -> None:
