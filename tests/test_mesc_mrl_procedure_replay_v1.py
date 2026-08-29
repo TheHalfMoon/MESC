@@ -109,6 +109,46 @@ def test_receipt_disposition_cannot_disagree_with_observed_evidence() -> None:
         )
 
 
+def test_mutated_receipt_identity_fails_closed_on_semantic_and_hash_views() -> None:
+    procedure = _candidate_procedure()
+    evaluator = _evaluator()
+    surface = _surface(evaluator)
+    receipt = replay_procedure_fixture(
+        procedure,
+        surface,
+        evaluator,
+        _values(),
+        expected_score=1,
+        expected_max_score=2,
+    )
+    object.__setattr__(receipt, "evaluation_sha256", "invalid")
+
+    with pytest.raises(ProcedureReplayError, match="64 lowercase hex"):
+        receipt.semantic_dict()
+    with pytest.raises(ProcedureReplayError, match="64 lowercase hex"):
+        _ = receipt.content_sha256
+
+
+def test_mutated_receipt_disposition_fails_closed_on_semantic_and_hash_views() -> None:
+    procedure = _candidate_procedure()
+    evaluator = _evaluator()
+    surface = _surface(evaluator)
+    receipt = replay_procedure_fixture(
+        procedure,
+        surface,
+        evaluator,
+        _values(),
+        expected_score=1,
+        expected_max_score=2,
+    )
+    object.__setattr__(receipt, "disposition", ProcedureReplayDisposition.MISMATCH)
+
+    with pytest.raises(ProcedureReplayError, match="does not match"):
+        receipt.semantic_dict()
+    with pytest.raises(ProcedureReplayError, match="does not match"):
+        _ = receipt.content_sha256
+
+
 def test_mutated_procedure_fails_closed_before_replay_evidence() -> None:
     procedure = _candidate_procedure()
     object.__setattr__(procedure, "procedure_id", "INVALID")
