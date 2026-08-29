@@ -170,8 +170,7 @@ def test_reference_dominance_and_equivalence_are_deterministic() -> None:
         is ParetoRelation.REFERENCE_DOMINATES
     )
     assert (
-        compare_pareto_evidence(objective, reference, equal).relation
-        is ParetoRelation.EQUIVALENT
+        compare_pareto_evidence(objective, reference, equal).relation is ParetoRelation.EQUIVALENT
     )
 
 
@@ -224,12 +223,8 @@ def test_hard_gate_failure_is_resolved_before_soft_comparison_for_either_side() 
         subgroup_safety="0.89",
     )
 
-    reference_rejected = compare_pareto_evidence(
-        objective, failed_reference, passed_candidate
-    )
-    both_rejected = compare_pareto_evidence(
-        objective, failed_reference, failed_candidate
-    )
+    reference_rejected = compare_pareto_evidence(objective, failed_reference, passed_candidate)
+    both_rejected = compare_pareto_evidence(objective, failed_reference, failed_candidate)
 
     assert reference_rejected.relation is ParetoRelation.REFERENCE_REJECTED_HARD_GATE
     assert reference_rejected.metrics == ()
@@ -273,9 +268,7 @@ def test_mismatched_objective_or_evidence_fails_closed() -> None:
     objective = _multi_objective()
     changed = replace(
         objective,
-        hard_guardrails=(
-            replace(objective.hard_guardrails[0], threshold_decimal="0.96"),
-        ),
+        hard_guardrails=(replace(objective.hard_guardrails[0], threshold_decimal="0.96"),),
     )
     reference = _sealed_report(
         objective,
