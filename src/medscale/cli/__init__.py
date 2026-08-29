@@ -19,6 +19,7 @@ from medscale.cli import fhir as fhir_cli
 from medscale.cli import mesc_b1_eval as mesc_b1_eval_cli
 from medscale.cli import mesc_b1_evidence as mesc_b1_evidence_cli
 from medscale.cli import mesc_eval as mesc_eval_cli
+from medscale.cli import mesc_machine_state as mesc_machine_state_cli
 from medscale.cli import research as research_cli
 from medscale.cli import screen as screen_cli
 
@@ -34,6 +35,7 @@ _SUBCOMMANDS = {
     "mesc-eval": mesc_eval_cli.main,
     "mesc-b1-eval": mesc_b1_eval_cli.main,
     "mesc-b1-evidence": mesc_b1_evidence_cli.main,
+    "mesc-machine-state": mesc_machine_state_cli.main,
 }
 
 
@@ -66,6 +68,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         print("  mesc-eval deterministic B0 zero-shot evaluation (research baseline)")
         print("  mesc-b1-eval deterministic B1 evidence-cued baseline (research)")
         print("  mesc-b1-evidence deterministic B1 evidence tooling: subset/annotate/cues")
+        print("  mesc-machine-state generate/check deterministic MRL state projections")
         print("\nrun `medscale <command> --help` for options and examples;")
         print("new here? start with docs/guides/research_quickstart.md")
         return 0 if args else 1
