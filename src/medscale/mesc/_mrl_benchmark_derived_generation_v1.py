@@ -222,6 +222,14 @@ def build_benchmark_derived_generation_flags(
 def _snapshot_contamination_report(
     report: ContaminationEvidenceReport,
 ) -> ContaminationEvidenceReport:
+    if type(report.checks) is not tuple:
+        raise BenchmarkDerivedGenerationError(
+            "contamination report checks must remain an exact tuple"
+        )
+    if any(type(item) is not ContaminationCheckEvidence for item in report.checks):
+        raise BenchmarkDerivedGenerationError(
+            "contamination report checks contains an invalid item type"
+        )
     checks = tuple(
         ContaminationCheckEvidence(
             kind=item.kind,
