@@ -7,9 +7,9 @@ from typing import cast
 import pytest
 
 from medscale.mesc._mrl_adaptive_budget_exhaustion_v1 import (
+    AdaptiveBudgetBlockReason,
     AdaptiveBudgetEnforcementError,
     AdaptiveBudgetEnforcementReport,
-    AdaptiveBudgetBlockReason,
     AdaptiveTierDisposition,
     enforce_adaptive_budget_exhaustion,
 )
@@ -140,7 +140,10 @@ def test_usage_beyond_ceiling_fails_closed_through_mrl_0308_accounting() -> None
 def test_exact_objective_and_campaign_types_are_required() -> None:
     objective = _all_tier_objective()
 
-    with pytest.raises(AdaptiveBudgetEnforcementError, match="exact ResearchObjectiveContract"):
+    with pytest.raises(
+        AdaptiveBudgetEnforcementError,
+        match="exact ResearchObjectiveContract",
+    ):
         enforce_adaptive_budget_exhaustion(
             cast(ResearchObjectiveContract, object()),
             _campaign(objective),
