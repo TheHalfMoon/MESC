@@ -70,8 +70,22 @@ class CampaignHistoryEntry:
             allow_empty=True,
         )
 
-    def to_dict(self) -> dict[str, object]:
-        """Return deterministic entry semantics."""
+    def _validated_snapshot(self) -> CampaignHistoryEntry:
+        if type(self) is not CampaignHistoryEntry:
+            raise CampaignHistoryProjectionError(
+                "entry must be an exact CampaignHistoryEntry"
+            )
+        return CampaignHistoryEntry(
+            sequence_index=self.sequence_index,
+            campaign_sha256=self.campaign_sha256,
+            parent_campaign_sha256=self.parent_campaign_sha256,
+            node_ids=self.node_ids,
+            branch_outcome_node_ids=self.branch_outcome_node_ids,
+            current_frontier_node_ids=self.current_frontier_node_ids,
+            procedure_candidate_node_ids=self.procedure_candidate_node_ids,
+        )
+
+    def _to_dict_validated(self) -> dict[str, object]:
         return {
             "branch_outcome_node_ids": list(self.branch_outcome_node_ids),
             "campaign_sha256": self.campaign_sha256,
@@ -81,6 +95,11 @@ class CampaignHistoryEntry:
             "procedure_candidate_node_ids": list(self.procedure_candidate_node_ids),
             "sequence_index": self.sequence_index,
         }
+
+    def to_dict(self) -> dict[str, object]:
+        """Return freshly revalidated deterministic entry semantics."""
+        snapshot = CampaignHistoryEntry._validated_snapshot(self)
+        return snapshot._to_dict_validated()
 
 
 @dataclass(frozen=True, slots=True)
@@ -99,14 +118,17 @@ class CampaignHistoryProjection:
         if any(type(entry) is not CampaignHistoryEntry for entry in self.entries):
             raise CampaignHistoryProjectionError("entries contains an invalid item type")
 
-        expected_indexes = tuple(range(len(self.entries)))
-        observed_indexes = tuple(entry.sequence_index for entry in self.entries)
+        entry_snapshots = tuple(
+            CampaignHistoryEntry._validated_snapshot(entry) for entry in self.entries
+        )
+        expected_indexes = tuple(range(len(entry_snapshots)))
+        observed_indexes = tuple(entry.sequence_index for entry in entry_snapshots)
         if observed_indexes != expected_indexes:
             raise CampaignHistoryProjectionError("entries must use contiguous oldest-first indexes")
 
         seen_hashes: set[str] = set()
         previous_sha256: str | None = None
-        for entry in self.entries:
+        for entry in entry_snapshots:
             if entry.campaign_sha256 in seen_hashes:
                 raise CampaignHistoryProjectionError(
                     "campaign history cannot repeat a snapshot hash"
@@ -118,10 +140,29 @@ class CampaignHistoryProjection:
             seen_hashes.add(entry.campaign_sha256)
             previous_sha256 = entry.campaign_sha256
 
+    def _validated_snapshot(self) -> CampaignHistoryProjection:
+        if type(self) is not CampaignHistoryProjection:
+            raise CampaignHistoryProjectionError(
+                "projection must be an exact CampaignHistoryProjection"
+            )
+        if type(self.entries) is not tuple:
+            raise CampaignHistoryProjectionError("entries must be an exact tuple")
+        return CampaignHistoryProjection(
+            campaign_id=self.campaign_id,
+            objective_sha256=self.objective_sha256,
+            entries=tuple(
+                CampaignHistoryEntry._validated_snapshot(entry) for entry in self.entries
+            ),
+        )
+
+    def _latest_campaign_sha256_validated(self) -> str:
+        return self.entries[-1].campaign_sha256
+
     @property
     def latest_campaign_sha256(self) -> str:
         """Return the canonical identity of the newest represented campaign snapshot."""
-        return self.entries[-1].campaign_sha256
+        snapshot = CampaignHistoryProjection._validated_snapshot(self)
+        return snapshot._latest_campaign_sha256_validated()
 
     @property
     def can_authorize(self) -> bool:
@@ -138,17 +179,21 @@ class CampaignHistoryProjection:
         """Return canonical bytes for the non-authoritative projection."""
         return canonical_semantic_bytes(self.semantic_dict())
 
-    def semantic_dict(self) -> dict[str, object]:
-        """Return complete derived-view semantics without authority amplification."""
+    def _semantic_dict_validated(self) -> dict[str, object]:
         return {
             "campaign_id": self.campaign_id,
             "can_authorize": False,
-            "entries": [entry.to_dict() for entry in self.entries],
+            "entries": [entry._to_dict_validated() for entry in self.entries],
             "format": "MRL-CAMPAIGN-HISTORY-PROJECTION-V1",
-            "latest_campaign_sha256": self.latest_campaign_sha256,
+            "latest_campaign_sha256": self._latest_campaign_sha256_validated(),
             "objective_sha256": self.objective_sha256,
             "projection_kind": "DERIVED_NON_AUTHORITATIVE",
         }
+
+    def semantic_dict(self) -> dict[str, object]:
+        """Return complete derived-view semantics after exact revalidation."""
+        snapshot = CampaignHistoryProjection._validated_snapshot(self)
+        return snapshot._semantic_dict_validated()
 
     def to_dict(self) -> dict[str, object]:
         """Return projection semantics plus its derived identity."""
