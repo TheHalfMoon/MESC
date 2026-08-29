@@ -24,7 +24,7 @@ def _policy() -> Tier1ExposurePolicy:
         tier_contract=TierEvaluationContract(
             objective=_objective(),
             tier=EvaluationTier.SEARCH,
-        )
+        ),
     )
 
 
@@ -86,7 +86,7 @@ def test_policy_identity_tracks_material_objective_budget_changes() -> None:
         tier_contract=TierEvaluationContract(
             objective=changed_objective,
             tier=EvaluationTier.SEARCH,
-        )
+        ),
     )
 
     assert original.query_ceiling == 5
@@ -102,7 +102,7 @@ def test_non_search_contract_and_fabricated_usage_fail_closed() -> None:
             tier_contract=TierEvaluationContract(
                 objective=_objective(),
                 tier=EvaluationTier.SEALED,
-            )
+            ),
         )
 
     with pytest.raises(Tier1ExposureError, match="usage must be an exact"):
