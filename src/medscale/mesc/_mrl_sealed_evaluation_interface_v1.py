@@ -12,6 +12,8 @@ execution, training, promotion, deployment, release, or clinical authority.
 from __future__ import annotations
 
 import re
+import weakref
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Final
 
@@ -37,7 +39,69 @@ class SealedEvaluationInterfaceError(ValueError):
     """Fail-closed error for the MRL-0304 sealed boundary."""
 
 
-@dataclass(frozen=True, slots=True)
+def _make_request_identity_registry() -> tuple[
+    Callable[[SealedEvaluationRequest, str], None],
+    Callable[[SealedEvaluationRequest], str],
+]:
+    identities: dict[int, str] = {}
+
+    def remove(key: int) -> None:
+        identities.pop(key, None)
+
+    def store(value: SealedEvaluationRequest, content_sha256: str) -> None:
+        key = id(value)
+        if key in identities:
+            raise SealedEvaluationInterfaceError(
+                "sealed request construction identity already exists"
+            )
+        identities[key] = content_sha256
+        weakref.finalize(value, remove, key)
+
+    def load(value: SealedEvaluationRequest) -> str:
+        identity = identities.get(id(value))
+        if identity is None:
+            raise SealedEvaluationInterfaceError(
+                "sealed request construction identity is missing"
+            )
+        return identity
+
+    return store, load
+
+
+def _make_handoff_identity_registry() -> tuple[
+    Callable[[SealedEvaluationHandoff, str], None],
+    Callable[[SealedEvaluationHandoff], str],
+]:
+    identities: dict[int, str] = {}
+
+    def remove(key: int) -> None:
+        identities.pop(key, None)
+
+    def store(value: SealedEvaluationHandoff, content_sha256: str) -> None:
+        key = id(value)
+        if key in identities:
+            raise SealedEvaluationInterfaceError(
+                "sealed handoff construction identity already exists"
+            )
+        identities[key] = content_sha256
+        weakref.finalize(value, remove, key)
+
+    def load(value: SealedEvaluationHandoff) -> str:
+        identity = identities.get(id(value))
+        if identity is None:
+            raise SealedEvaluationInterfaceError(
+                "sealed handoff construction identity is missing"
+            )
+        return identity
+
+    return store, load
+
+
+_store_request_identity, _load_request_identity = _make_request_identity_registry()
+_store_handoff_identity, _load_handoff_identity = _make_handoff_identity_registry()
+
+
+@dataclass(frozen=True, slots=True, weakref_slot=True)
 class SealedEvaluationRequest:
     """Content-addressed request containing identities only, never sealed item content."""
 
@@ -51,18 +115,30 @@ class SealedEvaluationRequest:
         _require_sha256(self.candidate_sha256, "candidate_sha256")
         _require_sha256(self.source_receipt_sha256, "source_receipt_sha256")
         _require_sorted_unique_text(self.evaluator_ids, "evaluator_ids")
+        _store_request_identity(
+            self,
+            derive_content_sha256(self._semantic_dict_validated()),
+        )
 
     def _validated_snapshot(self) -> SealedEvaluationRequest:
         if type(self) is not SealedEvaluationRequest:
             raise SealedEvaluationInterfaceError(
                 "request must be an exact SealedEvaluationRequest"
             )
-        return SealedEvaluationRequest(
+        bound_content_sha256 = _load_request_identity(self)
+        _require_sha256(bound_content_sha256, "bound request content_sha256")
+        snapshot = SealedEvaluationRequest(
             tier_contract_sha256=self.tier_contract_sha256,
             candidate_sha256=self.candidate_sha256,
             source_receipt_sha256=self.source_receipt_sha256,
             evaluator_ids=self.evaluator_ids,
         )
+        current_content_sha256 = derive_content_sha256(snapshot._semantic_dict_validated())
+        if current_content_sha256 != bound_content_sha256:
+            raise SealedEvaluationInterfaceError(
+                "sealed request identity changed after construction"
+            )
+        return snapshot
 
     def _semantic_dict_validated(self) -> dict[str, object]:
         return {
@@ -97,7 +173,7 @@ class SealedEvaluationRequest:
         return data
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, weakref_slot=True)
 class SealedEvaluationHandoff:
     """Opaque sealed-evidence reference delivered outside the adaptive result stream."""
 
@@ -107,16 +183,28 @@ class SealedEvaluationHandoff:
     def __post_init__(self) -> None:
         _require_sha256(self.request_sha256, "request_sha256")
         _require_sha256(self.sealed_evidence_ref_sha256, "sealed_evidence_ref_sha256")
+        _store_handoff_identity(
+            self,
+            derive_content_sha256(self._semantic_dict_validated()),
+        )
 
     def _validated_snapshot(self) -> SealedEvaluationHandoff:
         if type(self) is not SealedEvaluationHandoff:
             raise SealedEvaluationInterfaceError(
                 "handoff must be an exact SealedEvaluationHandoff"
             )
-        return SealedEvaluationHandoff(
+        bound_content_sha256 = _load_handoff_identity(self)
+        _require_sha256(bound_content_sha256, "bound handoff content_sha256")
+        snapshot = SealedEvaluationHandoff(
             request_sha256=self.request_sha256,
             sealed_evidence_ref_sha256=self.sealed_evidence_ref_sha256,
         )
+        current_content_sha256 = derive_content_sha256(snapshot._semantic_dict_validated())
+        if current_content_sha256 != bound_content_sha256:
+            raise SealedEvaluationInterfaceError(
+                "sealed handoff identity changed after construction"
+            )
+        return snapshot
 
     def _semantic_dict_validated(self) -> dict[str, object]:
         return {
