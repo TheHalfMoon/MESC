@@ -94,6 +94,20 @@ def test_policy_identity_tracks_material_objective_budget_changes() -> None:
     assert original.to_dict()["tier_contract_sha256"] != changed.to_dict()["tier_contract_sha256"]
 
 
+def test_post_construction_objective_mutation_cannot_expand_bound_tier1_budget() -> None:
+    policy = _policy()
+    object.__setattr__(
+        policy.tier_contract.objective.adaptive_query_budget,
+        "tier_1_queries",
+        50,
+    )
+
+    with pytest.raises(Tier1ExposureError, match="identity changed after policy creation"):
+        _ = policy.query_ceiling
+    with pytest.raises(Tier1ExposureError, match="identity changed after policy creation"):
+        consume_tier1_query(policy, Tier1ExposureUsage())
+
+
 def test_non_search_contract_and_fabricated_usage_fail_closed() -> None:
     with pytest.raises(Tier1ExposureError, match="requires SEARCH tier"):
         Tier1ExposurePolicy(
