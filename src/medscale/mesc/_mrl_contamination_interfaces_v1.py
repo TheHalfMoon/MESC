@@ -135,9 +135,7 @@ class ContaminationEvidenceReport:
     def disposition(self) -> ContaminationDisposition:
         if any(item.disposition is ContaminationDisposition.BLOCKED for item in self.checks):
             return ContaminationDisposition.BLOCKED
-        if any(
-            item.disposition is ContaminationDisposition.INDETERMINATE for item in self.checks
-        ):
+        if any(item.disposition is ContaminationDisposition.INDETERMINATE for item in self.checks):
             return ContaminationDisposition.INDETERMINATE
         return ContaminationDisposition.CLEAR
 
@@ -179,9 +177,7 @@ def build_contamination_evidence_report(
 ) -> ContaminationEvidenceReport:
     """Bind supplied detector evidence to one freshly revalidated lineage identity."""
     if type(lineage) is not TrainingExampleLineageContract:
-        raise ContaminationInterfaceError(
-            "lineage must be an exact TrainingExampleLineageContract"
-        )
+        raise ContaminationInterfaceError("lineage must be an exact TrainingExampleLineageContract")
     try:
         rebuilt = build_training_example_lineage(lineage.example)
     except TrainingExampleLineageError as exc:
