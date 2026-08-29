@@ -132,8 +132,8 @@ def test_replay_rejects_wrong_types_and_invalid_expected_scores() -> None:
     surface = _surface(evaluator)
 
     with pytest.raises(ProcedureReplayError, match="exact ResearchProcedure"):
-        replay_procedure_fixture(  # type: ignore[arg-type]
-            object(),
+        replay_procedure_fixture(
+            object(),  # type: ignore[arg-type]
             surface,
             evaluator,
             _values(),
