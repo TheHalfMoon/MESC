@@ -406,28 +406,28 @@ is then present on canonical `main`. Any head mutation burns prior exact-head ev
 
 ## MRL-7 — Machine-readable project state
 
-- [ ] **MRL-0701 — Implement `RESEARCH_PROGRAM_INDEX.json` projection**
+- [x] **MRL-0701 — Implement `RESEARCH_PROGRAM_INDEX.json` projection**
   - Depends on: MRL-0006.
 
-- [ ] **MRL-0702 — Implement `CAPABILITY_MATRIX.json` projection**
+- [x] **MRL-0702 — Implement `CAPABILITY_MATRIX.json` projection**
   - Depends on: MRL-0007.
 
-- [ ] **MRL-0703 — Implement `PROJECT_STATE.json` projection**
+- [x] **MRL-0703 — Implement `PROJECT_STATE.json` projection**
   - Depends on: MRL-0701, MRL-0702.
 
-- [ ] **MRL-0704 — Add deterministic generation/check command**
+- [x] **MRL-0704 — Add deterministic generation/check command**
   - Depends on: MRL-0703.
   - Acceptance: projections bind exact repository commit plus canonical source hashes.
 
-- [ ] **MRL-0705 — Add CI drift and manual-edit check**
+- [x] **MRL-0705 — Add CI drift and manual-edit check**
   - Depends on: MRL-0704.
   - Acceptance: stale or manually edited projections fail closed.
 
-- [ ] **MRL-0706 — Reconcile human-readable roadmap status**
+- [x] **MRL-0706 — Reconcile human-readable roadmap status**
   - Depends on: MRL-0705.
   - Acceptance: roadmap is explanatory, not a competing live state authority.
 
-- [ ] **MRL-0707 — Add projection-precedence adversarial test**
+- [x] **MRL-0707 — Add projection-precedence adversarial test**
   - Depends on: MRL-0705, MRL-0706.
   - Must prove: when narrative, projection, and canonical gate evidence conflict,
     downstream eligibility rejects stale projection/narrative claims and follows live
@@ -435,7 +435,7 @@ is then present on canonical `main`. Any head mutation burns prior exact-head ev
 
 ### MRL-7 gate
 
-- [ ] **MRL-0799 — Machine-state exact-head qualification**
+- [x] **MRL-0799 — Machine-state exact-head qualification**
   - Requires: MRL-0701..0707.
   - Exit: `MESC_MACHINE_STATE_READY`.
 
