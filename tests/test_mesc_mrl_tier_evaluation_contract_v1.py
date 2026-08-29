@@ -161,7 +161,7 @@ def test_disallowed_tier_fails_closed() -> None:
         TierEvaluationContract(objective=_objective(), tier=EvaluationTier.REPLICATION)
 
 
-def test_material_objective_policy_change_changes_tier_contract_identity() -> None:
+def test_material_objective_policy_change_changes_new_tier_contract_identity() -> None:
     original = TierEvaluationContract(objective=_objective(), tier=EvaluationTier.SEARCH)
     changed_objective = replace(
         _objective(),
@@ -174,8 +174,25 @@ def test_material_objective_policy_change_changes_tier_contract_identity() -> No
     assert changed.to_dict()["adaptive_query_ceiling"] == 4
 
 
+def test_existing_contract_rejects_post_construction_objective_identity_drift() -> None:
+    contract = TierEvaluationContract(objective=_objective(), tier=EvaluationTier.SEARCH)
+    original_sha256 = contract.content_sha256
+    object.__setattr__(
+        contract.objective.adaptive_query_budget,
+        "tier_1_queries",
+        50,
+    )
+
+    with pytest.raises(TierEvaluationContractError, match="identity changed after tier contract"):
+        contract.semantic_dict()
+    with pytest.raises(TierEvaluationContractError, match="identity changed after tier contract"):
+        _ = contract.content_sha256
+    assert original_sha256
+
+
 def test_callers_cannot_supply_replacement_budget_evaluator_or_exposure_fields() -> None:
-    assert tuple(field.name for field in fields(TierEvaluationContract)) == ("objective", "tier")
+    init_fields = tuple(field.name for field in fields(TierEvaluationContract) if field.init)
+    assert init_fields == ("objective", "tier")
 
 
 def test_exact_objective_and_tier_types_are_required() -> None:
