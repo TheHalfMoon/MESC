@@ -61,6 +61,21 @@ class TrainingTransformationBinding:
                 "teacher model and teacher output identities must be supplied together"
             )
 
+    def _validated_snapshot(self) -> TrainingTransformationBinding:
+        if type(self) is not TrainingTransformationBinding:
+            raise TrainingTransformationBindingError(
+                "binding must be an exact TrainingTransformationBinding"
+            )
+        return TrainingTransformationBinding(
+            training_lineage_sha256=self.training_lineage_sha256,
+            source_sha256=self.source_sha256,
+            transformation_kind=self.transformation_kind,
+            transformation_artifact_sha256=self.transformation_artifact_sha256,
+            prompt_template_sha256=self.prompt_template_sha256,
+            teacher_model_sha256=self.teacher_model_sha256,
+            teacher_output_sha256=self.teacher_output_sha256,
+        )
+
     @property
     def can_access_source(self) -> bool:
         return False
@@ -85,7 +100,7 @@ class TrainingTransformationBinding:
     def content_sha256(self) -> str:
         return derive_content_sha256(self.semantic_dict())
 
-    def semantic_dict(self) -> dict[str, object]:
+    def _semantic_dict_validated(self) -> dict[str, object]:
         return {
             "can_access_source": False,
             "can_authorize_model_promotion": False,
@@ -100,6 +115,10 @@ class TrainingTransformationBinding:
             "transformation_artifact_sha256": self.transformation_artifact_sha256,
             "transformation_kind": self.transformation_kind,
         }
+
+    def semantic_dict(self) -> dict[str, object]:
+        snapshot = TrainingTransformationBinding._validated_snapshot(self)
+        return snapshot._semantic_dict_validated()
 
     def to_dict(self) -> dict[str, object]:
         data = self.semantic_dict()
