@@ -82,10 +82,16 @@ def test_representative_transfer_report_is_deterministic_and_reproduced() -> Non
 
 def test_transfer_report_preserves_replay_mismatch_as_failure_evidence() -> None:
     procedure = _candidate_procedure()
+    evaluator = _evaluator()
+    surface = _surface(evaluator)
     cases = list(_cases())
-    mismatched = replace(
-        cases[1].replay_receipt,
+    mismatched = replay_procedure_fixture(
+        procedure,
+        surface,
+        evaluator,
+        _values(beta=10),
         expected_score=1,
+        expected_max_score=2,
     )
     cases[1] = replace(cases[1], replay_receipt=mismatched)
 
