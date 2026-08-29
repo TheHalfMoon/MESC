@@ -14,7 +14,7 @@ from medscale.mesc._mrl_content_identity_v1 import (
     canonical_semantic_bytes,
     derive_content_sha256,
 )
-from medscale.mesc._mrl_research_campaign_v1 import ResearchCampaign
+from medscale.mesc._mrl_research_campaign_v1 import CampaignTierTotals, ResearchCampaign
 from medscale.mesc._mrl_research_objective_v1 import (
     EvaluationTier,
     ResearchObjectiveContract,
@@ -166,15 +166,12 @@ def build_adaptive_campaign_accounting(
 
 def _build_tier_accounting(
     objective: ResearchObjectiveContract,
-    usage_by_tier: dict[EvaluationTier, object],
+    usage_by_tier: dict[EvaluationTier, CampaignTierTotals],
     tier: EvaluationTier,
 ) -> AdaptiveTierAccounting:
     usage = usage_by_tier.get(tier)
-    queries_used = 0
-    result_exposures_used = 0
-    if usage is not None:
-        queries_used = usage.queries_used  # type: ignore[attr-defined]
-        result_exposures_used = usage.result_exposures_used  # type: ignore[attr-defined]
+    queries_used = 0 if usage is None else usage.queries_used
+    result_exposures_used = 0 if usage is None else usage.result_exposures_used
 
     query_ceiling = (
         objective.adaptive_query_budget.tier_1_queries
@@ -216,5 +213,10 @@ def _require_nonnegative_int(value: object, label: str) -> None:
 
 
 def _require_sha256(value: object, label: str) -> None:
-    if type(value) is not str or len(value) != 64 or any(char not in "0123456789abcdef" for char in value):
+    invalid = (
+        type(value) is not str
+        or len(value) != 64
+        or any(char not in "0123456789abcdef" for char in value)
+    )
+    if invalid:
         raise AdaptiveCampaignAccountingError(f"{label} must be 64 lowercase hex")
