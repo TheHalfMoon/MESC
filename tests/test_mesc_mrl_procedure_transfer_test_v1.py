@@ -162,3 +162,15 @@ def test_mutated_replay_receipt_fails_closed() -> None:
 
     with pytest.raises(ProcedureTransferTestError, match="canonical revalidation"):
         build_procedure_transfer_test_report(procedure, tuple(cases))
+
+
+def test_mutated_nested_case_fails_closed_on_report_public_views() -> None:
+    procedure = _candidate_procedure()
+    cases = _cases()
+    report = build_procedure_transfer_test_report(procedure, cases)
+    object.__setattr__(cases[0], "evidence_artifact_sha256", "invalid")
+
+    with pytest.raises(ProcedureTransferTestError, match="64 lowercase hex"):
+        _ = report.all_cases_reproduced
+    with pytest.raises(ProcedureTransferTestError, match="64 lowercase hex"):
+        _ = report.content_sha256
