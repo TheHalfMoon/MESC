@@ -149,13 +149,9 @@ def run_temporal_canary_fixture_workflow(
 ) -> TemporalCanaryFixtureReceipt:
     """Evaluate a sealed canary identity on the pure in-memory fixture surface only."""
     if type(manifest) is not TemporalCanaryManifest:
-        raise TemporalCanaryFixtureWorkflowError(
-            "manifest must be an exact TemporalCanaryManifest"
-        )
+        raise TemporalCanaryFixtureWorkflowError("manifest must be an exact TemporalCanaryManifest")
     if type(surface) is not FixtureResearchSurface:
-        raise TemporalCanaryFixtureWorkflowError(
-            "surface must be an exact FixtureResearchSurface"
-        )
+        raise TemporalCanaryFixtureWorkflowError("surface must be an exact FixtureResearchSurface")
     if type(evaluator) is not FixtureEvaluator:
         raise TemporalCanaryFixtureWorkflowError("evaluator must be an exact FixtureEvaluator")
     if type(parameter_values) is not tuple:
