@@ -104,7 +104,8 @@ class ProcedureCandidateExtraction:
         if any(type(item) is not ProcedureCandidateReference for item in self.candidates):
             raise ProcedureCandidateExtractionError("candidates contains an invalid item type")
         candidate_snapshots = tuple(
-            ProcedureCandidateReference._validated_snapshot(item) for item in self.candidates
+            ProcedureCandidateReference._validated_snapshot(item)
+            for item in self.candidates
         )
         keys = tuple((item.sequence_index, item.node_id) for item in candidate_snapshots)
         if keys != tuple(sorted(set(keys))):
