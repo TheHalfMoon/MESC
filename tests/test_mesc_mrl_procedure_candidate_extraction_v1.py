@@ -129,6 +129,26 @@ def test_mutated_candidate_reference_fails_closed_on_semantic_and_hash_views() -
         _ = extraction.content_sha256
 
 
+def test_valid_candidate_reference_identity_mutation_fails_closed() -> None:
+    reference = ProcedureCandidateReference(
+        sequence_index=0,
+        campaign_sha256="a" * 64,
+        node_id="procedure-a",
+        artifact_sha256="b" * 64,
+    )
+    extraction = ProcedureCandidateExtraction(
+        history_projection_sha256="c" * 64,
+        input_admission_sha256="d" * 64,
+        candidates=(reference,),
+    )
+    object.__setattr__(reference, "artifact_sha256", "f" * 64)
+
+    with pytest.raises(ProcedureCandidateExtractionError, match="identity changed"):
+        reference.to_dict()
+    with pytest.raises(ProcedureCandidateExtractionError, match="identity changed"):
+        _ = extraction.content_sha256
+
+
 def test_mutated_extraction_identity_fails_closed_on_semantic_and_hash_views() -> None:
     reference = ProcedureCandidateReference(
         sequence_index=0,
@@ -146,6 +166,26 @@ def test_mutated_extraction_identity_fails_closed_on_semantic_and_hash_views() -
     with pytest.raises(ProcedureCandidateExtractionError, match="64 lowercase hex"):
         extraction.semantic_dict()
     with pytest.raises(ProcedureCandidateExtractionError, match="64 lowercase hex"):
+        _ = extraction.content_sha256
+
+
+def test_valid_extraction_identity_mutation_fails_closed() -> None:
+    reference = ProcedureCandidateReference(
+        sequence_index=0,
+        campaign_sha256="a" * 64,
+        node_id="procedure-a",
+        artifact_sha256="b" * 64,
+    )
+    extraction = ProcedureCandidateExtraction(
+        history_projection_sha256="c" * 64,
+        input_admission_sha256="d" * 64,
+        candidates=(reference,),
+    )
+    object.__setattr__(extraction, "history_projection_sha256", "f" * 64)
+
+    with pytest.raises(ProcedureCandidateExtractionError, match="identity changed"):
+        extraction.semantic_dict()
+    with pytest.raises(ProcedureCandidateExtractionError, match="identity changed"):
         _ = extraction.content_sha256
 
 
