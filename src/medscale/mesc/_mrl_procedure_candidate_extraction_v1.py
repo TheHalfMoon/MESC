@@ -239,7 +239,9 @@ def _require_text(value: object, label: str) -> None:
 
 
 def _require_sha256(value: object, label: str) -> None:
-    if type(value) is not str or len(value) != 64 or any(
-        character not in "0123456789abcdef" for character in value
+    if (
+        type(value) is not str
+        or len(value) != 64
+        or any(character not in "0123456789abcdef" for character in value)
     ):
         raise ProcedureCandidateExtractionError(f"{label} must be 64 lowercase hex")
