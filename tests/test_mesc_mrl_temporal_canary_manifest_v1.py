@@ -88,6 +88,16 @@ def test_mutated_manifest_artifact_fails_closed_on_semantic_and_hash_views() -> 
         _ = manifest.content_sha256
 
 
+def test_valid_manifest_identity_mutation_fails_closed() -> None:
+    manifest = _manifest()
+    object.__setattr__(manifest, "canary_artifact_sha256", "f" * 64)
+
+    with pytest.raises(TemporalCanaryManifestError, match="identity changed"):
+        manifest.semantic_dict()
+    with pytest.raises(TemporalCanaryManifestError, match="identity changed"):
+        _ = manifest.content_sha256
+
+
 def test_mutated_manifest_temporal_boundary_fails_closed_on_semantic_and_hash_views() -> None:
     manifest = _manifest()
     object.__setattr__(manifest, "created_at", manifest.temporal_boundary_at)
