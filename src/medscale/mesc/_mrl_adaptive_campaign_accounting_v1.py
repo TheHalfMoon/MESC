@@ -158,9 +158,7 @@ def build_adaptive_campaign_accounting(
         )
 
     usage_by_tier = {item.tier: item for item in campaign.cumulative_tier_usage}
-    rows = tuple(
-        _build_tier_accounting(objective, usage_by_tier, tier) for tier in _ADAPTIVE_TIERS
-    )
+    rows = tuple(_build_tier_accounting(objective, usage_by_tier, tier) for tier in _ADAPTIVE_TIERS)
     return AdaptiveCampaignAccounting(
         objective_sha256=objective.content_sha256,
         campaign_sha256=campaign.content_sha256,
