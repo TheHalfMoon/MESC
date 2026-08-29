@@ -81,9 +81,7 @@ class ProcedureReplayReceipt:
         _require_score_pair(self.expected_score, self.expected_max_score, "expected")
         _require_score_pair(self.observed_score, self.observed_max_score, "observed")
         if type(self.disposition) is not ProcedureReplayDisposition:
-            raise ProcedureReplayError(
-                "disposition must be an exact ProcedureReplayDisposition"
-            )
+            raise ProcedureReplayError("disposition must be an exact ProcedureReplayDisposition")
         expected_disposition = (
             ProcedureReplayDisposition.REPRODUCED
             if (
@@ -191,10 +189,7 @@ def replay_procedure_fixture(
 
     disposition = (
         ProcedureReplayDisposition.REPRODUCED
-        if (
-            expected_score == evaluation.score
-            and expected_max_score == evaluation.max_score
-        )
+        if (expected_score == evaluation.score and expected_max_score == evaluation.max_score)
         else ProcedureReplayDisposition.MISMATCH
     )
     return ProcedureReplayReceipt(
