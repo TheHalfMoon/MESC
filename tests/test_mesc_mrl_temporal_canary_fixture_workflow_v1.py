@@ -113,6 +113,19 @@ def test_evaluator_surface_mismatch_fails_closed() -> None:
         )
 
 
+def test_mutated_receipt_fails_closed_on_public_views() -> None:
+    evaluator = _evaluator()
+    manifest = _bound_manifest(evaluator)
+    surface = _surface(evaluator)
+    receipt = run_temporal_canary_fixture_workflow(manifest, surface, evaluator, _values())
+    object.__setattr__(receipt, "evaluation_sha256", "invalid")
+
+    with pytest.raises(TemporalCanaryFixtureWorkflowError, match="64 lowercase hex"):
+        receipt.semantic_dict()
+    with pytest.raises(TemporalCanaryFixtureWorkflowError, match="64 lowercase hex"):
+        _ = receipt.content_sha256
+
+
 def test_wrong_manifest_type_fails_closed() -> None:
     evaluator = _evaluator()
     surface = _surface(evaluator)
