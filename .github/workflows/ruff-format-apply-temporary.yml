@@ -1,0 +1,93 @@
+name: Ruff Format Apply Temporary
+
+on:
+  push:
+    branches: [chore/ruff-format-artifact-diagnostic-e5aee1]
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  apply-verified-formatting:
+    if: github.repository == 'TheHalfMoon/MESC'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          enable-cache: true
+
+      - name: Install Python 3.11
+        run: uv python install 3.11
+
+      - name: Sync (locked)
+        run: uv sync --frozen
+
+      - name: Download and verify formatted artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/ruff-formatted
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/9713274872/zip" > /tmp/ruff-formatted.zip
+          unzip -q /tmp/ruff-formatted.zip -d /tmp/ruff-formatted
+          cd /tmp/ruff-formatted
+          printf '%s  %s\n' \
+            '177e68c019756ddd1ebea601326a64f361a0ee71a6a6dd143c4182d70023c9fa' 'src/medscale/mesc/_mrl_hard_medical_non_regression_v1.py' \
+            '9575f2cf9bf45a3e1bc24840212c5db44661198e6ab66fd480c43f45bfa11e57' 'tests/test_mesc_mrl_hard_medical_non_regression_v1.py' \
+            '69c84303f70347bf9ba5e1049e9f427a96d519d068f7d7210e727801b8667bf4' 'src/medscale/mesc/_mrl_adaptive_budget_exhaustion_v1.py' \
+            'cfc4a33ac5d8359fe1bce305ed0e59a2262cacd01a0afcd057af0eda248f7ce6' 'tests/test_mesc_mrl_adaptive_budget_exhaustion_v1.py' \
+            '3c2996ec6c4817508fd9714eeeaf4d608318e704560a0c42244c4f4e46d4309d' 'tests/test_mesc_mrl_machine_state_ci_gate_v1.py' \
+            | sha256sum -c -
+
+      - name: Apply verified formatting with exact-head guards
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git fetch origin main
+          test "$(git rev-parse origin/main)" = 'e5aee1734be1c9c598ce7f96b6bc1fc89722050f'
+
+          apply_candidate() {
+            branch="$1"
+            expected_head="$2"
+            test_path="$3"
+            shift 3
+            git fetch origin "$branch"
+            test "$(git rev-parse "origin/$branch")" = "$expected_head"
+            git checkout -B "$branch" "origin/$branch"
+            git merge --no-ff --no-edit origin/main
+            for path in "$@"; do
+              cp "/tmp/ruff-formatted/$path" "$path"
+            done
+            uv run ruff check "$@" "$test_path"
+            uv run ruff format --check "$@" "$test_path"
+            uv run pytest -q "$test_path"
+            git add "$@" "$test_path"
+            if ! git diff --cached --quiet; then
+              git commit -m 'chore(mrl): apply repository Ruff formatting'
+            fi
+            git push origin "HEAD:refs/heads/$branch"
+          }
+
+          apply_candidate \
+            'feat/mrl-0306-hard-medical-gates-a575e9' \
+            '02410d8c8ba80d403d335509dcbf36049b8eee56' \
+            'tests/test_mesc_mrl_hard_medical_non_regression_v1.py' \
+            'src/medscale/mesc/_mrl_hard_medical_non_regression_v1.py'
+
+          apply_candidate \
+            'feat/mrl-0309-adaptive-budget-exhaustion-5dc156' \
+            '571914edf9ea468c9b1039e57b6cf96ffa84ca52' \
+            'tests/test_mesc_mrl_adaptive_budget_exhaustion_v1.py' \
+            'src/medscale/mesc/_mrl_adaptive_budget_exhaustion_v1.py'
+
+          apply_candidate \
+            'test/mrl-0707-projection-precedence-e5aee1' \
+            '2781c9b8a2dce5c08d27fc491b5c27be60a8863e' \
+            'tests/test_mesc_mrl_machine_state_ci_gate_v1.py'
