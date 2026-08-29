@@ -77,6 +77,26 @@ def test_projection_content_identity_changes_when_history_appends() -> None:
     assert len(child_projection.entries) == len(parent_projection.entries) + 1
 
 
+def test_mutated_history_entry_fails_closed_on_latest_and_hash_views() -> None:
+    projection = build_campaign_history_projection(_campaign())
+    object.__setattr__(projection.entries[0], "campaign_sha256", "invalid")
+
+    with pytest.raises(CampaignHistoryProjectionError, match="64 lowercase hex"):
+        _ = projection.latest_campaign_sha256
+    with pytest.raises(CampaignHistoryProjectionError, match="64 lowercase hex"):
+        _ = projection.content_sha256
+
+
+def test_mutated_projection_identity_fails_closed_on_semantic_and_hash_views() -> None:
+    projection = build_campaign_history_projection(_campaign())
+    object.__setattr__(projection, "objective_sha256", "invalid")
+
+    with pytest.raises(CampaignHistoryProjectionError, match="64 lowercase hex"):
+        projection.semantic_dict()
+    with pytest.raises(CampaignHistoryProjectionError, match="64 lowercase hex"):
+        _ = projection.content_sha256
+
+
 def test_corrupted_campaign_chain_fails_closed() -> None:
     parent = _campaign()
     child = _campaign(
