@@ -7,7 +7,9 @@ no execution, budget-expansion, training, promotion, deployment, or clinical aut
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+import weakref
+from collections.abc import Callable
+from dataclasses import dataclass
 
 from medscale.mesc._mrl_research_objective_v1 import EvaluationTier, TierResultExposure
 from medscale.mesc._mrl_tier_evaluation_contract_v1 import TierEvaluationContract
@@ -25,6 +27,34 @@ class Tier1ExposureError(ValueError):
     """Fail-closed error for bounded Tier 1 adaptive-result exposure."""
 
 
+def _make_policy_identity_registry() -> tuple[
+    Callable[[Tier1ExposurePolicy, str], None],
+    Callable[[Tier1ExposurePolicy], str],
+]:
+    identities: dict[int, str] = {}
+
+    def remove(key: int) -> None:
+        identities.pop(key, None)
+
+    def store(value: Tier1ExposurePolicy, tier_contract_sha256: str) -> None:
+        key = id(value)
+        if key in identities:
+            raise Tier1ExposureError("Tier 1 policy construction identity already exists")
+        identities[key] = tier_contract_sha256
+        weakref.finalize(value, remove, key)
+
+    def load(value: Tier1ExposurePolicy) -> str:
+        identity = identities.get(id(value))
+        if identity is None:
+            raise Tier1ExposureError("Tier 1 policy construction identity is missing")
+        return identity
+
+    return store, load
+
+
+_store_policy_identity, _load_policy_identity = _make_policy_identity_registry()
+
+
 @dataclass(frozen=True, slots=True)
 class Tier1ExposureUsage:
     """Immutable usage counters for one frozen Tier 1 policy."""
@@ -37,39 +67,41 @@ class Tier1ExposureUsage:
         _require_nonnegative_int(self.exposures_used, "exposures_used")
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, weakref_slot=True)
 class Tier1ExposurePolicy:
-    """Exact Tier 1 ceilings and aggregate fields derived from one frozen tier identity."""
+    """Exact Tier 1 ceilings and aggregate fields bound to one frozen tier contract."""
 
     tier_contract: TierEvaluationContract
-    _bound_tier_contract_sha256: str = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
+        if type(self) is not Tier1ExposurePolicy:
+            return
         contract = _validate_tier_contract(self.tier_contract)
-        object.__setattr__(self, "_bound_tier_contract_sha256", contract.content_sha256)
+        _store_policy_identity(self, contract.content_sha256)
 
-    def _validated_contract(self) -> TierEvaluationContract:
+    def _validated_contract(self) -> tuple[TierEvaluationContract, str]:
         if type(self) is not Tier1ExposurePolicy:
             raise Tier1ExposureError("policy must be an exact Tier1ExposurePolicy")
+        bound_tier_contract_sha256 = _load_policy_identity(self)
         _require_sha256(
-            self._bound_tier_contract_sha256,
+            bound_tier_contract_sha256,
             "bound tier_contract_sha256",
         )
         contract = _validate_tier_contract(self.tier_contract)
-        if contract.content_sha256 != self._bound_tier_contract_sha256:
+        if contract.content_sha256 != bound_tier_contract_sha256:
             raise Tier1ExposureError("tier contract identity changed after policy creation")
-        return contract
+        return contract, bound_tier_contract_sha256
 
     @property
     def query_ceiling(self) -> int:
         """Return the originally bound Tier 1 adaptive-query ceiling."""
-        contract = self._validated_contract()
+        contract, _ = self._validated_contract()
         return contract.objective.adaptive_query_budget.tier_1_queries
 
     @property
     def exposure_contract(self) -> TierResultExposure:
         """Return a fresh snapshot of the originally bound Tier 1 exposure contract."""
-        contract = self._validated_contract()
+        contract, _ = self._validated_contract()
         matches = [
             policy
             for policy in contract.objective.tier_result_exposure_policy
@@ -101,7 +133,7 @@ class Tier1ExposurePolicy:
 
     def to_dict(self) -> dict[str, object]:
         """Return deterministic policy semantics without authority amplification."""
-        contract = self._validated_contract()
+        contract, tier_contract_sha256 = self._validated_contract()
         exposure = self.exposure_contract
         return {
             "allowed_result_fields": list(exposure.allowed_result_fields),
@@ -110,7 +142,7 @@ class Tier1ExposurePolicy:
             "max_exposures": exposure.max_exposures,
             "query_ceiling": contract.objective.adaptive_query_budget.tier_1_queries,
             "tier": int(EvaluationTier.SEARCH),
-            "tier_contract_sha256": self._bound_tier_contract_sha256,
+            "tier_contract_sha256": tier_contract_sha256,
         }
 
 
