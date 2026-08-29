@@ -113,6 +113,7 @@ def test_policy_identity_tracks_frozen_objective() -> None:
     policy = _policy()
 
     assert policy.to_dict()["objective_sha256"] == _all_tier_objective().content_sha256
-    assert policy.to_dict()["search_tier_contract_sha256"] != policy.to_dict()[
-        "replication_tier_contract_sha256"
-    ]
+    assert (
+        policy.to_dict()["search_tier_contract_sha256"]
+        != policy.to_dict()["replication_tier_contract_sha256"]
+    )
