@@ -143,9 +143,7 @@ def _validate_contract(value: TierEvaluationContract) -> None:
     if value.tier in (EvaluationTier.SEALED, EvaluationTier.EXTERNAL_ASSURANCE) and (
         exposure.max_exposures or exposure.allowed_result_fields
     ):
-        raise TierEvaluationContractError(
-            "Tier 3/4 cannot expose iterative agent-visible results"
-        )
+        raise TierEvaluationContractError("Tier 3/4 cannot expose iterative agent-visible results")
 
 
 def _adaptive_query_ceiling(objective: ResearchObjectiveContract, tier: EvaluationTier) -> int:
