@@ -175,9 +175,7 @@ def evaluate_hard_medical_non_regression(
 ) -> HardMedicalNonRegressionReport:
     """Evaluate every frozen hard floor against one exact independent Tier 3 report."""
     if type(objective) is not ResearchObjectiveContract:
-        raise HardMedicalNonRegressionError(
-            "objective must be an exact ResearchObjectiveContract"
-        )
+        raise HardMedicalNonRegressionError("objective must be an exact ResearchObjectiveContract")
     if type(sealed_report) is not SealedEvaluationEvidenceReport:
         raise HardMedicalNonRegressionError(
             "sealed_report must be an exact SealedEvaluationEvidenceReport"
@@ -222,14 +220,10 @@ def _snapshot_sealed_report(
     report: SealedEvaluationEvidenceReport,
 ) -> SealedEvaluationEvidenceReport:
     if type(report.evaluator_artifacts) is not tuple:
-        raise HardMedicalNonRegressionError(
-            "sealed evaluator_artifacts must remain an exact tuple"
-        )
+        raise HardMedicalNonRegressionError("sealed evaluator_artifacts must remain an exact tuple")
     for item in report.evaluator_artifacts:
         if type(item) is not tuple or len(item) != 2:
-            raise HardMedicalNonRegressionError(
-                "sealed evaluator_artifacts contains invalid entry"
-            )
+            raise HardMedicalNonRegressionError("sealed evaluator_artifacts contains invalid entry")
     if type(report.metric_evidence) is not tuple:
         raise HardMedicalNonRegressionError("sealed metric_evidence must remain an exact tuple")
     if any(type(item) is not SealedMetricEvidence for item in report.metric_evidence):
@@ -266,9 +260,7 @@ def _validate_report_against_objective(
     report: SealedEvaluationEvidenceReport,
 ) -> dict[tuple[str, str | None], SealedMetricEvidence]:
     sealed_metrics = tuple(
-        metric
-        for metric in objective.evaluation_metrics
-        if metric.tier is EvaluationTier.SEALED
+        metric for metric in objective.evaluation_metrics if metric.tier is EvaluationTier.SEALED
     )
     if not sealed_metrics:
         raise HardMedicalNonRegressionError("objective has no frozen Tier 3 evaluation metrics")
