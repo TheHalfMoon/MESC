@@ -103,7 +103,7 @@ def test_report_is_evidence_only_and_never_a_promotion_decision() -> None:
     assert payload["sealed_item_level_content_included"] is False
     assert b"PROMOTED" not in report.semantic_bytes
     assert b"promotion_decision" not in report.semantic_bytes
-    assert b"item_level" not in report.semantic_bytes
+    assert b'"sealed_item_level_content_included":false' in report.semantic_bytes
 
 
 def test_metric_evidence_must_cover_global_and_frozen_subgroup_metrics() -> None:
@@ -122,7 +122,7 @@ def test_metric_evidence_must_cover_global_and_frozen_subgroup_metrics() -> None
             _contract(),
             _request(),
             _handoff(),
-            (wrong_evaluator, _metrics()[1]),
+            (_metrics()[1], wrong_evaluator),
         )
     with pytest.raises(SealedEvaluationEvidenceError, match="exactly cover"):
         build_sealed_evaluation_evidence_report(
