@@ -70,6 +70,21 @@ class TemporalCanaryManifest:
         if self.topic_tags != tuple(sorted(set(self.topic_tags))):
             raise TemporalCanaryManifestError("topic_tags must be sorted and unique")
 
+    def _validated_snapshot(self) -> TemporalCanaryManifest:
+        if type(self) is not TemporalCanaryManifest:
+            raise TemporalCanaryManifestError(
+                "manifest must be an exact TemporalCanaryManifest"
+            )
+        return TemporalCanaryManifest(
+            canary_id=self.canary_id,
+            source_kind=self.source_kind,
+            canary_artifact_sha256=self.canary_artifact_sha256,
+            temporal_boundary_at=self.temporal_boundary_at,
+            created_at=self.created_at,
+            evaluator_artifact_sha256=self.evaluator_artifact_sha256,
+            topic_tags=self.topic_tags,
+        )
+
     @property
     def can_enter_training(self) -> bool:
         return False
@@ -90,7 +105,7 @@ class TemporalCanaryManifest:
     def content_sha256(self) -> str:
         return derive_content_sha256(self.semantic_dict())
 
-    def semantic_dict(self) -> dict[str, object]:
+    def _semantic_dict_validated(self) -> dict[str, object]:
         return {
             "can_authorize": False,
             "can_enter_search": False,
@@ -105,6 +120,10 @@ class TemporalCanaryManifest:
             "temporal_boundary_at": self.temporal_boundary_at,
             "topic_tags": list(self.topic_tags),
         }
+
+    def semantic_dict(self) -> dict[str, object]:
+        snapshot = TemporalCanaryManifest._validated_snapshot(self)
+        return snapshot._semantic_dict_validated()
 
     def to_dict(self) -> dict[str, object]:
         data = self.semantic_dict()
