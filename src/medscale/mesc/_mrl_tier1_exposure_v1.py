@@ -100,7 +100,10 @@ class Tier1ExposurePolicy:
         }
 
 
-def consume_tier1_query(policy: Tier1ExposurePolicy, usage: Tier1ExposureUsage) -> Tier1ExposureUsage:
+def consume_tier1_query(
+    policy: Tier1ExposurePolicy,
+    usage: Tier1ExposureUsage,
+) -> Tier1ExposureUsage:
     """Consume one adaptive Tier 1 query or fail closed at the frozen ceiling."""
     _validate_policy_and_usage(policy, usage)
     if usage.queries_used >= policy.query_ceiling:
