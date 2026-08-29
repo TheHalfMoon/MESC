@@ -102,9 +102,9 @@ def test_post_construction_objective_mutation_cannot_expand_bound_tier1_budget()
         50,
     )
 
-    with pytest.raises(Tier1ExposureError, match="identity changed after policy creation"):
+    with pytest.raises(Tier1ExposureError, match="tier contract"):
         _ = policy.query_ceiling
-    with pytest.raises(Tier1ExposureError, match="identity changed after policy creation"):
+    with pytest.raises(Tier1ExposureError, match="tier contract"):
         consume_tier1_query(policy, Tier1ExposureUsage())
 
 
