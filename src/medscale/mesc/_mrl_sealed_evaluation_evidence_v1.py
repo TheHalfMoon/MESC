@@ -209,7 +209,9 @@ def _validate_metric_evidence(
 ) -> None:
     _require_metric_evidence(evidence)
     evaluator_by_metric = {metric.metric_id: metric.evaluator_id for metric in expected_metrics}
-    expected = {(metric.metric_id, metric.evaluator_id, None) for metric in expected_metrics}
+    expected: set[tuple[str, str, str | None]] = {
+        (metric.metric_id, metric.evaluator_id, None) for metric in expected_metrics
+    }
     for floor in tier_contract.objective.subgroup_floors:
         evaluator_id = evaluator_by_metric.get(floor.metric_id)
         if evaluator_id is None:
