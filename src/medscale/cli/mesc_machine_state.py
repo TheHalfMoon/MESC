@@ -57,8 +57,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     action = "verified" if args.check else "generated"
     print(
-        f"{action} MRL machine state for commit {render_set.commit_sha} "
-        f"tree {render_set.tree_sha}"
+        f"{action} MRL machine state for commit {render_set.commit_sha} tree {render_set.tree_sha}"
     )
     return 0
 
