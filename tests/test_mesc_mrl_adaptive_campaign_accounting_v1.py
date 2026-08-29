@@ -185,6 +185,17 @@ def test_mutated_tier_row_fails_closed_before_remaining_or_hash_views() -> None:
         _ = accounting.content_sha256
 
 
+def test_valid_tier_row_identity_mutation_fails_closed() -> None:
+    objective = _all_tier_objective()
+    accounting = build_adaptive_campaign_accounting(objective, _campaign(objective))
+    object.__setattr__(accounting.tiers[0], "queries_used", 2)
+
+    with pytest.raises(AdaptiveCampaignAccountingError, match="identity changed"):
+        _ = accounting.tiers[0].queries_remaining
+    with pytest.raises(AdaptiveCampaignAccountingError, match="identity changed"):
+        _ = accounting.content_sha256
+
+
 def test_mutated_accounting_identity_fails_closed_before_semantic_or_hash_views() -> None:
     objective = _all_tier_objective()
     accounting = build_adaptive_campaign_accounting(objective, _campaign(objective))
@@ -193,6 +204,17 @@ def test_mutated_accounting_identity_fails_closed_before_semantic_or_hash_views(
     with pytest.raises(AdaptiveCampaignAccountingError, match="64 lowercase hex"):
         accounting.semantic_dict()
     with pytest.raises(AdaptiveCampaignAccountingError, match="64 lowercase hex"):
+        _ = accounting.content_sha256
+
+
+def test_valid_accounting_identity_mutation_fails_closed() -> None:
+    objective = _all_tier_objective()
+    accounting = build_adaptive_campaign_accounting(objective, _campaign(objective))
+    object.__setattr__(accounting, "campaign_sha256", "f" * 64)
+
+    with pytest.raises(AdaptiveCampaignAccountingError, match="identity changed"):
+        accounting.semantic_dict()
+    with pytest.raises(AdaptiveCampaignAccountingError, match="identity changed"):
         _ = accounting.content_sha256
 
 
