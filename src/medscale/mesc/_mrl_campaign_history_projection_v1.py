@@ -12,6 +12,8 @@ release, or clinical authority.
 from __future__ import annotations
 
 import re
+import weakref
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Final, cast
 
@@ -35,7 +37,69 @@ class CampaignHistoryProjectionError(ValueError):
     """Fail-closed validation error for the derived MRL campaign-history view."""
 
 
-@dataclass(frozen=True, slots=True)
+def _make_entry_identity_registry() -> tuple[
+    Callable[[CampaignHistoryEntry, str], None],
+    Callable[[CampaignHistoryEntry], str],
+]:
+    identities: dict[int, str] = {}
+
+    def remove(key: int) -> None:
+        identities.pop(key, None)
+
+    def store(value: CampaignHistoryEntry, content_sha256: str) -> None:
+        key = id(value)
+        if key in identities:
+            raise CampaignHistoryProjectionError(
+                "campaign history entry construction identity already exists"
+            )
+        identities[key] = content_sha256
+        weakref.finalize(value, remove, key)
+
+    def load(value: CampaignHistoryEntry) -> str:
+        identity = identities.get(id(value))
+        if identity is None:
+            raise CampaignHistoryProjectionError(
+                "campaign history entry construction identity is missing"
+            )
+        return identity
+
+    return store, load
+
+
+def _make_projection_identity_registry() -> tuple[
+    Callable[[CampaignHistoryProjection, str], None],
+    Callable[[CampaignHistoryProjection], str],
+]:
+    identities: dict[int, str] = {}
+
+    def remove(key: int) -> None:
+        identities.pop(key, None)
+
+    def store(value: CampaignHistoryProjection, content_sha256: str) -> None:
+        key = id(value)
+        if key in identities:
+            raise CampaignHistoryProjectionError(
+                "campaign history projection construction identity already exists"
+            )
+        identities[key] = content_sha256
+        weakref.finalize(value, remove, key)
+
+    def load(value: CampaignHistoryProjection) -> str:
+        identity = identities.get(id(value))
+        if identity is None:
+            raise CampaignHistoryProjectionError(
+                "campaign history projection construction identity is missing"
+            )
+        return identity
+
+    return store, load
+
+
+_store_entry_identity, _load_entry_identity = _make_entry_identity_registry()
+_store_projection_identity, _load_projection_identity = _make_projection_identity_registry()
+
+
+@dataclass(frozen=True, slots=True, weakref_slot=True)
 class CampaignHistoryEntry:
     """One immutable canonical campaign snapshot represented in the history view."""
 
@@ -69,13 +133,19 @@ class CampaignHistoryEntry:
             "procedure_candidate_node_ids",
             allow_empty=True,
         )
+        _store_entry_identity(
+            self,
+            derive_content_sha256(self._to_dict_validated()),
+        )
 
     def _validated_snapshot(self) -> CampaignHistoryEntry:
         if type(self) is not CampaignHistoryEntry:
             raise CampaignHistoryProjectionError(
                 "entry must be an exact CampaignHistoryEntry"
             )
-        return CampaignHistoryEntry(
+        bound_content_sha256 = _load_entry_identity(self)
+        _require_sha256(bound_content_sha256, "bound entry content_sha256")
+        snapshot = CampaignHistoryEntry(
             sequence_index=self.sequence_index,
             campaign_sha256=self.campaign_sha256,
             parent_campaign_sha256=self.parent_campaign_sha256,
@@ -84,6 +154,12 @@ class CampaignHistoryEntry:
             current_frontier_node_ids=self.current_frontier_node_ids,
             procedure_candidate_node_ids=self.procedure_candidate_node_ids,
         )
+        current_content_sha256 = derive_content_sha256(snapshot._to_dict_validated())
+        if current_content_sha256 != bound_content_sha256:
+            raise CampaignHistoryProjectionError(
+                "campaign history entry identity changed after construction"
+            )
+        return snapshot
 
     def _to_dict_validated(self) -> dict[str, object]:
         return {
@@ -102,7 +178,7 @@ class CampaignHistoryEntry:
         return snapshot._to_dict_validated()
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, weakref_slot=True)
 class CampaignHistoryProjection:
     """Deterministic non-authoritative oldest-to-newest campaign history."""
 
@@ -139,6 +215,10 @@ class CampaignHistoryProjection:
                 )
             seen_hashes.add(entry.campaign_sha256)
             previous_sha256 = entry.campaign_sha256
+        _store_projection_identity(
+            self,
+            derive_content_sha256(self._semantic_dict_validated()),
+        )
 
     def _validated_snapshot(self) -> CampaignHistoryProjection:
         if type(self) is not CampaignHistoryProjection:
@@ -147,13 +227,21 @@ class CampaignHistoryProjection:
             )
         if type(self.entries) is not tuple:
             raise CampaignHistoryProjectionError("entries must be an exact tuple")
-        return CampaignHistoryProjection(
+        bound_content_sha256 = _load_projection_identity(self)
+        _require_sha256(bound_content_sha256, "bound projection content_sha256")
+        snapshot = CampaignHistoryProjection(
             campaign_id=self.campaign_id,
             objective_sha256=self.objective_sha256,
             entries=tuple(
                 CampaignHistoryEntry._validated_snapshot(entry) for entry in self.entries
             ),
         )
+        current_content_sha256 = derive_content_sha256(snapshot._semantic_dict_validated())
+        if current_content_sha256 != bound_content_sha256:
+            raise CampaignHistoryProjectionError(
+                "campaign history projection identity changed after construction"
+            )
+        return snapshot
 
     def _latest_campaign_sha256_validated(self) -> str:
         return self.entries[-1].campaign_sha256
