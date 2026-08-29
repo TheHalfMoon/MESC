@@ -239,46 +239,46 @@ is then present on canonical `main`. Any head mutation burns prior exact-head ev
 
 ## MRL-3 — Adaptive evaluation and sealed-evidence control
 
-- [ ] **MRL-0301 — Implement tier-aware evaluation contract**
+- [x] **MRL-0301 — Implement tier-aware evaluation contract**
   - Depends on: MRL-0299.
 
-- [ ] **MRL-0302 — Implement bounded Tier 1 result exposure**
+- [x] **MRL-0302 — Implement bounded Tier 1 result exposure**
   - Depends on: MRL-0301.
   - Acceptance: exact allowed aggregate fields and query/exposure budget are frozen.
 
-- [ ] **MRL-0303 — Implement replication-set policy**
+- [x] **MRL-0303 — Implement replication-set policy**
   - Depends on: MRL-0301.
   - Acceptance: Tier 2 aggregate summaries and exposure budget are frozen and narrower
     than Tier 1 where required.
 
-- [ ] **MRL-0304 — Implement sealed Tier 3 evaluation interface**
+- [x] **MRL-0304 — Implement sealed Tier 3 evaluation interface**
   - Depends on: MRL-0301.
   - Negative test: item-level sealed evidence never enters search context.
   - Acceptance: no iterative agent-consumable result stream.
 
-- [ ] **MRL-0305 — Implement independent sealed-evaluation evidence report**
+- [x] **MRL-0305 — Implement independent sealed-evaluation evidence report**
   - Depends on: MRL-0304.
   - Acceptance: report is evidence only and cannot encode `PROMOTED` or another promotion
     decision reserved by ADR-0033.
 
-- [ ] **MRL-0306 — Implement hard medical non-regression gates**
+- [x] **MRL-0306 — Implement hard medical non-regression gates**
   - Depends on: MRL-0305.
 
-- [ ] **MRL-0307 — Implement Pareto/multi-objective comparison**
+- [x] **MRL-0307 — Implement Pareto/multi-objective comparison**
   - Depends on: MRL-0306.
   - Acceptance: aggregate gains cannot hide hard-gate regressions.
 
-- [ ] **MRL-0308 — Add adaptive-query/campaign accounting**
+- [x] **MRL-0308 — Add adaptive-query/campaign accounting**
   - Depends on: MRL-0302, MRL-0303.
 
-- [ ] **MRL-0309 — Enforce adaptive-budget exhaustion**
+- [x] **MRL-0309 — Enforce adaptive-budget exhaustion**
   - Depends on: MRL-0308.
   - Acceptance: exhausted tier becomes `BLOCKED` for further adaptive use; the agent cannot
     amend the frozen objective or request additional sealed detail.
 
 ### MRL-3 gate
 
-- [ ] **MRL-0399 — Evaluation-control exact-head qualification**
+- [x] **MRL-0399 — Evaluation-control exact-head qualification**
   - Requires: MRL-0301..0309.
   - Exit: `MRL_EVALUATION_CONTROL_READY`.
 
