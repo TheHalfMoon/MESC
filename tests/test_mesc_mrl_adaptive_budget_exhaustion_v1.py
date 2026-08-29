@@ -153,6 +153,18 @@ def test_mutated_tier_disposition_fails_closed_before_report_views() -> None:
         _ = report.content_sha256
 
 
+def test_valid_tier_disposition_identity_mutation_fails_closed() -> None:
+    objective = _all_tier_objective()
+    campaign = _campaign(objective)
+    report = build_adaptive_budget_disposition(objective, campaign)
+    object.__setattr__(report.tiers[0], "queries_remaining", 1)
+
+    with pytest.raises(AdaptiveBudgetExhaustionError, match="identity changed"):
+        report.tiers[0].to_dict()
+    with pytest.raises(AdaptiveBudgetExhaustionError, match="identity changed"):
+        _ = report.content_sha256
+
+
 def test_mutated_block_reason_or_report_identity_fails_closed() -> None:
     objective = _all_tier_objective()
     campaign = _campaign(objective, search_queries=5)
@@ -166,6 +178,18 @@ def test_mutated_block_reason_or_report_identity_fails_closed() -> None:
     object.__setattr__(fresh, "accounting_sha256", "invalid")
     with pytest.raises(AdaptiveBudgetExhaustionError, match="64 lowercase hex"):
         _ = fresh.content_sha256
+
+
+def test_valid_budget_report_identity_mutation_fails_closed() -> None:
+    objective = _all_tier_objective()
+    campaign = _campaign(objective)
+    report = build_adaptive_budget_disposition(objective, campaign)
+    object.__setattr__(report, "accounting_sha256", "f" * 64)
+
+    with pytest.raises(AdaptiveBudgetExhaustionError, match="identity changed"):
+        report.semantic_dict()
+    with pytest.raises(AdaptiveBudgetExhaustionError, match="identity changed"):
+        _ = report.content_sha256
 
 
 def test_disposition_cannot_expand_budget_or_request_additional_sealed_detail() -> None:
