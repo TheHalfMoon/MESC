@@ -97,6 +97,11 @@ class ProcedureTransferTestReport:
             raise ProcedureTransferTestError(
                 "representative cases require distinct evidence artifact identities"
             )
+        replay_ids = tuple(_snapshot_replay(case.replay_receipt).content_sha256 for case in self.cases)
+        if len(replay_ids) != len(set(replay_ids)):
+            raise ProcedureTransferTestError(
+                "representative cases require distinct replay evidence identities"
+            )
         for case in self.cases:
             replay = _snapshot_replay(case.replay_receipt)
             if replay.procedure_admission_subject_sha256 != self.procedure_sha256:
