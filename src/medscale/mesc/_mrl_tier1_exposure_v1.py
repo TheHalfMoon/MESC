@@ -7,7 +7,7 @@ no execution, budget-expansion, training, promotion, deployment, or clinical aut
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from medscale.mesc._mrl_research_objective_v1 import EvaluationTier, TierResultExposure
 from medscale.mesc._mrl_tier_evaluation_contract_v1 import TierEvaluationContract
@@ -39,28 +39,40 @@ class Tier1ExposureUsage:
 
 @dataclass(frozen=True, slots=True)
 class Tier1ExposurePolicy:
-    """Exact Tier 1 ceilings and aggregate fields derived from a frozen objective."""
+    """Exact Tier 1 ceilings and aggregate fields derived from one frozen tier identity."""
 
     tier_contract: TierEvaluationContract
+    _bound_tier_contract_sha256: str = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
-        if type(self.tier_contract) is not TierEvaluationContract:
-            raise Tier1ExposureError("tier_contract must be an exact TierEvaluationContract")
-        if self.tier_contract.tier is not EvaluationTier.SEARCH:
-            raise Tier1ExposureError("Tier 1 exposure policy requires SEARCH tier")
-        self.tier_contract.semantic_dict()
+        contract = _validate_tier_contract(self.tier_contract)
+        object.__setattr__(self, "_bound_tier_contract_sha256", contract.content_sha256)
+
+    def _validated_contract(self) -> TierEvaluationContract:
+        if type(self) is not Tier1ExposurePolicy:
+            raise Tier1ExposureError("policy must be an exact Tier1ExposurePolicy")
+        _require_sha256(
+            self._bound_tier_contract_sha256,
+            "bound tier_contract_sha256",
+        )
+        contract = _validate_tier_contract(self.tier_contract)
+        if contract.content_sha256 != self._bound_tier_contract_sha256:
+            raise Tier1ExposureError("tier contract identity changed after policy creation")
+        return contract
 
     @property
     def query_ceiling(self) -> int:
-        """Return the frozen Tier 1 adaptive-query ceiling."""
-        return self.tier_contract.objective.adaptive_query_budget.tier_1_queries
+        """Return the originally bound Tier 1 adaptive-query ceiling."""
+        contract = self._validated_contract()
+        return contract.objective.adaptive_query_budget.tier_1_queries
 
     @property
     def exposure_contract(self) -> TierResultExposure:
-        """Return a fresh immutable snapshot of the frozen Tier 1 exposure contract."""
+        """Return a fresh snapshot of the originally bound Tier 1 exposure contract."""
+        contract = self._validated_contract()
         matches = [
             policy
-            for policy in self.tier_contract.objective.tier_result_exposure_policy
+            for policy in contract.objective.tier_result_exposure_policy
             if policy.tier is EvaluationTier.SEARCH
         ]
         if len(matches) != 1:
@@ -74,7 +86,7 @@ class Tier1ExposurePolicy:
 
     @property
     def max_exposures(self) -> int:
-        """Return the frozen Tier 1 result-exposure ceiling."""
+        """Return the originally bound Tier 1 result-exposure ceiling."""
         return self.exposure_contract.max_exposures
 
     @property
@@ -89,14 +101,16 @@ class Tier1ExposurePolicy:
 
     def to_dict(self) -> dict[str, object]:
         """Return deterministic policy semantics without authority amplification."""
+        contract = self._validated_contract()
+        exposure = self.exposure_contract
         return {
-            "allowed_result_fields": list(self.allowed_result_fields),
+            "allowed_result_fields": list(exposure.allowed_result_fields),
             "can_authorize": False,
             "can_expand_budget": False,
-            "max_exposures": self.max_exposures,
-            "query_ceiling": self.query_ceiling,
+            "max_exposures": exposure.max_exposures,
+            "query_ceiling": contract.objective.adaptive_query_budget.tier_1_queries,
             "tier": int(EvaluationTier.SEARCH),
-            "tier_contract_sha256": self.tier_contract.content_sha256,
+            "tier_contract_sha256": self._bound_tier_contract_sha256,
         }
 
 
@@ -137,7 +151,7 @@ def _validate_policy_and_usage(policy: Tier1ExposurePolicy, usage: Tier1Exposure
         raise Tier1ExposureError("policy must be an exact Tier1ExposurePolicy")
     if type(usage) is not Tier1ExposureUsage:
         raise Tier1ExposureError("usage must be an exact Tier1ExposureUsage")
-    policy.tier_contract.semantic_dict()
+    policy._validated_contract()
     _require_nonnegative_int(usage.queries_used, "queries_used")
     _require_nonnegative_int(usage.exposures_used, "exposures_used")
     if usage.queries_used > policy.query_ceiling:
@@ -146,9 +160,31 @@ def _validate_policy_and_usage(policy: Tier1ExposurePolicy, usage: Tier1Exposure
         raise Tier1ExposureError("Tier 1 exposure usage exceeds the frozen ceiling")
 
 
+def _validate_tier_contract(contract: TierEvaluationContract) -> TierEvaluationContract:
+    if type(contract) is not TierEvaluationContract:
+        raise Tier1ExposureError("tier_contract must be an exact TierEvaluationContract")
+    if contract.tier is not EvaluationTier.SEARCH:
+        raise Tier1ExposureError("Tier 1 exposure policy requires SEARCH tier")
+    try:
+        contract.semantic_dict()
+        contract.content_sha256
+    except (AttributeError, TypeError, ValueError) as exc:
+        raise Tier1ExposureError("tier contract failed canonical revalidation") from exc
+    return contract
+
+
 def _require_nonnegative_int(value: object, label: str) -> None:
     if type(value) is not int or value < 0:
         raise Tier1ExposureError(f"{label} must be a non-negative exact integer")
+
+
+def _require_sha256(value: object, label: str) -> None:
+    if (
+        type(value) is not str
+        or len(value) != 64
+        or any(character not in "0123456789abcdef" for character in value)
+    ):
+        raise Tier1ExposureError(f"{label} must be 64 lowercase hex")
 
 
 def _require_sorted_unique_fields(values: tuple[str, ...]) -> None:
