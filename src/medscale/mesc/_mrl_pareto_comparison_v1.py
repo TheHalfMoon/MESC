@@ -176,7 +176,9 @@ class ParetoComparisonReport:
             raise ParetoComparisonError("metrics must be an exact tuple")
         if any(type(metric) is not ParetoMetricComparison for metric in self.metrics):
             raise ParetoComparisonError("metrics contains an invalid item type")
-        snapshots = tuple(ParetoMetricComparison._validated_snapshot(metric) for metric in self.metrics)
+        snapshots = tuple(
+            ParetoMetricComparison._validated_snapshot(metric) for metric in self.metrics
+        )
         metric_ids = tuple(metric.metric_id for metric in snapshots)
         if metric_ids != tuple(sorted(set(metric_ids))):
             raise ParetoComparisonError("metrics must be unique and sorted by metric_id")
@@ -209,7 +211,10 @@ class ParetoComparisonReport:
             reference_hard_gate_report_sha256=self.reference_hard_gate_report_sha256,
             candidate_hard_gate_report_sha256=self.candidate_hard_gate_report_sha256,
             relation=self.relation,
-            metrics=tuple(ParetoMetricComparison._validated_snapshot(metric) for metric in self.metrics),
+            metrics=tuple(
+                ParetoMetricComparison._validated_snapshot(metric)
+                for metric in self.metrics
+            ),
         )
 
     @property
