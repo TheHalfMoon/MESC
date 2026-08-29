@@ -106,7 +106,7 @@ def test_invalid_member_and_objective_types_fail_closed() -> None:
     with pytest.raises(ReplicationSetPolicyError, match="artifact_sha256"):
         ReplicationSetMember(member_id="replica-1", artifact_sha256="A" * 64)
     with pytest.raises(ReplicationSetPolicyError, match="exact ResearchObjectiveContract"):
-        ReplicationSetPolicy(objective=cast(object, object()))  # type: ignore[arg-type]
+        ReplicationSetPolicy(objective=object())  # type: ignore[arg-type]
 
 
 def test_policy_identity_tracks_frozen_objective() -> None:
