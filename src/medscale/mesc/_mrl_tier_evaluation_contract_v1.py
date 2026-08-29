@@ -1,9 +1,8 @@
 """Tier-aware evaluation contract for MESC Research Loop V1.
 
 MRL-0301 binds one already-frozen ``ResearchObjectiveContract`` to one admitted
-evaluation tier and derives the applicable evaluator, metric, adaptive-query, and
-result-exposure semantics. Callers cannot provide replacement budgets or evaluator
-identities through this contract; all such values are derived from the objective.
+evaluation tier and derives evaluator, metric, adaptive-query, and result-exposure
+semantics from that objective.
 
 This module is deterministic and side-effect free. It grants no filesystem, network,
 model, dataset, GPU, inference, training, promotion, deployment, release, or clinical
@@ -56,6 +55,8 @@ _INTERACTION_MODE: Final[dict[EvaluationTier, TierInteractionMode]] = {
     EvaluationTier.SEALED: TierInteractionMode.SEALED_INDEPENDENT_EVIDENCE,
     EvaluationTier.EXTERNAL_ASSURANCE: TierInteractionMode.EXTERNAL_ASSURANCE,
 }
+_ADAPTIVE_TIERS: Final = (EvaluationTier.SEARCH, EvaluationTier.REPLICATION)
+_NON_ITERATIVE_TIERS: Final = (EvaluationTier.SEALED, EvaluationTier.EXTERNAL_ASSURANCE)
 
 
 @dataclass(frozen=True, slots=True)
@@ -90,6 +91,7 @@ class TierEvaluationContract:
         evaluators = _evaluator_identities(self.objective, self.tier)
         metrics = _metric_contracts(self.objective, self.tier)
         mode = _INTERACTION_MODE[self.tier]
+        iterative_stream = self.tier not in _NON_ITERATIVE_TIERS
         return {
             "format": "MRL-TIER-EVALUATION-CONTRACT-V1",
             "objective_sha256": self.objective.content_sha256,
@@ -100,10 +102,7 @@ class TierEvaluationContract:
             "result_exposure": exposure.to_dict(),
             "evaluator_identities": [identity.to_dict() for identity in evaluators],
             "metric_contracts": [metric.to_dict() for metric in metrics],
-            "iterative_agent_result_stream": self.tier not in (
-                EvaluationTier.SEALED,
-                EvaluationTier.EXTERNAL_ASSURANCE,
-            ),
+            "iterative_agent_result_stream": iterative_stream,
             "sealed_item_level_search_context": False,
             "can_expand_budget": False,
             "can_replace_evaluator": False,
@@ -126,8 +125,6 @@ def _validate_contract(value: TierEvaluationContract) -> None:
     if type(value.tier) is not EvaluationTier:
         raise TierEvaluationContractError("tier must be an exact EvaluationTier")
 
-    # Force the source objective through its complete fresh snapshot validation before
-    # deriving any tier policy from its fields.
     value.objective.semantic_dict()
     if value.tier not in value.objective.evaluation_tier_policy.allowed_tiers:
         raise TierEvaluationContractError(
@@ -136,11 +133,11 @@ def _validate_contract(value: TierEvaluationContract) -> None:
 
     exposure = _result_exposure(value.objective, value.tier)
     query_ceiling = _adaptive_query_ceiling(value.objective, value.tier)
-    if value.tier not in (EvaluationTier.SEARCH, EvaluationTier.REPLICATION) and query_ceiling:
+    if value.tier not in _ADAPTIVE_TIERS and query_ceiling:
         raise TierEvaluationContractError(
             "only Tier 1 SEARCH and Tier 2 REPLICATION may consume adaptive queries"
         )
-    if value.tier in (EvaluationTier.SEALED, EvaluationTier.EXTERNAL_ASSURANCE) and (
+    if value.tier in _NON_ITERATIVE_TIERS and (
         exposure.max_exposures or exposure.allowed_result_fields
     ):
         raise TierEvaluationContractError("Tier 3/4 cannot expose iterative agent-visible results")
@@ -158,9 +155,10 @@ def _result_exposure(
     objective: ResearchObjectiveContract,
     tier: EvaluationTier,
 ) -> TierResultExposure:
-    matching = tuple(
-        policy for policy in objective.tier_result_exposure_policy if policy.tier is tier
-    )
+    matching: list[TierResultExposure] = []
+    for policy in objective.tier_result_exposure_policy:
+        if policy.tier is tier:
+            matching.append(policy)
     if len(matching) != 1:
         raise TierEvaluationContractError(
             "frozen objective must define exactly one result-exposure policy for the tier"
@@ -177,29 +175,33 @@ def _evaluator_identities(
     objective: ResearchObjectiveContract,
     tier: EvaluationTier,
 ) -> tuple[EvaluatorIdentity, ...]:
-    return tuple(
-        EvaluatorIdentity(
-            evaluator_id=identity.evaluator_id,
-            artifact_sha256=identity.artifact_sha256,
-            tiers=identity.tiers,
-        )
-        for identity in objective.evaluator_identities
-        if tier in identity.tiers
-    )
+    result: list[EvaluatorIdentity] = []
+    for identity in objective.evaluator_identities:
+        if tier in identity.tiers:
+            result.append(
+                EvaluatorIdentity(
+                    evaluator_id=identity.evaluator_id,
+                    artifact_sha256=identity.artifact_sha256,
+                    tiers=identity.tiers,
+                )
+            )
+    return tuple(result)
 
 
 def _metric_contracts(
     objective: ResearchObjectiveContract,
     tier: EvaluationTier,
 ) -> tuple[MetricContract, ...]:
+    result: list[MetricContract] = []
     candidates = (*objective.search_metrics, *objective.evaluation_metrics)
-    return tuple(
-        MetricContract(
-            metric_id=metric.metric_id,
-            evaluator_id=metric.evaluator_id,
-            tier=metric.tier,
-            direction=metric.direction,
-        )
-        for metric in candidates
-        if metric.tier is tier
-    )
+    for metric in candidates:
+        if metric.tier is tier:
+            result.append(
+                MetricContract(
+                    metric_id=metric.metric_id,
+                    evaluator_id=metric.evaluator_id,
+                    tier=metric.tier,
+                    direction=metric.direction,
+                )
+            )
+    return tuple(result)
