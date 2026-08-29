@@ -12,7 +12,7 @@ authority.
 from __future__ import annotations
 
 import enum
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Final
 
 from medscale.mesc._mrl_content_identity_v1 import (
@@ -61,22 +61,38 @@ _NON_ITERATIVE_TIERS: Final = (EvaluationTier.SEALED, EvaluationTier.EXTERNAL_AS
 
 @dataclass(frozen=True, slots=True)
 class TierEvaluationContract:
-    """A content-addressed view of one objective's exact policy for one tier."""
+    """A content-addressed view of one exact frozen objective policy for one tier."""
 
     objective: ResearchObjectiveContract
     tier: EvaluationTier
+    _bound_objective_sha256: str = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
-        _validate_contract(self)
+        _validate_contract_semantics(self)
+        object.__setattr__(self, "_bound_objective_sha256", self.objective.content_sha256)
+
+    def _validated_objective(self) -> ResearchObjectiveContract:
+        if type(self) is not TierEvaluationContract:
+            raise TierEvaluationContractError(
+                "contract must be an exact TierEvaluationContract"
+            )
+        _require_sha256(self._bound_objective_sha256, "bound objective_sha256")
+        _validate_contract_semantics(self)
+        current_sha256 = self.objective.content_sha256
+        if current_sha256 != self._bound_objective_sha256:
+            raise TierEvaluationContractError(
+                "objective identity changed after tier contract creation"
+            )
+        return self.objective
 
     @property
     def content_sha256(self) -> str:
-        """Derive identity from a freshly revalidated semantic view."""
+        """Derive identity only from the originally bound frozen objective."""
         return derive_content_sha256(self.semantic_dict())
 
     @property
     def semantic_bytes(self) -> bytes:
-        """Return deterministic bytes from a freshly revalidated semantic view."""
+        """Return deterministic bytes only after frozen-objective identity validation."""
         return canonical_semantic_bytes(self.semantic_dict())
 
     @property
@@ -85,20 +101,20 @@ class TierEvaluationContract:
         return False
 
     def semantic_dict(self) -> dict[str, object]:
-        """Return complete tier semantics derived only from the frozen objective."""
-        _validate_contract(self)
-        exposure = _result_exposure(self.objective, self.tier)
-        evaluators = _evaluator_identities(self.objective, self.tier)
-        metrics = _metric_contracts(self.objective, self.tier)
+        """Return complete tier semantics from the originally bound frozen objective."""
+        objective = self._validated_objective()
+        exposure = _result_exposure(objective, self.tier)
+        evaluators = _evaluator_identities(objective, self.tier)
+        metrics = _metric_contracts(objective, self.tier)
         mode = _INTERACTION_MODE[self.tier]
         iterative_stream = self.tier not in _NON_ITERATIVE_TIERS
         return {
             "format": "MRL-TIER-EVALUATION-CONTRACT-V1",
-            "objective_sha256": self.objective.content_sha256,
+            "objective_sha256": self._bound_objective_sha256,
             "tier": int(self.tier),
             "tier_name": self.tier.name,
             "interaction_mode": mode.value,
-            "adaptive_query_ceiling": _adaptive_query_ceiling(self.objective, self.tier),
+            "adaptive_query_ceiling": _adaptive_query_ceiling(objective, self.tier),
             "result_exposure": exposure.to_dict(),
             "evaluator_identities": [identity.to_dict() for identity in evaluators],
             "metric_contracts": [metric.to_dict() for metric in metrics],
@@ -119,7 +135,7 @@ class TierEvaluationContract:
         return data
 
 
-def _validate_contract(value: TierEvaluationContract) -> None:
+def _validate_contract_semantics(value: TierEvaluationContract) -> None:
     if type(value.objective) is not ResearchObjectiveContract:
         raise TierEvaluationContractError("objective must be an exact ResearchObjectiveContract")
     if type(value.tier) is not EvaluationTier:
@@ -205,3 +221,12 @@ def _metric_contracts(
                 )
             )
     return tuple(result)
+
+
+def _require_sha256(value: object, label: str) -> None:
+    if (
+        type(value) is not str
+        or len(value) != 64
+        or any(character not in "0123456789abcdef" for character in value)
+    ):
+        raise TierEvaluationContractError(f"{label} must be 64 lowercase hex")
