@@ -113,6 +113,17 @@ def test_mutated_nested_control_fails_closed_on_report_public_views() -> None:
         _ = report.content_sha256
 
 
+def test_valid_procedure_identity_mutation_fails_closed() -> None:
+    procedure = _candidate_procedure()
+    report = build_procedure_negative_control_report(procedure, (_passing_case(),))
+    object.__setattr__(report, "procedure_sha256", "f" * 64)
+
+    with pytest.raises(ProcedureNegativeControlError, match="identity changed"):
+        _ = report.coverage_complete
+    with pytest.raises(ProcedureNegativeControlError, match="identity changed"):
+        _ = report.content_sha256
+
+
 def test_mutated_control_failure_mode_fails_closed_on_disposition() -> None:
     case = _passing_case()
     object.__setattr__(case, "expected_failure_mode", "")
