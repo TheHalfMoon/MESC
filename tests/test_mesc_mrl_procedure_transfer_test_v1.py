@@ -108,6 +108,15 @@ def test_transfer_requires_at_least_two_distinct_cases() -> None:
         build_procedure_transfer_test_report(procedure, (case,))
 
 
+def test_transfer_rejects_duplicate_replay_evidence_under_distinct_case_ids() -> None:
+    procedure = _candidate_procedure()
+    cases = list(_cases())
+    cases[1] = replace(cases[1], replay_receipt=cases[0].replay_receipt)
+
+    with pytest.raises(ProcedureTransferTestError, match="distinct replay evidence"):
+        build_procedure_transfer_test_report(procedure, tuple(cases))
+
+
 def test_transfer_case_cannot_escape_procedure_applicability() -> None:
     procedure = _candidate_procedure()
     cases = list(_cases())
