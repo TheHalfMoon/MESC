@@ -63,7 +63,19 @@ class ProcedureTransferCaseEvidence:
         _snapshot_replay(self.replay_receipt)
         _require_sha256(self.evidence_artifact_sha256, "evidence_artifact_sha256")
 
-    def semantic_dict(self) -> dict[str, object]:
+    def _validated_snapshot(self) -> ProcedureTransferCaseEvidence:
+        if type(self) is not ProcedureTransferCaseEvidence:
+            raise ProcedureTransferTestError(
+                "case evidence must be an exact ProcedureTransferCaseEvidence"
+            )
+        return ProcedureTransferCaseEvidence(
+            case_id=self.case_id,
+            applicability_bounds=_rebuild_bounds(self.applicability_bounds),
+            replay_receipt=_snapshot_replay(self.replay_receipt),
+            evidence_artifact_sha256=self.evidence_artifact_sha256,
+        )
+
+    def _semantic_dict_validated(self) -> dict[str, object]:
         replay = _snapshot_replay(self.replay_receipt)
         return {
             "applicability_bounds": _rebuild_bounds(self.applicability_bounds).to_dict(),
@@ -72,6 +84,10 @@ class ProcedureTransferCaseEvidence:
             "replay_receipt_sha256": replay.content_sha256,
             "replay_disposition": replay.disposition.value,
         }
+
+    def semantic_dict(self) -> dict[str, object]:
+        snapshot = ProcedureTransferCaseEvidence._validated_snapshot(self)
+        return snapshot._semantic_dict_validated()
 
 
 @dataclass(frozen=True, slots=True)
@@ -89,15 +105,18 @@ class ProcedureTransferTestReport:
             )
         if any(type(case) is not ProcedureTransferCaseEvidence for case in self.cases):
             raise ProcedureTransferTestError("cases contains an invalid item type")
-        case_ids = tuple(case.case_id for case in self.cases)
+        case_snapshots = tuple(
+            ProcedureTransferCaseEvidence._validated_snapshot(case) for case in self.cases
+        )
+        case_ids = tuple(case.case_id for case in case_snapshots)
         if case_ids != tuple(sorted(set(case_ids))):
             raise ProcedureTransferTestError("cases must be unique and sorted by case_id")
-        evidence_ids = tuple(case.evidence_artifact_sha256 for case in self.cases)
+        evidence_ids = tuple(case.evidence_artifact_sha256 for case in case_snapshots)
         if len(evidence_ids) != len(set(evidence_ids)):
             raise ProcedureTransferTestError(
                 "representative cases require distinct evidence artifact identities"
             )
-        replay_snapshots = tuple(_snapshot_replay(case.replay_receipt) for case in self.cases)
+        replay_snapshots = tuple(_snapshot_replay(case.replay_receipt) for case in case_snapshots)
         replay_ids = tuple(replay.content_sha256 for replay in replay_snapshots)
         if len(replay_ids) != len(set(replay_ids)):
             raise ProcedureTransferTestError(
@@ -114,13 +133,31 @@ class ProcedureTransferTestReport:
                     "transfer replay does not bind the report procedure identity"
                 )
 
-    @property
-    def all_cases_reproduced(self) -> bool:
+    def _validated_snapshot(self) -> ProcedureTransferTestReport:
+        if type(self) is not ProcedureTransferTestReport:
+            raise ProcedureTransferTestError(
+                "report must be an exact ProcedureTransferTestReport"
+            )
+        if type(self.cases) is not tuple:
+            raise ProcedureTransferTestError("cases must be an exact tuple")
+        return ProcedureTransferTestReport(
+            procedure_sha256=self.procedure_sha256,
+            cases=tuple(
+                ProcedureTransferCaseEvidence._validated_snapshot(case) for case in self.cases
+            ),
+        )
+
+    def _all_cases_reproduced_validated(self) -> bool:
         return all(
             _snapshot_replay(case.replay_receipt).disposition
             is ProcedureReplayDisposition.REPRODUCED
             for case in self.cases
         )
+
+    @property
+    def all_cases_reproduced(self) -> bool:
+        snapshot = ProcedureTransferTestReport._validated_snapshot(self)
+        return snapshot._all_cases_reproduced_validated()
 
     @property
     def can_advance_admission(self) -> bool:
@@ -130,15 +167,19 @@ class ProcedureTransferTestReport:
     def can_authorize(self) -> bool:
         return False
 
-    def semantic_dict(self) -> dict[str, object]:
+    def _semantic_dict_validated(self) -> dict[str, object]:
         return {
-            "all_cases_reproduced": self.all_cases_reproduced,
+            "all_cases_reproduced": self._all_cases_reproduced_validated(),
             "can_advance_admission": False,
             "can_authorize": False,
             "cases": [case.semantic_dict() for case in self.cases],
             "format": "MRL-PROCEDURE-TRANSFER-TEST-REPORT-V1",
             "procedure_sha256": self.procedure_sha256,
         }
+
+    def semantic_dict(self) -> dict[str, object]:
+        snapshot = ProcedureTransferTestReport._validated_snapshot(self)
+        return snapshot._semantic_dict_validated()
 
     @property
     def semantic_bytes(self) -> bytes:
@@ -172,12 +213,13 @@ def build_procedure_transfer_test_report(
     for case in cases:
         if type(case) is not ProcedureTransferCaseEvidence:
             raise ProcedureTransferTestError("cases contains an invalid item type")
-        case_bounds = _rebuild_bounds(case.applicability_bounds)
+        case_snapshot = ProcedureTransferCaseEvidence._validated_snapshot(case)
+        case_bounds = _rebuild_bounds(case_snapshot.applicability_bounds)
         if not _bounds_within(case_bounds, procedure_bounds):
             raise ProcedureTransferTestError(
                 "transfer case applicability must remain within procedure applicability"
             )
-        replay = _snapshot_replay(case.replay_receipt)
+        replay = _snapshot_replay(case_snapshot.replay_receipt)
         if replay.procedure_admission_subject_sha256 != procedure_sha256:
             raise ProcedureTransferTestError(
                 "transfer replay does not bind the supplied procedure candidate"
