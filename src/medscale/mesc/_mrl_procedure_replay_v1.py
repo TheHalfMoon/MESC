@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import enum
 import re
+import weakref
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from medscale.mesc._mrl_content_identity_v1 import (
@@ -50,7 +52,35 @@ class ProcedureReplayDisposition(enum.Enum):
     MISMATCH = "MISMATCH"
 
 
-@dataclass(frozen=True, slots=True)
+def _make_receipt_identity_registry() -> tuple[
+    Callable[[ProcedureReplayReceipt, str], None],
+    Callable[[ProcedureReplayReceipt], str],
+]:
+    identities: dict[int, str] = {}
+
+    def remove(key: int) -> None:
+        identities.pop(key, None)
+
+    def store(value: ProcedureReplayReceipt, content_sha256: str) -> None:
+        key = id(value)
+        if key in identities:
+            raise ProcedureReplayError("replay receipt construction identity already exists")
+        identities[key] = content_sha256
+        weakref.finalize(value, remove, key)
+
+    def load(value: ProcedureReplayReceipt) -> str:
+        identity = identities.get(id(value))
+        if identity is None:
+            raise ProcedureReplayError("replay receipt construction identity is missing")
+        return identity
+
+    return store, load
+
+
+_store_receipt_identity, _load_receipt_identity = _make_receipt_identity_registry()
+
+
+@dataclass(frozen=True, slots=True, weakref_slot=True)
 class ProcedureReplayReceipt:
     """Immutable fixture replay evidence for one exact procedure candidate identity."""
 
@@ -92,11 +122,17 @@ class ProcedureReplayReceipt:
         )
         if self.disposition is not expected_disposition:
             raise ProcedureReplayError("replay disposition does not match observed evidence")
+        _store_receipt_identity(
+            self,
+            derive_content_sha256(self._semantic_dict_validated()),
+        )
 
     def _validated_snapshot(self) -> ProcedureReplayReceipt:
         if type(self) is not ProcedureReplayReceipt:
             raise ProcedureReplayError("receipt must be an exact ProcedureReplayReceipt")
-        return ProcedureReplayReceipt(
+        bound_content_sha256 = _load_receipt_identity(self)
+        _require_sha256(bound_content_sha256, "bound receipt content_sha256")
+        snapshot = ProcedureReplayReceipt(
             procedure_admission_subject_sha256=self.procedure_admission_subject_sha256,
             procedure_content_sha256=self.procedure_content_sha256,
             surface_sha256=self.surface_sha256,
@@ -110,6 +146,10 @@ class ProcedureReplayReceipt:
             observed_max_score=self.observed_max_score,
             disposition=self.disposition,
         )
+        current_content_sha256 = derive_content_sha256(snapshot._semantic_dict_validated())
+        if current_content_sha256 != bound_content_sha256:
+            raise ProcedureReplayError("replay receipt identity changed after construction")
+        return snapshot
 
     @property
     def fixture_only(self) -> bool:
