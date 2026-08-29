@@ -63,9 +63,7 @@ def test_result_exposure_exhaustion_blocks_further_search_use() -> None:
     search = build_adaptive_budget_disposition(objective, campaign).tiers[0]
 
     assert search.state is AdaptiveTierUseState.BLOCKED
-    assert search.reasons == (
-        AdaptiveBudgetBlockReason.RESULT_EXPOSURE_BUDGET_EXHAUSTED,
-    )
+    assert search.reasons == (AdaptiveBudgetBlockReason.RESULT_EXPOSURE_BUDGET_EXHAUSTED,)
     assert search.result_exposures_remaining == 0
 
 
@@ -92,8 +90,7 @@ def test_multiple_exhausted_ceilings_have_deterministic_block_reasons() -> None:
         )
 
 
-def test_disallowed_adaptive_tier_is_blocked_without_fabricating_budget_exhaustion(
-) -> None:
+def test_disallowed_adaptive_tier_is_blocked_without_fabricating_budget_exhaustion() -> None:
     objective = _objective()
     campaign = _campaign(objective, include_replication=False)
     report = build_adaptive_budget_disposition(objective, campaign)
