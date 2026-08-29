@@ -6,7 +6,12 @@ from dataclasses import replace
 
 import pytest
 
-from medscale.mesc._mrl_fixture_research_surface_v1 import FixtureEvaluator
+from medscale.mesc._mrl_fixture_research_surface_v1 import (
+    FixtureEvaluator,
+    FixtureParameterValue,
+    FixtureResearchSurface,
+    build_fixture_candidate,
+)
 from medscale.mesc._mrl_temporal_canary_fixture_workflow_v1 import (
     TemporalCanaryFixtureWorkflowError,
     run_temporal_canary_fixture_workflow,
@@ -21,27 +26,45 @@ from test_mesc_mrl_temporal_canary_manifest_v1 import _manifest
 
 def _bound_manifest(
     evaluator: FixtureEvaluator,
+    surface: FixtureResearchSurface,
+    parameter_values: tuple[FixtureParameterValue, ...],
     *,
     source_kind: TemporalCanarySourceKind = TemporalCanarySourceKind.SYNTHETIC,
 ) -> TemporalCanaryManifest:
+    candidate = build_fixture_candidate(surface, parameter_values)
     return replace(
-        _manifest(source_kind=source_kind),
+        _manifest(
+            source_kind=source_kind,
+            artifact=candidate.content_sha256,
+        ),
         evaluator_artifact_sha256=evaluator.content_sha256,
     )
 
 
 def test_fixture_canary_workflow_is_deterministic_and_identity_bound() -> None:
     evaluator = _evaluator()
-    manifest = _bound_manifest(evaluator)
     surface = _surface(evaluator)
+    parameter_values = _values()
+    manifest = _bound_manifest(evaluator, surface, parameter_values)
 
-    first = run_temporal_canary_fixture_workflow(manifest, surface, evaluator, _values())
-    second = run_temporal_canary_fixture_workflow(manifest, surface, evaluator, _values())
+    first = run_temporal_canary_fixture_workflow(
+        manifest,
+        surface,
+        evaluator,
+        parameter_values,
+    )
+    second = run_temporal_canary_fixture_workflow(
+        manifest,
+        surface,
+        evaluator,
+        parameter_values,
+    )
 
     assert first.semantic_bytes == second.semantic_bytes
     assert first.content_sha256 == second.content_sha256
     assert first.manifest_sha256 == manifest.content_sha256
     assert first.canary_artifact_sha256 == manifest.canary_artifact_sha256
+    assert first.canary_artifact_sha256 == first.candidate_sha256
     assert first.surface_sha256 == surface.content_sha256
     assert first.evaluator_sha256 == evaluator.content_sha256
     assert first.evaluator_sha256 == manifest.evaluator_artifact_sha256
@@ -51,12 +74,20 @@ def test_fixture_canary_workflow_is_deterministic_and_identity_bound() -> None:
 
 def test_hand_authored_fixture_canary_remains_r2_fixture_only() -> None:
     evaluator = _evaluator()
+    surface = _surface(evaluator)
+    parameter_values = _values()
     manifest = _bound_manifest(
         evaluator,
+        surface,
+        parameter_values,
         source_kind=TemporalCanarySourceKind.HAND_AUTHORED_FIXTURE,
     )
-    surface = _surface(evaluator)
-    receipt = run_temporal_canary_fixture_workflow(manifest, surface, evaluator, _values())
+    receipt = run_temporal_canary_fixture_workflow(
+        manifest,
+        surface,
+        evaluator,
+        parameter_values,
+    )
 
     assert receipt.source_kind is TemporalCanarySourceKind.HAND_AUTHORED_FIXTURE
     assert receipt.fixture_only is True
@@ -65,9 +96,15 @@ def test_hand_authored_fixture_canary_remains_r2_fixture_only() -> None:
 
 def test_receipt_never_exposes_or_recycles_canary_content() -> None:
     evaluator = _evaluator()
-    manifest = _bound_manifest(evaluator)
     surface = _surface(evaluator)
-    receipt = run_temporal_canary_fixture_workflow(manifest, surface, evaluator, _values())
+    parameter_values = _values()
+    manifest = _bound_manifest(evaluator, surface, parameter_values)
+    receipt = run_temporal_canary_fixture_workflow(
+        manifest,
+        surface,
+        evaluator,
+        parameter_values,
+    )
 
     assert receipt.exposes_canary_content is False
     assert receipt.can_enter_training is False
@@ -76,48 +113,85 @@ def test_receipt_never_exposes_or_recycles_canary_content() -> None:
     assert receipt.semantic_dict()["workflow_mode"] == "R2_FIXTURE_ONLY"
 
 
+def test_manifest_canary_artifact_must_match_executed_fixture_candidate() -> None:
+    evaluator = _evaluator()
+    surface = _surface(evaluator)
+    manifest = _bound_manifest(evaluator, surface, _values())
+
+    with pytest.raises(TemporalCanaryFixtureWorkflowError, match="artifact identity"):
+        run_temporal_canary_fixture_workflow(
+            manifest,
+            surface,
+            evaluator,
+            _values(beta=10),
+        )
+
+
 def test_mutated_manifest_fails_closed() -> None:
     evaluator = _evaluator()
-    manifest = _bound_manifest(evaluator)
-    object.__setattr__(manifest, "canary_artifact_sha256", "invalid")
     surface = _surface(evaluator)
+    parameter_values = _values()
+    manifest = _bound_manifest(evaluator, surface, parameter_values)
+    object.__setattr__(manifest, "canary_artifact_sha256", "invalid")
 
     with pytest.raises(TemporalCanaryFixtureWorkflowError, match="canonical validation"):
-        run_temporal_canary_fixture_workflow(manifest, surface, evaluator, _values())
+        run_temporal_canary_fixture_workflow(
+            manifest,
+            surface,
+            evaluator,
+            parameter_values,
+        )
 
 
 def test_manifest_evaluator_identity_mismatch_fails_closed() -> None:
     evaluator = _evaluator()
+    surface = _surface(evaluator)
+    parameter_values = _values()
     manifest = replace(
-        _bound_manifest(evaluator),
+        _bound_manifest(evaluator, surface, parameter_values),
         evaluator_artifact_sha256="f" * 64,
     )
-    surface = _surface(evaluator)
 
     with pytest.raises(TemporalCanaryFixtureWorkflowError, match="manifest evaluator identity"):
-        run_temporal_canary_fixture_workflow(manifest, surface, evaluator, _values())
+        run_temporal_canary_fixture_workflow(
+            manifest,
+            surface,
+            evaluator,
+            parameter_values,
+        )
 
 
 def test_evaluator_surface_mismatch_fails_closed() -> None:
     evaluator = _evaluator()
-    other_evaluator = _evaluator(targets=(_values()[0],))
-    manifest = _bound_manifest(other_evaluator)
     surface = _surface(evaluator)
+    parameter_values = _values()
+    other_evaluator = _evaluator(targets=(parameter_values[0],))
+    manifest = _bound_manifest(
+        other_evaluator,
+        surface,
+        parameter_values,
+    )
 
     with pytest.raises(TemporalCanaryFixtureWorkflowError, match="canonical validation"):
         run_temporal_canary_fixture_workflow(
             manifest,
             surface,
             other_evaluator,
-            _values(),
+            parameter_values,
         )
 
 
 def test_mutated_receipt_fails_closed_on_public_views() -> None:
     evaluator = _evaluator()
-    manifest = _bound_manifest(evaluator)
     surface = _surface(evaluator)
-    receipt = run_temporal_canary_fixture_workflow(manifest, surface, evaluator, _values())
+    parameter_values = _values()
+    manifest = _bound_manifest(evaluator, surface, parameter_values)
+    receipt = run_temporal_canary_fixture_workflow(
+        manifest,
+        surface,
+        evaluator,
+        parameter_values,
+    )
     object.__setattr__(receipt, "evaluation_sha256", "invalid")
 
     with pytest.raises(TemporalCanaryFixtureWorkflowError, match="64 lowercase hex"):
