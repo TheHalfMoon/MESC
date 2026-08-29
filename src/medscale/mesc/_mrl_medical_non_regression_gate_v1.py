@@ -38,7 +38,6 @@ __all__ = [
     "evaluate_medical_non_regression_gates",
 ]
 
-
 _TOKEN: Final = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]*$")
 _CANONICAL_DECIMAL: Final = re.compile(r"^-?(?:0|[1-9][0-9]*)(?:\.[0-9]*[1-9])?$")
 
@@ -69,7 +68,9 @@ class MedicalFloorAssessment:
 
     def __post_init__(self) -> None:
         if type(self.comparator) is not FloorComparator:
-            raise MedicalNonRegressionGateError("comparator must be an exact FloorComparator")
+            raise MedicalNonRegressionGateError(
+                "comparator must be an exact FloorComparator"
+            )
         if type(self.passed) is not bool:
             raise MedicalNonRegressionGateError("passed must be an exact bool")
         _require_token(self.floor_id, "floor_id")
@@ -121,12 +122,18 @@ class MedicalNonRegressionGateReport:
             "sealed_evidence_report_sha256",
         )
         if type(self.assessments) is not tuple or not self.assessments:
-            raise MedicalNonRegressionGateError("assessments must be a non-empty exact tuple")
+            raise MedicalNonRegressionGateError(
+                "assessments must be a non-empty exact tuple"
+            )
         if any(type(item) is not MedicalFloorAssessment for item in self.assessments):
-            raise MedicalNonRegressionGateError("assessments contains an invalid item type")
+            raise MedicalNonRegressionGateError(
+                "assessments contains an invalid item type"
+            )
         floor_ids = tuple(item.floor_id for item in self.assessments)
         if floor_ids != tuple(sorted(set(floor_ids))):
-            raise MedicalNonRegressionGateError("assessments must be sorted and unique by floor_id")
+            raise MedicalNonRegressionGateError(
+                "assessments must be sorted and unique by floor_id"
+            )
         if type(self.disposition) is not MedicalNonRegressionDisposition:
             raise MedicalNonRegressionGateError(
                 "disposition must be an exact MedicalNonRegressionDisposition"
@@ -210,7 +217,12 @@ def evaluate_medical_non_regression_gates(
     _require_sealed_evaluator_bindings(objective, report)
 
     evidence_by_key = _validated_evidence_index(objective, report)
-    floors = tuple(sorted((*objective.hard_guardrails, *objective.subgroup_floors), key=_floor_id))
+    floors = tuple(
+        sorted(
+            (*objective.hard_guardrails, *objective.subgroup_floors),
+            key=_floor_id,
+        )
+    )
     assessments = tuple(_assess_floor(floor, evidence_by_key) for floor in floors)
     disposition = (
         MedicalNonRegressionDisposition.SATISFIED
@@ -295,7 +307,9 @@ def _validated_evidence_index(
         if metric.tier is EvaluationTier.SEALED
     }
     if not sealed_metrics:
-        raise MedicalNonRegressionGateError("objective has no Tier 3 SEALED evaluation metric")
+        raise MedicalNonRegressionGateError(
+            "objective has no Tier 3 SEALED evaluation metric"
+        )
 
     index: dict[tuple[str, str | None], SealedMetricEvidence] = {}
     for evidence in report.metric_evidence:
@@ -310,7 +324,9 @@ def _validated_evidence_index(
             )
         key = (evidence.metric_id, evidence.subgroup)
         if key in index:
-            raise MedicalNonRegressionGateError("sealed metric evidence key is duplicated")
+            raise MedicalNonRegressionGateError(
+                "sealed metric evidence key is duplicated"
+            )
         index[key] = evidence
 
     for floor in (*objective.hard_guardrails, *objective.subgroup_floors):
