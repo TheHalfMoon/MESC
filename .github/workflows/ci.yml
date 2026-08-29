@@ -49,6 +49,9 @@ jobs:
       - name: Pytest
         run: uv run pytest --cov --cov-report=term-missing
 
+      - name: MRL machine-state drift/manual-edit gate
+        run: uv run pytest -q tests/test_mesc_mrl_machine_state_ci_gate_v1.py
+
       # ADR-0017: corpus<->log referential integrity is a hard gate, not a convention.
       - name: litdb integrity (medscale check)
         run: uv run medscale check
