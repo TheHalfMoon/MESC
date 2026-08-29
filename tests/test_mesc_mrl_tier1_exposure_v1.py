@@ -107,6 +107,21 @@ def test_non_search_contract_and_fabricated_usage_fail_closed() -> None:
         consume_tier1_query(_policy(), cast(Tier1ExposureUsage, object()))
 
 
+def test_mutated_negative_usage_cannot_create_extra_query_or_exposure_capacity() -> None:
+    policy = _policy()
+    query_usage = Tier1ExposureUsage(queries_used=5)
+    object.__setattr__(query_usage, "queries_used", -1)
+
+    with pytest.raises(Tier1ExposureError, match="queries_used must be a non-negative"):
+        consume_tier1_query(policy, query_usage)
+
+    exposure_usage = Tier1ExposureUsage(exposures_used=5)
+    object.__setattr__(exposure_usage, "exposures_used", -1)
+
+    with pytest.raises(Tier1ExposureError, match="exposures_used must be a non-negative"):
+        record_tier1_exposure(policy, exposure_usage, ("aggregate_score",))
+
+
 def test_usage_cannot_start_beyond_frozen_limits_or_use_mutable_field_collection() -> None:
     policy = _policy()
 
