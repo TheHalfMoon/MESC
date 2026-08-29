@@ -146,7 +146,8 @@ class ContaminationEvidenceReport:
         if any(type(item) is not ContaminationCheckEvidence for item in self.checks):
             raise ContaminationInterfaceError("checks contains an invalid item type")
         check_snapshots = tuple(
-            ContaminationCheckEvidence._validated_snapshot(item) for item in self.checks
+            ContaminationCheckEvidence._validated_snapshot(item)
+            for item in self.checks
         )
         kinds = tuple(item.kind.value for item in check_snapshots)
         expected = tuple(kind.value for kind in ContaminationCheckKind)
