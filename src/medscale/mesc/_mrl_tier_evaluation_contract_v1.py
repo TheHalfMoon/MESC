@@ -12,7 +12,8 @@ authority.
 from __future__ import annotations
 
 import enum
-from dataclasses import dataclass, field
+import weakref
+from dataclasses import dataclass
 from typing import Final
 
 from medscale.mesc._mrl_content_identity_v1 import (
@@ -59,31 +60,61 @@ _ADAPTIVE_TIERS: Final = (EvaluationTier.SEARCH, EvaluationTier.REPLICATION)
 _NON_ITERATIVE_TIERS: Final = (EvaluationTier.SEALED, EvaluationTier.EXTERNAL_ASSURANCE)
 
 
-@dataclass(frozen=True, slots=True)
+def _make_construction_identity_registry() -> tuple[
+    object,
+    object,
+]:
+    identities: dict[int, str] = {}
+
+    def remove(key: int) -> None:
+        identities.pop(key, None)
+
+    def store(value: TierEvaluationContract, objective_sha256: str) -> None:
+        key = id(value)
+        if key in identities:
+            raise TierEvaluationContractError("tier contract construction identity already exists")
+        identities[key] = objective_sha256
+        weakref.finalize(value, remove, key)
+
+    def load(value: TierEvaluationContract) -> str:
+        identity = identities.get(id(value))
+        if identity is None:
+            raise TierEvaluationContractError("tier contract construction identity is missing")
+        return identity
+
+    return store, load
+
+
+_store_construction_identity, _load_construction_identity = _make_construction_identity_registry()
+
+
+@dataclass(frozen=True, slots=True, weakref_slot=True)
 class TierEvaluationContract:
     """A content-addressed view of one exact frozen objective policy for one tier."""
 
     objective: ResearchObjectiveContract
     tier: EvaluationTier
-    _bound_objective_sha256: str = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
+        if type(self) is not TierEvaluationContract:
+            return
         _validate_contract_semantics(self)
-        object.__setattr__(self, "_bound_objective_sha256", self.objective.content_sha256)
+        _store_construction_identity(self, self.objective.content_sha256)  # type: ignore[operator]
 
-    def _validated_objective(self) -> ResearchObjectiveContract:
+    def _validated_objective(self) -> tuple[ResearchObjectiveContract, str]:
         if type(self) is not TierEvaluationContract:
             raise TierEvaluationContractError(
                 "contract must be an exact TierEvaluationContract"
             )
-        _require_sha256(self._bound_objective_sha256, "bound objective_sha256")
+        bound_objective_sha256 = _load_construction_identity(self)  # type: ignore[operator]
+        _require_sha256(bound_objective_sha256, "bound objective_sha256")
         _validate_contract_semantics(self)
         current_sha256 = self.objective.content_sha256
-        if current_sha256 != self._bound_objective_sha256:
+        if current_sha256 != bound_objective_sha256:
             raise TierEvaluationContractError(
                 "objective identity changed after tier contract creation"
             )
-        return self.objective
+        return self.objective, bound_objective_sha256
 
     @property
     def content_sha256(self) -> str:
@@ -102,7 +133,7 @@ class TierEvaluationContract:
 
     def semantic_dict(self) -> dict[str, object]:
         """Return complete tier semantics from the originally bound frozen objective."""
-        objective = self._validated_objective()
+        objective, objective_sha256 = self._validated_objective()
         exposure = _result_exposure(objective, self.tier)
         evaluators = _evaluator_identities(objective, self.tier)
         metrics = _metric_contracts(objective, self.tier)
@@ -110,7 +141,7 @@ class TierEvaluationContract:
         iterative_stream = self.tier not in _NON_ITERATIVE_TIERS
         return {
             "format": "MRL-TIER-EVALUATION-CONTRACT-V1",
-            "objective_sha256": self._bound_objective_sha256,
+            "objective_sha256": objective_sha256,
             "tier": int(self.tier),
             "tier_name": self.tier.name,
             "interaction_mode": mode.value,
