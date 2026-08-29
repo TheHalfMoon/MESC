@@ -174,6 +174,28 @@ def test_usage_beyond_frozen_ceiling_fails_closed(
         build_adaptive_campaign_accounting(objective, campaign)
 
 
+def test_mutated_tier_row_fails_closed_before_remaining_or_hash_views() -> None:
+    objective = _all_tier_objective()
+    accounting = build_adaptive_campaign_accounting(objective, _campaign(objective))
+    object.__setattr__(accounting.tiers[0], "queries_used", -1)
+
+    with pytest.raises(AdaptiveCampaignAccountingError, match="non-negative exact integer"):
+        _ = accounting.tiers[0].queries_remaining
+    with pytest.raises(AdaptiveCampaignAccountingError, match="non-negative exact integer"):
+        _ = accounting.content_sha256
+
+
+def test_mutated_accounting_identity_fails_closed_before_semantic_or_hash_views() -> None:
+    objective = _all_tier_objective()
+    accounting = build_adaptive_campaign_accounting(objective, _campaign(objective))
+    object.__setattr__(accounting, "campaign_sha256", "invalid")
+
+    with pytest.raises(AdaptiveCampaignAccountingError, match="64 lowercase hex"):
+        accounting.semantic_dict()
+    with pytest.raises(AdaptiveCampaignAccountingError, match="64 lowercase hex"):
+        _ = accounting.content_sha256
+
+
 def test_objective_identity_mismatch_and_fabricated_types_fail_closed() -> None:
     objective = _all_tier_objective()
     mismatched = ResearchCampaign(
