@@ -91,6 +91,7 @@ class AdaptiveTierDisposition:
             self.result_exposures_remaining,
             "result_exposures_remaining",
         )
+
         if self.state is AdaptiveTierUseState.AVAILABLE:
             if self.reasons:
                 raise AdaptiveBudgetExhaustionError("AVAILABLE tier cannot carry block reasons")
@@ -98,11 +99,53 @@ class AdaptiveTierDisposition:
                 raise AdaptiveBudgetExhaustionError(
                     "AVAILABLE tier must retain query and exposure capacity"
                 )
-        elif not self.reasons:
+            return
+
+        if not self.reasons:
             raise AdaptiveBudgetExhaustionError("BLOCKED tier requires at least one reason")
 
-    def to_dict(self) -> dict[str, object]:
-        """Return deterministic per-tier disposition semantics."""
+        if AdaptiveBudgetBlockReason.TIER_NOT_ALLOWED in self.reasons:
+            if self.reasons != (AdaptiveBudgetBlockReason.TIER_NOT_ALLOWED,):
+                raise AdaptiveBudgetExhaustionError(
+                    "TIER_NOT_ALLOWED cannot be combined with budget exhaustion reasons"
+                )
+            if self.queries_remaining != 0 or self.result_exposures_remaining != 0:
+                raise AdaptiveBudgetExhaustionError(
+                    "TIER_NOT_ALLOWED tier must expose zero remaining adaptive capacity"
+                )
+            return
+
+        expected_reasons: list[AdaptiveBudgetBlockReason] = []
+        if self.queries_remaining == 0:
+            expected_reasons.append(AdaptiveBudgetBlockReason.QUERY_BUDGET_EXHAUSTED)
+        if self.result_exposures_remaining == 0:
+            expected_reasons.append(
+                AdaptiveBudgetBlockReason.RESULT_EXPOSURE_BUDGET_EXHAUSTED
+            )
+        expected = tuple(sorted(expected_reasons, key=lambda reason: reason.value))
+        if not expected:
+            raise AdaptiveBudgetExhaustionError(
+                "BLOCKED allowed tier must have at least one exhausted capacity"
+            )
+        if self.reasons != expected:
+            raise AdaptiveBudgetExhaustionError(
+                "BLOCKED reasons must exactly match exhausted adaptive capacities"
+            )
+
+    def _validated_snapshot(self) -> AdaptiveTierDisposition:
+        if type(self) is not AdaptiveTierDisposition:
+            raise AdaptiveBudgetExhaustionError(
+                "tier disposition must be an exact AdaptiveTierDisposition"
+            )
+        return AdaptiveTierDisposition(
+            tier=self.tier,
+            state=self.state,
+            reasons=self.reasons,
+            queries_remaining=self.queries_remaining,
+            result_exposures_remaining=self.result_exposures_remaining,
+        )
+
+    def _to_dict_validated(self) -> dict[str, object]:
         return {
             "queries_remaining": self.queries_remaining,
             "reasons": [reason.value for reason in self.reasons],
@@ -111,6 +154,11 @@ class AdaptiveTierDisposition:
             "tier": int(self.tier),
             "tier_name": self.tier.name,
         }
+
+    def to_dict(self) -> dict[str, object]:
+        """Return freshly revalidated per-tier disposition semantics."""
+        snapshot = AdaptiveTierDisposition._validated_snapshot(self)
+        return snapshot._to_dict_validated()
 
 
 @dataclass(frozen=True, slots=True)
@@ -130,13 +178,32 @@ class AdaptiveBudgetDispositionReport:
             raise AdaptiveBudgetExhaustionError("tiers must be an exact tuple")
         if any(type(item) is not AdaptiveTierDisposition for item in self.tiers):
             raise AdaptiveBudgetExhaustionError("tiers contains an invalid item type")
-        if tuple(item.tier for item in self.tiers) != _ADAPTIVE_TIERS:
+        snapshots = tuple(AdaptiveTierDisposition._validated_snapshot(item) for item in self.tiers)
+        if tuple(item.tier for item in snapshots) != _ADAPTIVE_TIERS:
             raise AdaptiveBudgetExhaustionError("tiers must contain SEARCH then REPLICATION")
+
+    def _validated_snapshot(self) -> AdaptiveBudgetDispositionReport:
+        if type(self) is not AdaptiveBudgetDispositionReport:
+            raise AdaptiveBudgetExhaustionError(
+                "report must be an exact AdaptiveBudgetDispositionReport"
+            )
+        if type(self.tiers) is not tuple:
+            raise AdaptiveBudgetExhaustionError("tiers must be an exact tuple")
+        return AdaptiveBudgetDispositionReport(
+            objective_sha256=self.objective_sha256,
+            campaign_sha256=self.campaign_sha256,
+            accounting_sha256=self.accounting_sha256,
+            tiers=tuple(AdaptiveTierDisposition._validated_snapshot(item) for item in self.tiers),
+        )
+
+    def _blocked_tiers_validated(self) -> tuple[EvaluationTier, ...]:
+        return tuple(item.tier for item in self.tiers if item.state is AdaptiveTierUseState.BLOCKED)
 
     @property
     def blocked_tiers(self) -> tuple[EvaluationTier, ...]:
-        """Return every adaptive tier that cannot be used further."""
-        return tuple(item.tier for item in self.tiers if item.state is AdaptiveTierUseState.BLOCKED)
+        """Return every freshly validated adaptive tier that cannot be used further."""
+        snapshot = AdaptiveBudgetDispositionReport._validated_snapshot(self)
+        return snapshot._blocked_tiers_validated()
 
     @property
     def can_authorize(self) -> bool:
@@ -155,27 +222,31 @@ class AdaptiveBudgetDispositionReport:
 
     @property
     def content_sha256(self) -> str:
-        """Return deterministic identity over complete disposition semantics."""
+        """Return deterministic identity over freshly validated disposition semantics."""
         return derive_content_sha256(self.semantic_dict())
 
     @property
     def semantic_bytes(self) -> bytes:
-        """Return canonical fail-closed disposition bytes."""
+        """Return canonical fail-closed disposition bytes after revalidation."""
         return canonical_semantic_bytes(self.semantic_dict())
 
-    def semantic_dict(self) -> dict[str, object]:
-        """Return complete non-authoritative adaptive-budget semantics."""
+    def _semantic_dict_validated(self) -> dict[str, object]:
         return {
             "accounting_sha256": self.accounting_sha256,
-            "blocked_tiers": [int(tier) for tier in self.blocked_tiers],
+            "blocked_tiers": [int(tier) for tier in self._blocked_tiers_validated()],
             "campaign_sha256": self.campaign_sha256,
             "can_authorize": False,
             "can_expand_budget": False,
             "can_request_additional_sealed_detail": False,
             "format": "MRL-ADAPTIVE-BUDGET-DISPOSITION-V1",
             "objective_sha256": self.objective_sha256,
-            "tiers": [item.to_dict() for item in self.tiers],
+            "tiers": [item._to_dict_validated() for item in self.tiers],
         }
+
+    def semantic_dict(self) -> dict[str, object]:
+        """Return complete semantics from one freshly validated disposition snapshot."""
+        snapshot = AdaptiveBudgetDispositionReport._validated_snapshot(self)
+        return snapshot._semantic_dict_validated()
 
     def to_dict(self) -> dict[str, object]:
         """Return report semantics plus derived content identity."""
@@ -219,37 +290,56 @@ def require_adaptive_tier_available(
     campaign: ResearchCampaign,
     tier: EvaluationTier,
 ) -> AdaptiveTierDisposition:
-    """Return an available adaptive tier or reject further use when it is blocked."""
+    """Return an available tier snapshot or reject further use when it is blocked."""
     if type(tier) is not EvaluationTier or tier not in _ADAPTIVE_TIERS:
         raise AdaptiveBudgetExhaustionError("tier must be SEARCH or REPLICATION")
-    report = build_adaptive_budget_disposition(objective, campaign)
+    report = build_adaptive_budget_disposition(objective, campaign)._validated_snapshot()
     disposition = next(item for item in report.tiers if item.tier is tier)
     if disposition.state is AdaptiveTierUseState.BLOCKED:
         reasons = ",".join(reason.value for reason in disposition.reasons)
         raise AdaptiveBudgetExhaustionError(f"adaptive tier {tier.name} is BLOCKED: {reasons}")
-    return disposition
+    return AdaptiveTierDisposition._validated_snapshot(disposition)
 
 
 def _derive_tier_disposition(
     accounting: AdaptiveTierAccounting,
     allowed_tiers: set[EvaluationTier],
 ) -> AdaptiveTierDisposition:
+    if type(accounting) is not AdaptiveTierAccounting:
+        raise AdaptiveBudgetExhaustionError(
+            "accounting row must be an exact AdaptiveTierAccounting"
+        )
+    try:
+        snapshot = AdaptiveTierAccounting(
+            tier=accounting.tier,
+            queries_used=accounting.queries_used,
+            query_ceiling=accounting.query_ceiling,
+            result_exposures_used=accounting.result_exposures_used,
+            result_exposure_ceiling=accounting.result_exposure_ceiling,
+        )
+    except (AttributeError, TypeError, ValueError) as exc:
+        raise AdaptiveBudgetExhaustionError(
+            "adaptive tier accounting failed canonical revalidation"
+        ) from exc
+
+    queries_remaining = snapshot.queries_remaining
+    result_exposures_remaining = snapshot.result_exposures_remaining
     reasons: list[AdaptiveBudgetBlockReason] = []
-    if accounting.tier not in allowed_tiers:
+    if snapshot.tier not in allowed_tiers:
         reasons.append(AdaptiveBudgetBlockReason.TIER_NOT_ALLOWED)
     else:
-        if accounting.queries_remaining == 0:
+        if queries_remaining == 0:
             reasons.append(AdaptiveBudgetBlockReason.QUERY_BUDGET_EXHAUSTED)
-        if accounting.result_exposures_remaining == 0:
+        if result_exposures_remaining == 0:
             reasons.append(AdaptiveBudgetBlockReason.RESULT_EXPOSURE_BUDGET_EXHAUSTED)
     reasons.sort(key=lambda reason: reason.value)
     state = AdaptiveTierUseState.BLOCKED if reasons else AdaptiveTierUseState.AVAILABLE
     return AdaptiveTierDisposition(
-        tier=accounting.tier,
+        tier=snapshot.tier,
         state=state,
         reasons=tuple(reasons),
-        queries_remaining=accounting.queries_remaining,
-        result_exposures_remaining=accounting.result_exposures_remaining,
+        queries_remaining=queries_remaining,
+        result_exposures_remaining=result_exposures_remaining,
     )
 
 
