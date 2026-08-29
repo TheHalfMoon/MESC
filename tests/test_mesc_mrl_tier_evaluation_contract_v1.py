@@ -190,9 +190,16 @@ def test_existing_contract_rejects_post_construction_objective_identity_drift() 
     assert original_sha256
 
 
+def test_construction_identity_is_not_reachable_as_mutable_contract_state() -> None:
+    contract = TierEvaluationContract(objective=_objective(), tier=EvaluationTier.SEARCH)
+
+    assert tuple(field.name for field in fields(TierEvaluationContract)) == ("objective", "tier")
+    with pytest.raises(AttributeError):
+        object.__setattr__(contract, "_bound_objective_sha256", "a" * 64)
+
+
 def test_callers_cannot_supply_replacement_budget_evaluator_or_exposure_fields() -> None:
-    init_fields = tuple(field.name for field in fields(TierEvaluationContract) if field.init)
-    assert init_fields == ("objective", "tier")
+    assert tuple(field.name for field in fields(TierEvaluationContract)) == ("objective", "tier")
 
 
 def test_exact_objective_and_tier_types_are_required() -> None:
