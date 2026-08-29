@@ -167,6 +167,11 @@ def run_temporal_canary_fixture_workflow(
             evaluator_artifact_sha256=manifest.evaluator_artifact_sha256,
             topic_tags=manifest.topic_tags,
         )
+        evaluator_sha256 = evaluator.content_sha256
+        if manifest_snapshot.evaluator_artifact_sha256 != evaluator_sha256:
+            raise TemporalCanaryFixtureWorkflowError(
+                "temporal-canary manifest evaluator identity does not match supplied fixture evaluator"
+            )
         candidate: FixtureCandidate = build_fixture_candidate(surface, parameter_values)
         evaluation: FixtureEvaluation = evaluate_fixture_candidate(
             surface,
@@ -183,7 +188,7 @@ def run_temporal_canary_fixture_workflow(
         canary_artifact_sha256=manifest_snapshot.canary_artifact_sha256,
         source_kind=manifest_snapshot.source_kind,
         surface_sha256=surface.content_sha256,
-        evaluator_sha256=evaluator.content_sha256,
+        evaluator_sha256=evaluator_sha256,
         candidate_sha256=candidate.content_sha256,
         evaluation_sha256=evaluation.content_sha256,
         metric_id=evaluation.metric_id,
