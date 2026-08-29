@@ -159,6 +159,38 @@ def test_mutated_contamination_evidence_fails_closed() -> None:
         )
 
 
+def test_mutated_flags_fail_closed_on_public_views() -> None:
+    lineage, contamination, transformation = _bound_inputs()
+    flags = build_benchmark_derived_generation_flags(
+        lineage,
+        contamination,
+        transformation,
+        assessment_artifact_sha256="8" * 64,
+        classification=BenchmarkDerivedGenerationClassification.INDETERMINATE,
+    )
+    object.__setattr__(flags, "assessment_artifact_sha256", "invalid")
+
+    with pytest.raises(BenchmarkDerivedGenerationError, match="64 lowercase hex"):
+        flags.semantic_dict()
+    with pytest.raises(BenchmarkDerivedGenerationError, match="64 lowercase hex"):
+        _ = flags.content_sha256
+
+
+def test_mutated_classification_fails_closed_on_derived_flag() -> None:
+    lineage, contamination, transformation = _bound_inputs()
+    flags = build_benchmark_derived_generation_flags(
+        lineage,
+        contamination,
+        transformation,
+        assessment_artifact_sha256="8" * 64,
+        classification=BenchmarkDerivedGenerationClassification.INDETERMINATE,
+    )
+    object.__setattr__(flags, "classification", "INDETERMINATE")
+
+    with pytest.raises(BenchmarkDerivedGenerationError, match="exact"):
+        _ = flags.benchmark_derived_flag
+
+
 def test_flags_cannot_generate_access_or_authorize_training() -> None:
     lineage, contamination, transformation = _bound_inputs()
     flags = build_benchmark_derived_generation_flags(
