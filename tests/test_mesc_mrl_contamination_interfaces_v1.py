@@ -117,6 +117,29 @@ def test_indeterminate_interface_preserves_uncertainty() -> None:
     assert report.disposition is ContaminationDisposition.INDETERMINATE
 
 
+def test_mutated_check_fails_closed_on_report_disposition_and_hash_views() -> None:
+    lineage = build_training_example_lineage(_example())
+    checks = _checks()
+    report = build_contamination_evidence_report(lineage, checks)
+    object.__setattr__(checks[1], "similarity_decimal", "0.9")
+
+    with pytest.raises(ContaminationInterfaceError, match="does not match"):
+        _ = report.disposition
+    with pytest.raises(ContaminationInterfaceError, match="does not match"):
+        _ = report.content_sha256
+
+
+def test_mutated_report_identity_fails_closed_on_semantic_and_hash_views() -> None:
+    lineage = build_training_example_lineage(_example())
+    report = build_contamination_evidence_report(lineage, _checks())
+    object.__setattr__(report, "training_lineage_sha256", "invalid")
+
+    with pytest.raises(ContaminationInterfaceError, match="64 lowercase hex"):
+        report.semantic_dict()
+    with pytest.raises(ContaminationInterfaceError, match="64 lowercase hex"):
+        _ = report.content_sha256
+
+
 def test_mutated_lineage_fails_closed() -> None:
     lineage = build_training_example_lineage(_example())
     object.__setattr__(lineage.example, "source_sha256", "not-a-sha")
