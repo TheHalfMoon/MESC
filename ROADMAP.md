@@ -6,6 +6,35 @@ authoritative scope document is the
 [Research Vision](docs/vision/MEDSCALE_RESEARCH_VISION.md); the narrative is the
 [Strategic Blueprint](docs/vision/MEDSCALE_STRATEGIC_BLUEPRINT_V1.md).
 
+## Live status and authority
+
+This file is a human-readable planning view. Its phase-status cells and sequencing prose
+are explanatory snapshots; they are not evidence of task eligibility, canonical closure,
+execution authorization, training authorization, model promotion, deployment, release, or
+clinical authority.
+
+For MESC Research Loop V1 work, live status follows this precedence:
+
+```text
+canonical main commit/tree
+  -> canonical MRL specifications, governance, and exact gate evidence
+  -> independently verified PR/check/review/merge evidence
+  -> mechanically derived machine-state projections
+  -> human-readable roadmap/status prose
+```
+
+`PROJECT_STATE.json`, `CAPABILITY_MATRIX.json`, and `RESEARCH_PROGRAM_INDEX.json` remain
+non-authoritative derived views. This roadmap is lower-precedence still: it cannot override
+live canonical gate evidence or make a stale projection usable. When roadmap wording or a
+status cell conflicts with current canonical evidence, the canonical evidence governs and
+the roadmap must be reconciled rather than treated as a competing live-state authority.
+
+The dependency-ordered MRL task ledger is
+[`specs/mesc-research-loop-v1/tasks.md`](specs/mesc-research-loop-v1/tasks.md), but a ledger
+checkbox alone is not canonical closeout evidence. Exact task closure and eligibility must
+still be established from the live commit, declared dependencies, applicable governance,
+and the exact check/review/merge evidence required by that task.
+
 ## Phases (Horizon 1 — committed)
 
 | Phase | Title | Status | Depends on |
