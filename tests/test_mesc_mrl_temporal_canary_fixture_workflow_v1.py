@@ -181,6 +181,25 @@ def test_evaluator_surface_mismatch_fails_closed() -> None:
         )
 
 
+def test_mutated_receipt_candidate_identity_fails_closed_on_public_views() -> None:
+    evaluator = _evaluator()
+    surface = _surface(evaluator)
+    parameter_values = _values()
+    manifest = _bound_manifest(evaluator, surface, parameter_values)
+    receipt = run_temporal_canary_fixture_workflow(
+        manifest,
+        surface,
+        evaluator,
+        parameter_values,
+    )
+    object.__setattr__(receipt, "candidate_sha256", "f" * 64)
+
+    with pytest.raises(TemporalCanaryFixtureWorkflowError, match="candidate identity"):
+        receipt.semantic_dict()
+    with pytest.raises(TemporalCanaryFixtureWorkflowError, match="candidate identity"):
+        _ = receipt.content_sha256
+
+
 def test_mutated_receipt_fails_closed_on_public_views() -> None:
     evaluator = _evaluator()
     surface = _surface(evaluator)
