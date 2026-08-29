@@ -73,20 +73,27 @@ def _make_construction_identity_registry() -> tuple[
     def store(value: TierEvaluationContract, objective_sha256: str) -> None:
         key = id(value)
         if key in identities:
-            raise TierEvaluationContractError("tier contract construction identity already exists")
+            raise TierEvaluationContractError(
+                "tier contract construction identity already exists"
+            )
         identities[key] = objective_sha256
         weakref.finalize(value, remove, key)
 
     def load(value: TierEvaluationContract) -> str:
         identity = identities.get(id(value))
         if identity is None:
-            raise TierEvaluationContractError("tier contract construction identity is missing")
+            raise TierEvaluationContractError(
+                "tier contract construction identity is missing"
+            )
         return identity
 
     return store, load
 
 
-_store_construction_identity, _load_construction_identity = _make_construction_identity_registry()
+(
+    _store_construction_identity,
+    _load_construction_identity,
+) = _make_construction_identity_registry()
 
 
 @dataclass(frozen=True, slots=True, weakref_slot=True)
@@ -169,7 +176,9 @@ class TierEvaluationContract:
 
 def _validate_contract_semantics(value: TierEvaluationContract) -> None:
     if type(value.objective) is not ResearchObjectiveContract:
-        raise TierEvaluationContractError("objective must be an exact ResearchObjectiveContract")
+        raise TierEvaluationContractError(
+            "objective must be an exact ResearchObjectiveContract"
+        )
     if type(value.tier) is not EvaluationTier:
         raise TierEvaluationContractError("tier must be an exact EvaluationTier")
 
@@ -188,10 +197,15 @@ def _validate_contract_semantics(value: TierEvaluationContract) -> None:
     if value.tier in _NON_ITERATIVE_TIERS and (
         exposure.max_exposures or exposure.allowed_result_fields
     ):
-        raise TierEvaluationContractError("Tier 3/4 cannot expose iterative agent-visible results")
+        raise TierEvaluationContractError(
+            "Tier 3/4 cannot expose iterative agent-visible results"
+        )
 
 
-def _adaptive_query_ceiling(objective: ResearchObjectiveContract, tier: EvaluationTier) -> int:
+def _adaptive_query_ceiling(
+    objective: ResearchObjectiveContract,
+    tier: EvaluationTier,
+) -> int:
     if tier is EvaluationTier.SEARCH:
         return objective.adaptive_query_budget.tier_1_queries
     if tier is EvaluationTier.REPLICATION:
