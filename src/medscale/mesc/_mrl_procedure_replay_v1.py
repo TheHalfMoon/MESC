@@ -93,6 +93,24 @@ class ProcedureReplayReceipt:
         if self.disposition is not expected_disposition:
             raise ProcedureReplayError("replay disposition does not match observed evidence")
 
+    def _validated_snapshot(self) -> ProcedureReplayReceipt:
+        if type(self) is not ProcedureReplayReceipt:
+            raise ProcedureReplayError("receipt must be an exact ProcedureReplayReceipt")
+        return ProcedureReplayReceipt(
+            procedure_admission_subject_sha256=self.procedure_admission_subject_sha256,
+            procedure_content_sha256=self.procedure_content_sha256,
+            surface_sha256=self.surface_sha256,
+            evaluator_sha256=self.evaluator_sha256,
+            candidate_sha256=self.candidate_sha256,
+            evaluation_sha256=self.evaluation_sha256,
+            metric_id=self.metric_id,
+            expected_score=self.expected_score,
+            expected_max_score=self.expected_max_score,
+            observed_score=self.observed_score,
+            observed_max_score=self.observed_max_score,
+            disposition=self.disposition,
+        )
+
     @property
     def fixture_only(self) -> bool:
         return True
@@ -117,8 +135,7 @@ class ProcedureReplayReceipt:
     def can_authorize_model_promotion(self) -> bool:
         return False
 
-    def semantic_dict(self) -> dict[str, object]:
-        """Return deterministic non-authoritative replay semantics."""
+    def _semantic_dict_validated(self) -> dict[str, object]:
         return {
             "can_advance_admission": False,
             "can_authorize": False,
@@ -140,6 +157,11 @@ class ProcedureReplayReceipt:
             "procedure_content_sha256": self.procedure_content_sha256,
             "surface_sha256": self.surface_sha256,
         }
+
+    def semantic_dict(self) -> dict[str, object]:
+        """Return freshly revalidated deterministic non-authoritative replay semantics."""
+        snapshot = ProcedureReplayReceipt._validated_snapshot(self)
+        return snapshot._semantic_dict_validated()
 
     @property
     def semantic_bytes(self) -> bytes:
