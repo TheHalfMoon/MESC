@@ -12,6 +12,8 @@ clinical authority; ADR-0033 remains controlling for any later promotion decisio
 from __future__ import annotations
 
 import re
+import weakref
+from collections.abc import Callable
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from typing import Final
@@ -42,7 +44,69 @@ class SealedEvaluationEvidenceError(ValueError):
     """Fail-closed validation error for independent Tier 3 evidence."""
 
 
-@dataclass(frozen=True, slots=True)
+def _make_metric_identity_registry() -> tuple[
+    Callable[[SealedMetricEvidence, str], None],
+    Callable[[SealedMetricEvidence], str],
+]:
+    identities: dict[int, str] = {}
+
+    def remove(key: int) -> None:
+        identities.pop(key, None)
+
+    def store(value: SealedMetricEvidence, content_sha256: str) -> None:
+        key = id(value)
+        if key in identities:
+            raise SealedEvaluationEvidenceError(
+                "sealed metric construction identity already exists"
+            )
+        identities[key] = content_sha256
+        weakref.finalize(value, remove, key)
+
+    def load(value: SealedMetricEvidence) -> str:
+        identity = identities.get(id(value))
+        if identity is None:
+            raise SealedEvaluationEvidenceError(
+                "sealed metric construction identity is missing"
+            )
+        return identity
+
+    return store, load
+
+
+def _make_report_identity_registry() -> tuple[
+    Callable[[SealedEvaluationEvidenceReport, str], None],
+    Callable[[SealedEvaluationEvidenceReport], str],
+]:
+    identities: dict[int, str] = {}
+
+    def remove(key: int) -> None:
+        identities.pop(key, None)
+
+    def store(value: SealedEvaluationEvidenceReport, content_sha256: str) -> None:
+        key = id(value)
+        if key in identities:
+            raise SealedEvaluationEvidenceError(
+                "sealed evidence report construction identity already exists"
+            )
+        identities[key] = content_sha256
+        weakref.finalize(value, remove, key)
+
+    def load(value: SealedEvaluationEvidenceReport) -> str:
+        identity = identities.get(id(value))
+        if identity is None:
+            raise SealedEvaluationEvidenceError(
+                "sealed evidence report construction identity is missing"
+            )
+        return identity
+
+    return store, load
+
+
+_store_metric_identity, _load_metric_identity = _make_metric_identity_registry()
+_store_report_identity, _load_report_identity = _make_report_identity_registry()
+
+
+@dataclass(frozen=True, slots=True, weakref_slot=True)
 class SealedMetricEvidence:
     """One aggregate metric result with immutable evidence-artifact identity."""
 
@@ -59,19 +123,31 @@ class SealedMetricEvidence:
         _require_sha256(self.evidence_artifact_sha256, "evidence_artifact_sha256")
         if self.subgroup is not None:
             _require_text(self.subgroup, "subgroup")
+        _store_metric_identity(
+            self,
+            derive_content_sha256(self._to_dict_validated()),
+        )
 
     def _validated_snapshot(self) -> SealedMetricEvidence:
         if type(self) is not SealedMetricEvidence:
             raise SealedEvaluationEvidenceError(
                 "metric evidence must be an exact SealedMetricEvidence"
             )
-        return SealedMetricEvidence(
+        bound_content_sha256 = _load_metric_identity(self)
+        _require_sha256(bound_content_sha256, "bound metric content_sha256")
+        snapshot = SealedMetricEvidence(
             metric_id=self.metric_id,
             evaluator_id=self.evaluator_id,
             value_decimal=self.value_decimal,
             evidence_artifact_sha256=self.evidence_artifact_sha256,
             subgroup=self.subgroup,
         )
+        current_content_sha256 = derive_content_sha256(snapshot._to_dict_validated())
+        if current_content_sha256 != bound_content_sha256:
+            raise SealedEvaluationEvidenceError(
+                "sealed metric identity changed after construction"
+            )
+        return snapshot
 
     def _to_dict_validated(self) -> dict[str, object]:
         return {
@@ -88,7 +164,7 @@ class SealedMetricEvidence:
         return snapshot._to_dict_validated()
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, weakref_slot=True)
 class SealedEvaluationEvidenceReport:
     """Immutable evidence-only report for one independent Tier 3 evaluation."""
 
@@ -110,6 +186,10 @@ class SealedEvaluationEvidenceReport:
         _require_metric_evidence(self.metric_evidence)
         for item in self.metric_evidence:
             SealedMetricEvidence._validated_snapshot(item)
+        _store_report_identity(
+            self,
+            derive_content_sha256(self._semantic_dict_validated()),
+        )
 
     def _validated_snapshot(self) -> SealedEvaluationEvidenceReport:
         if type(self) is not SealedEvaluationEvidenceReport:
@@ -124,6 +204,8 @@ class SealedEvaluationEvidenceReport:
             raise SealedEvaluationEvidenceError(
                 "metric_evidence must be a non-empty exact tuple"
             )
+        bound_content_sha256 = _load_report_identity(self)
+        _require_sha256(bound_content_sha256, "bound report content_sha256")
         evaluator_artifacts = tuple(
             (evaluator_id, artifact_sha256)
             for evaluator_id, artifact_sha256 in self.evaluator_artifacts
@@ -131,7 +213,7 @@ class SealedEvaluationEvidenceReport:
         metrics = tuple(
             SealedMetricEvidence._validated_snapshot(item) for item in self.metric_evidence
         )
-        return SealedEvaluationEvidenceReport(
+        snapshot = SealedEvaluationEvidenceReport(
             objective_sha256=self.objective_sha256,
             tier_contract_sha256=self.tier_contract_sha256,
             request_sha256=self.request_sha256,
@@ -140,6 +222,12 @@ class SealedEvaluationEvidenceReport:
             evaluator_artifacts=evaluator_artifacts,
             metric_evidence=metrics,
         )
+        current_content_sha256 = derive_content_sha256(snapshot._semantic_dict_validated())
+        if current_content_sha256 != bound_content_sha256:
+            raise SealedEvaluationEvidenceError(
+                "sealed evidence report identity changed after construction"
+            )
+        return snapshot
 
     @property
     def content_sha256(self) -> str:
@@ -204,16 +292,8 @@ def build_sealed_evaluation_evidence_report(
 
     tier_contract.semantic_dict()
     try:
-        request_snapshot = SealedEvaluationRequest(
-            tier_contract_sha256=request.tier_contract_sha256,
-            candidate_sha256=request.candidate_sha256,
-            source_receipt_sha256=request.source_receipt_sha256,
-            evaluator_ids=request.evaluator_ids,
-        )
-        handoff_snapshot = SealedEvaluationHandoff(
-            request_sha256=handoff.request_sha256,
-            sealed_evidence_ref_sha256=handoff.sealed_evidence_ref_sha256,
-        )
+        request_snapshot = request._validated_snapshot()
+        handoff_snapshot = handoff._validated_snapshot()
         metrics = tuple(
             SealedMetricEvidence._validated_snapshot(item) for item in metric_evidence
         )
