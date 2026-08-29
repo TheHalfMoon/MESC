@@ -118,7 +118,7 @@ def test_projection_precedence_rejects_narrative_and_projection_authority_claims
     )
 
     output_dir = tmp_path / "machine-state"
-    generated = generate_machine_state(repository, output_dir)
+    generate_machine_state(repository, output_dir)
     project_path = output_dir / "PROJECT_STATE.json"
     canonical_payload = _load_project_state(project_path)
     canonical_entry = _project_state_entry(canonical_payload, "MRL-0800")
