@@ -62,14 +62,30 @@ class ProcedureCandidateReference:
         _require_text(self.node_id, "node_id")
         _require_sha256(self.artifact_sha256, "artifact_sha256")
 
-    def to_dict(self) -> dict[str, object]:
-        """Return deterministic candidate-reference semantics."""
+    def _validated_snapshot(self) -> ProcedureCandidateReference:
+        if type(self) is not ProcedureCandidateReference:
+            raise ProcedureCandidateExtractionError(
+                "candidate reference must be an exact ProcedureCandidateReference"
+            )
+        return ProcedureCandidateReference(
+            sequence_index=self.sequence_index,
+            campaign_sha256=self.campaign_sha256,
+            node_id=self.node_id,
+            artifact_sha256=self.artifact_sha256,
+        )
+
+    def _to_dict_validated(self) -> dict[str, object]:
         return {
             "artifact_sha256": self.artifact_sha256,
             "campaign_sha256": self.campaign_sha256,
             "node_id": self.node_id,
             "sequence_index": self.sequence_index,
         }
+
+    def to_dict(self) -> dict[str, object]:
+        """Return freshly revalidated deterministic candidate-reference semantics."""
+        snapshot = ProcedureCandidateReference._validated_snapshot(self)
+        return snapshot._to_dict_validated()
 
 
 @dataclass(frozen=True, slots=True)
@@ -87,11 +103,30 @@ class ProcedureCandidateExtraction:
             raise ProcedureCandidateExtractionError("candidates must be an exact tuple")
         if any(type(item) is not ProcedureCandidateReference for item in self.candidates):
             raise ProcedureCandidateExtractionError("candidates contains an invalid item type")
-        keys = tuple((item.sequence_index, item.node_id) for item in self.candidates)
+        candidate_snapshots = tuple(
+            ProcedureCandidateReference._validated_snapshot(item) for item in self.candidates
+        )
+        keys = tuple((item.sequence_index, item.node_id) for item in candidate_snapshots)
         if keys != tuple(sorted(set(keys))):
             raise ProcedureCandidateExtractionError(
                 "candidates must be unique and sorted by sequence index and node id"
             )
+
+    def _validated_snapshot(self) -> ProcedureCandidateExtraction:
+        if type(self) is not ProcedureCandidateExtraction:
+            raise ProcedureCandidateExtractionError(
+                "extraction must be an exact ProcedureCandidateExtraction"
+            )
+        if type(self.candidates) is not tuple:
+            raise ProcedureCandidateExtractionError("candidates must be an exact tuple")
+        return ProcedureCandidateExtraction(
+            history_projection_sha256=self.history_projection_sha256,
+            input_admission_sha256=self.input_admission_sha256,
+            candidates=tuple(
+                ProcedureCandidateReference._validated_snapshot(item)
+                for item in self.candidates
+            ),
+        )
 
     @property
     def can_review_procedure(self) -> bool:
@@ -118,17 +153,21 @@ class ProcedureCandidateExtraction:
         """Return deterministic extraction identity."""
         return derive_content_sha256(self.semantic_dict())
 
-    def semantic_dict(self) -> dict[str, object]:
-        """Return complete non-authoritative extraction semantics."""
+    def _semantic_dict_validated(self) -> dict[str, object]:
         return {
             "can_admit_procedure": False,
             "can_authorize": False,
             "can_review_procedure": False,
-            "candidates": [item.to_dict() for item in self.candidates],
+            "candidates": [item._to_dict_validated() for item in self.candidates],
             "format": "MRL-PROCEDURE-CANDIDATE-EXTRACTION-V1",
             "history_projection_sha256": self.history_projection_sha256,
             "input_admission_sha256": self.input_admission_sha256,
         }
+
+    def semantic_dict(self) -> dict[str, object]:
+        """Return complete non-authoritative extraction semantics after revalidation."""
+        snapshot = ProcedureCandidateExtraction._validated_snapshot(self)
+        return snapshot._semantic_dict_validated()
 
     def to_dict(self) -> dict[str, object]:
         """Return extraction semantics plus derived identity."""
