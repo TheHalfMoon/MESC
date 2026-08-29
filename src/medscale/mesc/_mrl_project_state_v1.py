@@ -167,9 +167,7 @@ class ProjectStateProjection:
         return {
             "can_authorize": self.can_authorize,
             "components": {
-                "capability_matrix_sha256": canonical_sha256(
-                    self.capability_matrix.to_dict()
-                ),
+                "capability_matrix_sha256": canonical_sha256(self.capability_matrix.to_dict()),
                 "research_program_index_sha256": canonical_sha256(
                     self.research_program_index.to_dict()
                 ),
