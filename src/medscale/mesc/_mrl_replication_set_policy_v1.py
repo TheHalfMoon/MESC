@@ -11,7 +11,7 @@ training, promotion, deployment, release, or clinical authority.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Final
 
 from medscale.mesc._mrl_research_objective_v1 import (
@@ -50,9 +50,23 @@ class ReplicationSetMember:
         if type(self.artifact_sha256) is not str or _SHA256.fullmatch(self.artifact_sha256) is None:
             raise ReplicationSetPolicyError("artifact_sha256 must be 64 lowercase hex")
 
-    def to_dict(self) -> dict[str, str]:
-        """Return deterministic member identity."""
+    def _validated_snapshot(self) -> ReplicationSetMember:
+        if type(self) is not ReplicationSetMember:
+            raise ReplicationSetPolicyError(
+                "member must be an exact ReplicationSetMember"
+            )
+        return ReplicationSetMember(
+            member_id=self.member_id,
+            artifact_sha256=self.artifact_sha256,
+        )
+
+    def _to_dict_validated(self) -> dict[str, str]:
         return {"artifact_sha256": self.artifact_sha256, "member_id": self.member_id}
+
+    def to_dict(self) -> dict[str, str]:
+        """Return freshly revalidated deterministic member identity."""
+        snapshot = ReplicationSetMember._validated_snapshot(self)
+        return snapshot._to_dict_validated()
 
 
 @dataclass(frozen=True, slots=True)
@@ -60,11 +74,13 @@ class ReplicationSetPolicy:
     """Exact Tier 2 bounds derived from one frozen objective."""
 
     objective: ResearchObjectiveContract
+    _bound_objective_sha256: str = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
         if type(self.objective) is not ResearchObjectiveContract:
             raise ReplicationSetPolicyError("objective must be an exact ResearchObjectiveContract")
         self.objective.semantic_dict()
+        object.__setattr__(self, "_bound_objective_sha256", self.objective.content_sha256)
         self.search_contract.semantic_dict()
         self.replication_contract.semantic_dict()
         replication = self.replication_exposure
@@ -74,30 +90,49 @@ class ReplicationSetPolicy:
         if not set(replication.allowed_result_fields).issubset(search.allowed_result_fields):
             raise ReplicationSetPolicyError("Tier 2 result fields must be a subset of Tier 1")
 
+    def _validated_objective(self) -> ResearchObjectiveContract:
+        if type(self) is not ReplicationSetPolicy:
+            raise ReplicationSetPolicyError("policy must be an exact ReplicationSetPolicy")
+        if type(self.objective) is not ResearchObjectiveContract:
+            raise ReplicationSetPolicyError("objective must be an exact ResearchObjectiveContract")
+        self.objective.semantic_dict()
+        _require_sha256(self._bound_objective_sha256, "bound objective_sha256")
+        if self.objective.content_sha256 != self._bound_objective_sha256:
+            raise ReplicationSetPolicyError(
+                "objective identity changed after replication policy construction"
+            )
+        return self.objective
+
     @property
     def search_contract(self) -> TierEvaluationContract:
-        """Return a fresh Tier 1 contract from the same objective."""
-        return TierEvaluationContract(objective=self.objective, tier=EvaluationTier.SEARCH)
+        """Return a fresh Tier 1 contract from the same validated objective."""
+        return TierEvaluationContract(
+            objective=self._validated_objective(),
+            tier=EvaluationTier.SEARCH,
+        )
 
     @property
     def replication_contract(self) -> TierEvaluationContract:
-        """Return a fresh Tier 2 contract from the same objective."""
-        return TierEvaluationContract(objective=self.objective, tier=EvaluationTier.REPLICATION)
+        """Return a fresh Tier 2 contract from the same validated objective."""
+        return TierEvaluationContract(
+            objective=self._validated_objective(),
+            tier=EvaluationTier.REPLICATION,
+        )
 
     @property
     def max_replication_queries(self) -> int:
         """Return the frozen Tier 2 adaptive-query ceiling."""
-        return self.objective.adaptive_query_budget.tier_2_queries
+        return self._validated_objective().adaptive_query_budget.tier_2_queries
 
     @property
     def search_exposure(self) -> TierResultExposure:
         """Return the exact frozen Tier 1 result-exposure policy."""
-        return _exposure_for(self.objective, EvaluationTier.SEARCH)
+        return _exposure_for(self._validated_objective(), EvaluationTier.SEARCH)
 
     @property
     def replication_exposure(self) -> TierResultExposure:
         """Return the exact frozen Tier 2 result-exposure policy."""
-        return _exposure_for(self.objective, EvaluationTier.REPLICATION)
+        return _exposure_for(self._validated_objective(), EvaluationTier.REPLICATION)
 
     @property
     def can_authorize(self) -> bool:
@@ -105,13 +140,14 @@ class ReplicationSetPolicy:
         return False
 
     def to_dict(self) -> dict[str, object]:
-        """Return deterministic policy semantics."""
+        """Return deterministic policy semantics from the bound objective identity."""
+        objective = self._validated_objective()
         return {
             "allowed_summary_fields": list(self.replication_exposure.allowed_result_fields),
             "can_authorize": False,
             "max_replication_queries": self.max_replication_queries,
             "max_summary_exposures": self.replication_exposure.max_exposures,
-            "objective_sha256": self.objective.content_sha256,
+            "objective_sha256": objective.content_sha256,
             "replication_tier_contract_sha256": self.replication_contract.content_sha256,
             "search_tier_contract_sha256": self.search_contract.content_sha256,
         }
@@ -128,36 +164,53 @@ class ReplicationSet:
     max_summary_exposures: int
 
     def __post_init__(self) -> None:
-        invalid_objective_sha = (
-            type(self.objective_sha256) is not str
-            or _SHA256.fullmatch(self.objective_sha256) is None
-        )
-        if invalid_objective_sha:
-            raise ReplicationSetPolicyError("objective_sha256 must be 64 lowercase hex")
+        _require_sha256(self.objective_sha256, "objective_sha256")
         if type(self.members) is not tuple or not self.members:
             raise ReplicationSetPolicyError("members must be a non-empty exact tuple")
         if any(type(member) is not ReplicationSetMember for member in self.members):
             raise ReplicationSetPolicyError("members contains an invalid member type")
-        keys = tuple(member.member_id for member in self.members)
+        member_snapshots = tuple(
+            ReplicationSetMember._validated_snapshot(member) for member in self.members
+        )
+        keys = tuple(member.member_id for member in member_snapshots)
         if keys != tuple(sorted(set(keys))):
             raise ReplicationSetPolicyError("members must be sorted and identity-unique")
-        artifacts = tuple(member.artifact_sha256 for member in self.members)
+        artifacts = tuple(member.artifact_sha256 for member in member_snapshots)
         if len(set(artifacts)) != len(artifacts):
             raise ReplicationSetPolicyError("replication members must bind distinct artifacts")
         _require_nonnegative_int(self.max_replication_queries, "max_replication_queries")
         _require_nonnegative_int(self.max_summary_exposures, "max_summary_exposures")
         _require_sorted_unique_text(self.allowed_summary_fields)
 
-    def to_dict(self) -> dict[str, object]:
-        """Return deterministic bounded replication-set semantics."""
+    def _validated_snapshot(self) -> ReplicationSet:
+        if type(self) is not ReplicationSet:
+            raise ReplicationSetPolicyError("replication set must be an exact ReplicationSet")
+        if type(self.members) is not tuple:
+            raise ReplicationSetPolicyError("members must be an exact tuple")
+        return ReplicationSet(
+            objective_sha256=self.objective_sha256,
+            members=tuple(
+                ReplicationSetMember._validated_snapshot(member) for member in self.members
+            ),
+            max_replication_queries=self.max_replication_queries,
+            allowed_summary_fields=self.allowed_summary_fields,
+            max_summary_exposures=self.max_summary_exposures,
+        )
+
+    def _to_dict_validated(self) -> dict[str, object]:
         return {
             "allowed_summary_fields": list(self.allowed_summary_fields),
             "can_authorize": False,
             "max_replication_queries": self.max_replication_queries,
             "max_summary_exposures": self.max_summary_exposures,
-            "members": [member.to_dict() for member in self.members],
+            "members": [member._to_dict_validated() for member in self.members],
             "objective_sha256": self.objective_sha256,
         }
+
+    def to_dict(self) -> dict[str, object]:
+        """Return freshly revalidated bounded replication-set semantics."""
+        snapshot = ReplicationSet._validated_snapshot(self)
+        return snapshot._to_dict_validated()
 
 
 def build_replication_set(
@@ -169,12 +222,16 @@ def build_replication_set(
         raise ReplicationSetPolicyError("policy must be an exact ReplicationSetPolicy")
     if type(members) is not tuple:
         raise ReplicationSetPolicyError("members must be an exact tuple")
-    if len(members) > policy.max_replication_queries:
+    policy._validated_objective()
+    member_snapshots = tuple(
+        ReplicationSetMember._validated_snapshot(member) for member in members
+    )
+    if len(member_snapshots) > policy.max_replication_queries:
         raise ReplicationSetPolicyError("replication set exceeds the frozen Tier 2 query ceiling")
     exposure = policy.replication_exposure
     return ReplicationSet(
-        objective_sha256=policy.objective.content_sha256,
-        members=members,
+        objective_sha256=policy._bound_objective_sha256,
+        members=member_snapshots,
         max_replication_queries=policy.max_replication_queries,
         allowed_summary_fields=exposure.allowed_result_fields,
         max_summary_exposures=exposure.max_exposures,
@@ -210,3 +267,8 @@ def _require_sorted_unique_text(values: tuple[str, ...]) -> None:
         raise ReplicationSetPolicyError("allowed_summary_fields must contain canonical strings")
     if values != tuple(sorted(set(values))):
         raise ReplicationSetPolicyError("allowed_summary_fields must be sorted and unique")
+
+
+def _require_sha256(value: object, label: str) -> None:
+    if type(value) is not str or _SHA256.fullmatch(value) is None:
+        raise ReplicationSetPolicyError(f"{label} must be 64 lowercase hex")
