@@ -6,6 +6,30 @@ authoritative scope document is the
 [Research Vision](docs/vision/MEDSCALE_RESEARCH_VISION.md); the narrative is the
 [Strategic Blueprint](docs/vision/MEDSCALE_STRATEGIC_BLUEPRINT_V1.md).
 
+## MRL live-state authority
+
+This roadmap is explanatory narrative only. It is not an authority source for MESC
+Research Loop V1 task eligibility, task closure, execution permission, training authority,
+model promotion, deployment, release, or clinical action.
+
+MRL live state follows this precedence:
+
+```text
+canonical Git commit/tree
+  -> canonical MRL specifications, governance, and exact evidence at that commit
+  -> mechanically derived task-state interpretation
+  -> generated machine-state projections
+  -> roadmap, dashboards, caches, indexes, and other narrative/presentation views
+```
+
+The canonical MRL authority chain is under
+[`specs/mesc-research-loop-v1/`](specs/mesc-research-loop-v1/). Generated
+`PROJECT_STATE.json`, `CAPABILITY_MATRIX.json`, and `RESEARCH_PROGRAM_INDEX.json` views are
+derived and non-authoritative; stale or manually edited projections must fail closed. A
+roadmap statement cannot make an MRL task `ELIGIBLE` or `CLOSED_CANONICAL`, cannot override
+live dependency/governance evidence, and cannot repair a stale projection. When narrative,
+projection, and live canonical gate evidence disagree, the live canonical evidence governs.
+
 ## Phases (Horizon 1 — committed)
 
 | Phase | Title | Status | Depends on |
