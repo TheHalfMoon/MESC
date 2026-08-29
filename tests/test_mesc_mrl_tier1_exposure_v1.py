@@ -91,10 +91,7 @@ def test_policy_identity_tracks_material_objective_budget_changes() -> None:
 
     assert original.query_ceiling == 5
     assert changed.query_ceiling == 4
-    assert (
-        original.to_dict()["tier_contract_sha256"]
-        != changed.to_dict()["tier_contract_sha256"]
-    )
+    assert original.to_dict()["tier_contract_sha256"] != changed.to_dict()["tier_contract_sha256"]
 
 
 def test_non_search_contract_and_fabricated_usage_fail_closed() -> None:
