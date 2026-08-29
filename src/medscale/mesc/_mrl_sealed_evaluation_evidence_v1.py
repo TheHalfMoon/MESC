@@ -50,19 +50,23 @@ class SealedMetricEvidence:
     evaluator_id: str
     value_decimal: str
     evidence_artifact_sha256: str
+    subgroup: str | None = None
 
     def __post_init__(self) -> None:
         _require_token(self.metric_id, "metric_id")
         _require_token(self.evaluator_id, "evaluator_id")
         _require_canonical_decimal(self.value_decimal, "value_decimal")
         _require_sha256(self.evidence_artifact_sha256, "evidence_artifact_sha256")
+        if self.subgroup is not None:
+            _require_text(self.subgroup, "subgroup")
 
-    def to_dict(self) -> dict[str, str]:
+    def to_dict(self) -> dict[str, object]:
         """Return deterministic aggregate evidence semantics."""
         return {
             "evaluator_id": self.evaluator_id,
             "evidence_artifact_sha256": self.evidence_artifact_sha256,
             "metric_id": self.metric_id,
+            "subgroup": self.subgroup,
             "value_decimal": self.value_decimal,
         }
 
@@ -141,25 +145,33 @@ def build_sealed_evaluation_evidence_report(
     if tier_contract.tier is not EvaluationTier.SEALED:
         raise SealedEvaluationEvidenceError("evidence report requires Tier 3 SEALED")
     if type(request) is not SealedEvaluationRequest:
-        raise SealedEvaluationEvidenceError("request must be an exact SealedEvaluationRequest")
+        raise SealedEvaluationEvidenceError(
+            "request must be an exact SealedEvaluationRequest"
+        )
     if type(handoff) is not SealedEvaluationHandoff:
-        raise SealedEvaluationEvidenceError("handoff must be an exact SealedEvaluationHandoff")
+        raise SealedEvaluationEvidenceError(
+            "handoff must be an exact SealedEvaluationHandoff"
+        )
     if type(metric_evidence) is not tuple:
         raise SealedEvaluationEvidenceError("metric_evidence must be an exact tuple")
 
     tier_contract.semantic_dict()
     if request.tier_contract_sha256 != tier_contract.content_sha256:
-        raise SealedEvaluationEvidenceError("request does not match the sealed tier contract")
+        raise SealedEvaluationEvidenceError(
+            "request does not match the sealed tier contract"
+        )
     if handoff.request_sha256 != request.content_sha256:
         raise SealedEvaluationEvidenceError("handoff does not match the sealed request")
 
     evaluator_artifacts = _sealed_evaluator_artifacts(tier_contract)
     expected_evaluator_ids = tuple(item[0] for item in evaluator_artifacts)
     if request.evaluator_ids != expected_evaluator_ids:
-        raise SealedEvaluationEvidenceError("request evaluator identities do not match objective")
+        raise SealedEvaluationEvidenceError(
+            "request evaluator identities do not match objective"
+        )
 
     expected_metrics = _sealed_metric_contracts(tier_contract)
-    _validate_metric_evidence(metric_evidence, expected_metrics)
+    _validate_metric_evidence(tier_contract, metric_evidence, expected_metrics)
 
     return SealedEvaluationEvidenceReport(
         objective_sha256=tier_contract.objective.content_sha256,
@@ -183,7 +195,9 @@ def _sealed_evaluator_artifacts(
     if not items:
         raise SealedEvaluationEvidenceError("sealed objective has no evaluator identity")
     if items != tuple(sorted(set(items))):
-        raise SealedEvaluationEvidenceError("sealed evaluator identities must be canonical")
+        raise SealedEvaluationEvidenceError(
+            "sealed evaluator identities must be canonical"
+        )
     return items
 
 
@@ -201,42 +215,71 @@ def _sealed_metric_contracts(
 
 
 def _validate_metric_evidence(
+    tier_contract: TierEvaluationContract,
     evidence: tuple[SealedMetricEvidence, ...],
     expected_metrics: tuple[MetricContract, ...],
 ) -> None:
     _require_metric_evidence(evidence)
-    expected = {
-        (metric.metric_id, metric.evaluator_id)
-        for metric in expected_metrics
+    evaluator_by_metric = {
+        metric.metric_id: metric.evaluator_id for metric in expected_metrics
     }
-    observed = {(item.metric_id, item.evaluator_id) for item in evidence}
+    expected = {
+        (metric.metric_id, metric.evaluator_id, None) for metric in expected_metrics
+    }
+    for floor in tier_contract.objective.subgroup_floors:
+        evaluator_id = evaluator_by_metric.get(floor.metric_id)
+        if evaluator_id is None:
+            raise SealedEvaluationEvidenceError(
+                "subgroup floor references no frozen Tier 3 metric"
+            )
+        if floor.subgroup is None:
+            raise SealedEvaluationEvidenceError(
+                "subgroup_floors must bind an explicit subgroup"
+            )
+        expected.add((floor.metric_id, evaluator_id, floor.subgroup))
+
+    observed = {
+        (item.metric_id, item.evaluator_id, item.subgroup) for item in evidence
+    }
     if observed != expected:
         raise SealedEvaluationEvidenceError(
-            "metric_evidence must exactly cover frozen Tier 3 metric contracts"
+            "metric_evidence must exactly cover frozen Tier 3 global and subgroup metrics"
         )
 
 
 def _require_metric_evidence(values: tuple[SealedMetricEvidence, ...]) -> None:
     if type(values) is not tuple or not values:
-        raise SealedEvaluationEvidenceError("metric_evidence must be a non-empty exact tuple")
+        raise SealedEvaluationEvidenceError(
+            "metric_evidence must be a non-empty exact tuple"
+        )
     if any(type(value) is not SealedMetricEvidence for value in values):
-        raise SealedEvaluationEvidenceError("metric_evidence contains an invalid item type")
-    keys = tuple((value.metric_id, value.evaluator_id) for value in values)
+        raise SealedEvaluationEvidenceError(
+            "metric_evidence contains an invalid item type"
+        )
+    keys = tuple(
+        (value.metric_id, value.evaluator_id, value.subgroup or "") for value in values
+    )
     if keys != tuple(sorted(set(keys))):
         raise SealedEvaluationEvidenceError("metric_evidence must be sorted and unique")
 
 
 def _require_evaluator_artifacts(values: tuple[tuple[str, str], ...]) -> None:
     if type(values) is not tuple or not values:
-        raise SealedEvaluationEvidenceError("evaluator_artifacts must be a non-empty tuple")
+        raise SealedEvaluationEvidenceError(
+            "evaluator_artifacts must be a non-empty tuple"
+        )
     for value in values:
         if type(value) is not tuple or len(value) != 2:
-            raise SealedEvaluationEvidenceError("evaluator_artifacts contains invalid entry")
+            raise SealedEvaluationEvidenceError(
+                "evaluator_artifacts contains invalid entry"
+            )
         evaluator_id, artifact_sha256 = value
         _require_token(evaluator_id, "evaluator_id")
         _require_sha256(artifact_sha256, "evaluator artifact_sha256")
     if values != tuple(sorted(set(values))):
-        raise SealedEvaluationEvidenceError("evaluator_artifacts must be sorted and unique")
+        raise SealedEvaluationEvidenceError(
+            "evaluator_artifacts must be sorted and unique"
+        )
 
 
 def _require_token(value: object, label: str) -> None:
@@ -246,6 +289,13 @@ def _require_token(value: object, label: str) -> None:
         raise SealedEvaluationEvidenceError(f"{label} cannot contain whitespace")
 
 
+def _require_text(value: object, label: str) -> None:
+    if type(value) is not str or not value or value.strip() != value:
+        raise SealedEvaluationEvidenceError(f"{label} must be canonical text")
+    if "\n" in value or "\r" in value:
+        raise SealedEvaluationEvidenceError(f"{label} must be one line")
+
+
 def _require_sha256(value: object, label: str) -> None:
     if type(value) is not str or _SHA256.fullmatch(value) is None:
         raise SealedEvaluationEvidenceError(f"{label} must be 64 lowercase hex")
@@ -253,7 +303,9 @@ def _require_sha256(value: object, label: str) -> None:
 
 def _require_canonical_decimal(value: object, label: str) -> None:
     if type(value) is not str or _CANONICAL_DECIMAL.fullmatch(value) is None:
-        raise SealedEvaluationEvidenceError(f"{label} must be canonical decimal text")
+        raise SealedEvaluationEvidenceError(
+            f"{label} must be canonical decimal text"
+        )
     try:
         parsed = Decimal(value)
     except InvalidOperation as exc:
