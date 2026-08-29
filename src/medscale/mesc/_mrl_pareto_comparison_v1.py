@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import enum
 import re
+import weakref
+from collections.abc import Callable
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from typing import Final
@@ -68,7 +70,69 @@ class ParetoRelation(enum.Enum):
     TRADEOFF = "TRADEOFF"
 
 
-@dataclass(frozen=True, slots=True)
+def _make_metric_identity_registry() -> tuple[
+    Callable[[ParetoMetricComparison, str], None],
+    Callable[[ParetoMetricComparison], str],
+]:
+    identities: dict[int, str] = {}
+
+    def remove(key: int) -> None:
+        identities.pop(key, None)
+
+    def store(value: ParetoMetricComparison, content_sha256: str) -> None:
+        key = id(value)
+        if key in identities:
+            raise ParetoComparisonError(
+                "Pareto metric construction identity already exists"
+            )
+        identities[key] = content_sha256
+        weakref.finalize(value, remove, key)
+
+    def load(value: ParetoMetricComparison) -> str:
+        identity = identities.get(id(value))
+        if identity is None:
+            raise ParetoComparisonError(
+                "Pareto metric construction identity is missing"
+            )
+        return identity
+
+    return store, load
+
+
+def _make_report_identity_registry() -> tuple[
+    Callable[[ParetoComparisonReport, str], None],
+    Callable[[ParetoComparisonReport], str],
+]:
+    identities: dict[int, str] = {}
+
+    def remove(key: int) -> None:
+        identities.pop(key, None)
+
+    def store(value: ParetoComparisonReport, content_sha256: str) -> None:
+        key = id(value)
+        if key in identities:
+            raise ParetoComparisonError(
+                "Pareto report construction identity already exists"
+            )
+        identities[key] = content_sha256
+        weakref.finalize(value, remove, key)
+
+    def load(value: ParetoComparisonReport) -> str:
+        identity = identities.get(id(value))
+        if identity is None:
+            raise ParetoComparisonError(
+                "Pareto report construction identity is missing"
+            )
+        return identity
+
+    return store, load
+
+
+_store_metric_identity, _load_metric_identity = _make_metric_identity_registry()
+_store_report_identity, _load_report_identity = _make_report_identity_registry()
+
+
+@dataclass(frozen=True, slots=True, weakref_slot=True)
 class ParetoMetricComparison:
     """One frozen Tier 3 optimization metric compared in its declared direction."""
 
@@ -107,11 +171,17 @@ class ParetoMetricComparison:
             raise ParetoComparisonError(
                 "relation must equal the deterministic directional comparison"
             )
+        _store_metric_identity(
+            self,
+            derive_content_sha256(self._to_dict_validated()),
+        )
 
     def _validated_snapshot(self) -> ParetoMetricComparison:
         if type(self) is not ParetoMetricComparison:
             raise ParetoComparisonError("metric must be an exact ParetoMetricComparison")
-        return ParetoMetricComparison(
+        bound_content_sha256 = _load_metric_identity(self)
+        _require_sha256(bound_content_sha256, "bound metric content_sha256")
+        snapshot = ParetoMetricComparison(
             metric_id=self.metric_id,
             evaluator_id=self.evaluator_id,
             direction=self.direction,
@@ -121,6 +191,12 @@ class ParetoMetricComparison:
             candidate_evidence_artifact_sha256=self.candidate_evidence_artifact_sha256,
             relation=self.relation,
         )
+        current_content_sha256 = derive_content_sha256(snapshot._to_dict_validated())
+        if current_content_sha256 != bound_content_sha256:
+            raise ParetoComparisonError(
+                "Pareto metric identity changed after construction"
+            )
+        return snapshot
 
     def _to_dict_validated(self) -> dict[str, object]:
         return {
@@ -140,7 +216,7 @@ class ParetoMetricComparison:
         return snapshot._to_dict_validated()
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, weakref_slot=True)
 class ParetoComparisonReport:
     """Evidence-only hard-gate-first relation between two sealed evaluation reports."""
 
@@ -198,13 +274,19 @@ class ParetoComparisonReport:
             )
         if snapshots and self.relation is not _pareto_relation(snapshots):
             raise ParetoComparisonError("relation must equal the deterministic Pareto relation")
+        _store_report_identity(
+            self,
+            derive_content_sha256(self._semantic_dict_validated()),
+        )
 
     def _validated_snapshot(self) -> ParetoComparisonReport:
         if type(self) is not ParetoComparisonReport:
             raise ParetoComparisonError("report must be an exact ParetoComparisonReport")
         if type(self.metrics) is not tuple:
             raise ParetoComparisonError("metrics must be an exact tuple")
-        return ParetoComparisonReport(
+        bound_content_sha256 = _load_report_identity(self)
+        _require_sha256(bound_content_sha256, "bound report content_sha256")
+        snapshot = ParetoComparisonReport(
             objective_sha256=self.objective_sha256,
             reference_evidence_report_sha256=self.reference_evidence_report_sha256,
             candidate_evidence_report_sha256=self.candidate_evidence_report_sha256,
@@ -216,6 +298,12 @@ class ParetoComparisonReport:
                 for metric in self.metrics
             ),
         )
+        current_content_sha256 = derive_content_sha256(snapshot._semantic_dict_validated())
+        if current_content_sha256 != bound_content_sha256:
+            raise ParetoComparisonError(
+                "Pareto report identity changed after construction"
+            )
+        return snapshot
 
     @property
     def can_authorize(self) -> bool:
