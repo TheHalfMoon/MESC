@@ -13,7 +13,7 @@ from medscale.mesc._mrl_replication_set_policy_v1 import (
     ReplicationSetPolicyError,
     build_replication_set,
 )
-from medscale.mesc._mrl_research_objective_v1 import TierResultExposure
+from medscale.mesc._mrl_research_objective_v1 import AdaptiveQueryBudget, TierResultExposure
 from test_mesc_mrl_tier_evaluation_contract_v1 import _all_tier_objective
 
 
@@ -98,6 +98,29 @@ def test_replication_members_must_be_distinct_sorted_and_exact() -> None:
         )
     with pytest.raises(ReplicationSetPolicyError, match="members must be an exact tuple"):
         build_replication_set(_policy(), cast(tuple[ReplicationSetMember, ...], [first]))
+
+
+def test_mutated_policy_objective_cannot_expand_frozen_replication_budget() -> None:
+    policy = _policy()
+    object.__setattr__(
+        policy.objective,
+        "adaptive_query_budget",
+        AdaptiveQueryBudget(tier_1_queries=5, tier_2_queries=3),
+    )
+
+    with pytest.raises(ReplicationSetPolicyError, match="objective identity changed"):
+        _ = policy.max_replication_queries
+    with pytest.raises(ReplicationSetPolicyError, match="objective identity changed"):
+        build_replication_set(policy, _members(3))
+
+
+def test_mutated_member_fails_closed_before_replication_set_serialization() -> None:
+    members = _members()
+    replication_set = build_replication_set(_policy(), members)
+    object.__setattr__(members[0], "artifact_sha256", "invalid")
+
+    with pytest.raises(ReplicationSetPolicyError, match="artifact_sha256"):
+        replication_set.to_dict()
 
 
 def test_invalid_member_and_objective_types_fail_closed() -> None:
