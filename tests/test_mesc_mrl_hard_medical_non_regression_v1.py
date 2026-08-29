@@ -151,7 +151,7 @@ def test_fabricated_evaluator_or_metric_binding_fails_closed() -> None:
     )
     wrong_global_metric = replace(
         sealed.metric_evidence[0],
-        evaluator_id="eval.search",
+        evaluator_id="eval.sealec",
     )
     wrong_metric_report = replace(
         sealed,
