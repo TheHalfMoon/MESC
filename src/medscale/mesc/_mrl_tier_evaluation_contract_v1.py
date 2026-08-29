@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import enum
 import weakref
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Final
 
@@ -61,8 +62,8 @@ _NON_ITERATIVE_TIERS: Final = (EvaluationTier.SEALED, EvaluationTier.EXTERNAL_AS
 
 
 def _make_construction_identity_registry() -> tuple[
-    object,
-    object,
+    Callable[[TierEvaluationContract, str], None],
+    Callable[[TierEvaluationContract], str],
 ]:
     identities: dict[int, str] = {}
 
@@ -99,14 +100,14 @@ class TierEvaluationContract:
         if type(self) is not TierEvaluationContract:
             return
         _validate_contract_semantics(self)
-        _store_construction_identity(self, self.objective.content_sha256)  # type: ignore[operator]
+        _store_construction_identity(self, self.objective.content_sha256)
 
     def _validated_objective(self) -> tuple[ResearchObjectiveContract, str]:
         if type(self) is not TierEvaluationContract:
             raise TierEvaluationContractError(
                 "contract must be an exact TierEvaluationContract"
             )
-        bound_objective_sha256 = _load_construction_identity(self)  # type: ignore[operator]
+        bound_objective_sha256 = _load_construction_identity(self)
         _require_sha256(bound_objective_sha256, "bound objective_sha256")
         _validate_contract_semantics(self)
         current_sha256 = self.objective.content_sha256
