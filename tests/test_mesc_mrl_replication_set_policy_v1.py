@@ -131,6 +131,22 @@ def test_mutated_member_fails_closed_before_replication_set_serialization() -> N
         replication_set.to_dict()
 
 
+def test_valid_member_identity_mutation_fails_closed() -> None:
+    member = _members(1)[0]
+    object.__setattr__(member, "artifact_sha256", "f" * 64)
+
+    with pytest.raises(ReplicationSetPolicyError, match="identity changed"):
+        member.to_dict()
+
+
+def test_valid_replication_set_identity_mutation_fails_closed() -> None:
+    replication_set = build_replication_set(_policy(), _members())
+    object.__setattr__(replication_set, "objective_sha256", "f" * 64)
+
+    with pytest.raises(ReplicationSetPolicyError, match="identity changed"):
+        replication_set.to_dict()
+
+
 def test_invalid_member_and_objective_types_fail_closed() -> None:
     with pytest.raises(ReplicationSetPolicyError, match="member_id"):
         ReplicationSetMember(member_id="Replica-1", artifact_sha256="a" * 64)
