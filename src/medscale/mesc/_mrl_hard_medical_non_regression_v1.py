@@ -82,8 +82,24 @@ class HardMedicalGateResult:
                 "satisfied must equal the deterministic floor comparison"
             )
 
-    def to_dict(self) -> dict[str, object]:
-        """Return deterministic hard-gate semantics."""
+    def _validated_snapshot(self) -> HardMedicalGateResult:
+        if type(self) is not HardMedicalGateResult:
+            raise HardMedicalNonRegressionError(
+                "gate must be an exact HardMedicalGateResult"
+            )
+        return HardMedicalGateResult(
+            floor_id=self.floor_id,
+            metric_id=self.metric_id,
+            evaluator_id=self.evaluator_id,
+            subgroup=self.subgroup,
+            comparator=self.comparator,
+            threshold_decimal=self.threshold_decimal,
+            observed_value_decimal=self.observed_value_decimal,
+            evidence_artifact_sha256=self.evidence_artifact_sha256,
+            satisfied=self.satisfied,
+        )
+
+    def _to_dict_validated(self) -> dict[str, object]:
         return {
             "comparator": self.comparator.value,
             "evaluator_id": self.evaluator_id,
@@ -95,6 +111,11 @@ class HardMedicalGateResult:
             "subgroup": self.subgroup,
             "threshold_decimal": self.threshold_decimal,
         }
+
+    def to_dict(self) -> dict[str, object]:
+        """Return freshly revalidated deterministic hard-gate semantics."""
+        snapshot = HardMedicalGateResult._validated_snapshot(self)
+        return snapshot._to_dict_validated()
 
 
 @dataclass(frozen=True, slots=True)
@@ -115,19 +136,41 @@ class HardMedicalNonRegressionReport:
             raise HardMedicalNonRegressionError("gates must be a non-empty exact tuple")
         if any(type(gate) is not HardMedicalGateResult for gate in self.gates):
             raise HardMedicalNonRegressionError("gates contains an invalid item type")
-        floor_ids = tuple(gate.floor_id for gate in self.gates)
+        snapshots = tuple(HardMedicalGateResult._validated_snapshot(gate) for gate in self.gates)
+        floor_ids = tuple(gate.floor_id for gate in snapshots)
         if floor_ids != tuple(sorted(set(floor_ids))):
             raise HardMedicalNonRegressionError("gates must be unique and sorted by floor_id")
 
+    def _validated_snapshot(self) -> HardMedicalNonRegressionReport:
+        if type(self) is not HardMedicalNonRegressionReport:
+            raise HardMedicalNonRegressionError(
+                "report must be an exact HardMedicalNonRegressionReport"
+            )
+        if type(self.gates) is not tuple:
+            raise HardMedicalNonRegressionError("gates must be a non-empty exact tuple")
+        return HardMedicalNonRegressionReport(
+            objective_sha256=self.objective_sha256,
+            sealed_evidence_report_sha256=self.sealed_evidence_report_sha256,
+            gates=tuple(HardMedicalGateResult._validated_snapshot(gate) for gate in self.gates),
+        )
+
+    def _all_hard_gates_satisfied_validated(self) -> bool:
+        return all(gate.satisfied for gate in self.gates)
+
+    def _violated_floor_ids_validated(self) -> tuple[str, ...]:
+        return tuple(gate.floor_id for gate in self.gates if not gate.satisfied)
+
     @property
     def all_hard_gates_satisfied(self) -> bool:
-        """Return whether every frozen hard floor is satisfied by the bound evidence."""
-        return all(gate.satisfied for gate in self.gates)
+        """Return whether every freshly validated frozen hard floor is satisfied."""
+        snapshot = HardMedicalNonRegressionReport._validated_snapshot(self)
+        return snapshot._all_hard_gates_satisfied_validated()
 
     @property
     def violated_floor_ids(self) -> tuple[str, ...]:
-        """Return deterministic identifiers for every violated global or subgroup floor."""
-        return tuple(gate.floor_id for gate in self.gates if not gate.satisfied)
+        """Return deterministic identifiers for every freshly validated violation."""
+        snapshot = HardMedicalNonRegressionReport._validated_snapshot(self)
+        return snapshot._violated_floor_ids_validated()
 
     @property
     def can_authorize(self) -> bool:
@@ -141,26 +184,30 @@ class HardMedicalNonRegressionReport:
 
     @property
     def content_sha256(self) -> str:
-        """Return deterministic identity over the complete hard-gate result."""
+        """Return deterministic identity over freshly validated hard-gate evidence."""
         return derive_content_sha256(self.semantic_dict())
 
     @property
     def semantic_bytes(self) -> bytes:
-        """Return canonical evidence-only bytes."""
+        """Return canonical evidence-only bytes after complete revalidation."""
         return canonical_semantic_bytes(self.semantic_dict())
 
-    def semantic_dict(self) -> dict[str, object]:
-        """Return complete non-authoritative hard-gate semantics."""
+    def _semantic_dict_validated(self) -> dict[str, object]:
         return {
-            "all_hard_gates_satisfied": self.all_hard_gates_satisfied,
+            "all_hard_gates_satisfied": self._all_hard_gates_satisfied_validated(),
             "can_authorize": False,
             "can_authorize_model_promotion": False,
             "format": "MRL-HARD-MEDICAL-NON-REGRESSION-V1",
-            "gates": [gate.to_dict() for gate in self.gates],
+            "gates": [gate._to_dict_validated() for gate in self.gates],
             "objective_sha256": self.objective_sha256,
             "sealed_evidence_report_sha256": self.sealed_evidence_report_sha256,
-            "violated_floor_ids": list(self.violated_floor_ids),
+            "violated_floor_ids": list(self._violated_floor_ids_validated()),
         }
+
+    def semantic_dict(self) -> dict[str, object]:
+        """Return complete semantics from one freshly validated hard-gate snapshot."""
+        snapshot = HardMedicalNonRegressionReport._validated_snapshot(self)
+        return snapshot._semantic_dict_validated()
 
     def to_dict(self) -> dict[str, object]:
         """Return report semantics plus derived content identity."""
