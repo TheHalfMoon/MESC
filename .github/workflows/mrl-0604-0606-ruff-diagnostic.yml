@@ -1,0 +1,21 @@
+name: MRL-0604-0606 Ruff diagnostic
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  ruff-format-diff:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+      - run: uv sync --frozen
+      - name: Ruff format diff diagnostic
+        run: |
+          uv run ruff format --diff src/medscale/mesc/_mrl_benchmark_derived_generation_v1.py src/medscale/mesc/_mrl_temporal_canary_fixture_workflow_v1.py || true
