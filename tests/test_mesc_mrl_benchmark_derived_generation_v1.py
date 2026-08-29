@@ -105,6 +105,40 @@ def test_not_derived_classification_cannot_claim_benchmark_source() -> None:
         )
 
 
+def test_contamination_report_from_another_lineage_fails_closed() -> None:
+    lineage, _, transformation = _bound_inputs()
+    other_lineage = build_training_example_lineage(_example(source_sha256="c" * 64))
+    other_contamination = build_contamination_evidence_report(other_lineage, _checks())
+
+    with pytest.raises(BenchmarkDerivedGenerationError, match="contamination report does not bind"):
+        build_benchmark_derived_generation_flags(
+            lineage,
+            other_contamination,
+            transformation,
+            assessment_artifact_sha256="8" * 64,
+            classification=BenchmarkDerivedGenerationClassification.INDETERMINATE,
+        )
+
+
+def test_transformation_from_another_lineage_fails_closed() -> None:
+    lineage, contamination, _ = _bound_inputs()
+    other_lineage = build_training_example_lineage(_example(source_sha256="c" * 64))
+    other_transformation = build_training_transformation_binding(
+        other_lineage,
+        transformation_kind="normalization",
+        transformation_artifact_sha256="7" * 64,
+    )
+
+    with pytest.raises(BenchmarkDerivedGenerationError, match="transformation binding does not bind"):
+        build_benchmark_derived_generation_flags(
+            lineage,
+            contamination,
+            other_transformation,
+            assessment_artifact_sha256="8" * 64,
+            classification=BenchmarkDerivedGenerationClassification.INDETERMINATE,
+        )
+
+
 def test_mutated_contamination_evidence_fails_closed() -> None:
     lineage, contamination, transformation = _bound_inputs()
     object.__setattr__(contamination.checks[0], "detector_artifact_sha256", "invalid")
