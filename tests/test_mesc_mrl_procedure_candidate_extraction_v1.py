@@ -23,8 +23,8 @@ from test_mesc_mrl_research_campaign_v1 import _base_nodes, _campaign, _node
 def _candidate_campaign():
     nodes = tuple(
         sorted(
-            _base_nodes()
-            + (
+            (
+                *_base_nodes(),
                 _node(
                     "procedure-a",
                     CampaignNodeKind.PROCEDURE_CANDIDATE,
