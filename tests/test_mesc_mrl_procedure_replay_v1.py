@@ -129,6 +129,26 @@ def test_mutated_receipt_identity_fails_closed_on_semantic_and_hash_views() -> N
         _ = receipt.content_sha256
 
 
+def test_valid_receipt_identity_mutation_fails_closed() -> None:
+    procedure = _candidate_procedure()
+    evaluator = _evaluator()
+    surface = _surface(evaluator)
+    receipt = replay_procedure_fixture(
+        procedure,
+        surface,
+        evaluator,
+        _values(),
+        expected_score=1,
+        expected_max_score=2,
+    )
+    object.__setattr__(receipt, "candidate_sha256", "f" * 64)
+
+    with pytest.raises(ProcedureReplayError, match="identity changed"):
+        receipt.semantic_dict()
+    with pytest.raises(ProcedureReplayError, match="identity changed"):
+        _ = receipt.content_sha256
+
+
 def test_mutated_receipt_disposition_fails_closed_on_semantic_and_hash_views() -> None:
     procedure = _candidate_procedure()
     evaluator = _evaluator()
