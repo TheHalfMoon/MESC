@@ -78,7 +78,9 @@ class AdaptiveTierDisposition:
         if type(self.tier) is not EvaluationTier or self.tier not in _ADAPTIVE_TIERS:
             raise AdaptiveBudgetExhaustionError("tier must be SEARCH or REPLICATION")
         if type(self.state) is not AdaptiveTierUseState:
-            raise AdaptiveBudgetExhaustionError("state must be an exact AdaptiveTierUseState")
+            raise AdaptiveBudgetExhaustionError(
+                "state must be an exact AdaptiveTierUseState"
+            )
         if type(self.reasons) is not tuple:
             raise AdaptiveBudgetExhaustionError("reasons must be an exact tuple")
         if any(type(reason) is not AdaptiveBudgetBlockReason for reason in self.reasons):
@@ -93,7 +95,9 @@ class AdaptiveTierDisposition:
         )
         if self.state is AdaptiveTierUseState.AVAILABLE:
             if self.reasons:
-                raise AdaptiveBudgetExhaustionError("AVAILABLE tier cannot carry block reasons")
+                raise AdaptiveBudgetExhaustionError(
+                    "AVAILABLE tier cannot carry block reasons"
+                )
             if self.queries_remaining == 0 or self.result_exposures_remaining == 0:
                 raise AdaptiveBudgetExhaustionError(
                     "AVAILABLE tier must retain query and exposure capacity"
