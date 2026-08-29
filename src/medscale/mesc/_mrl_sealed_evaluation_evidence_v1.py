@@ -139,9 +139,7 @@ def build_sealed_evaluation_evidence_report(
 ) -> SealedEvaluationEvidenceReport:
     """Build one evidence report from an exact sealed request/handoff chain."""
     if type(tier_contract) is not TierEvaluationContract:
-        raise SealedEvaluationEvidenceError(
-            "tier_contract must be an exact TierEvaluationContract"
-        )
+        raise SealedEvaluationEvidenceError("tier_contract must be an exact TierEvaluationContract")
     if tier_contract.tier is not EvaluationTier.SEALED:
         raise SealedEvaluationEvidenceError("evidence report requires Tier 3 SEALED")
     if type(request) is not SealedEvaluationRequest:
@@ -232,9 +230,7 @@ def _require_metric_evidence(values: tuple[SealedMetricEvidence, ...]) -> None:
         raise SealedEvaluationEvidenceError("metric_evidence must be a non-empty exact tuple")
     if any(type(value) is not SealedMetricEvidence for value in values):
         raise SealedEvaluationEvidenceError("metric_evidence contains an invalid item type")
-    keys = tuple(
-        (value.metric_id, value.evaluator_id, value.subgroup or "") for value in values
-    )
+    keys = tuple((value.metric_id, value.evaluator_id, value.subgroup or "") for value in values)
     if keys != tuple(sorted(set(keys))):
         raise SealedEvaluationEvidenceError("metric_evidence must be sorted and unique")
 
