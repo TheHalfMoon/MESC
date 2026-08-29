@@ -161,6 +161,34 @@ def test_request_and_handoff_chain_mismatches_fail_closed() -> None:
         )
 
 
+def test_mutated_metric_evidence_fails_closed_on_report_semantic_and_hash_views() -> None:
+    report = _report()
+    object.__setattr__(report.metric_evidence[0], "value_decimal", "0.960")
+
+    with pytest.raises(SealedEvaluationEvidenceError, match="value_decimal"):
+        report.semantic_dict()
+    with pytest.raises(SealedEvaluationEvidenceError, match="value_decimal"):
+        _ = report.content_sha256
+
+
+def test_mutated_report_identity_fails_closed_on_semantic_and_hash_views() -> None:
+    report = _report()
+    object.__setattr__(report, "objective_sha256", "invalid")
+
+    with pytest.raises(SealedEvaluationEvidenceError, match="objective_sha256"):
+        report.semantic_dict()
+    with pytest.raises(SealedEvaluationEvidenceError, match="objective_sha256"):
+        _ = report.content_sha256
+
+
+def test_mutated_evaluator_artifact_fails_closed_on_semantic_view() -> None:
+    report = _report()
+    object.__setattr__(report, "evaluator_artifacts", (("eval.sealed", "invalid"),))
+
+    with pytest.raises(SealedEvaluationEvidenceError, match="evaluator artifact_sha256"):
+        report.semantic_dict()
+
+
 def test_non_sealed_and_fabricated_inputs_fail_closed() -> None:
     search = TierEvaluationContract(objective=_objective(), tier=EvaluationTier.SEARCH)
 
