@@ -39,14 +39,18 @@ def _make_policy_identity_registry() -> tuple[
     def store(value: Tier1ExposurePolicy, tier_contract_sha256: str) -> None:
         key = id(value)
         if key in identities:
-            raise Tier1ExposureError("Tier 1 policy construction identity already exists")
+            raise Tier1ExposureError(
+                "Tier 1 policy construction identity already exists"
+            )
         identities[key] = tier_contract_sha256
         weakref.finalize(value, remove, key)
 
     def load(value: Tier1ExposurePolicy) -> str:
         identity = identities.get(id(value))
         if identity is None:
-            raise Tier1ExposureError("Tier 1 policy construction identity is missing")
+            raise Tier1ExposureError(
+                "Tier 1 policy construction identity is missing"
+            )
         return identity
 
     return store, load
@@ -89,7 +93,9 @@ class Tier1ExposurePolicy:
         )
         contract = _validate_tier_contract(self.tier_contract)
         if contract.content_sha256 != bound_tier_contract_sha256:
-            raise Tier1ExposureError("tier contract identity changed after policy creation")
+            raise Tier1ExposureError(
+                "tier contract identity changed after policy creation"
+            )
         return contract, bound_tier_contract_sha256
 
     @property
@@ -108,7 +114,9 @@ class Tier1ExposurePolicy:
             if policy.tier is EvaluationTier.SEARCH
         ]
         if len(matches) != 1:
-            raise Tier1ExposureError("objective must define exactly one SEARCH exposure policy")
+            raise Tier1ExposureError(
+                "objective must define exactly one SEARCH exposure policy"
+            )
         policy = matches[0]
         return TierResultExposure(
             tier=policy.tier,
@@ -169,7 +177,9 @@ def record_tier1_exposure(
     _validate_policy_and_usage(policy, usage)
     _require_sorted_unique_fields(result_fields)
     if not set(result_fields).issubset(policy.allowed_result_fields):
-        raise Tier1ExposureError("Tier 1 result contains a field outside the frozen allow-list")
+        raise Tier1ExposureError(
+            "Tier 1 result contains a field outside the frozen allow-list"
+        )
     if usage.exposures_used >= policy.max_exposures:
         raise Tier1ExposureError("Tier 1 result-exposure budget is exhausted")
     return Tier1ExposureUsage(
@@ -178,7 +188,10 @@ def record_tier1_exposure(
     )
 
 
-def _validate_policy_and_usage(policy: Tier1ExposurePolicy, usage: Tier1ExposureUsage) -> None:
+def _validate_policy_and_usage(
+    policy: Tier1ExposurePolicy,
+    usage: Tier1ExposureUsage,
+) -> None:
     if type(policy) is not Tier1ExposurePolicy:
         raise Tier1ExposureError("policy must be an exact Tier1ExposurePolicy")
     if type(usage) is not Tier1ExposureUsage:
@@ -194,7 +207,9 @@ def _validate_policy_and_usage(policy: Tier1ExposurePolicy, usage: Tier1Exposure
 
 def _validate_tier_contract(contract: TierEvaluationContract) -> TierEvaluationContract:
     if type(contract) is not TierEvaluationContract:
-        raise Tier1ExposureError("tier_contract must be an exact TierEvaluationContract")
+        raise Tier1ExposureError(
+            "tier_contract must be an exact TierEvaluationContract"
+        )
     if contract.tier is not EvaluationTier.SEARCH:
         raise Tier1ExposureError("Tier 1 exposure policy requires SEARCH tier")
     try:
@@ -224,7 +239,9 @@ def _require_sorted_unique_fields(values: tuple[str, ...]) -> None:
         raise Tier1ExposureError("result_fields must be an exact tuple")
     if not values:
         raise Tier1ExposureError("result_fields cannot be empty")
-    if any(type(value) is not str or not value or value.strip() != value for value in values):
+    if any(
+        type(value) is not str or not value or value.strip() != value for value in values
+    ):
         raise Tier1ExposureError("result_fields must contain canonical exact strings")
     if values != tuple(sorted(set(values))):
         raise Tier1ExposureError("result_fields must be sorted and unique")
