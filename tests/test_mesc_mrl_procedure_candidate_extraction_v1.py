@@ -10,7 +10,7 @@ from medscale.mesc._mrl_procedure_candidate_extraction_v1 import (
     ProcedureCandidateReference,
     extract_procedure_candidates,
 )
-from medscale.mesc._mrl_research_campaign_v1 import CampaignNodeKind
+from medscale.mesc._mrl_research_campaign_v1 import CampaignNodeKind, ResearchCampaign
 from medscale.mesc._mrl_research_input_admission_v1 import (
     ResearchInputAdmissionContract,
     ResearchInputClassification,
@@ -20,7 +20,7 @@ from medscale.mesc._mrl_research_input_admission_v1 import (
 from test_mesc_mrl_research_campaign_v1 import _base_nodes, _campaign, _node
 
 
-def _candidate_campaign():
+def _candidate_campaign() -> ResearchCampaign:
     nodes = tuple(
         sorted(
             (
