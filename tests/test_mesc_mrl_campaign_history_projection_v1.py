@@ -87,6 +87,16 @@ def test_mutated_history_entry_fails_closed_on_latest_and_hash_views() -> None:
         _ = projection.content_sha256
 
 
+def test_valid_history_entry_identity_mutation_fails_closed() -> None:
+    projection = build_campaign_history_projection(_campaign())
+    object.__setattr__(projection.entries[0], "campaign_sha256", "f" * 64)
+
+    with pytest.raises(CampaignHistoryProjectionError, match="identity changed"):
+        projection.entries[0].to_dict()
+    with pytest.raises(CampaignHistoryProjectionError, match="identity changed"):
+        _ = projection.content_sha256
+
+
 def test_mutated_projection_identity_fails_closed_on_semantic_and_hash_views() -> None:
     projection = build_campaign_history_projection(_campaign())
     object.__setattr__(projection, "objective_sha256", "invalid")
@@ -94,6 +104,16 @@ def test_mutated_projection_identity_fails_closed_on_semantic_and_hash_views() -
     with pytest.raises(CampaignHistoryProjectionError, match="64 lowercase hex"):
         projection.semantic_dict()
     with pytest.raises(CampaignHistoryProjectionError, match="64 lowercase hex"):
+        _ = projection.content_sha256
+
+
+def test_valid_projection_identity_mutation_fails_closed() -> None:
+    projection = build_campaign_history_projection(_campaign())
+    object.__setattr__(projection, "objective_sha256", "f" * 64)
+
+    with pytest.raises(CampaignHistoryProjectionError, match="identity changed"):
+        projection.semantic_dict()
+    with pytest.raises(CampaignHistoryProjectionError, match="identity changed"):
         _ = projection.content_sha256
 
 
