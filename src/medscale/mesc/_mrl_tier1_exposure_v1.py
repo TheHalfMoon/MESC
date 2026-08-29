@@ -138,6 +138,8 @@ def _validate_policy_and_usage(policy: Tier1ExposurePolicy, usage: Tier1Exposure
     if type(usage) is not Tier1ExposureUsage:
         raise Tier1ExposureError("usage must be an exact Tier1ExposureUsage")
     policy.tier_contract.semantic_dict()
+    _require_nonnegative_int(usage.queries_used, "queries_used")
+    _require_nonnegative_int(usage.exposures_used, "exposures_used")
     if usage.queries_used > policy.query_ceiling:
         raise Tier1ExposureError("Tier 1 query usage exceeds the frozen ceiling")
     if usage.exposures_used > policy.max_exposures:
