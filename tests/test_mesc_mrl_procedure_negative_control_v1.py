@@ -99,3 +99,23 @@ def test_duplicate_control_evidence_fails_closed() -> None:
 
     with pytest.raises(ProcedureNegativeControlError, match="distinct evidence"):
         build_procedure_negative_control_report(procedure, (first, second))
+
+
+def test_mutated_nested_control_fails_closed_on_report_public_views() -> None:
+    procedure = _candidate_procedure()
+    case = _passing_case()
+    report = build_procedure_negative_control_report(procedure, (case,))
+    object.__setattr__(case, "evidence_artifact_sha256", "invalid")
+
+    with pytest.raises(ProcedureNegativeControlError, match="64 lowercase hex"):
+        _ = report.all_controls_pass
+    with pytest.raises(ProcedureNegativeControlError, match="64 lowercase hex"):
+        _ = report.content_sha256
+
+
+def test_mutated_control_failure_mode_fails_closed_on_disposition() -> None:
+    case = _passing_case()
+    object.__setattr__(case, "expected_failure_mode", "")
+
+    with pytest.raises(ProcedureNegativeControlError, match="canonical non-empty text"):
+        _ = case.disposition
