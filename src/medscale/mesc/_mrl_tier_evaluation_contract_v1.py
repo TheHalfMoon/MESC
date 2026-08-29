@@ -100,8 +100,7 @@ class TierEvaluationContract:
             "result_exposure": exposure.to_dict(),
             "evaluator_identities": [identity.to_dict() for identity in evaluators],
             "metric_contracts": [metric.to_dict() for metric in metrics],
-            "iterative_agent_result_stream": self.tier
-            not in (
+            "iterative_agent_result_stream": self.tier not in (
                 EvaluationTier.SEALED,
                 EvaluationTier.EXTERNAL_ASSURANCE,
             ),
