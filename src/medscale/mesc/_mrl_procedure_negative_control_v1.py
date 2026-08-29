@@ -58,22 +58,42 @@ class ProcedureNegativeControlCase:
             _require_text(self.observed_failure_mode, "observed_failure_mode")
         _require_sha256(self.evidence_artifact_sha256, "evidence_artifact_sha256")
 
-    @property
-    def disposition(self) -> NegativeControlDisposition:
+    def _validated_snapshot(self) -> ProcedureNegativeControlCase:
+        if type(self) is not ProcedureNegativeControlCase:
+            raise ProcedureNegativeControlError(
+                "case must be an exact ProcedureNegativeControlCase"
+            )
+        return ProcedureNegativeControlCase(
+            control_id=self.control_id,
+            expected_failure_mode=self.expected_failure_mode,
+            observed_failure_mode=self.observed_failure_mode,
+            evidence_artifact_sha256=self.evidence_artifact_sha256,
+        )
+
+    def _disposition_validated(self) -> NegativeControlDisposition:
         if self.observed_failure_mode is None:
             return NegativeControlDisposition.UNEXPECTED_SUCCESS
         if self.observed_failure_mode == self.expected_failure_mode:
             return NegativeControlDisposition.EXPECTED_FAILURE_OBSERVED
         return NegativeControlDisposition.WRONG_FAILURE_MODE
 
-    def semantic_dict(self) -> dict[str, object]:
+    @property
+    def disposition(self) -> NegativeControlDisposition:
+        snapshot = ProcedureNegativeControlCase._validated_snapshot(self)
+        return snapshot._disposition_validated()
+
+    def _semantic_dict_validated(self) -> dict[str, object]:
         return {
             "control_id": self.control_id,
-            "disposition": self.disposition.value,
+            "disposition": self._disposition_validated().value,
             "evidence_artifact_sha256": self.evidence_artifact_sha256,
             "expected_failure_mode": self.expected_failure_mode,
             "observed_failure_mode": self.observed_failure_mode,
         }
+
+    def semantic_dict(self) -> dict[str, object]:
+        snapshot = ProcedureNegativeControlCase._validated_snapshot(self)
+        return snapshot._semantic_dict_validated()
 
 
 @dataclass(frozen=True, slots=True)
@@ -95,31 +115,57 @@ class ProcedureNegativeControlReport:
             raise ProcedureNegativeControlError("cases must be a non-empty exact tuple")
         if any(type(case) is not ProcedureNegativeControlCase for case in self.cases):
             raise ProcedureNegativeControlError("cases contains an invalid item type")
-        case_ids = tuple(case.control_id for case in self.cases)
+        case_snapshots = tuple(
+            ProcedureNegativeControlCase._validated_snapshot(case) for case in self.cases
+        )
+        case_ids = tuple(case.control_id for case in case_snapshots)
         if case_ids != tuple(sorted(set(case_ids))):
             raise ProcedureNegativeControlError("cases must be unique and sorted by control_id")
-        evidence_ids = tuple(case.evidence_artifact_sha256 for case in self.cases)
+        evidence_ids = tuple(case.evidence_artifact_sha256 for case in case_snapshots)
         if len(evidence_ids) != len(set(evidence_ids)):
             raise ProcedureNegativeControlError(
                 "negative controls require distinct evidence artifact identities"
             )
-        for case in self.cases:
+        for case in case_snapshots:
             if case.expected_failure_mode not in self.declared_failure_modes:
                 raise ProcedureNegativeControlError(
                     "negative control references an undeclared procedure failure mode"
                 )
 
-    @property
-    def coverage_complete(self) -> bool:
+    def _validated_snapshot(self) -> ProcedureNegativeControlReport:
+        if type(self) is not ProcedureNegativeControlReport:
+            raise ProcedureNegativeControlError(
+                "report must be an exact ProcedureNegativeControlReport"
+            )
+        if type(self.cases) is not tuple:
+            raise ProcedureNegativeControlError("cases must be an exact tuple")
+        return ProcedureNegativeControlReport(
+            procedure_sha256=self.procedure_sha256,
+            declared_failure_modes=self.declared_failure_modes,
+            cases=tuple(
+                ProcedureNegativeControlCase._validated_snapshot(case) for case in self.cases
+            ),
+        )
+
+    def _coverage_complete_validated(self) -> bool:
         covered = {case.expected_failure_mode for case in self.cases}
         return covered == set(self.declared_failure_modes)
 
     @property
-    def all_controls_pass(self) -> bool:
-        return self.coverage_complete and all(
-            case.disposition is NegativeControlDisposition.EXPECTED_FAILURE_OBSERVED
+    def coverage_complete(self) -> bool:
+        snapshot = ProcedureNegativeControlReport._validated_snapshot(self)
+        return snapshot._coverage_complete_validated()
+
+    def _all_controls_pass_validated(self) -> bool:
+        return self._coverage_complete_validated() and all(
+            case._disposition_validated() is NegativeControlDisposition.EXPECTED_FAILURE_OBSERVED
             for case in self.cases
         )
+
+    @property
+    def all_controls_pass(self) -> bool:
+        snapshot = ProcedureNegativeControlReport._validated_snapshot(self)
+        return snapshot._all_controls_pass_validated()
 
     @property
     def can_advance_admission(self) -> bool:
@@ -129,17 +175,21 @@ class ProcedureNegativeControlReport:
     def can_authorize(self) -> bool:
         return False
 
-    def semantic_dict(self) -> dict[str, object]:
+    def _semantic_dict_validated(self) -> dict[str, object]:
         return {
-            "all_controls_pass": self.all_controls_pass,
+            "all_controls_pass": self._all_controls_pass_validated(),
             "can_advance_admission": False,
             "can_authorize": False,
             "cases": [case.semantic_dict() for case in self.cases],
-            "coverage_complete": self.coverage_complete,
+            "coverage_complete": self._coverage_complete_validated(),
             "declared_failure_modes": list(self.declared_failure_modes),
             "format": "MRL-PROCEDURE-NEGATIVE-CONTROL-REPORT-V1",
             "procedure_sha256": self.procedure_sha256,
         }
+
+    def semantic_dict(self) -> dict[str, object]:
+        snapshot = ProcedureNegativeControlReport._validated_snapshot(self)
+        return snapshot._semantic_dict_validated()
 
     @property
     def semantic_bytes(self) -> bytes:
