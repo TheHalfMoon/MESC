@@ -107,7 +107,10 @@ class HardMedicalNonRegressionReport:
 
     def __post_init__(self) -> None:
         _require_sha256(self.objective_sha256, "objective_sha256")
-        _require_sha256(self.sealed_evidence_report_sha256, "sealed_evidence_report_sha256")
+        _require_sha256(
+            self.sealed_evidence_report_sha256,
+            "sealed_evidence_report_sha256",
+        )
         if type(self.gates) is not tuple or not self.gates:
             raise HardMedicalNonRegressionError("gates must be a non-empty exact tuple")
         if any(type(gate) is not HardMedicalGateResult for gate in self.gates):
@@ -193,7 +196,12 @@ def evaluate_hard_medical_non_regression(
         )
 
     evidence_by_key = _validate_report_against_objective(objective, report)
-    floors = tuple(sorted((*objective.hard_guardrails, *objective.subgroup_floors), key=_floor_key))
+    floors = tuple(
+        sorted(
+            (*objective.hard_guardrails, *objective.subgroup_floors),
+            key=_floor_key,
+        )
+    )
     if not floors:
         raise HardMedicalNonRegressionError("objective has no hard evidence floors")
 
@@ -202,10 +210,7 @@ def evaluate_hard_medical_non_regression(
         for metric in objective.evaluation_metrics
         if metric.tier is EvaluationTier.SEALED
     }
-    gates = tuple(
-        _evaluate_floor(floor, evidence_by_key, metric_evaluator)
-        for floor in floors
-    )
+    gates = tuple(_evaluate_floor(floor, evidence_by_key, metric_evaluator) for floor in floors)
     return HardMedicalNonRegressionReport(
         objective_sha256=objective_sha256,
         sealed_evidence_report_sha256=report.content_sha256,
@@ -217,10 +222,14 @@ def _snapshot_sealed_report(
     report: SealedEvaluationEvidenceReport,
 ) -> SealedEvaluationEvidenceReport:
     if type(report.evaluator_artifacts) is not tuple:
-        raise HardMedicalNonRegressionError("sealed evaluator_artifacts must remain an exact tuple")
+        raise HardMedicalNonRegressionError(
+            "sealed evaluator_artifacts must remain an exact tuple"
+        )
     for item in report.evaluator_artifacts:
         if type(item) is not tuple or len(item) != 2:
-            raise HardMedicalNonRegressionError("sealed evaluator_artifacts contains invalid entry")
+            raise HardMedicalNonRegressionError(
+                "sealed evaluator_artifacts contains invalid entry"
+            )
     if type(report.metric_evidence) is not tuple:
         raise HardMedicalNonRegressionError("sealed metric_evidence must remain an exact tuple")
     if any(type(item) is not SealedMetricEvidence for item in report.metric_evidence):
@@ -257,7 +266,9 @@ def _validate_report_against_objective(
     report: SealedEvaluationEvidenceReport,
 ) -> dict[tuple[str, str | None], SealedMetricEvidence]:
     sealed_metrics = tuple(
-        metric for metric in objective.evaluation_metrics if metric.tier is EvaluationTier.SEALED
+        metric
+        for metric in objective.evaluation_metrics
+        if metric.tier is EvaluationTier.SEALED
     )
     if not sealed_metrics:
         raise HardMedicalNonRegressionError("objective has no frozen Tier 3 evaluation metrics")
