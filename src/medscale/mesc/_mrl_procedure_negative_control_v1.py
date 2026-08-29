@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import enum
 import re
+import weakref
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from medscale.mesc._mrl_content_identity_v1 import (
@@ -40,6 +42,38 @@ class NegativeControlDisposition(enum.Enum):
     EXPECTED_FAILURE_OBSERVED = "EXPECTED_FAILURE_OBSERVED"
     UNEXPECTED_SUCCESS = "UNEXPECTED_SUCCESS"
     WRONG_FAILURE_MODE = "WRONG_FAILURE_MODE"
+
+
+def _make_report_identity_registry() -> tuple[
+    Callable[[ProcedureNegativeControlReport, str], None],
+    Callable[[ProcedureNegativeControlReport], str],
+]:
+    identities: dict[int, str] = {}
+
+    def remove(key: int) -> None:
+        identities.pop(key, None)
+
+    def store(value: ProcedureNegativeControlReport, content_sha256: str) -> None:
+        key = id(value)
+        if key in identities:
+            raise ProcedureNegativeControlError(
+                "negative-control report construction identity already exists"
+            )
+        identities[key] = content_sha256
+        weakref.finalize(value, remove, key)
+
+    def load(value: ProcedureNegativeControlReport) -> str:
+        identity = identities.get(id(value))
+        if identity is None:
+            raise ProcedureNegativeControlError(
+                "negative-control report construction identity is missing"
+            )
+        return identity
+
+    return store, load
+
+
+_store_report_identity, _load_report_identity = _make_report_identity_registry()
 
 
 @dataclass(frozen=True, slots=True)
@@ -96,7 +130,7 @@ class ProcedureNegativeControlCase:
         return snapshot._semantic_dict_validated()
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, weakref_slot=True)
 class ProcedureNegativeControlReport:
     """Immutable negative-control evidence bound to one procedure admission subject."""
 
@@ -131,6 +165,10 @@ class ProcedureNegativeControlReport:
                 raise ProcedureNegativeControlError(
                     "negative control references an undeclared procedure failure mode"
                 )
+        _store_report_identity(
+            self,
+            derive_content_sha256(self._semantic_dict_validated()),
+        )
 
     def _validated_snapshot(self) -> ProcedureNegativeControlReport:
         if type(self) is not ProcedureNegativeControlReport:
@@ -139,13 +177,21 @@ class ProcedureNegativeControlReport:
             )
         if type(self.cases) is not tuple:
             raise ProcedureNegativeControlError("cases must be an exact tuple")
-        return ProcedureNegativeControlReport(
+        bound_content_sha256 = _load_report_identity(self)
+        _require_sha256(bound_content_sha256, "bound report content_sha256")
+        snapshot = ProcedureNegativeControlReport(
             procedure_sha256=self.procedure_sha256,
             declared_failure_modes=self.declared_failure_modes,
             cases=tuple(
                 ProcedureNegativeControlCase._validated_snapshot(case) for case in self.cases
             ),
         )
+        current_content_sha256 = derive_content_sha256(snapshot._semantic_dict_validated())
+        if current_content_sha256 != bound_content_sha256:
+            raise ProcedureNegativeControlError(
+                "negative-control report identity changed after construction"
+            )
+        return snapshot
 
     def _coverage_complete_validated(self) -> bool:
         covered = {case.expected_failure_mode for case in self.cases}
