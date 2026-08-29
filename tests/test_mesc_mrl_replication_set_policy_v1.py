@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import fields, replace
 from typing import cast
 
 import pytest
@@ -112,6 +112,14 @@ def test_mutated_policy_objective_cannot_expand_frozen_replication_budget() -> N
         _ = policy.max_replication_queries
     with pytest.raises(ReplicationSetPolicyError, match="objective identity changed"):
         build_replication_set(policy, _members(3))
+
+
+def test_policy_construction_identity_is_not_reachable_as_mutable_state() -> None:
+    policy = _policy()
+
+    assert tuple(field.name for field in fields(ReplicationSetPolicy)) == ("objective",)
+    with pytest.raises(AttributeError):
+        object.__setattr__(policy, "_bound_objective_sha256", "a" * 64)
 
 
 def test_mutated_member_fails_closed_before_replication_set_serialization() -> None:
