@@ -84,7 +84,7 @@ def test_corrupted_campaign_chain_fails_closed() -> None:
         resources=_resources(wall_clock_seconds=11),
         tier_usage=_tier_usage(search_queries=3),
     )
-    object.__setattr__(child, "parent", None)
+    object.__setattr__(child, "campaign_id", "corrupted-campaign")
 
     with pytest.raises(CampaignHistoryProjectionError, match="canonical revalidation"):
         build_campaign_history_projection(child)
