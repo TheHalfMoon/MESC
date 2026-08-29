@@ -16,7 +16,9 @@ from medscale.mesc._mrl_training_example_lineage_v1 import build_training_exampl
 from test_mesc_mrl_training_example_lineage_v1 import _example
 
 
-def _checks(*, exact: ContaminationDisposition = ContaminationDisposition.CLEAR):
+def _checks(
+    *, exact: ContaminationDisposition = ContaminationDisposition.CLEAR
+) -> tuple[ContaminationCheckEvidence, ContaminationCheckEvidence, ContaminationCheckEvidence]:
     return (
         ContaminationCheckEvidence(
             kind=ContaminationCheckKind.EXACT,
