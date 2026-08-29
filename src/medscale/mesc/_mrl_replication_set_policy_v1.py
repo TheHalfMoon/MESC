@@ -16,6 +16,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Final
 
+from medscale.mesc._mrl_content_identity_v1 import derive_content_sha256
 from medscale.mesc._mrl_research_objective_v1 import (
     EvaluationTier,
     ResearchObjectiveContract,
@@ -68,10 +69,70 @@ def _make_policy_identity_registry() -> tuple[
     return store, load
 
 
+def _make_member_identity_registry() -> tuple[
+    Callable[[ReplicationSetMember, str], None],
+    Callable[[ReplicationSetMember], str],
+]:
+    identities: dict[int, str] = {}
+
+    def remove(key: int) -> None:
+        identities.pop(key, None)
+
+    def store(value: ReplicationSetMember, content_sha256: str) -> None:
+        key = id(value)
+        if key in identities:
+            raise ReplicationSetPolicyError(
+                "replication member construction identity already exists"
+            )
+        identities[key] = content_sha256
+        weakref.finalize(value, remove, key)
+
+    def load(value: ReplicationSetMember) -> str:
+        identity = identities.get(id(value))
+        if identity is None:
+            raise ReplicationSetPolicyError(
+                "replication member construction identity is missing"
+            )
+        return identity
+
+    return store, load
+
+
+def _make_set_identity_registry() -> tuple[
+    Callable[[ReplicationSet, str], None],
+    Callable[[ReplicationSet], str],
+]:
+    identities: dict[int, str] = {}
+
+    def remove(key: int) -> None:
+        identities.pop(key, None)
+
+    def store(value: ReplicationSet, content_sha256: str) -> None:
+        key = id(value)
+        if key in identities:
+            raise ReplicationSetPolicyError(
+                "replication set construction identity already exists"
+            )
+        identities[key] = content_sha256
+        weakref.finalize(value, remove, key)
+
+    def load(value: ReplicationSet) -> str:
+        identity = identities.get(id(value))
+        if identity is None:
+            raise ReplicationSetPolicyError(
+                "replication set construction identity is missing"
+            )
+        return identity
+
+    return store, load
+
+
 _store_policy_identity, _load_policy_identity = _make_policy_identity_registry()
+_store_member_identity, _load_member_identity = _make_member_identity_registry()
+_store_set_identity, _load_set_identity = _make_set_identity_registry()
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, weakref_slot=True)
 class ReplicationSetMember:
     """One exact candidate/receipt identity admitted to a replication set."""
 
@@ -83,16 +144,28 @@ class ReplicationSetMember:
             raise ReplicationSetPolicyError("member_id must be canonical lowercase kebab-case")
         if type(self.artifact_sha256) is not str or _SHA256.fullmatch(self.artifact_sha256) is None:
             raise ReplicationSetPolicyError("artifact_sha256 must be 64 lowercase hex")
+        _store_member_identity(
+            self,
+            derive_content_sha256(self._to_dict_validated()),
+        )
 
     def _validated_snapshot(self) -> ReplicationSetMember:
         if type(self) is not ReplicationSetMember:
             raise ReplicationSetPolicyError(
                 "member must be an exact ReplicationSetMember"
             )
-        return ReplicationSetMember(
+        bound_content_sha256 = _load_member_identity(self)
+        _require_sha256(bound_content_sha256, "bound member content_sha256")
+        snapshot = ReplicationSetMember(
             member_id=self.member_id,
             artifact_sha256=self.artifact_sha256,
         )
+        current_content_sha256 = derive_content_sha256(snapshot._to_dict_validated())
+        if current_content_sha256 != bound_content_sha256:
+            raise ReplicationSetPolicyError(
+                "replication member identity changed after construction"
+            )
+        return snapshot
 
     def _to_dict_validated(self) -> dict[str, str]:
         return {"artifact_sha256": self.artifact_sha256, "member_id": self.member_id}
@@ -194,7 +267,7 @@ class ReplicationSetPolicy:
         }
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, weakref_slot=True)
 class ReplicationSet:
     """One immutable replication set bounded by the frozen Tier 2 policy."""
 
@@ -222,13 +295,19 @@ class ReplicationSet:
         _require_nonnegative_int(self.max_replication_queries, "max_replication_queries")
         _require_nonnegative_int(self.max_summary_exposures, "max_summary_exposures")
         _require_sorted_unique_text(self.allowed_summary_fields)
+        _store_set_identity(
+            self,
+            derive_content_sha256(self._to_dict_validated()),
+        )
 
     def _validated_snapshot(self) -> ReplicationSet:
         if type(self) is not ReplicationSet:
             raise ReplicationSetPolicyError("replication set must be an exact ReplicationSet")
         if type(self.members) is not tuple:
             raise ReplicationSetPolicyError("members must be an exact tuple")
-        return ReplicationSet(
+        bound_content_sha256 = _load_set_identity(self)
+        _require_sha256(bound_content_sha256, "bound replication set content_sha256")
+        snapshot = ReplicationSet(
             objective_sha256=self.objective_sha256,
             members=tuple(
                 ReplicationSetMember._validated_snapshot(member) for member in self.members
@@ -237,6 +316,12 @@ class ReplicationSet:
             allowed_summary_fields=self.allowed_summary_fields,
             max_summary_exposures=self.max_summary_exposures,
         )
+        current_content_sha256 = derive_content_sha256(snapshot._to_dict_validated())
+        if current_content_sha256 != bound_content_sha256:
+            raise ReplicationSetPolicyError(
+                "replication set identity changed after construction"
+            )
+        return snapshot
 
     def _to_dict_validated(self) -> dict[str, object]:
         return {
