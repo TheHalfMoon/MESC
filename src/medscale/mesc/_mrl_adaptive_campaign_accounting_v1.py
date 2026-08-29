@@ -144,14 +144,18 @@ def build_adaptive_campaign_accounting(
 ) -> AdaptiveCampaignAccounting:
     """Reconcile exact cumulative campaign usage against frozen adaptive ceilings."""
     if type(objective) is not ResearchObjectiveContract:
-        raise AdaptiveCampaignAccountingError("objective must be an exact ResearchObjectiveContract")
+        raise AdaptiveCampaignAccountingError(
+            "objective must be an exact ResearchObjectiveContract"
+        )
     if type(campaign) is not ResearchCampaign:
         raise AdaptiveCampaignAccountingError("campaign must be an exact ResearchCampaign")
 
     objective.semantic_dict()
     campaign.semantic_dict()
     if campaign.objective_sha256 != objective.content_sha256:
-        raise AdaptiveCampaignAccountingError("campaign objective identity does not match objective")
+        raise AdaptiveCampaignAccountingError(
+            "campaign objective identity does not match objective"
+        )
 
     usage_by_tier = {item.tier: item for item in campaign.cumulative_tier_usage}
     rows = tuple(
