@@ -101,7 +101,22 @@ class ContaminationCheckEvidence:
                 "near/semantic disposition does not match frozen similarity threshold"
             )
 
-    def to_dict(self) -> dict[str, object]:
+    def _validated_snapshot(self) -> ContaminationCheckEvidence:
+        if type(self) is not ContaminationCheckEvidence:
+            raise ContaminationInterfaceError(
+                "check must be an exact ContaminationCheckEvidence"
+            )
+        return ContaminationCheckEvidence(
+            kind=self.kind,
+            detector_id=self.detector_id,
+            detector_artifact_sha256=self.detector_artifact_sha256,
+            evidence_artifact_sha256=self.evidence_artifact_sha256,
+            disposition=self.disposition,
+            similarity_decimal=self.similarity_decimal,
+            threshold_decimal=self.threshold_decimal,
+        )
+
+    def _to_dict_validated(self) -> dict[str, object]:
         return {
             "detector_artifact_sha256": self.detector_artifact_sha256,
             "detector_id": self.detector_id,
@@ -111,6 +126,10 @@ class ContaminationCheckEvidence:
             "similarity_decimal": self.similarity_decimal,
             "threshold_decimal": self.threshold_decimal,
         }
+
+    def to_dict(self) -> dict[str, object]:
+        snapshot = ContaminationCheckEvidence._validated_snapshot(self)
+        return snapshot._to_dict_validated()
 
 
 @dataclass(frozen=True, slots=True)
@@ -126,18 +145,41 @@ class ContaminationEvidenceReport:
             raise ContaminationInterfaceError("checks must contain exactly three interfaces")
         if any(type(item) is not ContaminationCheckEvidence for item in self.checks):
             raise ContaminationInterfaceError("checks contains an invalid item type")
-        kinds = tuple(item.kind.value for item in self.checks)
+        check_snapshots = tuple(
+            ContaminationCheckEvidence._validated_snapshot(item) for item in self.checks
+        )
+        kinds = tuple(item.kind.value for item in check_snapshots)
         expected = tuple(kind.value for kind in ContaminationCheckKind)
         if kinds != expected:
             raise ContaminationInterfaceError("checks must be ordered EXACT, NEAR, SEMANTIC")
 
-    @property
-    def disposition(self) -> ContaminationDisposition:
+    def _validated_snapshot(self) -> ContaminationEvidenceReport:
+        if type(self) is not ContaminationEvidenceReport:
+            raise ContaminationInterfaceError(
+                "report must be an exact ContaminationEvidenceReport"
+            )
+        if type(self.checks) is not tuple:
+            raise ContaminationInterfaceError("checks must be an exact tuple")
+        return ContaminationEvidenceReport(
+            training_lineage_sha256=self.training_lineage_sha256,
+            checks=tuple(
+                ContaminationCheckEvidence._validated_snapshot(item) for item in self.checks
+            ),
+        )
+
+    def _disposition_validated(self) -> ContaminationDisposition:
         if any(item.disposition is ContaminationDisposition.BLOCKED for item in self.checks):
             return ContaminationDisposition.BLOCKED
-        if any(item.disposition is ContaminationDisposition.INDETERMINATE for item in self.checks):
+        if any(
+            item.disposition is ContaminationDisposition.INDETERMINATE for item in self.checks
+        ):
             return ContaminationDisposition.INDETERMINATE
         return ContaminationDisposition.CLEAR
+
+    @property
+    def disposition(self) -> ContaminationDisposition:
+        snapshot = ContaminationEvidenceReport._validated_snapshot(self)
+        return snapshot._disposition_validated()
 
     @property
     def can_authorize_training(self) -> bool:
@@ -155,15 +197,19 @@ class ContaminationEvidenceReport:
     def content_sha256(self) -> str:
         return derive_content_sha256(self.semantic_dict())
 
-    def semantic_dict(self) -> dict[str, object]:
+    def _semantic_dict_validated(self) -> dict[str, object]:
         return {
             "can_authorize_model_promotion": False,
             "can_authorize_training": False,
-            "checks": [item.to_dict() for item in self.checks],
-            "disposition": self.disposition.value,
+            "checks": [item._to_dict_validated() for item in self.checks],
+            "disposition": self._disposition_validated().value,
             "format": "MRL-CONTAMINATION-EVIDENCE-REPORT-V1",
             "training_lineage_sha256": self.training_lineage_sha256,
         }
+
+    def semantic_dict(self) -> dict[str, object]:
+        snapshot = ContaminationEvidenceReport._validated_snapshot(self)
+        return snapshot._semantic_dict_validated()
 
     def to_dict(self) -> dict[str, object]:
         data = self.semantic_dict()
