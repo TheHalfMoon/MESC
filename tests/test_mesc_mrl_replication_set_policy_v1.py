@@ -38,7 +38,7 @@ def test_policy_derives_frozen_tier2_bounds_and_never_authorizes() -> None:
     assert policy.replication_exposure.max_exposures == 2
     assert policy.replication_exposure.allowed_result_fields == ("aggregate_score",)
     assert set(policy.replication_exposure.allowed_result_fields).issubset(
-        policy.search_exposure.allowed_result_fields
+        policy.search_exposure.allowed_result_fields,
     )
     assert policy.can_authorize is False
     assert policy.to_dict()["can_authorize"] is False
