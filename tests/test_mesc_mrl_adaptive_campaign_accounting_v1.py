@@ -140,7 +140,13 @@ def test_missing_disallowed_replication_usage_accounts_as_zero() -> None:
 
 
 @pytest.mark.parametrize(
-    ("search_queries", "search_exposures", "replication_queries", "replication_exposures", "error"),
+    (
+        "search_queries",
+        "search_exposures",
+        "replication_queries",
+        "replication_exposures",
+        "error",
+    ),
     (
         (6, 2, 1, 1, "adaptive query usage exceeds"),
         (3, 6, 1, 1, "result exposure usage exceeds"),
