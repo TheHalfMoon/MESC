@@ -69,6 +69,10 @@ class TemporalCanaryFixtureReceipt:
         _require_sha256(self.surface_sha256, "surface_sha256")
         _require_sha256(self.evaluator_sha256, "evaluator_sha256")
         _require_sha256(self.candidate_sha256, "candidate_sha256")
+        if self.canary_artifact_sha256 != self.candidate_sha256:
+            raise TemporalCanaryFixtureWorkflowError(
+                "candidate identity must equal the sealed canary artifact identity"
+            )
         _require_sha256(self.evaluation_sha256, "evaluation_sha256")
         _require_text(self.metric_id, "metric_id")
         if type(self.observed_score) is not int or type(self.observed_max_score) is not int:
