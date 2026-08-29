@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import fields, replace
 from typing import cast
 
 import pytest
@@ -106,6 +106,14 @@ def test_post_construction_objective_mutation_cannot_expand_bound_tier1_budget()
         _ = policy.query_ceiling
     with pytest.raises(Tier1ExposureError, match="identity changed after policy creation"):
         consume_tier1_query(policy, Tier1ExposureUsage())
+
+
+def test_policy_construction_identity_is_not_reachable_as_mutable_state() -> None:
+    policy = _policy()
+
+    assert tuple(field.name for field in fields(Tier1ExposurePolicy)) == ("tier_contract",)
+    with pytest.raises(AttributeError):
+        object.__setattr__(policy, "_bound_tier_contract_sha256", "a" * 64)
 
 
 def test_non_search_contract_and_fabricated_usage_fail_closed() -> None:
