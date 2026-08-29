@@ -40,6 +40,14 @@ jobs:
       - name: Ruff (lint)
         run: uv run ruff check .
 
+      - name: Ruff format diff diagnostic
+        run: |
+          uv run ruff format --diff \
+            src/medscale/mesc/_mrl_hard_medical_non_regression_v1.py \
+            tests/test_mesc_mrl_hard_medical_non_regression_v1.py \
+            src/medscale/mesc/_mrl_adaptive_budget_exhaustion_v1.py \
+            tests/test_mesc_mrl_adaptive_budget_exhaustion_v1.py || true
+
       - name: Ruff (format)
         run: uv run ruff format --check .
 
