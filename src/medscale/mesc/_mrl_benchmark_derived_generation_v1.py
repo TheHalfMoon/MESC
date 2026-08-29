@@ -83,13 +83,31 @@ class BenchmarkDerivedGenerationFlags:
                 "not-benchmark-derived classification cannot claim a benchmark source artifact"
             )
 
-    @property
-    def benchmark_derived_flag(self) -> bool | None:
+    def _validated_snapshot(self) -> BenchmarkDerivedGenerationFlags:
+        if type(self) is not BenchmarkDerivedGenerationFlags:
+            raise BenchmarkDerivedGenerationError(
+                "flags must be an exact BenchmarkDerivedGenerationFlags"
+            )
+        return BenchmarkDerivedGenerationFlags(
+            training_lineage_sha256=self.training_lineage_sha256,
+            contamination_report_sha256=self.contamination_report_sha256,
+            transformation_binding_sha256=self.transformation_binding_sha256,
+            assessment_artifact_sha256=self.assessment_artifact_sha256,
+            classification=self.classification,
+            benchmark_artifact_sha256=self.benchmark_artifact_sha256,
+        )
+
+    def _benchmark_derived_flag_validated(self) -> bool | None:
         if self.classification is BenchmarkDerivedGenerationClassification.BENCHMARK_DERIVED:
             return True
         if self.classification is BenchmarkDerivedGenerationClassification.NOT_BENCHMARK_DERIVED:
             return False
         return None
+
+    @property
+    def benchmark_derived_flag(self) -> bool | None:
+        snapshot = BenchmarkDerivedGenerationFlags._validated_snapshot(self)
+        return snapshot._benchmark_derived_flag_validated()
 
     @property
     def can_generate_examples(self) -> bool:
@@ -107,11 +125,11 @@ class BenchmarkDerivedGenerationFlags:
     def can_authorize_model_promotion(self) -> bool:
         return False
 
-    def semantic_dict(self) -> dict[str, object]:
+    def _semantic_dict_validated(self) -> dict[str, object]:
         return {
             "assessment_artifact_sha256": self.assessment_artifact_sha256,
             "benchmark_artifact_sha256": self.benchmark_artifact_sha256,
-            "benchmark_derived_flag": self.benchmark_derived_flag,
+            "benchmark_derived_flag": self._benchmark_derived_flag_validated(),
             "can_access_benchmark": False,
             "can_authorize_model_promotion": False,
             "can_authorize_training": False,
@@ -122,6 +140,10 @@ class BenchmarkDerivedGenerationFlags:
             "training_lineage_sha256": self.training_lineage_sha256,
             "transformation_binding_sha256": self.transformation_binding_sha256,
         }
+
+    def semantic_dict(self) -> dict[str, object]:
+        snapshot = BenchmarkDerivedGenerationFlags._validated_snapshot(self)
+        return snapshot._semantic_dict_validated()
 
     @property
     def semantic_bytes(self) -> bytes:
