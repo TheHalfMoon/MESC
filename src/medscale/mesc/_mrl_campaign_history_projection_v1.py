@@ -108,7 +108,9 @@ class CampaignHistoryProjection:
         previous_sha256: str | None = None
         for entry in self.entries:
             if entry.campaign_sha256 in seen_hashes:
-                raise CampaignHistoryProjectionError("campaign history cannot repeat a snapshot hash")
+                raise CampaignHistoryProjectionError(
+                    "campaign history cannot repeat a snapshot hash"
+                )
             if entry.parent_campaign_sha256 != previous_sha256:
                 raise CampaignHistoryProjectionError(
                     "campaign history parent linkage must match the previous snapshot"
@@ -188,7 +190,9 @@ def build_campaign_history_projection(campaign: ResearchCampaign) -> CampaignHis
     except CampaignHistoryProjectionError:
         raise
     except (AttributeError, TypeError, ValueError) as exc:
-        raise CampaignHistoryProjectionError("campaign history failed canonical revalidation") from exc
+        raise CampaignHistoryProjectionError(
+            "campaign history failed canonical revalidation"
+        ) from exc
 
     return CampaignHistoryProjection(
         campaign_id=campaign.campaign_id,
