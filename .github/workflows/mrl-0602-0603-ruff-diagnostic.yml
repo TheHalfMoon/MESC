@@ -1,0 +1,25 @@
+name: MRL-0602-0603 Ruff diagnostic
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  ruff-format-diff:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+      - name: Sync (locked)
+        run: uv sync --frozen
+      - name: Ruff format diff diagnostic
+        run: |
+          uv run ruff format --diff \
+            src/medscale/mesc/_mrl_contamination_interfaces_v1.py \
+            src/medscale/mesc/_mrl_training_transformation_binding_v1.py || true
