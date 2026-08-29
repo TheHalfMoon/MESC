@@ -10,6 +10,7 @@ import pytest
 from medscale.mesc._mrl_research_objective_v1 import EvaluationTier
 from medscale.mesc._mrl_sealed_evaluation_evidence_v1 import (
     SealedEvaluationEvidenceError,
+    SealedEvaluationEvidenceReport,
     SealedMetricEvidence,
     build_sealed_evaluation_evidence_report,
 )
@@ -48,7 +49,7 @@ def _metric() -> SealedMetricEvidence:
     )
 
 
-def _report():
+def _report() -> SealedEvaluationEvidenceReport:
     return build_sealed_evaluation_evidence_report(
         _contract(),
         _request(),
