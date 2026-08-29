@@ -57,9 +57,7 @@ def _project_state_entry(payload: dict[str, object], state_id: str) -> dict[str,
     entries = payload["entries"]
     assert isinstance(entries, list)
     match = next(
-        entry
-        for entry in entries
-        if isinstance(entry, dict) and entry.get("state_id") == state_id
+        entry for entry in entries if isinstance(entry, dict) and entry.get("state_id") == state_id
     )
     assert isinstance(match, dict)
     return match
