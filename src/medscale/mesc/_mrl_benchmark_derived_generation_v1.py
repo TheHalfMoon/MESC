@@ -75,11 +75,14 @@ class BenchmarkDerivedGenerationFlags:
                 raise BenchmarkDerivedGenerationError(
                     "benchmark-derived classification requires an exact benchmark artifact identity"
                 )
-        elif self.classification is BenchmarkDerivedGenerationClassification.NOT_BENCHMARK_DERIVED:
-            if self.benchmark_artifact_sha256 is not None:
-                raise BenchmarkDerivedGenerationError(
-                    "not-benchmark-derived classification cannot claim a benchmark source artifact"
-                )
+        elif (
+            self.classification
+            is BenchmarkDerivedGenerationClassification.NOT_BENCHMARK_DERIVED
+            and self.benchmark_artifact_sha256 is not None
+        ):
+            raise BenchmarkDerivedGenerationError(
+                "not-benchmark-derived classification cannot claim a benchmark source artifact"
+            )
 
     @property
     def benchmark_derived_flag(self) -> bool | None:
@@ -161,9 +164,13 @@ def build_benchmark_derived_generation_flags(
     try:
         lineage_snapshot = build_training_example_lineage(lineage.example)
     except TrainingExampleLineageError as exc:
-        raise BenchmarkDerivedGenerationError("training lineage failed canonical revalidation") from exc
+        raise BenchmarkDerivedGenerationError(
+            "training lineage failed canonical revalidation"
+        ) from exc
     if lineage_snapshot.content_sha256 != lineage.content_sha256:
-        raise BenchmarkDerivedGenerationError("training lineage identity changed after construction")
+        raise BenchmarkDerivedGenerationError(
+            "training lineage identity changed after construction"
+        )
 
     contamination_snapshot = _snapshot_contamination_report(contamination_report)
     transformation_snapshot = _snapshot_transformation_binding(transformation_binding)
