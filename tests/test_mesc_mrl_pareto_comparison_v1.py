@@ -67,19 +67,19 @@ def _sealed_report(
             metric_id="cost",
             evaluator_id="eval.sealed",
             value_decimal=cost,
-            evidence_artifact_sha256="1" * 64,
+            evidence_artifact_sha256=candidate_marker + "1" * 63,
         ),
         SealedMetricEvidence(
             metric_id="safety",
             evaluator_id="eval.sealed",
             value_decimal=safety,
-            evidence_artifact_sha256="2" * 64,
+            evidence_artifact_sha256=candidate_marker + "2" * 63,
         ),
         SealedMetricEvidence(
             metric_id="safety",
             evaluator_id="eval.sealed",
             value_decimal=subgroup_safety,
-            evidence_artifact_sha256="3" * 64,
+            evidence_artifact_sha256=candidate_marker + "3" * 63,
             subgroup="critical-cohort",
         ),
     )
