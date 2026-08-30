@@ -9,6 +9,8 @@ never expose item-level canary content and cannot place a canary into training o
 from __future__ import annotations
 
 import re
+import weakref
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from medscale.mesc._mrl_content_identity_v1 import (
@@ -44,7 +46,39 @@ class TemporalCanaryFixtureWorkflowError(ValueError):
     """Fail-closed validation error for the R2 temporal-canary fixture workflow."""
 
 
-@dataclass(frozen=True, slots=True)
+def _make_receipt_identity_registry() -> tuple[
+    Callable[[TemporalCanaryFixtureReceipt, str], None],
+    Callable[[TemporalCanaryFixtureReceipt], str],
+]:
+    identities: dict[int, str] = {}
+
+    def remove(key: int) -> None:
+        identities.pop(key, None)
+
+    def store(value: TemporalCanaryFixtureReceipt, content_sha256: str) -> None:
+        key = id(value)
+        if key in identities:
+            raise TemporalCanaryFixtureWorkflowError(
+                "temporal-canary receipt construction identity already exists"
+            )
+        identities[key] = content_sha256
+        weakref.finalize(value, remove, key)
+
+    def load(value: TemporalCanaryFixtureReceipt) -> str:
+        identity = identities.get(id(value))
+        if identity is None:
+            raise TemporalCanaryFixtureWorkflowError(
+                "temporal-canary receipt construction identity is missing"
+            )
+        return identity
+
+    return store, load
+
+
+_store_receipt_identity, _load_receipt_identity = _make_receipt_identity_registry()
+
+
+@dataclass(frozen=True, slots=True, weakref_slot=True)
 class TemporalCanaryFixtureReceipt:
     """Immutable aggregate-only receipt for one sealed fixture canary evaluation."""
 
@@ -85,13 +119,19 @@ class TemporalCanaryFixtureReceipt:
             raise TemporalCanaryFixtureWorkflowError(
                 "observed scores must satisfy 0 <= score <= max_score"
             )
+        _store_receipt_identity(
+            self,
+            derive_content_sha256(self._semantic_dict_validated()),
+        )
 
     def _validated_snapshot(self) -> TemporalCanaryFixtureReceipt:
         if type(self) is not TemporalCanaryFixtureReceipt:
             raise TemporalCanaryFixtureWorkflowError(
                 "receipt must be an exact TemporalCanaryFixtureReceipt"
             )
-        return TemporalCanaryFixtureReceipt(
+        bound_content_sha256 = _load_receipt_identity(self)
+        _require_sha256(bound_content_sha256, "bound receipt content_sha256")
+        snapshot = TemporalCanaryFixtureReceipt(
             manifest_sha256=self.manifest_sha256,
             canary_artifact_sha256=self.canary_artifact_sha256,
             source_kind=self.source_kind,
@@ -103,6 +143,12 @@ class TemporalCanaryFixtureReceipt:
             observed_score=self.observed_score,
             observed_max_score=self.observed_max_score,
         )
+        current_content_sha256 = derive_content_sha256(snapshot._semantic_dict_validated())
+        if current_content_sha256 != bound_content_sha256:
+            raise TemporalCanaryFixtureWorkflowError(
+                "temporal-canary receipt identity changed after construction"
+            )
+        return snapshot
 
     @property
     def sealed(self) -> bool:
@@ -174,7 +220,7 @@ def run_temporal_canary_fixture_workflow(
     evaluator: FixtureEvaluator,
     parameter_values: tuple[FixtureParameterValue, ...],
 ) -> TemporalCanaryFixtureReceipt:
-    """Evaluate one exact sealed-canary fixture candidate in memory."""
+    """Evaluate one exact sealed-canary fixture candidate from coherent fixture snapshots."""
     if type(manifest) is not TemporalCanaryManifest:
         raise TemporalCanaryFixtureWorkflowError(
             "manifest must be an exact TemporalCanaryManifest"
@@ -189,8 +235,14 @@ def run_temporal_canary_fixture_workflow(
         )
     if type(parameter_values) is not tuple:
         raise TemporalCanaryFixtureWorkflowError("parameter_values must be an exact tuple")
+    if any(type(value) is not FixtureParameterValue for value in parameter_values):
+        raise TemporalCanaryFixtureWorkflowError(
+            "parameter_values contains an invalid item type"
+        )
 
     try:
+        # Pre-reconciliation MRL-0605 compatibility: once PR #299 becomes canonical,
+        # this must call the original manifest construction-bound validation path.
         manifest_snapshot = TemporalCanaryManifest(
             canary_id=manifest.canary_id,
             source_kind=manifest.source_kind,
@@ -200,13 +252,22 @@ def run_temporal_canary_fixture_workflow(
             evaluator_artifact_sha256=manifest.evaluator_artifact_sha256,
             topic_tags=manifest.topic_tags,
         )
-        evaluator_sha256 = evaluator.content_sha256
+        surface_snapshot = FixtureResearchSurface._validated_snapshot(surface)
+        evaluator_snapshot = FixtureEvaluator._validated_snapshot(evaluator)
+        parameter_snapshots = tuple(
+            FixtureParameterValue(parameter_id=value.parameter_id, value=value.value)
+            for value in parameter_values
+        )
+        evaluator_sha256 = evaluator_snapshot.content_sha256
         if manifest_snapshot.evaluator_artifact_sha256 != evaluator_sha256:
             raise TemporalCanaryFixtureWorkflowError(
                 "temporal-canary manifest evaluator identity does not match "
                 "supplied fixture evaluator"
             )
-        candidate: FixtureCandidate = build_fixture_candidate(surface, parameter_values)
+        candidate: FixtureCandidate = build_fixture_candidate(
+            surface_snapshot,
+            parameter_snapshots,
+        )
         candidate_sha256 = candidate.content_sha256
         if manifest_snapshot.canary_artifact_sha256 != candidate_sha256:
             raise TemporalCanaryFixtureWorkflowError(
@@ -214,8 +275,8 @@ def run_temporal_canary_fixture_workflow(
                 "supplied fixture candidate"
             )
         evaluation: FixtureEvaluation = evaluate_fixture_candidate(
-            surface,
-            evaluator,
+            surface_snapshot,
+            evaluator_snapshot,
             candidate,
         )
     except (TemporalCanaryManifestError, FixtureResearchSurfaceError) as exc:
@@ -227,7 +288,7 @@ def run_temporal_canary_fixture_workflow(
         manifest_sha256=manifest_snapshot.content_sha256,
         canary_artifact_sha256=manifest_snapshot.canary_artifact_sha256,
         source_kind=manifest_snapshot.source_kind,
-        surface_sha256=surface.content_sha256,
+        surface_sha256=surface_snapshot.content_sha256,
         evaluator_sha256=evaluator_sha256,
         candidate_sha256=candidate_sha256,
         evaluation_sha256=evaluation.content_sha256,
