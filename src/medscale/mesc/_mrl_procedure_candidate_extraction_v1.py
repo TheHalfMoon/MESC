@@ -267,7 +267,7 @@ def extract_procedure_candidates(
     campaign: ResearchCampaign,
     admission: ResearchInputAdmissionContract,
 ) -> ProcedureCandidateExtraction:
-    """Extract exact procedure-candidate refs after canonical procedure-extraction admission."""
+    """Extract exact refs from one campaign snapshot after stable learning admission."""
     if type(campaign) is not ResearchCampaign:
         raise ProcedureCandidateExtractionError("campaign must be an exact ResearchCampaign")
     if type(admission) is not ResearchInputAdmissionContract:
@@ -276,10 +276,10 @@ def extract_procedure_candidates(
         )
 
     try:
-        history = build_campaign_history_projection(campaign)
-        admission.require_learning_admission(ResearchLearningSurface.PROCEDURE_EXTRACTION)
-        admission_sha256 = admission.content_sha256
-        candidates = _derive_candidate_references(campaign, history)
+        campaign_snapshot = campaign._validated_snapshot()
+        history = build_campaign_history_projection(campaign_snapshot)
+        admission_sha256 = _stable_learning_admission_sha256(admission)
+        candidates = _derive_candidate_references(campaign_snapshot, history)
     except ResearchInputAdmissionError as exc:
         raise ProcedureCandidateExtractionError(
             "research input is not canonically admitted for procedure extraction"
@@ -296,6 +296,21 @@ def extract_procedure_candidates(
         input_admission_sha256=admission_sha256,
         candidates=candidates,
     )
+
+
+def _stable_learning_admission_sha256(
+    admission: ResearchInputAdmissionContract,
+) -> str:
+    """Require the same exact admitted identity across two complete trust-gate passes."""
+    admission.require_learning_admission(ResearchLearningSurface.PROCEDURE_EXTRACTION)
+    first_sha256 = admission.content_sha256
+    admission.require_learning_admission(ResearchLearningSurface.PROCEDURE_EXTRACTION)
+    second_sha256 = admission.content_sha256
+    if first_sha256 != second_sha256:
+        raise ProcedureCandidateExtractionError(
+            "research input admission identity changed during procedure extraction"
+        )
+    return second_sha256
 
 
 def _derive_candidate_references(
