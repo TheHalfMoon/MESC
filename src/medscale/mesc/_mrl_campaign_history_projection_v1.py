@@ -291,13 +291,13 @@ class CampaignHistoryProjection:
 
 
 def build_campaign_history_projection(campaign: ResearchCampaign) -> CampaignHistoryProjection:
-    """Build one append-only history view from an exact canonical campaign chain."""
+    """Build one append-only history view from one coherent canonical campaign snapshot."""
     if type(campaign) is not ResearchCampaign:
         raise CampaignHistoryProjectionError("campaign must be an exact ResearchCampaign")
 
     try:
-        campaign.semantic_dict()
-        chain = _oldest_first_chain(campaign)
+        campaign_snapshot = campaign._validated_snapshot()
+        chain = _oldest_first_chain(campaign_snapshot)
         previous_sha256: str | None = None
         entries: list[CampaignHistoryEntry] = []
         for sequence_index, snapshot in enumerate(chain):
@@ -328,8 +328,8 @@ def build_campaign_history_projection(campaign: ResearchCampaign) -> CampaignHis
         ) from exc
 
     return CampaignHistoryProjection(
-        campaign_id=campaign.campaign_id,
-        objective_sha256=campaign.objective_sha256,
+        campaign_id=campaign_snapshot.campaign_id,
+        objective_sha256=campaign_snapshot.objective_sha256,
         entries=tuple(entries),
     )
 
