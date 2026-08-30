@@ -116,6 +116,17 @@ def test_policy_construction_identity_is_not_reachable_as_mutable_state() -> Non
         object.__setattr__(policy, "_bound_tier_contract_sha256", "a" * 64)
 
 
+def test_usage_construction_identity_is_not_reachable_as_mutable_state() -> None:
+    usage = Tier1ExposureUsage()
+
+    assert tuple(field.name for field in fields(Tier1ExposureUsage)) == (
+        "queries_used",
+        "exposures_used",
+    )
+    with pytest.raises(AttributeError):
+        object.__setattr__(usage, "_bound_usage_counters", (0, 0))
+
+
 def test_non_search_contract_and_fabricated_usage_fail_closed() -> None:
     with pytest.raises(Tier1ExposureError, match="requires SEARCH tier"):
         Tier1ExposurePolicy(
@@ -141,6 +152,21 @@ def test_mutated_negative_usage_cannot_create_extra_query_or_exposure_capacity()
     object.__setattr__(exposure_usage, "exposures_used", -1)
 
     with pytest.raises(Tier1ExposureError, match="exposures_used must be a non-negative"):
+        record_tier1_exposure(policy, exposure_usage, ("aggregate_score",))
+
+
+def test_valid_usage_counter_mutation_cannot_restore_consumed_capacity() -> None:
+    policy = _policy()
+    query_usage = Tier1ExposureUsage(queries_used=5)
+    object.__setattr__(query_usage, "queries_used", 0)
+
+    with pytest.raises(Tier1ExposureError, match="counters changed after construction"):
+        consume_tier1_query(policy, query_usage)
+
+    exposure_usage = Tier1ExposureUsage(exposures_used=5)
+    object.__setattr__(exposure_usage, "exposures_used", 0)
+
+    with pytest.raises(Tier1ExposureError, match="counters changed after construction"):
         record_tier1_exposure(policy, exposure_usage, ("aggregate_score",))
 
 
