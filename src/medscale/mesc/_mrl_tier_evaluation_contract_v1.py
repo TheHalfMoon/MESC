@@ -12,6 +12,8 @@ authority.
 from __future__ import annotations
 
 import enum
+import weakref
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Final
 
@@ -59,24 +61,77 @@ _ADAPTIVE_TIERS: Final = (EvaluationTier.SEARCH, EvaluationTier.REPLICATION)
 _NON_ITERATIVE_TIERS: Final = (EvaluationTier.SEALED, EvaluationTier.EXTERNAL_ASSURANCE)
 
 
-@dataclass(frozen=True, slots=True)
+def _make_construction_identity_registry() -> tuple[
+    Callable[[TierEvaluationContract, str], None],
+    Callable[[TierEvaluationContract], str],
+]:
+    identities: dict[int, str] = {}
+
+    def remove(key: int) -> None:
+        identities.pop(key, None)
+
+    def store(value: TierEvaluationContract, objective_sha256: str) -> None:
+        key = id(value)
+        if key in identities:
+            raise TierEvaluationContractError("tier contract construction identity already exists")
+        identities[key] = objective_sha256
+        weakref.finalize(value, remove, key)
+
+    def load(value: TierEvaluationContract) -> str:
+        identity = identities.get(id(value))
+        if identity is None:
+            raise TierEvaluationContractError("tier contract construction identity is missing")
+        return identity
+
+    return store, load
+
+
+(
+    _store_construction_identity,
+    _load_construction_identity,
+) = _make_construction_identity_registry()
+
+
+@dataclass(frozen=True, slots=True, weakref_slot=True)
 class TierEvaluationContract:
-    """A content-addressed view of one objective's exact policy for one tier."""
+    """A content-addressed view of one exact frozen objective policy for one tier."""
 
     objective: ResearchObjectiveContract
     tier: EvaluationTier
 
     def __post_init__(self) -> None:
-        _validate_contract(self)
+        if type(self) is not TierEvaluationContract:
+            return
+        if type(self.tier) is not EvaluationTier:
+            raise TierEvaluationContractError("tier must be an exact EvaluationTier")
+        objective = _snapshot_objective(self.objective)
+        _validate_objective_tier_semantics(objective, self.tier)
+        _store_construction_identity(self, objective.content_sha256)
+
+    def _validated_objective(self) -> tuple[ResearchObjectiveContract, str]:
+        if type(self) is not TierEvaluationContract:
+            raise TierEvaluationContractError("contract must be an exact TierEvaluationContract")
+        if type(self.tier) is not EvaluationTier:
+            raise TierEvaluationContractError("tier must be an exact EvaluationTier")
+        bound_objective_sha256 = _load_construction_identity(self)
+        _require_sha256(bound_objective_sha256, "bound objective_sha256")
+        objective = _snapshot_objective(self.objective)
+        _validate_objective_tier_semantics(objective, self.tier)
+        current_sha256 = objective.content_sha256
+        if current_sha256 != bound_objective_sha256:
+            raise TierEvaluationContractError(
+                "objective identity changed after tier contract creation"
+            )
+        return objective, bound_objective_sha256
 
     @property
     def content_sha256(self) -> str:
-        """Derive identity from a freshly revalidated semantic view."""
+        """Derive identity only from the originally bound frozen objective."""
         return derive_content_sha256(self.semantic_dict())
 
     @property
     def semantic_bytes(self) -> bytes:
-        """Return deterministic bytes from a freshly revalidated semantic view."""
+        """Return deterministic bytes only after frozen-objective identity validation."""
         return canonical_semantic_bytes(self.semantic_dict())
 
     @property
@@ -85,20 +140,20 @@ class TierEvaluationContract:
         return False
 
     def semantic_dict(self) -> dict[str, object]:
-        """Return complete tier semantics derived only from the frozen objective."""
-        _validate_contract(self)
-        exposure = _result_exposure(self.objective, self.tier)
-        evaluators = _evaluator_identities(self.objective, self.tier)
-        metrics = _metric_contracts(self.objective, self.tier)
+        """Return complete tier semantics from one construction-bound objective snapshot."""
+        objective, objective_sha256 = self._validated_objective()
+        exposure = _result_exposure(objective, self.tier)
+        evaluators = _evaluator_identities(objective, self.tier)
+        metrics = _metric_contracts(objective, self.tier)
         mode = _INTERACTION_MODE[self.tier]
         iterative_stream = self.tier not in _NON_ITERATIVE_TIERS
         return {
             "format": "MRL-TIER-EVALUATION-CONTRACT-V1",
-            "objective_sha256": self.objective.content_sha256,
+            "objective_sha256": objective_sha256,
             "tier": int(self.tier),
             "tier_name": self.tier.name,
             "interaction_mode": mode.value,
-            "adaptive_query_ceiling": _adaptive_query_ceiling(self.objective, self.tier),
+            "adaptive_query_ceiling": _adaptive_query_ceiling(objective, self.tier),
             "result_exposure": exposure.to_dict(),
             "evaluator_identities": [identity.to_dict() for identity in evaluators],
             "metric_contracts": [metric.to_dict() for metric in metrics],
@@ -119,31 +174,40 @@ class TierEvaluationContract:
         return data
 
 
-def _validate_contract(value: TierEvaluationContract) -> None:
-    if type(value.objective) is not ResearchObjectiveContract:
+def _snapshot_objective(value: ResearchObjectiveContract) -> ResearchObjectiveContract:
+    if type(value) is not ResearchObjectiveContract:
         raise TierEvaluationContractError("objective must be an exact ResearchObjectiveContract")
-    if type(value.tier) is not EvaluationTier:
-        raise TierEvaluationContractError("tier must be an exact EvaluationTier")
-
-    value.objective.semantic_dict()
-    if value.tier not in value.objective.evaluation_tier_policy.allowed_tiers:
+    try:
+        return value._validated_snapshot()
+    except (AttributeError, TypeError, ValueError) as exc:
         raise TierEvaluationContractError(
-            f"tier {value.tier.name} is not admitted by the frozen objective"
+            "objective failed canonical snapshot revalidation"
+        ) from exc
+
+
+def _validate_objective_tier_semantics(
+    objective: ResearchObjectiveContract,
+    tier: EvaluationTier,
+) -> None:
+    if tier not in objective.evaluation_tier_policy.allowed_tiers:
+        raise TierEvaluationContractError(
+            f"tier {tier.name} is not admitted by the frozen objective"
         )
 
-    exposure = _result_exposure(value.objective, value.tier)
-    query_ceiling = _adaptive_query_ceiling(value.objective, value.tier)
-    if value.tier not in _ADAPTIVE_TIERS and query_ceiling:
+    exposure = _result_exposure(objective, tier)
+    query_ceiling = _adaptive_query_ceiling(objective, tier)
+    if tier not in _ADAPTIVE_TIERS and query_ceiling:
         raise TierEvaluationContractError(
             "only Tier 1 SEARCH and Tier 2 REPLICATION may consume adaptive queries"
         )
-    if value.tier in _NON_ITERATIVE_TIERS and (
-        exposure.max_exposures or exposure.allowed_result_fields
-    ):
+    if tier in _NON_ITERATIVE_TIERS and (exposure.max_exposures or exposure.allowed_result_fields):
         raise TierEvaluationContractError("Tier 3/4 cannot expose iterative agent-visible results")
 
 
-def _adaptive_query_ceiling(objective: ResearchObjectiveContract, tier: EvaluationTier) -> int:
+def _adaptive_query_ceiling(
+    objective: ResearchObjectiveContract,
+    tier: EvaluationTier,
+) -> int:
     if tier is EvaluationTier.SEARCH:
         return objective.adaptive_query_budget.tier_1_queries
     if tier is EvaluationTier.REPLICATION:
@@ -205,3 +269,12 @@ def _metric_contracts(
                 )
             )
     return tuple(result)
+
+
+def _require_sha256(value: object, label: str) -> None:
+    if (
+        type(value) is not str
+        or len(value) != 64
+        or any(character not in "0123456789abcdef" for character in value)
+    ):
+        raise TierEvaluationContractError(f"{label} must be 64 lowercase hex")
