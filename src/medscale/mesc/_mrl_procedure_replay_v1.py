@@ -226,7 +226,7 @@ def replay_procedure_fixture(
     expected_score: int,
     expected_max_score: int,
 ) -> ProcedureReplayReceipt:
-    """Replay one exact procedure on the canonical pure in-memory fixture evaluator."""
+    """Replay one coherent set of exact fixture snapshots in pure in-memory evaluation."""
     if type(procedure) is not ResearchProcedure:
         raise ProcedureReplayError("procedure must be an exact ResearchProcedure")
     if type(surface) is not FixtureResearchSurface:
@@ -235,15 +235,30 @@ def replay_procedure_fixture(
         raise ProcedureReplayError("evaluator must be an exact FixtureEvaluator")
     if type(parameter_values) is not tuple:
         raise ProcedureReplayError("parameter_values must be an exact tuple")
+    if any(type(value) is not FixtureParameterValue for value in parameter_values):
+        raise ProcedureReplayError("parameter_values contains an invalid item type")
     _require_score_pair(expected_score, expected_max_score, "expected")
 
     try:
-        procedure_subject_sha256 = procedure.admission_subject_sha256
-        procedure_content_sha256 = procedure.content_sha256
-        candidate: FixtureCandidate = build_fixture_candidate(surface, parameter_values)
+        procedure_snapshot = procedure._validated_snapshot()
+        surface_snapshot = FixtureResearchSurface._validated_snapshot(surface)
+        evaluator_snapshot = FixtureEvaluator._validated_snapshot(evaluator)
+        parameter_snapshots = tuple(
+            FixtureParameterValue(
+                parameter_id=value.parameter_id,
+                value=value.value,
+            )
+            for value in parameter_values
+        )
+        procedure_subject_sha256 = procedure_snapshot.admission_subject_sha256
+        procedure_content_sha256 = procedure_snapshot.content_sha256
+        candidate: FixtureCandidate = build_fixture_candidate(
+            surface_snapshot,
+            parameter_snapshots,
+        )
         evaluation: FixtureEvaluation = evaluate_fixture_candidate(
-            surface,
-            evaluator,
+            surface_snapshot,
+            evaluator_snapshot,
             candidate,
         )
     except (ResearchProcedureError, FixtureResearchSurfaceError) as exc:
@@ -257,8 +272,8 @@ def replay_procedure_fixture(
     return ProcedureReplayReceipt(
         procedure_admission_subject_sha256=procedure_subject_sha256,
         procedure_content_sha256=procedure_content_sha256,
-        surface_sha256=surface.content_sha256,
-        evaluator_sha256=evaluator.content_sha256,
+        surface_sha256=surface_snapshot.content_sha256,
+        evaluator_sha256=evaluator_snapshot.content_sha256,
         candidate_sha256=candidate.content_sha256,
         evaluation_sha256=evaluation.content_sha256,
         metric_id=evaluation.metric_id,
