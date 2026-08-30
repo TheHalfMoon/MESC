@@ -57,9 +57,7 @@ def _make_lineage_identity_registry() -> tuple[
     def load(value: TrainingExampleLineageContract) -> str:
         identity = identities.get(id(value))
         if identity is None:
-            raise TrainingExampleLineageError(
-                "training lineage construction identity is missing"
-            )
+            raise TrainingExampleLineageError("training lineage construction identity is missing")
         return identity
 
     return store, load
