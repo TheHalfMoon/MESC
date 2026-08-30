@@ -6,6 +6,7 @@ from dataclasses import replace
 
 import pytest
 
+import medscale.mesc._mrl_temporal_canary_fixture_workflow_v1 as canary_module
 from medscale.mesc._mrl_fixture_research_surface_v1 import (
     FixtureEvaluator,
     FixtureParameterValue,
@@ -70,6 +71,44 @@ def test_fixture_canary_workflow_is_deterministic_and_identity_bound() -> None:
     assert first.evaluator_sha256 == manifest.evaluator_artifact_sha256
     assert first.observed_score == 1
     assert first.observed_max_score == 2
+
+
+def test_workflow_uses_fixture_snapshots_if_live_evaluator_drifts_mid_call(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    evaluator = _evaluator()
+    surface = _surface(evaluator)
+    parameter_values = _values()
+    manifest = _bound_manifest(evaluator, surface, parameter_values)
+    original_evaluator_sha256 = evaluator.content_sha256
+    original_metric_id = evaluator.metric_id
+    original_build_candidate = canary_module.build_fixture_candidate
+    mutation_performed = False
+
+    def mutate_live_evaluator_then_build_snapshot(surface_snapshot, values):
+        nonlocal mutation_performed
+        if not mutation_performed:
+            mutation_performed = True
+            object.__setattr__(evaluator, "metric_id", "fixture-metric-mutated")
+        return original_build_candidate(surface_snapshot, values)
+
+    monkeypatch.setattr(
+        canary_module,
+        "build_fixture_candidate",
+        mutate_live_evaluator_then_build_snapshot,
+    )
+
+    receipt = run_temporal_canary_fixture_workflow(
+        manifest,
+        surface,
+        evaluator,
+        parameter_values,
+    )
+
+    assert mutation_performed is True
+    assert receipt.evaluator_sha256 == original_evaluator_sha256
+    assert receipt.metric_id == original_metric_id
+    assert evaluator.content_sha256 != original_evaluator_sha256
 
 
 def test_hand_authored_fixture_canary_remains_r2_fixture_only() -> None:
@@ -197,6 +236,25 @@ def test_mutated_receipt_candidate_identity_fails_closed_on_public_views() -> No
     with pytest.raises(TemporalCanaryFixtureWorkflowError, match="candidate identity"):
         receipt.semantic_dict()
     with pytest.raises(TemporalCanaryFixtureWorkflowError, match="candidate identity"):
+        _ = receipt.content_sha256
+
+
+def test_valid_receipt_identity_mutation_fails_closed() -> None:
+    evaluator = _evaluator()
+    surface = _surface(evaluator)
+    parameter_values = _values()
+    manifest = _bound_manifest(evaluator, surface, parameter_values)
+    receipt = run_temporal_canary_fixture_workflow(
+        manifest,
+        surface,
+        evaluator,
+        parameter_values,
+    )
+    object.__setattr__(receipt, "evaluation_sha256", "f" * 64)
+
+    with pytest.raises(TemporalCanaryFixtureWorkflowError, match="identity changed"):
+        receipt.semantic_dict()
+    with pytest.raises(TemporalCanaryFixtureWorkflowError, match="identity changed"):
         _ = receipt.content_sha256
 
 
