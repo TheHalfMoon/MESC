@@ -7,6 +7,7 @@ from typing import cast
 
 import pytest
 
+import medscale.mesc._mrl_tier_evaluation_contract_v1 as tier_contract_module
 from medscale.mesc._mrl_research_objective_v1 import (
     AdaptiveQueryBudget,
     EvaluationTier,
@@ -188,6 +189,42 @@ def test_existing_contract_rejects_post_construction_objective_identity_drift() 
     with pytest.raises(TierEvaluationContractError, match="identity changed after tier contract"):
         _ = contract.content_sha256
     assert original_sha256
+
+
+def test_semantic_derivation_uses_one_snapshot_if_live_objective_drifts_mid_call(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    contract = TierEvaluationContract(objective=_objective(), tier=EvaluationTier.SEARCH)
+    original_result_exposure = tier_contract_module._result_exposure
+    mutation_performed = False
+
+    def mutate_live_objective_then_read_snapshot(
+        objective: ResearchObjectiveContract,
+        tier: EvaluationTier,
+    ) -> TierResultExposure:
+        nonlocal mutation_performed
+        if not mutation_performed:
+            mutation_performed = True
+            object.__setattr__(
+                contract.objective.adaptive_query_budget,
+                "tier_1_queries",
+                50,
+            )
+        return original_result_exposure(objective, tier)
+
+    monkeypatch.setattr(
+        tier_contract_module,
+        "_result_exposure",
+        mutate_live_objective_then_read_snapshot,
+    )
+
+    payload = contract.semantic_dict()
+
+    assert mutation_performed is True
+    assert payload["adaptive_query_ceiling"] == 5
+    assert payload["objective_sha256"] != contract.objective.content_sha256
+    with pytest.raises(TierEvaluationContractError, match="identity changed after tier contract"):
+        contract.semantic_dict()
 
 
 def test_construction_identity_is_not_reachable_as_mutable_contract_state() -> None:
