@@ -109,7 +109,10 @@ class TemporalCanaryFixtureReceipt:
             )
         _require_sha256(self.evaluation_sha256, "evaluation_sha256")
         _require_text(self.metric_id, "metric_id")
-        if type(self.observed_score) is not int or type(self.observed_max_score) is not int:
+        if (
+            type(self.observed_score) is not int
+            or type(self.observed_max_score) is not int
+        ):
             raise TemporalCanaryFixtureWorkflowError("observed scores must be exact integers")
         if (
             self.observed_max_score <= 0
