@@ -73,18 +73,14 @@ def _make_construction_identity_registry() -> tuple[
     def store(value: TierEvaluationContract, objective_sha256: str) -> None:
         key = id(value)
         if key in identities:
-            raise TierEvaluationContractError(
-                "tier contract construction identity already exists"
-            )
+            raise TierEvaluationContractError("tier contract construction identity already exists")
         identities[key] = objective_sha256
         weakref.finalize(value, remove, key)
 
     def load(value: TierEvaluationContract) -> str:
         identity = identities.get(id(value))
         if identity is None:
-            raise TierEvaluationContractError(
-                "tier contract construction identity is missing"
-            )
+            raise TierEvaluationContractError("tier contract construction identity is missing")
         return identity
 
     return store, load
@@ -114,9 +110,7 @@ class TierEvaluationContract:
 
     def _validated_objective(self) -> tuple[ResearchObjectiveContract, str]:
         if type(self) is not TierEvaluationContract:
-            raise TierEvaluationContractError(
-                "contract must be an exact TierEvaluationContract"
-            )
+            raise TierEvaluationContractError("contract must be an exact TierEvaluationContract")
         if type(self.tier) is not EvaluationTier:
             raise TierEvaluationContractError("tier must be an exact EvaluationTier")
         bound_objective_sha256 = _load_construction_identity(self)
@@ -182,9 +176,7 @@ class TierEvaluationContract:
 
 def _snapshot_objective(value: ResearchObjectiveContract) -> ResearchObjectiveContract:
     if type(value) is not ResearchObjectiveContract:
-        raise TierEvaluationContractError(
-            "objective must be an exact ResearchObjectiveContract"
-        )
+        raise TierEvaluationContractError("objective must be an exact ResearchObjectiveContract")
     try:
         return value._validated_snapshot()
     except (AttributeError, TypeError, ValueError) as exc:
@@ -208,12 +200,8 @@ def _validate_objective_tier_semantics(
         raise TierEvaluationContractError(
             "only Tier 1 SEARCH and Tier 2 REPLICATION may consume adaptive queries"
         )
-    if tier in _NON_ITERATIVE_TIERS and (
-        exposure.max_exposures or exposure.allowed_result_fields
-    ):
-        raise TierEvaluationContractError(
-            "Tier 3/4 cannot expose iterative agent-visible results"
-        )
+    if tier in _NON_ITERATIVE_TIERS and (exposure.max_exposures or exposure.allowed_result_fields):
+        raise TierEvaluationContractError("Tier 3/4 cannot expose iterative agent-visible results")
 
 
 def _adaptive_query_ceiling(
