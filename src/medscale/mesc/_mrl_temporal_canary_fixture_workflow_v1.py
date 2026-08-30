@@ -109,10 +109,7 @@ class TemporalCanaryFixtureReceipt:
             )
         _require_sha256(self.evaluation_sha256, "evaluation_sha256")
         _require_text(self.metric_id, "metric_id")
-        if (
-            type(self.observed_score) is not int
-            or type(self.observed_max_score) is not int
-        ):
+        if type(self.observed_score) is not int or type(self.observed_max_score) is not int:
             raise TemporalCanaryFixtureWorkflowError("observed scores must be exact integers")
         if (
             self.observed_max_score <= 0
@@ -225,23 +222,15 @@ def run_temporal_canary_fixture_workflow(
 ) -> TemporalCanaryFixtureReceipt:
     """Evaluate one exact sealed-canary fixture candidate from coherent fixture snapshots."""
     if type(manifest) is not TemporalCanaryManifest:
-        raise TemporalCanaryFixtureWorkflowError(
-            "manifest must be an exact TemporalCanaryManifest"
-        )
+        raise TemporalCanaryFixtureWorkflowError("manifest must be an exact TemporalCanaryManifest")
     if type(surface) is not FixtureResearchSurface:
-        raise TemporalCanaryFixtureWorkflowError(
-            "surface must be an exact FixtureResearchSurface"
-        )
+        raise TemporalCanaryFixtureWorkflowError("surface must be an exact FixtureResearchSurface")
     if type(evaluator) is not FixtureEvaluator:
-        raise TemporalCanaryFixtureWorkflowError(
-            "evaluator must be an exact FixtureEvaluator"
-        )
+        raise TemporalCanaryFixtureWorkflowError("evaluator must be an exact FixtureEvaluator")
     if type(parameter_values) is not tuple:
         raise TemporalCanaryFixtureWorkflowError("parameter_values must be an exact tuple")
     if any(type(value) is not FixtureParameterValue for value in parameter_values):
-        raise TemporalCanaryFixtureWorkflowError(
-            "parameter_values contains an invalid item type"
-        )
+        raise TemporalCanaryFixtureWorkflowError("parameter_values contains an invalid item type")
 
     try:
         # Pre-reconciliation MRL-0605 compatibility: once PR #299 becomes canonical,
