@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import enum
 import re
+import weakref
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from medscale.mesc._mrl_contamination_interfaces_v1 import (
@@ -49,7 +51,39 @@ class BenchmarkDerivedGenerationClassification(enum.Enum):
     INDETERMINATE = "INDETERMINATE"
 
 
-@dataclass(frozen=True, slots=True)
+def _make_flags_identity_registry() -> tuple[
+    Callable[[BenchmarkDerivedGenerationFlags, str], None],
+    Callable[[BenchmarkDerivedGenerationFlags], str],
+]:
+    identities: dict[int, str] = {}
+
+    def remove(key: int) -> None:
+        identities.pop(key, None)
+
+    def store(value: BenchmarkDerivedGenerationFlags, content_sha256: str) -> None:
+        key = id(value)
+        if key in identities:
+            raise BenchmarkDerivedGenerationError(
+                "benchmark flags construction identity already exists"
+            )
+        identities[key] = content_sha256
+        weakref.finalize(value, remove, key)
+
+    def load(value: BenchmarkDerivedGenerationFlags) -> str:
+        identity = identities.get(id(value))
+        if identity is None:
+            raise BenchmarkDerivedGenerationError(
+                "benchmark flags construction identity is missing"
+            )
+        return identity
+
+    return store, load
+
+
+_store_flags_identity, _load_flags_identity = _make_flags_identity_registry()
+
+
+@dataclass(frozen=True, slots=True, weakref_slot=True)
 class BenchmarkDerivedGenerationFlags:
     """Immutable benchmark-derivation metadata bound to exact contamination lineage."""
 
@@ -82,13 +116,19 @@ class BenchmarkDerivedGenerationFlags:
             raise BenchmarkDerivedGenerationError(
                 "not-benchmark-derived classification cannot claim a benchmark source artifact"
             )
+        _store_flags_identity(
+            self,
+            derive_content_sha256(self._semantic_dict_validated()),
+        )
 
     def _validated_snapshot(self) -> BenchmarkDerivedGenerationFlags:
         if type(self) is not BenchmarkDerivedGenerationFlags:
             raise BenchmarkDerivedGenerationError(
                 "flags must be an exact BenchmarkDerivedGenerationFlags"
             )
-        return BenchmarkDerivedGenerationFlags(
+        bound_content_sha256 = _load_flags_identity(self)
+        _require_sha256(bound_content_sha256, "bound benchmark flags content_sha256")
+        snapshot = BenchmarkDerivedGenerationFlags(
             training_lineage_sha256=self.training_lineage_sha256,
             contamination_report_sha256=self.contamination_report_sha256,
             transformation_binding_sha256=self.transformation_binding_sha256,
@@ -96,6 +136,12 @@ class BenchmarkDerivedGenerationFlags:
             classification=self.classification,
             benchmark_artifact_sha256=self.benchmark_artifact_sha256,
         )
+        current_content_sha256 = derive_content_sha256(snapshot._semantic_dict_validated())
+        if current_content_sha256 != bound_content_sha256:
+            raise BenchmarkDerivedGenerationError(
+                "benchmark flags identity changed after construction"
+            )
+        return snapshot
 
     def _benchmark_derived_flag_validated(self) -> bool | None:
         if self.classification is BenchmarkDerivedGenerationClassification.BENCHMARK_DERIVED:
