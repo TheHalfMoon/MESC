@@ -106,23 +106,29 @@ class TierEvaluationContract:
     def __post_init__(self) -> None:
         if type(self) is not TierEvaluationContract:
             return
-        _validate_contract_semantics(self)
-        _store_construction_identity(self, self.objective.content_sha256)
+        if type(self.tier) is not EvaluationTier:
+            raise TierEvaluationContractError("tier must be an exact EvaluationTier")
+        objective = _snapshot_objective(self.objective)
+        _validate_objective_tier_semantics(objective, self.tier)
+        _store_construction_identity(self, objective.content_sha256)
 
     def _validated_objective(self) -> tuple[ResearchObjectiveContract, str]:
         if type(self) is not TierEvaluationContract:
             raise TierEvaluationContractError(
                 "contract must be an exact TierEvaluationContract"
             )
+        if type(self.tier) is not EvaluationTier:
+            raise TierEvaluationContractError("tier must be an exact EvaluationTier")
         bound_objective_sha256 = _load_construction_identity(self)
         _require_sha256(bound_objective_sha256, "bound objective_sha256")
-        _validate_contract_semantics(self)
-        current_sha256 = self.objective.content_sha256
+        objective = _snapshot_objective(self.objective)
+        _validate_objective_tier_semantics(objective, self.tier)
+        current_sha256 = objective.content_sha256
         if current_sha256 != bound_objective_sha256:
             raise TierEvaluationContractError(
                 "objective identity changed after tier contract creation"
             )
-        return self.objective, bound_objective_sha256
+        return objective, bound_objective_sha256
 
     @property
     def content_sha256(self) -> str:
@@ -140,7 +146,7 @@ class TierEvaluationContract:
         return False
 
     def semantic_dict(self) -> dict[str, object]:
-        """Return complete tier semantics from the originally bound frozen objective."""
+        """Return complete tier semantics from one construction-bound objective snapshot."""
         objective, objective_sha256 = self._validated_objective()
         exposure = _result_exposure(objective, self.tier)
         evaluators = _evaluator_identities(objective, self.tier)
@@ -174,27 +180,35 @@ class TierEvaluationContract:
         return data
 
 
-def _validate_contract_semantics(value: TierEvaluationContract) -> None:
-    if type(value.objective) is not ResearchObjectiveContract:
+def _snapshot_objective(value: ResearchObjectiveContract) -> ResearchObjectiveContract:
+    if type(value) is not ResearchObjectiveContract:
         raise TierEvaluationContractError(
             "objective must be an exact ResearchObjectiveContract"
         )
-    if type(value.tier) is not EvaluationTier:
-        raise TierEvaluationContractError("tier must be an exact EvaluationTier")
-
-    value.objective.semantic_dict()
-    if value.tier not in value.objective.evaluation_tier_policy.allowed_tiers:
+    try:
+        return value._validated_snapshot()
+    except (AttributeError, TypeError, ValueError) as exc:
         raise TierEvaluationContractError(
-            f"tier {value.tier.name} is not admitted by the frozen objective"
+            "objective failed canonical snapshot revalidation"
+        ) from exc
+
+
+def _validate_objective_tier_semantics(
+    objective: ResearchObjectiveContract,
+    tier: EvaluationTier,
+) -> None:
+    if tier not in objective.evaluation_tier_policy.allowed_tiers:
+        raise TierEvaluationContractError(
+            f"tier {tier.name} is not admitted by the frozen objective"
         )
 
-    exposure = _result_exposure(value.objective, value.tier)
-    query_ceiling = _adaptive_query_ceiling(value.objective, value.tier)
-    if value.tier not in _ADAPTIVE_TIERS and query_ceiling:
+    exposure = _result_exposure(objective, tier)
+    query_ceiling = _adaptive_query_ceiling(objective, tier)
+    if tier not in _ADAPTIVE_TIERS and query_ceiling:
         raise TierEvaluationContractError(
             "only Tier 1 SEARCH and Tier 2 REPLICATION may consume adaptive queries"
         )
-    if value.tier in _NON_ITERATIVE_TIERS and (
+    if tier in _NON_ITERATIVE_TIERS and (
         exposure.max_exposures or exposure.allowed_result_fields
     ):
         raise TierEvaluationContractError(
