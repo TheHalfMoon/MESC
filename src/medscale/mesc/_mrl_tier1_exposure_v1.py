@@ -56,10 +56,40 @@ def _make_policy_identity_registry() -> tuple[
     return store, load
 
 
+def _make_usage_identity_registry() -> tuple[
+    Callable[[Tier1ExposureUsage, tuple[int, int]], None],
+    Callable[[Tier1ExposureUsage], tuple[int, int]],
+]:
+    identities: dict[int, tuple[int, int]] = {}
+
+    def remove(key: int) -> None:
+        identities.pop(key, None)
+
+    def store(value: Tier1ExposureUsage, counters: tuple[int, int]) -> None:
+        key = id(value)
+        if key in identities:
+            raise Tier1ExposureError(
+                "Tier 1 usage construction identity already exists"
+            )
+        identities[key] = counters
+        weakref.finalize(value, remove, key)
+
+    def load(value: Tier1ExposureUsage) -> tuple[int, int]:
+        identity = identities.get(id(value))
+        if identity is None:
+            raise Tier1ExposureError(
+                "Tier 1 usage construction identity is missing"
+            )
+        return identity
+
+    return store, load
+
+
 _store_policy_identity, _load_policy_identity = _make_policy_identity_registry()
+_store_usage_identity, _load_usage_identity = _make_usage_identity_registry()
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, weakref_slot=True)
 class Tier1ExposureUsage:
     """Immutable usage counters for one frozen Tier 1 policy."""
 
@@ -69,6 +99,26 @@ class Tier1ExposureUsage:
     def __post_init__(self) -> None:
         _require_nonnegative_int(self.queries_used, "queries_used")
         _require_nonnegative_int(self.exposures_used, "exposures_used")
+        if type(self) is Tier1ExposureUsage:
+            _store_usage_identity(
+                self,
+                (self.queries_used, self.exposures_used),
+            )
+
+    def _validated_snapshot(self) -> Tier1ExposureUsage:
+        if type(self) is not Tier1ExposureUsage:
+            raise Tier1ExposureError("usage must be an exact Tier1ExposureUsage")
+        _require_nonnegative_int(self.queries_used, "queries_used")
+        _require_nonnegative_int(self.exposures_used, "exposures_used")
+        bound_counters = _load_usage_identity(self)
+        if (self.queries_used, self.exposures_used) != bound_counters:
+            raise Tier1ExposureError(
+                "Tier 1 usage counters changed after construction"
+            )
+        return Tier1ExposureUsage(
+            queries_used=self.queries_used,
+            exposures_used=self.exposures_used,
+        )
 
 
 @dataclass(frozen=True, slots=True, weakref_slot=True)
@@ -159,12 +209,12 @@ def consume_tier1_query(
     usage: Tier1ExposureUsage,
 ) -> Tier1ExposureUsage:
     """Consume one adaptive Tier 1 query or fail closed at the frozen ceiling."""
-    _validate_policy_and_usage(policy, usage)
-    if usage.queries_used >= policy.query_ceiling:
+    usage_snapshot = _validate_policy_and_usage(policy, usage)
+    if usage_snapshot.queries_used >= policy.query_ceiling:
         raise Tier1ExposureError("Tier 1 adaptive-query budget is exhausted")
     return Tier1ExposureUsage(
-        queries_used=usage.queries_used + 1,
-        exposures_used=usage.exposures_used,
+        queries_used=usage_snapshot.queries_used + 1,
+        exposures_used=usage_snapshot.exposures_used,
     )
 
 
@@ -174,35 +224,35 @@ def record_tier1_exposure(
     result_fields: tuple[str, ...],
 ) -> Tier1ExposureUsage:
     """Record one aggregate-result exposure if fields and budget remain admissible."""
-    _validate_policy_and_usage(policy, usage)
+    usage_snapshot = _validate_policy_and_usage(policy, usage)
     _require_sorted_unique_fields(result_fields)
     if not set(result_fields).issubset(policy.allowed_result_fields):
         raise Tier1ExposureError(
             "Tier 1 result contains a field outside the frozen allow-list"
         )
-    if usage.exposures_used >= policy.max_exposures:
+    if usage_snapshot.exposures_used >= policy.max_exposures:
         raise Tier1ExposureError("Tier 1 result-exposure budget is exhausted")
     return Tier1ExposureUsage(
-        queries_used=usage.queries_used,
-        exposures_used=usage.exposures_used + 1,
+        queries_used=usage_snapshot.queries_used,
+        exposures_used=usage_snapshot.exposures_used + 1,
     )
 
 
 def _validate_policy_and_usage(
     policy: Tier1ExposurePolicy,
     usage: Tier1ExposureUsage,
-) -> None:
+) -> Tier1ExposureUsage:
     if type(policy) is not Tier1ExposurePolicy:
         raise Tier1ExposureError("policy must be an exact Tier1ExposurePolicy")
     if type(usage) is not Tier1ExposureUsage:
         raise Tier1ExposureError("usage must be an exact Tier1ExposureUsage")
     policy._validated_contract()
-    _require_nonnegative_int(usage.queries_used, "queries_used")
-    _require_nonnegative_int(usage.exposures_used, "exposures_used")
-    if usage.queries_used > policy.query_ceiling:
+    usage_snapshot = usage._validated_snapshot()
+    if usage_snapshot.queries_used > policy.query_ceiling:
         raise Tier1ExposureError("Tier 1 query usage exceeds the frozen ceiling")
-    if usage.exposures_used > policy.max_exposures:
+    if usage_snapshot.exposures_used > policy.max_exposures:
         raise Tier1ExposureError("Tier 1 exposure usage exceeds the frozen ceiling")
+    return usage_snapshot
 
 
 def _validate_tier_contract(contract: TierEvaluationContract) -> TierEvaluationContract:
