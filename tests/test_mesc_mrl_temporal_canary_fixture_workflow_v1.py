@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import replace
 
 import pytest
 
 import medscale.mesc._mrl_temporal_canary_fixture_workflow_v1 as canary_module
 from medscale.mesc._mrl_fixture_research_surface_v1 import (
+    FixtureCandidate,
     FixtureEvaluator,
     FixtureParameterValue,
     FixtureResearchSurface,
@@ -82,10 +84,15 @@ def test_workflow_uses_fixture_snapshots_if_live_evaluator_drifts_mid_call(
     manifest = _bound_manifest(evaluator, surface, parameter_values)
     original_evaluator_sha256 = evaluator.content_sha256
     original_metric_id = evaluator.metric_id
-    original_build_candidate = canary_module.build_fixture_candidate
+    original_build_candidate: Callable[
+        [FixtureResearchSurface, tuple[FixtureParameterValue, ...]], FixtureCandidate
+    ] = getattr(canary_module, "build_fixture_candidate")
     mutation_performed = False
 
-    def mutate_live_evaluator_then_build_snapshot(surface_snapshot, values):
+    def mutate_live_evaluator_then_build_snapshot(
+        surface_snapshot: FixtureResearchSurface,
+        values: tuple[FixtureParameterValue, ...],
+    ) -> FixtureCandidate:
         nonlocal mutation_performed
         if not mutation_performed:
             mutation_performed = True
