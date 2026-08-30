@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+import medscale.mesc._mrl_procedure_replay_v1 as replay_module
 from medscale.mesc._mrl_procedure_replay_v1 import (
     ProcedureReplayDisposition,
     ProcedureReplayError,
@@ -45,6 +46,45 @@ def test_fixture_replay_is_deterministic_and_binds_exact_evidence() -> None:
     assert first.evaluator_sha256 == evaluator.content_sha256
     assert first.observed_score == 1
     assert first.observed_max_score == 2
+
+
+def test_replay_uses_coherent_input_snapshots_if_live_evaluator_drifts_mid_call(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    procedure = _candidate_procedure()
+    evaluator = _evaluator()
+    surface = _surface(evaluator)
+    original_evaluator_sha256 = evaluator.content_sha256
+    original_metric_id = evaluator.metric_id
+    original_build_candidate = replay_module.build_fixture_candidate
+    mutation_performed = False
+
+    def mutate_live_evaluator_then_build_snapshot(surface_snapshot, parameter_values):
+        nonlocal mutation_performed
+        if not mutation_performed:
+            mutation_performed = True
+            object.__setattr__(evaluator, "metric_id", "fixture-metric-mutated")
+        return original_build_candidate(surface_snapshot, parameter_values)
+
+    monkeypatch.setattr(
+        replay_module,
+        "build_fixture_candidate",
+        mutate_live_evaluator_then_build_snapshot,
+    )
+
+    receipt = replay_procedure_fixture(
+        procedure,
+        surface,
+        evaluator,
+        _values(),
+        expected_score=1,
+        expected_max_score=2,
+    )
+
+    assert mutation_performed is True
+    assert receipt.evaluator_sha256 == original_evaluator_sha256
+    assert receipt.metric_id == original_metric_id
+    assert evaluator.content_sha256 != original_evaluator_sha256
 
 
 def test_replay_mismatch_remains_first_class_evidence() -> None:
