@@ -190,6 +190,23 @@ def test_mutated_flags_fail_closed_on_public_views() -> None:
         _ = flags.content_sha256
 
 
+def test_valid_flags_identity_mutation_fails_closed() -> None:
+    lineage, contamination, transformation = _bound_inputs()
+    flags = build_benchmark_derived_generation_flags(
+        lineage,
+        contamination,
+        transformation,
+        assessment_artifact_sha256="8" * 64,
+        classification=BenchmarkDerivedGenerationClassification.INDETERMINATE,
+    )
+    object.__setattr__(flags, "assessment_artifact_sha256", "9" * 64)
+
+    with pytest.raises(BenchmarkDerivedGenerationError, match="identity changed"):
+        flags.semantic_dict()
+    with pytest.raises(BenchmarkDerivedGenerationError, match="identity changed"):
+        _ = flags.content_sha256
+
+
 def test_mutated_classification_fails_closed_on_derived_flag() -> None:
     lineage, contamination, transformation = _bound_inputs()
     flags = build_benchmark_derived_generation_flags(
