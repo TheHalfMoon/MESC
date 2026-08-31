@@ -1,0 +1,37 @@
+name: diag MRL researcher py3.11 files
+
+on:
+  push:
+    branches:
+      - diag/mrl-0510-py311-threefiles-40593d
+
+permissions:
+  contents: read
+
+jobs:
+  pytest:
+    name: ${{ matrix.label }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: benchmark
+            file: tests/test_mesc_mrl_researcher_benchmark_v1.py
+          - label: arm-context
+            file: tests/test_mesc_mrl_researcher_arm_context_v1.py
+          - label: comparison-report
+            file: tests/test_mesc_mrl_researcher_comparison_report_v1.py
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+      - name: Install Python 3.11
+        run: uv python install 3.11
+      - name: Sync (locked)
+        run: uv sync --frozen
+      - name: Run isolated test file
+        run: uv run pytest -q "${{ matrix.file }}"
