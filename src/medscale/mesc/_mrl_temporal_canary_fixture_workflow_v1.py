@@ -233,17 +233,7 @@ def run_temporal_canary_fixture_workflow(
         raise TemporalCanaryFixtureWorkflowError("parameter_values contains an invalid item type")
 
     try:
-        # Pre-reconciliation MRL-0605 compatibility: once PR #299 becomes canonical,
-        # this must call the original manifest construction-bound validation path.
-        manifest_snapshot = TemporalCanaryManifest(
-            canary_id=manifest.canary_id,
-            source_kind=manifest.source_kind,
-            canary_artifact_sha256=manifest.canary_artifact_sha256,
-            temporal_boundary_at=manifest.temporal_boundary_at,
-            created_at=manifest.created_at,
-            evaluator_artifact_sha256=manifest.evaluator_artifact_sha256,
-            topic_tags=manifest.topic_tags,
-        )
+        manifest_snapshot = manifest._validated_snapshot()
         surface_snapshot = FixtureResearchSurface._validated_snapshot(surface)
         evaluator_snapshot = FixtureEvaluator._validated_snapshot(evaluator)
         parameter_snapshots = tuple(
