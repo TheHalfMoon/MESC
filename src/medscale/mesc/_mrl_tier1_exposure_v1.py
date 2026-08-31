@@ -11,7 +11,11 @@ import weakref
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from medscale.mesc._mrl_research_objective_v1 import EvaluationTier, TierResultExposure
+from medscale.mesc._mrl_research_objective_v1 import (
+    EvaluationTier,
+    ResearchObjectiveContract,
+    TierResultExposure,
+)
 from medscale.mesc._mrl_tier_evaluation_contract_v1 import TierEvaluationContract
 
 __all__ = [
@@ -81,6 +85,13 @@ _store_policy_identity, _load_policy_identity = _make_policy_identity_registry()
 _store_usage_identity, _load_usage_identity = _make_usage_identity_registry()
 
 
+@dataclass(frozen=True, slots=True)
+class _Tier1PolicySnapshot:
+    query_ceiling: int
+    exposure_contract: TierResultExposure
+    tier_contract_sha256: str
+
+
 @dataclass(frozen=True, slots=True, weakref_slot=True)
 class Tier1ExposureUsage:
     """Immutable usage counters for one frozen Tier 1 policy."""
@@ -120,10 +131,10 @@ class Tier1ExposurePolicy:
     def __post_init__(self) -> None:
         if type(self) is not Tier1ExposurePolicy:
             return
-        contract = _validate_tier_contract(self.tier_contract)
-        _store_policy_identity(self, contract.content_sha256)
+        _, tier_contract_sha256 = _validate_tier_contract(self.tier_contract)
+        _store_policy_identity(self, tier_contract_sha256)
 
-    def _validated_contract(self) -> tuple[TierEvaluationContract, str]:
+    def _validated_snapshot(self) -> _Tier1PolicySnapshot:
         if type(self) is not Tier1ExposurePolicy:
             raise Tier1ExposureError("policy must be an exact Tier1ExposurePolicy")
         bound_tier_contract_sha256 = _load_policy_identity(self)
@@ -131,44 +142,40 @@ class Tier1ExposurePolicy:
             bound_tier_contract_sha256,
             "bound tier_contract_sha256",
         )
-        contract = _validate_tier_contract(self.tier_contract)
-        if contract.content_sha256 != bound_tier_contract_sha256:
+        objective, current_tier_contract_sha256 = _validate_tier_contract(self.tier_contract)
+        if current_tier_contract_sha256 != bound_tier_contract_sha256:
             raise Tier1ExposureError("tier contract identity changed after policy creation")
-        return contract, bound_tier_contract_sha256
+        return _Tier1PolicySnapshot(
+            query_ceiling=objective.adaptive_query_budget.tier_1_queries,
+            exposure_contract=_search_exposure(objective),
+            tier_contract_sha256=bound_tier_contract_sha256,
+        )
 
     @property
     def query_ceiling(self) -> int:
         """Return the originally bound Tier 1 adaptive-query ceiling."""
-        contract, _ = self._validated_contract()
-        return contract.objective.adaptive_query_budget.tier_1_queries
+        return self._validated_snapshot().query_ceiling
 
     @property
     def exposure_contract(self) -> TierResultExposure:
         """Return a fresh snapshot of the originally bound Tier 1 exposure contract."""
-        contract, _ = self._validated_contract()
-        matches = [
-            policy
-            for policy in contract.objective.tier_result_exposure_policy
-            if policy.tier is EvaluationTier.SEARCH
-        ]
-        if len(matches) != 1:
-            raise Tier1ExposureError("objective must define exactly one SEARCH exposure policy")
-        policy = matches[0]
+        snapshot = self._validated_snapshot()
+        exposure = snapshot.exposure_contract
         return TierResultExposure(
-            tier=policy.tier,
-            max_exposures=policy.max_exposures,
-            allowed_result_fields=policy.allowed_result_fields,
+            tier=exposure.tier,
+            max_exposures=exposure.max_exposures,
+            allowed_result_fields=exposure.allowed_result_fields,
         )
 
     @property
     def max_exposures(self) -> int:
         """Return the originally bound Tier 1 result-exposure ceiling."""
-        return self.exposure_contract.max_exposures
+        return self._validated_snapshot().exposure_contract.max_exposures
 
     @property
     def allowed_result_fields(self) -> tuple[str, ...]:
         """Return the exact aggregate result fields visible to adaptive search."""
-        return self.exposure_contract.allowed_result_fields
+        return self._validated_snapshot().exposure_contract.allowed_result_fields
 
     @property
     def can_expand_budget(self) -> bool:
@@ -176,17 +183,17 @@ class Tier1ExposurePolicy:
         return False
 
     def to_dict(self) -> dict[str, object]:
-        """Return deterministic policy semantics without authority amplification."""
-        contract, tier_contract_sha256 = self._validated_contract()
-        exposure = self.exposure_contract
+        """Return deterministic policy semantics from one validated objective snapshot."""
+        snapshot = self._validated_snapshot()
+        exposure = snapshot.exposure_contract
         return {
             "allowed_result_fields": list(exposure.allowed_result_fields),
             "can_authorize": False,
             "can_expand_budget": False,
             "max_exposures": exposure.max_exposures,
-            "query_ceiling": contract.objective.adaptive_query_budget.tier_1_queries,
+            "query_ceiling": snapshot.query_ceiling,
             "tier": int(EvaluationTier.SEARCH),
-            "tier_contract_sha256": tier_contract_sha256,
+            "tier_contract_sha256": snapshot.tier_contract_sha256,
         }
 
 
@@ -195,8 +202,8 @@ def consume_tier1_query(
     usage: Tier1ExposureUsage,
 ) -> Tier1ExposureUsage:
     """Consume one adaptive Tier 1 query or fail closed at the frozen ceiling."""
-    usage_snapshot = _validate_policy_and_usage(policy, usage)
-    if usage_snapshot.queries_used >= policy.query_ceiling:
+    policy_snapshot, usage_snapshot = _validate_policy_and_usage(policy, usage)
+    if usage_snapshot.queries_used >= policy_snapshot.query_ceiling:
         raise Tier1ExposureError("Tier 1 adaptive-query budget is exhausted")
     return Tier1ExposureUsage(
         queries_used=usage_snapshot.queries_used + 1,
@@ -210,11 +217,11 @@ def record_tier1_exposure(
     result_fields: tuple[str, ...],
 ) -> Tier1ExposureUsage:
     """Record one aggregate-result exposure if fields and budget remain admissible."""
-    usage_snapshot = _validate_policy_and_usage(policy, usage)
+    policy_snapshot, usage_snapshot = _validate_policy_and_usage(policy, usage)
     _require_sorted_unique_fields(result_fields)
-    if not set(result_fields).issubset(policy.allowed_result_fields):
+    if not set(result_fields).issubset(policy_snapshot.exposure_contract.allowed_result_fields):
         raise Tier1ExposureError("Tier 1 result contains a field outside the frozen allow-list")
-    if usage_snapshot.exposures_used >= policy.max_exposures:
+    if usage_snapshot.exposures_used >= policy_snapshot.exposure_contract.max_exposures:
         raise Tier1ExposureError("Tier 1 result-exposure budget is exhausted")
     return Tier1ExposureUsage(
         queries_used=usage_snapshot.queries_used,
@@ -225,31 +232,49 @@ def record_tier1_exposure(
 def _validate_policy_and_usage(
     policy: Tier1ExposurePolicy,
     usage: Tier1ExposureUsage,
-) -> Tier1ExposureUsage:
+) -> tuple[_Tier1PolicySnapshot, Tier1ExposureUsage]:
     if type(policy) is not Tier1ExposurePolicy:
         raise Tier1ExposureError("policy must be an exact Tier1ExposurePolicy")
     if type(usage) is not Tier1ExposureUsage:
         raise Tier1ExposureError("usage must be an exact Tier1ExposureUsage")
-    policy._validated_contract()
+    policy_snapshot = policy._validated_snapshot()
     usage_snapshot = usage._validated_snapshot()
-    if usage_snapshot.queries_used > policy.query_ceiling:
+    if usage_snapshot.queries_used > policy_snapshot.query_ceiling:
         raise Tier1ExposureError("Tier 1 query usage exceeds the frozen ceiling")
-    if usage_snapshot.exposures_used > policy.max_exposures:
+    if usage_snapshot.exposures_used > policy_snapshot.exposure_contract.max_exposures:
         raise Tier1ExposureError("Tier 1 exposure usage exceeds the frozen ceiling")
-    return usage_snapshot
+    return policy_snapshot, usage_snapshot
 
 
-def _validate_tier_contract(contract: TierEvaluationContract) -> TierEvaluationContract:
+def _validate_tier_contract(
+    contract: TierEvaluationContract,
+) -> tuple[ResearchObjectiveContract, str]:
     if type(contract) is not TierEvaluationContract:
         raise Tier1ExposureError("tier_contract must be an exact TierEvaluationContract")
     if contract.tier is not EvaluationTier.SEARCH:
         raise Tier1ExposureError("Tier 1 exposure policy requires SEARCH tier")
     try:
-        contract.semantic_dict()
-        _ = contract.content_sha256
+        objective, _ = contract._validated_objective()
+        tier_contract_sha256 = contract.content_sha256
     except (AttributeError, TypeError, ValueError) as exc:
         raise Tier1ExposureError("tier contract failed canonical revalidation") from exc
-    return contract
+    return objective, tier_contract_sha256
+
+
+def _search_exposure(objective: ResearchObjectiveContract) -> TierResultExposure:
+    matches = [
+        policy
+        for policy in objective.tier_result_exposure_policy
+        if policy.tier is EvaluationTier.SEARCH
+    ]
+    if len(matches) != 1:
+        raise Tier1ExposureError("objective must define exactly one SEARCH exposure policy")
+    policy = matches[0]
+    return TierResultExposure(
+        tier=policy.tier,
+        max_exposures=policy.max_exposures,
+        allowed_result_fields=policy.allowed_result_fields,
+    )
 
 
 def _require_nonnegative_int(value: object, label: str) -> None:
