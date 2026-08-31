@@ -1,0 +1,1 @@
+__MODULE_CONTENT__
