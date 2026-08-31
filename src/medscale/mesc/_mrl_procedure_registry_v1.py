@@ -114,9 +114,7 @@ class ProcedureRegistryEvent:
     def _semantic_dict_validated(self) -> dict[str, object]:
         result = _validated_gate_result(self.admission_result)
         admitted_procedure_sha256 = (
-            None
-            if result.admitted_procedure is None
-            else result.admitted_procedure.content_sha256
+            None if result.admitted_procedure is None else result.admitted_procedure.content_sha256
         )
         admission_report_sha256 = (
             result.reviewed_report.content_sha256
@@ -297,9 +295,7 @@ def supersede_admitted_procedure(
     if current.disposition is not ProcedureRegistryDisposition.ADMITTED:
         raise ProcedureRegistryError("only an active admitted procedure can be superseded")
     if replacement.disposition is not ProcedureRegistryDisposition.ADMITTED:
-        raise ProcedureRegistryError(
-            "replacement procedure must already be independently ADMITTED"
-        )
+        raise ProcedureRegistryError("replacement procedure must already be independently ADMITTED")
     _require_sorted_sha256s(evidence_sha256s, "evidence_sha256s", required=True)
     _require_text(reason, "reason")
     return _append_event(
@@ -334,7 +330,7 @@ def _append_event(
         replacement_procedure_sha256=replacement_procedure_sha256,
         previous_event_sha256=previous,
     )
-    return ProcedureRegistry(events=registry.events + (event,))
+    return ProcedureRegistry(events=(*registry.events, event))
 
 
 def _validated_registry(registry: ProcedureRegistry) -> ProcedureRegistry:
@@ -390,9 +386,7 @@ def _validate_event(event: ProcedureRegistryEvent) -> None:
             "INVALIDATED/SUPERSEDED events require original ADMIT evidence"
         )
     if not event.evidence_sha256s:
-        raise ProcedureRegistryError(
-            "INVALIDATED/SUPERSEDED events require independent evidence"
-        )
+        raise ProcedureRegistryError("INVALIDATED/SUPERSEDED events require independent evidence")
     if event.disposition is ProcedureRegistryDisposition.INVALIDATED:
         if event.replacement_procedure_sha256 is not None:
             raise ProcedureRegistryError("INVALIDATED event cannot name a replacement procedure")
@@ -434,15 +428,11 @@ def _validate_registry(registry: ProcedureRegistry) -> None:
                 ProcedureRegistryDisposition.ADMITTED,
                 ProcedureRegistryDisposition.REJECTED,
             ):
-                raise ProcedureRegistryError(
-                    "first procedure event must be ADMITTED or REJECTED"
-                )
+                raise ProcedureRegistryError("first procedure event must be ADMITTED or REJECTED")
             first_result_sha256[subject] = result_sha256
         else:
             if current.disposition is not ProcedureRegistryDisposition.ADMITTED:
-                raise ProcedureRegistryError(
-                    "terminal procedure disposition cannot be rewritten"
-                )
+                raise ProcedureRegistryError("terminal procedure disposition cannot be rewritten")
             if event.disposition not in (
                 ProcedureRegistryDisposition.INVALIDATED,
                 ProcedureRegistryDisposition.SUPERSEDED,

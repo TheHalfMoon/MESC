@@ -176,9 +176,7 @@ def test_supersession_requires_replacement_to_be_independently_admitted_first() 
     assert superseded.current_event(replacement.procedure_sha256).disposition is (
         ProcedureRegistryDisposition.ADMITTED
     )
-    assert superseded.active_admitted_procedure_sha256s == (
-        replacement.procedure_sha256,
-    )
+    assert superseded.active_admitted_procedure_sha256s == (replacement.procedure_sha256,)
 
 
 def test_rejected_or_terminal_history_cannot_be_rewritten() -> None:
