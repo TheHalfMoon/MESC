@@ -264,7 +264,7 @@ def _validate_tier_contract(contract: TierEvaluationContract) -> TierEvaluationC
         raise Tier1ExposureError("Tier 1 exposure policy requires SEARCH tier")
     try:
         contract.semantic_dict()
-        contract.content_sha256
+        _ = contract.content_sha256
     except (AttributeError, TypeError, ValueError) as exc:
         raise Tier1ExposureError("tier contract failed canonical revalidation") from exc
     return contract
