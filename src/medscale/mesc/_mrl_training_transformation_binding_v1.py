@@ -8,6 +8,8 @@ models, read sources, or authorize training.
 from __future__ import annotations
 
 import re
+import weakref
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from medscale.mesc._mrl_content_identity_v1 import (
@@ -33,7 +35,39 @@ class TrainingTransformationBindingError(ValueError):
     """Fail-closed validation error for MRL training transformation provenance."""
 
 
-@dataclass(frozen=True, slots=True)
+def _make_binding_identity_registry() -> tuple[
+    Callable[[TrainingTransformationBinding, str], None],
+    Callable[[TrainingTransformationBinding], str],
+]:
+    identities: dict[int, str] = {}
+
+    def remove(key: int) -> None:
+        identities.pop(key, None)
+
+    def store(value: TrainingTransformationBinding, content_sha256: str) -> None:
+        key = id(value)
+        if key in identities:
+            raise TrainingTransformationBindingError(
+                "transformation binding construction identity already exists"
+            )
+        identities[key] = content_sha256
+        weakref.finalize(value, remove, key)
+
+    def load(value: TrainingTransformationBinding) -> str:
+        identity = identities.get(id(value))
+        if identity is None:
+            raise TrainingTransformationBindingError(
+                "transformation binding construction identity is missing"
+            )
+        return identity
+
+    return store, load
+
+
+_store_binding_identity, _load_binding_identity = _make_binding_identity_registry()
+
+
+@dataclass(frozen=True, slots=True, weakref_slot=True)
 class TrainingTransformationBinding:
     """Immutable source/prompt/teacher provenance for one exact training lineage."""
 
@@ -60,6 +94,33 @@ class TrainingTransformationBinding:
             raise TrainingTransformationBindingError(
                 "teacher model and teacher output identities must be supplied together"
             )
+        _store_binding_identity(
+            self,
+            derive_content_sha256(self._semantic_dict_validated()),
+        )
+
+    def _validated_snapshot(self) -> TrainingTransformationBinding:
+        if type(self) is not TrainingTransformationBinding:
+            raise TrainingTransformationBindingError(
+                "binding must be an exact TrainingTransformationBinding"
+            )
+        bound_content_sha256 = _load_binding_identity(self)
+        _require_sha256(bound_content_sha256, "bound binding content_sha256")
+        snapshot = TrainingTransformationBinding(
+            training_lineage_sha256=self.training_lineage_sha256,
+            source_sha256=self.source_sha256,
+            transformation_kind=self.transformation_kind,
+            transformation_artifact_sha256=self.transformation_artifact_sha256,
+            prompt_template_sha256=self.prompt_template_sha256,
+            teacher_model_sha256=self.teacher_model_sha256,
+            teacher_output_sha256=self.teacher_output_sha256,
+        )
+        current_content_sha256 = derive_content_sha256(snapshot._semantic_dict_validated())
+        if current_content_sha256 != bound_content_sha256:
+            raise TrainingTransformationBindingError(
+                "transformation binding identity changed after construction"
+            )
+        return snapshot
 
     @property
     def can_access_source(self) -> bool:
@@ -85,7 +146,7 @@ class TrainingTransformationBinding:
     def content_sha256(self) -> str:
         return derive_content_sha256(self.semantic_dict())
 
-    def semantic_dict(self) -> dict[str, object]:
+    def _semantic_dict_validated(self) -> dict[str, object]:
         return {
             "can_access_source": False,
             "can_authorize_model_promotion": False,
@@ -100,6 +161,10 @@ class TrainingTransformationBinding:
             "transformation_artifact_sha256": self.transformation_artifact_sha256,
             "transformation_kind": self.transformation_kind,
         }
+
+    def semantic_dict(self) -> dict[str, object]:
+        snapshot = TrainingTransformationBinding._validated_snapshot(self)
+        return snapshot._semantic_dict_validated()
 
     def to_dict(self) -> dict[str, object]:
         data = self.semantic_dict()
