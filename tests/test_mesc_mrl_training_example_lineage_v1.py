@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from dataclasses import fields
+
 import pytest
 
 from medscale.mesc._mrl_training_example_lineage_v1 import (
+    TrainingExampleLineageContract,
     TrainingExampleLineageError,
     build_training_example_lineage,
 )
@@ -58,6 +61,28 @@ def test_lineage_identity_changes_when_source_identity_changes() -> None:
 
     assert first.training_example_sha256 != second.training_example_sha256
     assert first.content_sha256 != second.content_sha256
+
+
+def test_existing_lineage_rejects_valid_post_construction_example_identity_drift() -> None:
+    lineage = build_training_example_lineage(_example())
+    original_content_sha256 = lineage.content_sha256
+    object.__setattr__(lineage.example, "source_sha256", "c" * 64)
+
+    with pytest.raises(TrainingExampleLineageError, match="identity changed after construction"):
+        lineage.semantic_dict()
+    with pytest.raises(TrainingExampleLineageError, match="identity changed after construction"):
+        _ = lineage.training_example_sha256
+    with pytest.raises(TrainingExampleLineageError, match="identity changed after construction"):
+        _ = lineage.content_sha256
+    assert original_content_sha256
+
+
+def test_lineage_construction_identity_is_not_reachable_as_mutable_state() -> None:
+    lineage = build_training_example_lineage(_example())
+
+    assert tuple(field.name for field in fields(TrainingExampleLineageContract)) == ("example",)
+    with pytest.raises(AttributeError):
+        object.__setattr__(lineage, "_bound_content_sha256", "a" * 64)
 
 
 def test_lineage_is_metadata_only_and_non_authoritative() -> None:
