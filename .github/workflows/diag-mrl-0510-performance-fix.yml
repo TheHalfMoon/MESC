@@ -1,0 +1,106 @@
+name: diag MRL-0510 performance repair
+
+on:
+  push:
+    branches:
+      - diag/mrl-0510-performance-fix-40593d
+
+permissions:
+  contents: write
+
+jobs:
+  repair-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: true
+          fetch-depth: 0
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+      - name: Install Python 3.11
+        run: uv python install 3.11
+      - name: Sync (locked)
+        run: uv sync --frozen
+      - name: Apply single-pass validation repair
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          source_path = Path("src/medscale/mesc/_mrl_researcher_comparison_report_v1.py")
+          source = source_path.read_text()
+
+          old = '''    def __post_init__(self) -> None:\n        _validate_report(self)\n        _store_identity(self, derive_content_sha256(self._semantic_dict_validated()))\n\n    def _validated_snapshot(self) -> ResearcherComparisonReport:\n        if type(self) is not ResearcherComparisonReport:\n            raise ResearcherComparisonReportError(\n                "report must be an exact ResearcherComparisonReport"\n            )\n        bound = _load_identity(self, "researcher comparison report")\n        _validate_report(self)\n        current = derive_content_sha256(self._semantic_dict_validated())\n        if current != bound:\n            raise ResearcherComparisonReportError(\n                "researcher comparison report changed after construction"\n            )\n        return self\n\n    @property\n    def content_sha256(self) -> str:\n        return derive_content_sha256(self.semantic_dict())\n\n    @property\n    def semantic_bytes(self) -> bytes:\n        return canonical_semantic_bytes(self.semantic_dict())\n'''
+          new = '''    def __post_init__(self) -> None:\n        data = self._semantic_dict_validated()\n        _store_identity(self, derive_content_sha256(data))\n\n    def _validated_semantic_dict(self) -> dict[str, object]:\n        if type(self) is not ResearcherComparisonReport:\n            raise ResearcherComparisonReportError(\n                "report must be an exact ResearcherComparisonReport"\n            )\n        bound = _load_identity(self, "researcher comparison report")\n        data = self._semantic_dict_validated()\n        current = derive_content_sha256(data)\n        if current != bound:\n            raise ResearcherComparisonReportError(\n                "researcher comparison report changed after construction"\n            )\n        return data\n\n    def _validated_snapshot(self) -> ResearcherComparisonReport:\n        self._validated_semantic_dict()\n        return self\n\n    @property\n    def content_sha256(self) -> str:\n        return derive_content_sha256(self._validated_semantic_dict())\n\n    @property\n    def semantic_bytes(self) -> bytes:\n        return canonical_semantic_bytes(self._validated_semantic_dict())\n'''
+          if source.count(old) != 1:
+              raise SystemExit("expected report validation block exactly once")
+          source = source.replace(old, new)
+
+          old = '''    def _semantic_dict_validated(self) -> dict[str, object]:\n        contexts = tuple(_validated_context(item) for item in self.contexts)\n        observations = _observations_by_arm(contexts)\n'''
+          new = '''    def _semantic_dict_validated(self) -> dict[str, object]:\n        if type(self.contexts) is not tuple:\n            raise ResearcherComparisonReportError("contexts must be an exact tuple")\n        contexts = tuple(_validated_context(item) for item in self.contexts)\n        _validate_report_fields(self, contexts)\n        observations = _observations_by_arm(contexts)\n'''
+          if source.count(old) != 1:
+              raise SystemExit("expected semantic block exactly once")
+          source = source.replace(old, new)
+
+          old = '''    def semantic_dict(self) -> dict[str, object]:\n        return self._validated_snapshot()._semantic_dict_validated()\n'''
+          new = '''    def semantic_dict(self) -> dict[str, object]:\n        return self._validated_semantic_dict()\n'''
+          if source.count(old) != 1:
+              raise SystemExit("expected semantic_dict block exactly once")
+          source = source.replace(old, new)
+
+          old = '''        report = self._validated_snapshot()\n        observations = _observations_by_arm(report.contexts)\n        universal_metrics = _universally_available_metric_names(observations)\n        pareto = _pareto_frontier_from_observations(observations, universal_metrics)\n        first_run = report.contexts[0].benchmark_run._validated_snapshot()\n\n        lines = [\n'''
+          new = '''        semantic = self._validated_semantic_dict()\n        observations = _observations_by_arm(self.contexts)\n        universal_metrics = _universally_available_metric_names(observations)\n        pareto = _pareto_frontier_from_observations(observations, universal_metrics)\n        first_run = self.contexts[0].benchmark_run._validated_snapshot()\n        report_sha256 = derive_content_sha256(semantic)\n\n        lines = [\n'''
+          if source.count(old) != 1:
+              raise SystemExit("expected markdown prelude exactly once")
+          source = source.replace(old, new)
+          old = '            f"- Report SHA-256: `{report.content_sha256}`",\n'
+          new = '            f"- Report SHA-256: `{report_sha256}`",\n'
+          if source.count(old) != 1:
+              raise SystemExit("expected markdown digest line exactly once")
+          source = source.replace(old, new)
+
+          start = source.index("def _validate_report(report: ResearcherComparisonReport) -> None:\n")
+          end = source.index("\ndef _canonicalize_contexts(\n", start)
+          replacement = '''def _validate_report_fields(\n    report: ResearcherComparisonReport,\n    contexts: tuple[ResearcherArmContext, ...],\n) -> None:\n    if type(report.fixture_only) is not bool or report.fixture_only is not True:\n        raise ResearcherComparisonReportError("fixture_only must be exact True")\n    if type(report.non_evidence) is not bool or report.non_evidence is not True:\n        raise ResearcherComparisonReportError("non_evidence must be exact True")\n    arms = tuple(context.benchmark_run._validated_snapshot().arm for context in contexts)\n    if arms != _REQUIRED_ARM_ORDER:\n        raise ResearcherComparisonReportError(\n            "contexts must use canonical researcher-arm order"\n        )\n\n    campaign_ids = {\n        context.benchmark_run._validated_snapshot().campaign.campaign_id for context in contexts\n    }\n    objectives = {\n        context.benchmark_run._validated_snapshot().campaign.objective_sha256\n        for context in contexts\n    }\n    if len(campaign_ids) != 1:\n        raise ResearcherComparisonReportError(\n            "all researcher arms must share one campaign namespace"\n        )\n    if len(objectives) != 1:\n        raise ResearcherComparisonReportError("all researcher arms must share one frozen objective")\n'''
+          source = source[:start] + replacement + source[end:]
+          source_path.write_text(source)
+
+          test_path = Path("tests/test_mesc_mrl_researcher_comparison_report_v1.py")
+          tests = test_path.read_text()
+          marker = "def test_report_requires_and_canonicalizes_all_four_arms("
+          fixture = '''@pytest.fixture(scope="module")\ndef shared_contexts() -> tuple[ResearcherArmContext, ...]:\n    monkeypatch = pytest.MonkeyPatch()\n    try:\n        yield _contexts(monkeypatch)\n    finally:\n        monkeypatch.undo()\n\n\n'''
+          if fixture not in tests:
+              tests = tests.replace(marker, fixture + marker, 1)
+          replacements = {
+              "    monkeypatch: pytest.MonkeyPatch,\n) -> None:\n    contexts = _contexts(monkeypatch)\n    report = build_researcher_comparison_report(tuple(reversed(contexts)))\n": "    shared_contexts: tuple[ResearcherArmContext, ...],\n) -> None:\n    contexts = shared_contexts\n    report = build_researcher_comparison_report(tuple(reversed(contexts)))\n",
+              "    monkeypatch: pytest.MonkeyPatch,\n) -> None:\n    report = build_researcher_comparison_report(_contexts(monkeypatch))\n    payload = report.semantic_dict()\n": "    shared_contexts: tuple[ResearcherArmContext, ...],\n) -> None:\n    report = build_researcher_comparison_report(shared_contexts)\n    payload = report.semantic_dict()\n",
+              "    monkeypatch: pytest.MonkeyPatch,\n) -> None:\n    report = build_researcher_comparison_report(_contexts(monkeypatch))\n\n    assert report.pareto_frontier_arms": "    shared_contexts: tuple[ResearcherArmContext, ...],\n) -> None:\n    report = build_researcher_comparison_report(shared_contexts)\n\n    assert report.pareto_frontier_arms",
+              "    monkeypatch: pytest.MonkeyPatch,\n) -> None:\n    first = build_researcher_comparison_report(_contexts(monkeypatch))\n    second = build_researcher_comparison_report(_contexts(monkeypatch))\n": "    shared_contexts: tuple[ResearcherArmContext, ...],\n) -> None:\n    first = build_researcher_comparison_report(shared_contexts)\n    second = build_researcher_comparison_report(shared_contexts)\n",
+              "    monkeypatch: pytest.MonkeyPatch,\n) -> None:\n    report = build_researcher_comparison_report(_contexts(monkeypatch))\n\n    assert report.can_execute_agent": "    shared_contexts: tuple[ResearcherArmContext, ...],\n) -> None:\n    report = build_researcher_comparison_report(shared_contexts)\n\n    assert report.can_execute_agent",
+          }
+          for old_text, new_text in replacements.items():
+              if old_text not in tests:
+                  raise SystemExit(f"missing expected test replacement: {old_text[:60]!r}")
+              tests = tests.replace(old_text, new_text, 1)
+          test_path.write_text(tests)
+          PY
+      - name: Canonical format
+        run: uv run ruff format src/medscale/mesc/_mrl_researcher_comparison_report_v1.py tests/test_mesc_mrl_researcher_comparison_report_v1.py
+      - name: Lint
+        run: uv run ruff check src/medscale/mesc/_mrl_researcher_comparison_report_v1.py tests/test_mesc_mrl_researcher_comparison_report_v1.py
+      - name: Strict mypy
+        run: uv run mypy
+      - name: Focused Python 3.11 tests
+        run: uv run pytest -q tests/test_mesc_mrl_researcher_comparison_report_v1.py tests/test_mesc_mrl_researcher_arm_context_v1.py tests/test_mesc_mrl_researcher_benchmark_v1.py
+      - name: Remove diagnostic workflow and commit repair
+        if: success()
+        shell: bash
+        run: |
+          rm .github/workflows/diag-mrl-0510-performance-fix.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/medscale/mesc/_mrl_researcher_comparison_report_v1.py tests/test_mesc_mrl_researcher_comparison_report_v1.py .github/workflows/diag-mrl-0510-performance-fix.yml
+          git commit -m "fix(mrl): collapse repeated MRL-0510 validation passes"
+          git push origin HEAD:diag/mrl-0510-performance-fix-40593d
