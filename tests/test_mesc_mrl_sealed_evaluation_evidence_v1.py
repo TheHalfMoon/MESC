@@ -161,6 +161,66 @@ def test_request_and_handoff_chain_mismatches_fail_closed() -> None:
         )
 
 
+def test_mutated_metric_evidence_fails_closed_on_report_semantic_and_hash_views() -> None:
+    report = _report()
+    object.__setattr__(report.metric_evidence[0], "value_decimal", "0.960")
+
+    with pytest.raises(SealedEvaluationEvidenceError, match="value_decimal"):
+        report.semantic_dict()
+    with pytest.raises(SealedEvaluationEvidenceError, match="value_decimal"):
+        _ = report.content_sha256
+
+
+def test_valid_metric_identity_mutation_fails_closed() -> None:
+    metric = _metric()
+    object.__setattr__(metric, "evidence_artifact_sha256", "1" * 64)
+
+    with pytest.raises(SealedEvaluationEvidenceError, match="identity changed"):
+        metric.to_dict()
+
+
+def test_builder_rejects_validly_mutated_sealed_request() -> None:
+    request = _request()
+    handoff = record_sealed_evidence_handoff(request, "d" * 64)
+    object.__setattr__(request, "candidate_sha256", "f" * 64)
+
+    with pytest.raises(SealedEvaluationEvidenceError, match="failed canonical revalidation"):
+        build_sealed_evaluation_evidence_report(
+            _contract(),
+            request,
+            handoff,
+            _metrics(),
+        )
+
+
+def test_mutated_report_identity_fails_closed_on_semantic_and_hash_views() -> None:
+    report = _report()
+    object.__setattr__(report, "objective_sha256", "invalid")
+
+    with pytest.raises(SealedEvaluationEvidenceError, match="objective_sha256"):
+        report.semantic_dict()
+    with pytest.raises(SealedEvaluationEvidenceError, match="objective_sha256"):
+        _ = report.content_sha256
+
+
+def test_valid_report_identity_mutation_fails_closed() -> None:
+    report = _report()
+    object.__setattr__(report, "objective_sha256", "1" * 64)
+
+    with pytest.raises(SealedEvaluationEvidenceError, match="identity changed"):
+        report.semantic_dict()
+    with pytest.raises(SealedEvaluationEvidenceError, match="identity changed"):
+        _ = report.content_sha256
+
+
+def test_mutated_evaluator_artifact_fails_closed_on_semantic_view() -> None:
+    report = _report()
+    object.__setattr__(report, "evaluator_artifacts", (("eval.sealed", "invalid"),))
+
+    with pytest.raises(SealedEvaluationEvidenceError, match="evaluator artifact_sha256"):
+        report.semantic_dict()
+
+
 def test_non_sealed_and_fabricated_inputs_fail_closed() -> None:
     search = TierEvaluationContract(objective=_objective(), tier=EvaluationTier.SEARCH)
 
