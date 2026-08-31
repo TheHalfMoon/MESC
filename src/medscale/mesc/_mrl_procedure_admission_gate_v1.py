@@ -16,8 +16,9 @@ from __future__ import annotations
 import re
 import weakref
 from collections.abc import Callable
+from contextlib import AbstractContextManager
 from dataclasses import dataclass, replace
-from typing import Final
+from typing import Final, Protocol
 
 from medscale.mesc._mrl_content_identity_v1 import (
     canonical_semantic_bytes,
@@ -34,7 +35,10 @@ from medscale.mesc._mrl_procedure_replay_v1 import (
 )
 from medscale.mesc._mrl_procedure_review_trust_v1 import (
     ProcedureReviewTrustError,
-    hold_procedure_review_trust,
+    ProcedureReviewTrustSnapshot,
+)
+from medscale.mesc._mrl_procedure_review_trust_v1 import (
+    hold_procedure_review_trust as _canonical_hold_procedure_review_trust,
 )
 from medscale.mesc._mrl_procedure_transfer_test_v1 import (
     ProcedureTransferTestError,
@@ -62,6 +66,57 @@ _SHA256: Final = re.compile(r"^[0-9a-f]{64}$", flags=re.ASCII)
 
 class ProcedureAdmissionGateError(ValueError):
     """Fail-closed validation error for independent procedure admission."""
+
+
+class _ProcedureReviewTrustLease(Protocol):
+    def __call__(
+        self,
+        *,
+        expected_registry_sha256: str,
+        review_receipt_sha256: str,
+    ) -> AbstractContextManager[ProcedureReviewTrustSnapshot]: ...
+
+
+class _ProcedureAdmissionEvaluator(Protocol):
+    def __call__(
+        self,
+        procedure: ResearchProcedure,
+        transfer_report: ProcedureTransferTestReport,
+        negative_control_report: ProcedureNegativeControlReport,
+        review_receipt: ProcedureReviewReceipt,
+        *,
+        expected_review_trust_registry_sha256: str,
+    ) -> ProcedureAdmissionGateResult: ...
+
+
+def _bind_review_trust(
+    hold_review_trust: _ProcedureReviewTrustLease,
+) -> Callable[[Callable[..., ProcedureAdmissionGateResult]], _ProcedureAdmissionEvaluator]:
+    """Capture canonical review trust outside ordinary module-level rebinding."""
+
+    def decorate(
+        method: Callable[..., ProcedureAdmissionGateResult],
+    ) -> _ProcedureAdmissionEvaluator:
+        def guarded(
+            procedure: ResearchProcedure,
+            transfer_report: ProcedureTransferTestReport,
+            negative_control_report: ProcedureNegativeControlReport,
+            review_receipt: ProcedureReviewReceipt,
+            *,
+            expected_review_trust_registry_sha256: str,
+        ) -> ProcedureAdmissionGateResult:
+            return method(
+                hold_review_trust,
+                procedure,
+                transfer_report,
+                negative_control_report,
+                review_receipt,
+                expected_review_trust_registry_sha256=(expected_review_trust_registry_sha256),
+            )
+
+        return guarded
+
+    return decorate
 
 
 def _make_receipt_identity_registry() -> tuple[
@@ -341,7 +396,9 @@ class ProcedureAdmissionGateResult:
         return data
 
 
+@_bind_review_trust(_canonical_hold_procedure_review_trust)
 def evaluate_procedure_admission(
+    hold_review_trust: _ProcedureReviewTrustLease,
     procedure: ResearchProcedure,
     transfer_report: ProcedureTransferTestReport,
     negative_control_report: ProcedureNegativeControlReport,
@@ -438,7 +495,7 @@ def evaluate_procedure_admission(
 
     review_receipt_sha256 = review_snapshot.content_sha256
     try:
-        with hold_procedure_review_trust(
+        with hold_review_trust(
             expected_registry_sha256=expected_review_trust_registry_sha256,
             review_receipt_sha256=review_receipt_sha256,
         ) as trust_snapshot:
@@ -459,6 +516,10 @@ def evaluate_procedure_admission(
         ) from exc
 
     return result
+
+
+del _bind_review_trust
+del _canonical_hold_procedure_review_trust
 
 
 def _build_admission_result(

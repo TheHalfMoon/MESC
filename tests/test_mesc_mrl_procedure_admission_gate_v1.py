@@ -8,6 +8,7 @@ from dataclasses import replace
 
 import pytest
 
+import medscale.mesc._mrl_procedure_admission_gate_v1 as gate_module
 from medscale.mesc import _mrl_procedure_review_trust_v1 as review_trust
 from medscale.mesc._mrl_procedure_admission_gate_v1 import (
     ProcedureAdmissionGateError,
@@ -97,6 +98,43 @@ def test_well_formed_review_receipt_cannot_self_create_trust() -> None:
     receipt = _review_receipt(procedure, transfer, negative)
     assert (
         review_trust.procedure_review_trust_snapshot().trusted_review_receipt_sha256 == frozenset()
+    )
+
+    with pytest.raises(
+        ProcedureAdmissionGateError,
+        match="not trusted by canonical governance",
+    ):
+        evaluate_procedure_admission(
+            procedure,
+            transfer,
+            negative,
+            receipt,
+            expected_review_trust_registry_sha256=(
+                review_trust.procedure_review_trust_registry_sha256()
+            ),
+        )
+
+
+def test_module_level_review_trust_rebinding_cannot_bypass_gate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    procedure, transfer, negative = _evidence()
+    receipt = _review_receipt(procedure, transfer, negative)
+
+    @contextmanager
+    def fabricated_hold(
+        *,
+        expected_registry_sha256: str,
+        review_receipt_sha256: str,
+    ) -> Iterator[object]:
+        del expected_registry_sha256, review_receipt_sha256
+        yield object()
+
+    monkeypatch.setattr(
+        gate_module,
+        "_canonical_hold_procedure_review_trust",
+        fabricated_hold,
+        raising=False,
     )
 
     with pytest.raises(
@@ -309,9 +347,12 @@ def test_failed_negative_controls_cannot_be_admitted() -> None:
 def test_stale_review_trust_registry_identity_fails_closed() -> None:
     procedure, transfer, negative = _evidence()
     receipt = _review_receipt(procedure, transfer, negative)
-    with _trusted_receipt(receipt), pytest.raises(
-        ProcedureAdmissionGateError,
-        match="not trusted by canonical governance",
+    with (
+        _trusted_receipt(receipt),
+        pytest.raises(
+            ProcedureAdmissionGateError,
+            match="not trusted by canonical governance",
+        ),
     ):
         evaluate_procedure_admission(
             procedure,
