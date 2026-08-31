@@ -1,0 +1,44 @@
+name: diag MRL-0510 py3.11 12 shards
+
+on:
+  push:
+    branches:
+      - diag/mrl-0510-py311-12shards-40593d
+
+permissions:
+  contents: read
+
+jobs:
+  pytest:
+    name: shard-${{ matrix.shard }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+      - name: Install Python 3.11
+        run: uv python install 3.11
+      - name: Sync (locked)
+        run: uv sync --frozen
+      - name: Pytest shard without coverage
+        env:
+          SHARD: ${{ matrix.shard }}
+        shell: bash
+        run: |
+          mapfile -t files < <(find tests -maxdepth 1 -type f -name 'test*.py' | sort)
+          selected=()
+          for i in "${!files[@]}"; do
+            if (( i % 12 == SHARD )); then
+              selected+=("${files[$i]}")
+            fi
+          done
+          printf 'Shard %s files:\n' "$SHARD"
+          printf '%s\n' "${selected[@]}"
+          uv run pytest -q "${selected[@]}"
