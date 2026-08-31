@@ -39,18 +39,14 @@ def _make_policy_identity_registry() -> tuple[
     def store(value: Tier1ExposurePolicy, tier_contract_sha256: str) -> None:
         key = id(value)
         if key in identities:
-            raise Tier1ExposureError(
-                "Tier 1 policy construction identity already exists"
-            )
+            raise Tier1ExposureError("Tier 1 policy construction identity already exists")
         identities[key] = tier_contract_sha256
         weakref.finalize(value, remove, key)
 
     def load(value: Tier1ExposurePolicy) -> str:
         identity = identities.get(id(value))
         if identity is None:
-            raise Tier1ExposureError(
-                "Tier 1 policy construction identity is missing"
-            )
+            raise Tier1ExposureError("Tier 1 policy construction identity is missing")
         return identity
 
     return store, load
@@ -68,18 +64,14 @@ def _make_usage_identity_registry() -> tuple[
     def store(value: Tier1ExposureUsage, counters: tuple[int, int]) -> None:
         key = id(value)
         if key in identities:
-            raise Tier1ExposureError(
-                "Tier 1 usage construction identity already exists"
-            )
+            raise Tier1ExposureError("Tier 1 usage construction identity already exists")
         identities[key] = counters
         weakref.finalize(value, remove, key)
 
     def load(value: Tier1ExposureUsage) -> tuple[int, int]:
         identity = identities.get(id(value))
         if identity is None:
-            raise Tier1ExposureError(
-                "Tier 1 usage construction identity is missing"
-            )
+            raise Tier1ExposureError("Tier 1 usage construction identity is missing")
         return identity
 
     return store, load
@@ -112,9 +104,7 @@ class Tier1ExposureUsage:
         _require_nonnegative_int(self.exposures_used, "exposures_used")
         bound_counters = _load_usage_identity(self)
         if (self.queries_used, self.exposures_used) != bound_counters:
-            raise Tier1ExposureError(
-                "Tier 1 usage counters changed after construction"
-            )
+            raise Tier1ExposureError("Tier 1 usage counters changed after construction")
         return Tier1ExposureUsage(
             queries_used=self.queries_used,
             exposures_used=self.exposures_used,
@@ -143,9 +133,7 @@ class Tier1ExposurePolicy:
         )
         contract = _validate_tier_contract(self.tier_contract)
         if contract.content_sha256 != bound_tier_contract_sha256:
-            raise Tier1ExposureError(
-                "tier contract identity changed after policy creation"
-            )
+            raise Tier1ExposureError("tier contract identity changed after policy creation")
         return contract, bound_tier_contract_sha256
 
     @property
@@ -164,9 +152,7 @@ class Tier1ExposurePolicy:
             if policy.tier is EvaluationTier.SEARCH
         ]
         if len(matches) != 1:
-            raise Tier1ExposureError(
-                "objective must define exactly one SEARCH exposure policy"
-            )
+            raise Tier1ExposureError("objective must define exactly one SEARCH exposure policy")
         policy = matches[0]
         return TierResultExposure(
             tier=policy.tier,
@@ -227,9 +213,7 @@ def record_tier1_exposure(
     usage_snapshot = _validate_policy_and_usage(policy, usage)
     _require_sorted_unique_fields(result_fields)
     if not set(result_fields).issubset(policy.allowed_result_fields):
-        raise Tier1ExposureError(
-            "Tier 1 result contains a field outside the frozen allow-list"
-        )
+        raise Tier1ExposureError("Tier 1 result contains a field outside the frozen allow-list")
     if usage_snapshot.exposures_used >= policy.max_exposures:
         raise Tier1ExposureError("Tier 1 result-exposure budget is exhausted")
     return Tier1ExposureUsage(
@@ -257,9 +241,7 @@ def _validate_policy_and_usage(
 
 def _validate_tier_contract(contract: TierEvaluationContract) -> TierEvaluationContract:
     if type(contract) is not TierEvaluationContract:
-        raise Tier1ExposureError(
-            "tier_contract must be an exact TierEvaluationContract"
-        )
+        raise Tier1ExposureError("tier_contract must be an exact TierEvaluationContract")
     if contract.tier is not EvaluationTier.SEARCH:
         raise Tier1ExposureError("Tier 1 exposure policy requires SEARCH tier")
     try:
@@ -289,9 +271,7 @@ def _require_sorted_unique_fields(values: tuple[str, ...]) -> None:
         raise Tier1ExposureError("result_fields must be an exact tuple")
     if not values:
         raise Tier1ExposureError("result_fields cannot be empty")
-    if any(
-        type(value) is not str or not value or value.strip() != value for value in values
-    ):
+    if any(type(value) is not str or not value or value.strip() != value for value in values):
         raise Tier1ExposureError("result_fields must contain canonical exact strings")
     if values != tuple(sorted(set(values))):
         raise Tier1ExposureError("result_fields must be sorted and unique")
