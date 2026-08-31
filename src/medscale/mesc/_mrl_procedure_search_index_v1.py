@@ -94,9 +94,7 @@ class ProcedureSearchIndexEntry:
 
     def _validated_snapshot(self) -> ProcedureSearchIndexEntry:
         if type(self) is not ProcedureSearchIndexEntry:
-            raise ProcedureSearchIndexError(
-                "entry must be an exact ProcedureSearchIndexEntry"
-            )
+            raise ProcedureSearchIndexError("entry must be an exact ProcedureSearchIndexEntry")
         bound = _load_identity(self, "procedure search-index entry")
         _require_sha256(bound, "bound entry content_sha256")
         _validate_entry(self)
@@ -156,9 +154,7 @@ class ProcedureSearchIndex:
 
     def _semantic_dict_validated(self) -> dict[str, object]:
         registry = _validated_registry(self.registry)
-        admission_sha256s = tuple(
-            admission.content_sha256 for admission in self.input_admissions
-        )
+        admission_sha256s = tuple(admission.content_sha256 for admission in self.input_admissions)
         return {
             "format": "MRL-PROCEDURE-SEARCH-INDEX-V1",
             "registry_sha256": registry.content_sha256,
@@ -250,7 +246,9 @@ def _derive_entries_and_admissions(
     for subject in active_subjects:
         event = registry.current_event(subject)
         if event.disposition is not ProcedureRegistryDisposition.ADMITTED:
-            raise ProcedureSearchIndexError("active registry projection contains non-admitted state")
+            raise ProcedureSearchIndexError(
+                "active registry projection contains non-admitted state"
+            )
         result = event.admission_result._validated_snapshot()
         procedure = result.admitted_procedure
         if type(procedure) is not ResearchProcedure:
@@ -264,18 +262,16 @@ def _derive_entries_and_admissions(
                 "admitted procedure failed canonical revalidation"
             ) from exc
         if procedure_snapshot.admission_subject_sha256 != subject:
-            raise ProcedureSearchIndexError(
-                "registry subject does not bind the admitted procedure"
-            )
+            raise ProcedureSearchIndexError("registry subject does not bind the admitted procedure")
         admitted_sha256 = procedure_snapshot.content_sha256
-        admission = admission_by_artifact.get(admitted_sha256)
-        if admission is None:
+        matched_admission = admission_by_artifact.get(admitted_sha256)
+        if matched_admission is None:
             raise ProcedureSearchIndexError(
                 "every active admitted procedure requires research-input admission"
             )
-        _stable_search_admission_sha256(admission)
+        _stable_search_admission_sha256(matched_admission)
         entries.append(_entry_from_procedure(subject, procedure_snapshot))
-        used_admissions.append(admission)
+        used_admissions.append(matched_admission)
 
     if len(used_admissions) != len(input_admissions):
         raise ProcedureSearchIndexError(

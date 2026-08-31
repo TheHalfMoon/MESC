@@ -136,9 +136,7 @@ def test_invalidated_procedure_disappears_on_complete_rebuild(
         (_admission_for_result("active", active),),
     )
 
-    assert tuple(entry.procedure_sha256 for entry in index.entries) == (
-        active.procedure_sha256,
-    )
+    assert tuple(entry.procedure_sha256 for entry in index.entries) == (active.procedure_sha256,)
     assert invalidated_result.procedure_sha256 not in (
         entry.procedure_sha256 for entry in index.entries
     )
