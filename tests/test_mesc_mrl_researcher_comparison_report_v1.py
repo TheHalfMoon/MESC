@@ -85,8 +85,7 @@ def test_metrics_are_derived_and_unrepresented_dimensions_are_explicitly_unavail
         == "NOT_AVAILABLE_FROM_FIXTURE_CONTRACT"
     )
     assert (
-        by_name["human_correction_count"]["availability"]
-        == "NOT_AVAILABLE_FROM_FIXTURE_CONTRACT"
+        by_name["human_correction_count"]["availability"] == "NOT_AVAILABLE_FROM_FIXTURE_CONTRACT"
     )
     assert (
         by_name["wasted_compute_on_known_failures"]["availability"]

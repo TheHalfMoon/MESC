@@ -132,8 +132,7 @@ class ResearcherMetricObservation:
             "metric": self.metric,
             "direction": self.direction.value,
             "availability": (
-                "AVAILABLE" if self.numerator is not None
-                else "NOT_AVAILABLE_FROM_FIXTURE_CONTRACT"
+                "AVAILABLE" if self.numerator is not None else "NOT_AVAILABLE_FROM_FIXTURE_CONTRACT"
             ),
             "numerator": self.numerator,
             "denominator": self.denominator,
@@ -208,13 +207,11 @@ class ResearcherComparisonReport:
             "campaign_id": first_run.campaign.campaign_id,
             "objective_sha256": first_run.campaign.objective_sha256,
             "arm_context_sha256s": {
-                context.benchmark_run.arm.value: context.content_sha256
-                for context in contexts
+                context.benchmark_run.arm.value: context.content_sha256 for context in contexts
             },
             "metrics": {
                 arm.value: [
-                    observation._semantic_dict_validated()
-                    for observation in observations[arm]
+                    observation._semantic_dict_validated() for observation in observations[arm]
                 ]
                 for arm in _REQUIRED_ARM_ORDER
             },
@@ -280,8 +277,7 @@ class ResearcherComparisonReport:
                     "- Comparable metrics: "
                     + (", ".join(universal_metrics) if universal_metrics else "none")
                 ),
-                "- Pareto frontier: "
-                + ", ".join(f"`{arm.value}`" for arm in pareto),
+                "- Pareto frontier: " + ", ".join(f"`{arm.value}`" for arm in pareto),
                 "",
                 "## Interpretation boundary",
                 "",
@@ -326,13 +322,10 @@ def _validate_report(report: ResearcherComparisonReport) -> None:
         raise ResearcherComparisonReportError("non_evidence must be exact True")
     contexts = _canonicalize_contexts(report.contexts)
     if report.contexts != contexts:
-        raise ResearcherComparisonReportError(
-            "contexts must use canonical researcher-arm order"
-        )
+        raise ResearcherComparisonReportError("contexts must use canonical researcher-arm order")
 
     campaign_ids = {
-        context.benchmark_run._validated_snapshot().campaign.campaign_id
-        for context in contexts
+        context.benchmark_run._validated_snapshot().campaign.campaign_id for context in contexts
     }
     objectives = {
         context.benchmark_run._validated_snapshot().campaign.objective_sha256
@@ -343,9 +336,7 @@ def _validate_report(report: ResearcherComparisonReport) -> None:
             "all researcher arms must share one campaign namespace"
         )
     if len(objectives) != 1:
-        raise ResearcherComparisonReportError(
-            "all researcher arms must share one frozen objective"
-        )
+        raise ResearcherComparisonReportError("all researcher arms must share one frozen objective")
 
 
 def _canonicalize_contexts(
@@ -358,9 +349,7 @@ def _canonicalize_contexts(
     for context in snapshots:
         arm = context.benchmark_run._validated_snapshot().arm
         if arm in by_arm:
-            raise ResearcherComparisonReportError(
-                f"duplicate researcher arm context: {arm.value}"
-            )
+            raise ResearcherComparisonReportError(f"duplicate researcher arm context: {arm.value}")
         by_arm[arm] = context
     if set(by_arm) != set(_REQUIRED_ARM_ORDER):
         raise ResearcherComparisonReportError(
@@ -383,10 +372,7 @@ def _validated_context(context: ResearcherArmContext) -> ResearcherArmContext:
 def _observations_by_arm(
     contexts: tuple[ResearcherArmContext, ...],
 ) -> dict[ResearcherBenchmarkArm, tuple[ResearcherMetricObservation, ...]]:
-    return {
-        context.benchmark_run.arm: _derive_observations(context)
-        for context in contexts
-    }
+    return {context.benchmark_run.arm: _derive_observations(context) for context in contexts}
 
 
 def _derive_observations(
@@ -534,9 +520,7 @@ def _validate_observation(observation: ResearcherMetricObservation) -> None:
             )
         return
     if observation.denominator is not None:
-        raise ResearcherComparisonReportError(
-            "unavailable metric denominator must be None"
-        )
+        raise ResearcherComparisonReportError("unavailable metric denominator must be None")
     if (
         type(observation.unavailable_reason) is not str
         or not observation.unavailable_reason
@@ -558,8 +542,7 @@ def _universally_available_metric_names(
     result: list[str] = []
     for metric in _METRIC_ORDER:
         values = tuple(
-            _observation_by_name(observations[arm], metric)
-            for arm in _REQUIRED_ARM_ORDER
+            _observation_by_name(observations[arm], metric) for arm in _REQUIRED_ARM_ORDER
         )
         if all(value.available for value in values):
             result.append(metric)
@@ -614,17 +597,11 @@ def _compare_available(
     first_snapshot = first._validated_snapshot()
     second_snapshot = second._validated_snapshot()
     if first_snapshot.metric != second_snapshot.metric:
-        raise ResearcherComparisonReportError(
-            "cannot compare different researcher metrics"
-        )
+        raise ResearcherComparisonReportError("cannot compare different researcher metrics")
     if first_snapshot.direction is not second_snapshot.direction:
-        raise ResearcherComparisonReportError(
-            "metric direction mismatch across researcher arms"
-        )
+        raise ResearcherComparisonReportError("metric direction mismatch across researcher arms")
     if not first_snapshot.available or not second_snapshot.available:
-        raise ResearcherComparisonReportError(
-            "Pareto comparison requires available metric values"
-        )
+        raise ResearcherComparisonReportError("Pareto comparison requires available metric values")
     assert first_snapshot.numerator is not None
     assert first_snapshot.denominator is not None
     assert second_snapshot.numerator is not None
@@ -645,9 +622,7 @@ def _observation_by_name(
 ) -> ResearcherMetricObservation:
     matches = tuple(item for item in observations if item.metric == metric)
     if len(matches) != 1:
-        raise ResearcherComparisonReportError(
-            f"metric observation missing or duplicated: {metric}"
-        )
+        raise ResearcherComparisonReportError(f"metric observation missing or duplicated: {metric}")
     return matches[0]._validated_snapshot()
 
 
