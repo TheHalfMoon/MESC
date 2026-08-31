@@ -106,16 +106,12 @@ class ResearcherArmContext:
 
     def _validated_snapshot(self) -> ResearcherArmContext:
         if type(self) is not ResearcherArmContext:
-            raise ResearcherArmContextError(
-                "context must be an exact ResearcherArmContext"
-            )
+            raise ResearcherArmContextError("context must be an exact ResearcherArmContext")
         bound = _load_identity(self, "researcher arm context")
         _validate_context(self)
         current = derive_content_sha256(self._semantic_dict_validated())
         if current != bound:
-            raise ResearcherArmContextError(
-                "researcher arm context changed after construction"
-            )
+            raise ResearcherArmContextError("researcher arm context changed after construction")
         return self
 
     def _semantic_dict_validated(self) -> dict[str, object]:
@@ -129,18 +125,12 @@ class ResearcherArmContext:
             "arm": run.arm.value,
             "benchmark_run_sha256": run.content_sha256,
             "researcher_visible_context": _visible_context_labels(run.arm),
-            "history_projection_sha256": (
-                None if history is None else history.content_sha256
-            ),
+            "history_projection_sha256": (None if history is None else history.content_sha256),
             "procedure_search_index_sha256": (
                 None if procedure_index is None else procedure_index.content_sha256
             ),
-            "portfolio_frontier_sha256": (
-                None if frontier is None else frontier.content_sha256
-            ),
-            "branch_semantics_sha256": (
-                None if semantics is None else semantics.content_sha256
-            ),
+            "portfolio_frontier_sha256": (None if frontier is None else frontier.content_sha256),
+            "branch_semantics_sha256": (None if semantics is None else semantics.content_sha256),
             "fixture_only": self.fixture_only,
             "non_evidence": self.non_evidence,
             "can_execute_agent": False,
@@ -300,7 +290,12 @@ def _validate_context(context: ResearcherArmContext) -> None:
         return
 
     if run.arm is ResearcherBenchmarkArm.PORTFOLIO_TREE_SEARCH:
-        if frontier is None or semantics is None or history is not None or procedure_index is not None:
+        if (
+            frontier is None
+            or semantics is None
+            or history is not None
+            or procedure_index is not None
+        ):
             raise ResearcherArmContextError(
                 "portfolio researcher requires exactly frontier and branch-semantics context"
             )
@@ -335,9 +330,7 @@ def _require_run_arm(
 ) -> ResearcherBenchmarkRun:
     snapshot = _validated_run(run)
     if snapshot.arm is not expected:
-        raise ResearcherArmContextError(
-            f"benchmark run arm must be {expected.value}"
-        )
+        raise ResearcherArmContextError(f"benchmark run arm must be {expected.value}")
     return snapshot
 
 
@@ -347,9 +340,7 @@ def _validated_run(run: ResearcherBenchmarkRun) -> ResearcherBenchmarkRun:
     try:
         return run._validated_snapshot()
     except ResearcherBenchmarkHarnessError as exc:
-        raise ResearcherArmContextError(
-            "benchmark run failed canonical revalidation"
-        ) from exc
+        raise ResearcherArmContextError("benchmark run failed canonical revalidation") from exc
 
 
 def _validated_history(value: CampaignHistoryProjection) -> CampaignHistoryProjection:
@@ -358,9 +349,7 @@ def _validated_history(value: CampaignHistoryProjection) -> CampaignHistoryProje
     try:
         return value._validated_snapshot()
     except CampaignHistoryProjectionError as exc:
-        raise ResearcherArmContextError(
-            "history projection failed canonical revalidation"
-        ) from exc
+        raise ResearcherArmContextError("history projection failed canonical revalidation") from exc
 
 
 def _validated_history_optional(
@@ -394,9 +383,7 @@ def _validated_frontier(
     try:
         return value._validated_snapshot()
     except CampaignPortfolioPolicyError as exc:
-        raise ResearcherArmContextError(
-            "portfolio frontier failed canonical revalidation"
-        ) from exc
+        raise ResearcherArmContextError("portfolio frontier failed canonical revalidation") from exc
 
 
 def _validated_frontier_optional(
@@ -411,9 +398,7 @@ def _validated_semantics(value: CampaignBranchSemantics) -> CampaignBranchSemant
     try:
         return value._validated_snapshot()
     except CampaignBranchSemanticsError as exc:
-        raise ResearcherArmContextError(
-            "branch semantics failed canonical revalidation"
-        ) from exc
+        raise ResearcherArmContextError("branch semantics failed canonical revalidation") from exc
 
 
 def _validated_semantics_optional(
