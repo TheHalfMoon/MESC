@@ -373,31 +373,31 @@ is then present on canonical `main`. Any head mutation burns prior exact-head ev
 
 ## MRL-6 — Contamination lineage and temporal canaries
 
-- [ ] **MRL-0601 — Define training-example lineage contract**
+- [x] **MRL-0601 — Define training-example lineage contract**
   - Depends on: MRL-0399.
 
-- [ ] **MRL-0602 — Add exact/near/semantic contamination interfaces**
+- [x] **MRL-0602 — Add exact/near/semantic contamination interfaces**
   - Depends on: MRL-0601.
 
-- [ ] **MRL-0603 — Add teacher/prompt/source transformation bindings**
+- [x] **MRL-0603 — Add teacher/prompt/source transformation bindings**
   - Depends on: MRL-0601.
 
-- [ ] **MRL-0604 — Add benchmark-derived-generation flags**
+- [x] **MRL-0604 — Add benchmark-derived-generation flags**
   - Depends on: MRL-0602, MRL-0603.
 
-- [ ] **MRL-0605 — Define temporal-canary manifest**
+- [x] **MRL-0605 — Define temporal-canary manifest**
   - Depends on: MRL-0601.
 
-- [ ] **MRL-0606 — Build R2-compatible sealed canary fixture workflow**
+- [x] **MRL-0606 — Build R2-compatible sealed canary fixture workflow**
   - Depends on: MRL-0605.
   - Constraint: synthetic/hand-authored only under current R2.
 
-- [ ] **MRL-0607 — Enforce no canary recycling into training/search**
+- [x] **MRL-0607 — Enforce no canary recycling into training/search**
   - Depends on: MRL-0606.
 
 ### MRL-6 gate
 
-- [ ] **MRL-0699 — Contamination-v2 exact-head qualification**
+- [x] **MRL-0699 — Contamination-v2 exact-head qualification**
   - Requires: MRL-0601..0607.
   - Exit: `MRL_CONTAMINATION_V2_READY`.
   - Real MRL preflight may not bypass this gate.
