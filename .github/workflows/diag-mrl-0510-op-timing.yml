@@ -1,0 +1,65 @@
+name: diag MRL-0510 operation timing
+
+on:
+  push:
+    branches:
+      - diag/mrl-0510-op-timing-40593d
+
+permissions:
+  contents: read
+
+jobs:
+  timing:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+      - name: Install Python 3.11
+        run: uv python install 3.11
+      - name: Sync (locked)
+        run: uv sync --frozen
+      - name: Time report operations
+        shell: bash
+        run: |
+          uv run python - <<'PY'
+          import sys
+          import time
+          from pathlib import Path
+
+          sys.path.insert(0, str(Path("tests").resolve()))
+          import pytest
+          from test_mesc_mrl_researcher_comparison_report_v1 import _contexts
+          from medscale.mesc._mrl_researcher_comparison_report_v1 import build_researcher_comparison_report
+
+          monkeypatch = pytest.MonkeyPatch()
+          started = time.perf_counter()
+          def mark(label: str) -> None:
+              now = time.perf_counter()
+              print(f"{label}: {now - started:.3f}s", flush=True)
+
+          contexts1 = _contexts(monkeypatch)
+          mark("contexts1")
+          first = build_researcher_comparison_report(contexts1)
+          mark("build-first")
+          contexts2 = _contexts(monkeypatch)
+          mark("contexts2")
+          second = build_researcher_comparison_report(contexts2)
+          mark("build-second")
+          _ = first.semantic_bytes
+          mark("first-semantic-bytes")
+          _ = second.semantic_bytes
+          mark("second-semantic-bytes")
+          _ = first.content_sha256
+          mark("first-hash")
+          _ = second.content_sha256
+          mark("second-hash")
+          _ = first.render_markdown()
+          mark("first-render")
+          _ = second.render_markdown()
+          mark("second-render")
+          monkeypatch.undo()
+          PY
