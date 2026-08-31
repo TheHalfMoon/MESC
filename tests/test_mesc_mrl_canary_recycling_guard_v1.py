@@ -151,6 +151,15 @@ def test_mutated_attempted_use_cannot_change_report_semantics() -> None:
         _ = report.content_sha256
 
 
+def test_mutated_report_identity_fails_closed() -> None:
+    receipt = _receipt()
+    report = build_canary_recycling_guard_report(receipt, ())
+    object.__setattr__(report, "canary_receipt_sha256", "f" * 64)
+
+    with pytest.raises(CanaryRecyclingError, match="report identity changed after construction"):
+        _ = report.content_sha256
+
+
 def test_valid_attempted_use_drift_fails_closed_before_new_report() -> None:
     receipt = _receipt()
     use = CanaryArtifactUse(
