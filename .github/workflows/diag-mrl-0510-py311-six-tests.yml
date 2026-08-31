@@ -1,0 +1,43 @@
+name: diag MRL-0510 py3.11 individual tests
+
+on:
+  push:
+    branches:
+      - diag/mrl-0510-py311-six-tests-40593d
+
+permissions:
+  contents: read
+
+jobs:
+  pytest:
+    name: ${{ matrix.label }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: canonical-arms
+            node: test_report_requires_and_canonicalizes_all_four_arms
+          - label: metrics
+            node: test_metrics_are_derived_and_unrepresented_dimensions_are_explicitly_unavailable
+          - label: pareto
+            node: test_equal_fixture_arms_all_remain_on_pareto_frontier
+          - label: markdown
+            node: test_markdown_is_deterministic_and_declares_fixture_boundary
+          - label: drift
+            node: test_report_fails_closed_on_context_drift_after_construction
+          - label: non-authoritative
+            node: test_report_is_non_authoritative
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+      - name: Install Python 3.11
+        run: uv python install 3.11
+      - name: Sync (locked)
+        run: uv sync --frozen
+      - name: Run isolated test
+        run: uv run pytest -q "tests/test_mesc_mrl_researcher_comparison_report_v1.py::${{ matrix.node }}"
