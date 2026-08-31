@@ -87,9 +87,7 @@ class CampaignPortfolioPolicy:
 
     def _validated_snapshot(self) -> CampaignPortfolioPolicy:
         if type(self) is not CampaignPortfolioPolicy:
-            raise CampaignPortfolioPolicyError(
-                "policy must be an exact CampaignPortfolioPolicy"
-            )
+            raise CampaignPortfolioPolicyError("policy must be an exact CampaignPortfolioPolicy")
         bound = _load_identity(self, "campaign portfolio policy")
         _validate_policy(self)
         current = derive_content_sha256(self._semantic_dict_validated())
@@ -198,13 +196,7 @@ class CampaignPortfolioFrontier:
         policy = self.policy._validated_snapshot()
         entries = tuple(item._validated_snapshot() for item in self.entries)
         roots = tuple(
-            sorted(
-                {
-                    root
-                    for entry in entries
-                    for root in entry.hypothesis_root_node_ids
-                }
-            )
+            sorted({root for entry in entries for root in entry.hypothesis_root_node_ids})
         )
         return {
             "format": "MRL-CAMPAIGN-PORTFOLIO-FRONTIER-V1",
@@ -277,13 +269,9 @@ def _validate_frontier(frontier: CampaignPortfolioFrontier) -> None:
     entries = tuple(item._validated_snapshot() for item in frontier.entries)
     node_ids = tuple(item.node_id for item in entries)
     if node_ids != tuple(sorted(set(node_ids))):
-        raise CampaignPortfolioPolicyError(
-            "frontier entries must be unique and sorted by node_id"
-        )
+        raise CampaignPortfolioPolicyError("frontier entries must be unique and sorted by node_id")
     expected = _derive_entries(campaign)
-    if tuple(item.to_dict() for item in entries) != tuple(
-        item.to_dict() for item in expected
-    ):
+    if tuple(item.to_dict() for item in entries) != tuple(item.to_dict() for item in expected):
         raise CampaignPortfolioPolicyError(
             "frontier entries do not match the exact canonical campaign frontier"
         )
@@ -294,9 +282,7 @@ def _derive_entries(
     campaign: ResearchCampaign,
 ) -> tuple[CampaignPortfolioFrontierEntry, ...]:
     node_by_id = {node.node_id: node for node in campaign.nodes}
-    outcome_by_node = {
-        item.terminal_node_id: item.outcome for item in campaign.branch_outcomes
-    }
+    outcome_by_node = {item.terminal_node_id: item.outcome for item in campaign.branch_outcomes}
     entries = tuple(
         CampaignPortfolioFrontierEntry(
             node_id=node_id,
@@ -333,8 +319,7 @@ def _hypothesis_roots(
             candidate
             for candidate in ancestors
             if not any(
-                parent_id in ancestors
-                for parent_id in node_by_id[candidate].parent_node_ids
+                parent_id in ancestors for parent_id in node_by_id[candidate].parent_node_ids
             )
         )
     )
@@ -371,23 +356,11 @@ def _enforce_policy(
     if len(entries) > policy.max_frontier_size:
         raise CampaignPortfolioPolicyError("current frontier exceeds max_frontier_size")
     if len(campaign.retained_alternative_node_ids) > policy.max_retained_alternatives:
-        raise CampaignPortfolioPolicyError(
-            "retained alternatives exceed max_retained_alternatives"
-        )
+        raise CampaignPortfolioPolicyError("retained alternatives exceed max_retained_alternatives")
     if len(campaign.replications) > policy.max_replication_relations:
-        raise CampaignPortfolioPolicyError(
-            "replication relations exceed max_replication_relations"
-        )
+        raise CampaignPortfolioPolicyError("replication relations exceed max_replication_relations")
 
-    roots = tuple(
-        sorted(
-            {
-                root
-                for entry in entries
-                for root in entry.hypothesis_root_node_ids
-            }
-        )
-    )
+    roots = tuple(sorted({root for entry in entries for root in entry.hypothesis_root_node_ids}))
     if entries and len(roots) < policy.min_distinct_hypothesis_roots:
         raise CampaignPortfolioPolicyError(
             "current frontier does not satisfy minimum hypothesis-root diversity"
@@ -451,16 +424,13 @@ def _validate_entry(entry: CampaignPortfolioFrontierEntry) -> None:
     if any(character not in "0123456789abcdef" for character in entry.artifact_sha256):
         raise CampaignPortfolioPolicyError("entry artifact_sha256 must be 64 lowercase hex")
     if type(entry.hypothesis_root_node_ids) is not tuple:
-        raise CampaignPortfolioPolicyError(
-            "hypothesis_root_node_ids must be an exact tuple"
-        )
-    if entry.hypothesis_root_node_ids != tuple(
-        sorted(set(entry.hypothesis_root_node_ids))
+        raise CampaignPortfolioPolicyError("hypothesis_root_node_ids must be an exact tuple")
+    if entry.hypothesis_root_node_ids != tuple(sorted(set(entry.hypothesis_root_node_ids))):
+        raise CampaignPortfolioPolicyError("hypothesis_root_node_ids must be unique and sorted")
+    if (
+        entry.terminal_outcome is not None
+        and type(entry.terminal_outcome) is not CampaignBranchOutcomeKind
     ):
-        raise CampaignPortfolioPolicyError(
-            "hypothesis_root_node_ids must be unique and sorted"
-        )
-    if entry.terminal_outcome is not None and type(entry.terminal_outcome) is not CampaignBranchOutcomeKind:
         raise CampaignPortfolioPolicyError("terminal_outcome has an invalid type")
     if type(entry.expandable) is not bool:
         raise CampaignPortfolioPolicyError("expandable must be an exact bool")
