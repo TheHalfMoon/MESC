@@ -60,9 +60,7 @@ def _make_manifest_identity_registry() -> tuple[
     def load(value: TemporalCanaryManifest) -> str:
         identity = identities.get(id(value))
         if identity is None:
-            raise TemporalCanaryManifestError(
-                "temporal canary construction identity is missing"
-            )
+            raise TemporalCanaryManifestError("temporal canary construction identity is missing")
         return identity
 
     return store, load
@@ -110,9 +108,7 @@ class TemporalCanaryManifest:
 
     def _validated_snapshot(self) -> TemporalCanaryManifest:
         if type(self) is not TemporalCanaryManifest:
-            raise TemporalCanaryManifestError(
-                "manifest must be an exact TemporalCanaryManifest"
-            )
+            raise TemporalCanaryManifestError("manifest must be an exact TemporalCanaryManifest")
         bound_content_sha256 = _load_manifest_identity(self)
         _require_sha256(bound_content_sha256, "bound manifest content_sha256")
         snapshot = TemporalCanaryManifest(
@@ -126,9 +122,7 @@ class TemporalCanaryManifest:
         )
         current_content_sha256 = derive_content_sha256(snapshot._semantic_dict_validated())
         if current_content_sha256 != bound_content_sha256:
-            raise TemporalCanaryManifestError(
-                "temporal canary identity changed after construction"
-            )
+            raise TemporalCanaryManifestError("temporal canary identity changed after construction")
         return snapshot
 
     @property

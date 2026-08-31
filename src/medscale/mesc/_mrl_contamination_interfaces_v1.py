@@ -135,9 +135,7 @@ class ContaminationCheckEvidence:
 
     def _validated_snapshot(self) -> ContaminationCheckEvidence:
         if type(self) is not ContaminationCheckEvidence:
-            raise ContaminationInterfaceError(
-                "check must be an exact ContaminationCheckEvidence"
-            )
+            raise ContaminationInterfaceError("check must be an exact ContaminationCheckEvidence")
         bound_content_sha256 = _load_check_identity(self)
         _require_sha256(bound_content_sha256, "bound check content_sha256")
         snapshot = ContaminationCheckEvidence(
@@ -199,9 +197,7 @@ class ContaminationEvidenceReport:
 
     def _validated_snapshot(self) -> ContaminationEvidenceReport:
         if type(self) is not ContaminationEvidenceReport:
-            raise ContaminationInterfaceError(
-                "report must be an exact ContaminationEvidenceReport"
-            )
+            raise ContaminationInterfaceError("report must be an exact ContaminationEvidenceReport")
         if type(self.checks) is not tuple:
             raise ContaminationInterfaceError("checks must be an exact tuple")
         bound_content_sha256 = _load_report_identity(self)
@@ -222,9 +218,7 @@ class ContaminationEvidenceReport:
     def _disposition_validated(self) -> ContaminationDisposition:
         if any(item.disposition is ContaminationDisposition.BLOCKED for item in self.checks):
             return ContaminationDisposition.BLOCKED
-        if any(
-            item.disposition is ContaminationDisposition.INDETERMINATE for item in self.checks
-        ):
+        if any(item.disposition is ContaminationDisposition.INDETERMINATE for item in self.checks):
             return ContaminationDisposition.INDETERMINATE
         return ContaminationDisposition.CLEAR
 
@@ -293,9 +287,7 @@ def _validate_check(value: ContaminationCheckEvidence) -> None:
     _require_sha256(value.detector_artifact_sha256, "detector_artifact_sha256")
     _require_sha256(value.evidence_artifact_sha256, "evidence_artifact_sha256")
     if type(value.disposition) is not ContaminationDisposition:
-        raise ContaminationInterfaceError(
-            "disposition must be an exact ContaminationDisposition"
-        )
+        raise ContaminationInterfaceError("disposition must be an exact ContaminationDisposition")
     if value.kind is ContaminationCheckKind.EXACT:
         if value.similarity_decimal is not None or value.threshold_decimal is not None:
             raise ContaminationInterfaceError(
