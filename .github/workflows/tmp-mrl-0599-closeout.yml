@@ -1,0 +1,57 @@
+name: tmp MRL-0599 ledger closeout
+
+on:
+  push:
+    branches:
+      - docs/mrl-0599-researcher-eval-closeout-3ba536
+
+permissions:
+  contents: write
+
+jobs:
+  closeout:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Close exact MRL-5 ledger entries
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("specs/mesc-research-loop-v1/tasks.md")
+          text = path.read_text()
+          task_ids = [
+              "MRL-0501", "MRL-0502", "MRL-0503", "MRL-0504", "MRL-0505",
+              "MRL-0506", "MRL-0507", "MRL-0508", "MRL-0509", "MRL-0510",
+              "MRL-0599",
+          ]
+          for task_id in task_ids:
+              old = f"- [ ] **{task_id}"
+              new = f"- [x] **{task_id}"
+              if text.count(old) != 1:
+                  raise SystemExit(f"expected exactly one unchecked {task_id}, found {text.count(old)}")
+              if text.count(new) != 0:
+                  raise SystemExit(f"unexpected pre-existing checked {task_id}")
+              text = text.replace(old, new, 1)
+          path.write_text(text)
+
+          updated = path.read_text()
+          for task_id in task_ids:
+              assert updated.count(f"- [x] **{task_id}") == 1
+              assert updated.count(f"- [ ] **{task_id}") == 0
+          PY
+      - name: Verify scope and self-delete
+        shell: bash
+        run: |
+          git diff -- specs/mesc-research-loop-v1/tasks.md
+          test "$(git diff --name-only -- specs/mesc-research-loop-v1/tasks.md | wc -l)" -eq 1
+          rm .github/workflows/tmp-mrl-0599-closeout.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add specs/mesc-research-loop-v1/tasks.md .github/workflows/tmp-mrl-0599-closeout.yml
+          git commit -m "docs(mrl): close researcher evaluation ledger"
+          git push origin HEAD:docs/mrl-0599-researcher-eval-closeout-3ba536
