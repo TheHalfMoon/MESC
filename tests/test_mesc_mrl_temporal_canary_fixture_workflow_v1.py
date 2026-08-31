@@ -86,7 +86,7 @@ def test_workflow_uses_fixture_snapshots_if_live_evaluator_drifts_mid_call(
     original_metric_id = evaluator.metric_id
     original_build_candidate: Callable[
         [FixtureResearchSurface, tuple[FixtureParameterValue, ...]], FixtureCandidate
-    ] = getattr(canary_module, "build_fixture_candidate")
+    ] = canary_module.build_fixture_candidate
     mutation_performed = False
 
     def mutate_live_evaluator_then_build_snapshot(
