@@ -1,0 +1,105 @@
+name: prep MRL-3 integrity reconciliation
+
+on:
+  push:
+    branches:
+      - prep/mrl-3-integrity-reconciliation-388bd9
+
+permissions:
+  contents: write
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: true
+          fetch-depth: 0
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+      - name: Install Python 3.11
+        run: uv python install 3.11
+      - name: Sync (locked)
+        run: uv sync --frozen
+      - name: Reconcile downstream sealed-report validation
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_function(path: str, start_marker: str, end_marker: str, replacement: str) -> None:
+              target = Path(path)
+              text = target.read_text()
+              start = text.index(start_marker)
+              end = text.index(end_marker, start)
+              target.write_text(text[:start] + replacement.rstrip() + "\n\n" + text[end + 1 :])
+
+          replace_function(
+              "src/medscale/mesc/_mrl_hard_medical_non_regression_v1.py",
+              "def _snapshot_sealed_report(\n",
+              "\ndef _validate_report_against_objective(\n",
+              '''def _snapshot_sealed_report(\n    report: SealedEvaluationEvidenceReport,\n) -> SealedEvaluationEvidenceReport:\n    if type(report) is not SealedEvaluationEvidenceReport:\n        raise HardMedicalNonRegressionError(\n            "sealed report must be an exact SealedEvaluationEvidenceReport"\n        )\n    try:\n        return report._validated_snapshot()\n    except (AttributeError, TypeError, ValueError) as exc:\n        raise HardMedicalNonRegressionError(\n            "sealed evidence report failed semantic revalidation"\n        ) from exc''',
+          )
+
+          replace_function(
+              "src/medscale/mesc/_mrl_pareto_comparison_v1.py",
+              "def _snapshot_sealed_report(\n",
+              "\ndef _hard_gate_relation(\n",
+              '''def _snapshot_sealed_report(\n    report: SealedEvaluationEvidenceReport,\n) -> SealedEvaluationEvidenceReport:\n    if type(report) is not SealedEvaluationEvidenceReport:\n        raise ParetoComparisonError(\n            "sealed report must be an exact SealedEvaluationEvidenceReport"\n        )\n    try:\n        return report._validated_snapshot()\n    except (AttributeError, TypeError, ValueError) as exc:\n        raise ParetoComparisonError(\n            "sealed evidence report failed canonical revalidation"\n        ) from exc''',
+          )
+
+          hard_test = Path("tests/test_mesc_mrl_hard_medical_non_regression_v1.py")
+          hard_text = hard_test.read_text()
+          hard_case = '''\n\ndef test_valid_sealed_report_identity_drift_fails_closed_before_hard_gate_evaluation() -> None:\n    objective = _objective()\n    sealed = _sealed_report(objective)\n    object.__setattr__(sealed, "sealed_evidence_ref_sha256", "1" * 64)\n\n    with pytest.raises(HardMedicalNonRegressionError, match="semantic revalidation"):\n        evaluate_hard_medical_non_regression(objective, sealed)\n'''
+          if "test_valid_sealed_report_identity_drift_fails_closed_before_hard_gate_evaluation" not in hard_text:
+              hard_test.write_text(hard_text.rstrip() + hard_case + "\n")
+
+          pareto_test = Path("tests/test_mesc_mrl_pareto_comparison_v1.py")
+          pareto_text = pareto_test.read_text()
+          pareto_case = '''\n\ndef test_valid_candidate_sealed_report_identity_drift_fails_closed_before_pareto() -> None:\n    objective = _multi_objective()\n    reference = _sealed_report(\n        objective,\n        candidate_marker="a",\n        cost="10",\n        safety="0.96",\n        subgroup_safety="0.94",\n    )\n    candidate = _sealed_report(\n        objective,\n        candidate_marker="b",\n        cost="9",\n        safety="0.97",\n        subgroup_safety="0.95",\n    )\n    object.__setattr__(candidate, "sealed_evidence_ref_sha256", "f" * 64)\n\n    with pytest.raises(ParetoComparisonError, match="hard-gate revalidation"):\n        compare_pareto_evidence(objective, reference, candidate)\n'''
+          if "test_valid_candidate_sealed_report_identity_drift_fails_closed_before_pareto" not in pareto_text:
+              pareto_test.write_text(pareto_text.rstrip() + pareto_case + "\n")
+          PY
+      - name: Canonical format
+        run: >-
+          uv run ruff format
+          src/medscale/mesc/_mrl_replication_set_policy_v1.py
+          src/medscale/mesc/_mrl_sealed_evaluation_interface_v1.py
+          src/medscale/mesc/_mrl_sealed_evaluation_evidence_v1.py
+          src/medscale/mesc/_mrl_hard_medical_non_regression_v1.py
+          src/medscale/mesc/_mrl_pareto_comparison_v1.py
+          src/medscale/mesc/_mrl_adaptive_campaign_accounting_v1.py
+          src/medscale/mesc/_mrl_adaptive_budget_exhaustion_v1.py
+          tests/test_mesc_mrl_replication_set_policy_v1.py
+          tests/test_mesc_mrl_sealed_evaluation_interface_v1.py
+          tests/test_mesc_mrl_sealed_evaluation_evidence_v1.py
+          tests/test_mesc_mrl_hard_medical_non_regression_v1.py
+          tests/test_mesc_mrl_pareto_comparison_v1.py
+          tests/test_mesc_mrl_adaptive_campaign_accounting_v1.py
+          tests/test_mesc_mrl_adaptive_budget_exhaustion_v1.py
+      - name: Ruff lint
+        run: uv run ruff check .
+      - name: Strict mypy
+        run: uv run mypy
+      - name: Focused MRL-0303..0309 tests
+        run: >-
+          uv run pytest -q
+          tests/test_mesc_mrl_replication_set_policy_v1.py
+          tests/test_mesc_mrl_sealed_evaluation_interface_v1.py
+          tests/test_mesc_mrl_sealed_evaluation_evidence_v1.py
+          tests/test_mesc_mrl_hard_medical_non_regression_v1.py
+          tests/test_mesc_mrl_pareto_comparison_v1.py
+          tests/test_mesc_mrl_adaptive_campaign_accounting_v1.py
+          tests/test_mesc_mrl_adaptive_budget_exhaustion_v1.py
+      - name: Remove prep workflow and commit reconciled blobs
+        if: success()
+        shell: bash
+        run: |
+          rm .github/workflows/prep-mrl-3-integrity-reconciliation.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/medscale/mesc/_mrl_* tests/test_mesc_mrl_* .github/workflows/prep-mrl-3-integrity-reconciliation.yml
+          git commit -m "fix(mrl): reconcile construction-bound evaluation evidence"
+          git push origin HEAD:prep/mrl-3-integrity-reconciliation-388bd9
