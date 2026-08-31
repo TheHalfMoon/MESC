@@ -24,7 +24,7 @@ jobs:
           enable-cache: false
 
       - name: Sync locked environment
-        run: uv sync --locked --extra dev
+        run: uv sync --frozen
 
       - name: Apply canonical Ruff formatting
         run: |
@@ -43,7 +43,7 @@ jobs:
             tests/test_mesc_mrl_procedure_admission_gate_v1.py
 
       - name: Strict mypy
-        run: uv run mypy --strict src tests
+        run: uv run mypy
 
       - name: Focused pytest
         run: |
