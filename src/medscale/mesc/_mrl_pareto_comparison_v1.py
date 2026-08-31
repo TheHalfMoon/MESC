@@ -82,18 +82,14 @@ def _make_metric_identity_registry() -> tuple[
     def store(value: ParetoMetricComparison, content_sha256: str) -> None:
         key = id(value)
         if key in identities:
-            raise ParetoComparisonError(
-                "Pareto metric construction identity already exists"
-            )
+            raise ParetoComparisonError("Pareto metric construction identity already exists")
         identities[key] = content_sha256
         weakref.finalize(value, remove, key)
 
     def load(value: ParetoMetricComparison) -> str:
         identity = identities.get(id(value))
         if identity is None:
-            raise ParetoComparisonError(
-                "Pareto metric construction identity is missing"
-            )
+            raise ParetoComparisonError("Pareto metric construction identity is missing")
         return identity
 
     return store, load
@@ -111,18 +107,14 @@ def _make_report_identity_registry() -> tuple[
     def store(value: ParetoComparisonReport, content_sha256: str) -> None:
         key = id(value)
         if key in identities:
-            raise ParetoComparisonError(
-                "Pareto report construction identity already exists"
-            )
+            raise ParetoComparisonError("Pareto report construction identity already exists")
         identities[key] = content_sha256
         weakref.finalize(value, remove, key)
 
     def load(value: ParetoComparisonReport) -> str:
         identity = identities.get(id(value))
         if identity is None:
-            raise ParetoComparisonError(
-                "Pareto report construction identity is missing"
-            )
+            raise ParetoComparisonError("Pareto report construction identity is missing")
         return identity
 
     return store, load
@@ -193,9 +185,7 @@ class ParetoMetricComparison:
         )
         current_content_sha256 = derive_content_sha256(snapshot._to_dict_validated())
         if current_content_sha256 != bound_content_sha256:
-            raise ParetoComparisonError(
-                "Pareto metric identity changed after construction"
-            )
+            raise ParetoComparisonError("Pareto metric identity changed after construction")
         return snapshot
 
     def _to_dict_validated(self) -> dict[str, object]:
@@ -294,15 +284,12 @@ class ParetoComparisonReport:
             candidate_hard_gate_report_sha256=self.candidate_hard_gate_report_sha256,
             relation=self.relation,
             metrics=tuple(
-                ParetoMetricComparison._validated_snapshot(metric)
-                for metric in self.metrics
+                ParetoMetricComparison._validated_snapshot(metric) for metric in self.metrics
             ),
         )
         current_content_sha256 = derive_content_sha256(snapshot._semantic_dict_validated())
         if current_content_sha256 != bound_content_sha256:
-            raise ParetoComparisonError(
-                "Pareto report identity changed after construction"
-            )
+            raise ParetoComparisonError("Pareto report identity changed after construction")
         return snapshot
 
     @property
@@ -425,43 +412,11 @@ def _snapshot_sealed_report(
     report: SealedEvaluationEvidenceReport,
 ) -> SealedEvaluationEvidenceReport:
     if type(report) is not SealedEvaluationEvidenceReport:
-        raise ParetoComparisonError(
-            "sealed report must be an exact SealedEvaluationEvidenceReport"
-        )
-    if type(report.evaluator_artifacts) is not tuple:
-        raise ParetoComparisonError("sealed evaluator_artifacts must remain an exact tuple")
-    for item in report.evaluator_artifacts:
-        if type(item) is not tuple or len(item) != 2:
-            raise ParetoComparisonError("sealed evaluator_artifacts contains invalid entry")
-    if type(report.metric_evidence) is not tuple:
-        raise ParetoComparisonError("sealed metric_evidence must remain an exact tuple")
-    if any(type(item) is not SealedMetricEvidence for item in report.metric_evidence):
-        raise ParetoComparisonError("sealed metric_evidence contains invalid item type")
-
+        raise ParetoComparisonError("sealed report must be an exact SealedEvaluationEvidenceReport")
     try:
-        metrics = tuple(
-            SealedMetricEvidence(
-                metric_id=item.metric_id,
-                evaluator_id=item.evaluator_id,
-                value_decimal=item.value_decimal,
-                evidence_artifact_sha256=item.evidence_artifact_sha256,
-                subgroup=item.subgroup,
-            )
-            for item in report.metric_evidence
-        )
-        return SealedEvaluationEvidenceReport(
-            objective_sha256=report.objective_sha256,
-            tier_contract_sha256=report.tier_contract_sha256,
-            request_sha256=report.request_sha256,
-            handoff_sha256=report.handoff_sha256,
-            sealed_evidence_ref_sha256=report.sealed_evidence_ref_sha256,
-            evaluator_artifacts=report.evaluator_artifacts,
-            metric_evidence=metrics,
-        )
+        return report._validated_snapshot()
     except (AttributeError, TypeError, ValueError) as exc:
-        raise ParetoComparisonError(
-            "sealed evidence report failed canonical revalidation"
-        ) from exc
+        raise ParetoComparisonError("sealed evidence report failed canonical revalidation") from exc
 
 
 def _hard_gate_relation(

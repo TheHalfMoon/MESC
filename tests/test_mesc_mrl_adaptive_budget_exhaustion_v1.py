@@ -105,7 +105,7 @@ def test_disallowed_adaptive_tier_is_blocked_without_fabricating_budget_exhausti
 
 
 def test_block_reasons_must_exactly_match_remaining_capacity() -> None:
-    with pytest.raises(AdaptiveBudgetExhaustionError, match="exhausted adaptive capacities"):
+    with pytest.raises(AdaptiveBudgetExhaustionError, match="at least one exhausted capacity"):
         AdaptiveTierDisposition(
             tier=EvaluationTier.SEARCH,
             state=AdaptiveTierUseState.BLOCKED,
@@ -171,7 +171,7 @@ def test_mutated_block_reason_or_report_identity_fails_closed() -> None:
     report = build_adaptive_budget_disposition(objective, campaign)
     object.__setattr__(report.tiers[0], "queries_remaining", 1)
 
-    with pytest.raises(AdaptiveBudgetExhaustionError, match="exhausted adaptive capacities"):
+    with pytest.raises(AdaptiveBudgetExhaustionError, match="at least one exhausted capacity"):
         report.semantic_dict()
 
     fresh = build_adaptive_budget_disposition(objective, campaign)

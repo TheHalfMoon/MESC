@@ -65,9 +65,7 @@ def _make_metric_identity_registry() -> tuple[
     def load(value: SealedMetricEvidence) -> str:
         identity = identities.get(id(value))
         if identity is None:
-            raise SealedEvaluationEvidenceError(
-                "sealed metric construction identity is missing"
-            )
+            raise SealedEvaluationEvidenceError("sealed metric construction identity is missing")
         return identity
 
     return store, load
@@ -144,9 +142,7 @@ class SealedMetricEvidence:
         )
         current_content_sha256 = derive_content_sha256(snapshot._to_dict_validated())
         if current_content_sha256 != bound_content_sha256:
-            raise SealedEvaluationEvidenceError(
-                "sealed metric identity changed after construction"
-            )
+            raise SealedEvaluationEvidenceError("sealed metric identity changed after construction")
         return snapshot
 
     def _to_dict_validated(self) -> dict[str, object]:
@@ -197,13 +193,9 @@ class SealedEvaluationEvidenceReport:
                 "report must be an exact SealedEvaluationEvidenceReport"
             )
         if type(self.evaluator_artifacts) is not tuple:
-            raise SealedEvaluationEvidenceError(
-                "evaluator_artifacts must be a non-empty tuple"
-            )
+            raise SealedEvaluationEvidenceError("evaluator_artifacts must be a non-empty tuple")
         if type(self.metric_evidence) is not tuple:
-            raise SealedEvaluationEvidenceError(
-                "metric_evidence must be a non-empty exact tuple"
-            )
+            raise SealedEvaluationEvidenceError("metric_evidence must be a non-empty exact tuple")
         bound_content_sha256 = _load_report_identity(self)
         _require_sha256(bound_content_sha256, "bound report content_sha256")
         evaluator_artifacts = tuple(
@@ -294,9 +286,7 @@ def build_sealed_evaluation_evidence_report(
     try:
         request_snapshot = request._validated_snapshot()
         handoff_snapshot = handoff._validated_snapshot()
-        metrics = tuple(
-            SealedMetricEvidence._validated_snapshot(item) for item in metric_evidence
-        )
+        metrics = tuple(SealedMetricEvidence._validated_snapshot(item) for item in metric_evidence)
     except (AttributeError, TypeError, ValueError) as exc:
         raise SealedEvaluationEvidenceError(
             "sealed request, handoff, or metric evidence failed canonical revalidation"

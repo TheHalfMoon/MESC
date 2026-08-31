@@ -170,8 +170,7 @@ def test_reference_dominance_and_equivalence_are_deterministic() -> None:
         is ParetoRelation.REFERENCE_DOMINATES
     )
     assert (
-        compare_pareto_evidence(objective, reference, equal).relation
-        is ParetoRelation.EQUIVALENT
+        compare_pareto_evidence(objective, reference, equal).relation is ParetoRelation.EQUIVALENT
     )
 
 
@@ -388,3 +387,25 @@ def test_mismatched_objective_or_evidence_fails_closed() -> None:
 
     with pytest.raises(ParetoComparisonError, match="hard-gate revalidation"):
         compare_pareto_evidence(changed, reference, candidate)
+
+
+def test_valid_candidate_sealed_report_identity_drift_fails_closed_before_pareto() -> None:
+    objective = _multi_objective()
+    reference = _sealed_report(
+        objective,
+        candidate_marker="a",
+        cost="10",
+        safety="0.96",
+        subgroup_safety="0.94",
+    )
+    candidate = _sealed_report(
+        objective,
+        candidate_marker="b",
+        cost="9",
+        safety="0.97",
+        subgroup_safety="0.95",
+    )
+    object.__setattr__(candidate, "sealed_evidence_ref_sha256", "f" * 64)
+
+    with pytest.raises(ParetoComparisonError, match="hard-gate revalidation"):
+        compare_pareto_evidence(objective, reference, candidate)

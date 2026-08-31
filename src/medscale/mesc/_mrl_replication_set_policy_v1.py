@@ -61,9 +61,7 @@ def _make_policy_identity_registry() -> tuple[
     def load(value: ReplicationSetPolicy) -> str:
         identity = identities.get(id(value))
         if identity is None:
-            raise ReplicationSetPolicyError(
-                "replication policy construction identity is missing"
-            )
+            raise ReplicationSetPolicyError("replication policy construction identity is missing")
         return identity
 
     return store, load
@@ -90,9 +88,7 @@ def _make_member_identity_registry() -> tuple[
     def load(value: ReplicationSetMember) -> str:
         identity = identities.get(id(value))
         if identity is None:
-            raise ReplicationSetPolicyError(
-                "replication member construction identity is missing"
-            )
+            raise ReplicationSetPolicyError("replication member construction identity is missing")
         return identity
 
     return store, load
@@ -110,18 +106,14 @@ def _make_set_identity_registry() -> tuple[
     def store(value: ReplicationSet, content_sha256: str) -> None:
         key = id(value)
         if key in identities:
-            raise ReplicationSetPolicyError(
-                "replication set construction identity already exists"
-            )
+            raise ReplicationSetPolicyError("replication set construction identity already exists")
         identities[key] = content_sha256
         weakref.finalize(value, remove, key)
 
     def load(value: ReplicationSet) -> str:
         identity = identities.get(id(value))
         if identity is None:
-            raise ReplicationSetPolicyError(
-                "replication set construction identity is missing"
-            )
+            raise ReplicationSetPolicyError("replication set construction identity is missing")
         return identity
 
     return store, load
@@ -151,9 +143,7 @@ class ReplicationSetMember:
 
     def _validated_snapshot(self) -> ReplicationSetMember:
         if type(self) is not ReplicationSetMember:
-            raise ReplicationSetPolicyError(
-                "member must be an exact ReplicationSetMember"
-            )
+            raise ReplicationSetPolicyError("member must be an exact ReplicationSetMember")
         bound_content_sha256 = _load_member_identity(self)
         _require_sha256(bound_content_sha256, "bound member content_sha256")
         snapshot = ReplicationSetMember(
@@ -318,9 +308,7 @@ class ReplicationSet:
         )
         current_content_sha256 = derive_content_sha256(snapshot._to_dict_validated())
         if current_content_sha256 != bound_content_sha256:
-            raise ReplicationSetPolicyError(
-                "replication set identity changed after construction"
-            )
+            raise ReplicationSetPolicyError("replication set identity changed after construction")
         return snapshot
 
     def _to_dict_validated(self) -> dict[str, object]:
@@ -349,9 +337,7 @@ def build_replication_set(
     if type(members) is not tuple:
         raise ReplicationSetPolicyError("members must be an exact tuple")
     _, objective_sha256 = policy._validated_objective()
-    member_snapshots = tuple(
-        ReplicationSetMember._validated_snapshot(member) for member in members
-    )
+    member_snapshots = tuple(ReplicationSetMember._validated_snapshot(member) for member in members)
     if len(member_snapshots) > policy.max_replication_queries:
         raise ReplicationSetPolicyError("replication set exceeds the frozen Tier 2 query ceiling")
     exposure = policy.replication_exposure

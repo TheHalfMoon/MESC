@@ -125,7 +125,7 @@ def test_policy_construction_identity_is_not_reachable_as_mutable_state() -> Non
 def test_mutated_member_fails_closed_before_replication_set_serialization() -> None:
     members = _members()
     replication_set = build_replication_set(_policy(), members)
-    object.__setattr__(members[0], "artifact_sha256", "invalid")
+    object.__setattr__(replication_set.members[0], "artifact_sha256", "invalid")
 
     with pytest.raises(ReplicationSetPolicyError, match="artifact_sha256"):
         replication_set.to_dict()

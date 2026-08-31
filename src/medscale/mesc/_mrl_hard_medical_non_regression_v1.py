@@ -59,18 +59,14 @@ def _make_gate_identity_registry() -> tuple[
     def store(value: HardMedicalGateResult, content_sha256: str) -> None:
         key = id(value)
         if key in identities:
-            raise HardMedicalNonRegressionError(
-                "hard-gate construction identity already exists"
-            )
+            raise HardMedicalNonRegressionError("hard-gate construction identity already exists")
         identities[key] = content_sha256
         weakref.finalize(value, remove, key)
 
     def load(value: HardMedicalGateResult) -> str:
         identity = identities.get(id(value))
         if identity is None:
-            raise HardMedicalNonRegressionError(
-                "hard-gate construction identity is missing"
-            )
+            raise HardMedicalNonRegressionError("hard-gate construction identity is missing")
         return identity
 
     return store, load
@@ -97,9 +93,7 @@ def _make_report_identity_registry() -> tuple[
     def load(value: HardMedicalNonRegressionReport) -> str:
         identity = identities.get(id(value))
         if identity is None:
-            raise HardMedicalNonRegressionError(
-                "hard-gate report construction identity is missing"
-            )
+            raise HardMedicalNonRegressionError("hard-gate report construction identity is missing")
         return identity
 
     return store, load
@@ -152,9 +146,7 @@ class HardMedicalGateResult:
 
     def _validated_snapshot(self) -> HardMedicalGateResult:
         if type(self) is not HardMedicalGateResult:
-            raise HardMedicalNonRegressionError(
-                "gate must be an exact HardMedicalGateResult"
-            )
+            raise HardMedicalNonRegressionError("gate must be an exact HardMedicalGateResult")
         bound_content_sha256 = _load_gate_identity(self)
         _require_sha256(bound_content_sha256, "bound gate content_sha256")
         snapshot = HardMedicalGateResult(
@@ -170,9 +162,7 @@ class HardMedicalGateResult:
         )
         current_content_sha256 = derive_content_sha256(snapshot._to_dict_validated())
         if current_content_sha256 != bound_content_sha256:
-            raise HardMedicalNonRegressionError(
-                "hard-gate identity changed after construction"
-            )
+            raise HardMedicalNonRegressionError("hard-gate identity changed after construction")
         return snapshot
 
     def _to_dict_validated(self) -> dict[str, object]:
@@ -354,36 +344,12 @@ def evaluate_hard_medical_non_regression(
 def _snapshot_sealed_report(
     report: SealedEvaluationEvidenceReport,
 ) -> SealedEvaluationEvidenceReport:
-    if type(report.evaluator_artifacts) is not tuple:
-        raise HardMedicalNonRegressionError("sealed evaluator_artifacts must remain an exact tuple")
-    for item in report.evaluator_artifacts:
-        if type(item) is not tuple or len(item) != 2:
-            raise HardMedicalNonRegressionError("sealed evaluator_artifacts contains invalid entry")
-    if type(report.metric_evidence) is not tuple:
-        raise HardMedicalNonRegressionError("sealed metric_evidence must remain an exact tuple")
-    if any(type(item) is not SealedMetricEvidence for item in report.metric_evidence):
-        raise HardMedicalNonRegressionError("sealed metric_evidence contains invalid item type")
-
+    if type(report) is not SealedEvaluationEvidenceReport:
+        raise HardMedicalNonRegressionError(
+            "sealed report must be an exact SealedEvaluationEvidenceReport"
+        )
     try:
-        metrics = tuple(
-            SealedMetricEvidence(
-                metric_id=item.metric_id,
-                evaluator_id=item.evaluator_id,
-                value_decimal=item.value_decimal,
-                evidence_artifact_sha256=item.evidence_artifact_sha256,
-                subgroup=item.subgroup,
-            )
-            for item in report.metric_evidence
-        )
-        return SealedEvaluationEvidenceReport(
-            objective_sha256=report.objective_sha256,
-            tier_contract_sha256=report.tier_contract_sha256,
-            request_sha256=report.request_sha256,
-            handoff_sha256=report.handoff_sha256,
-            sealed_evidence_ref_sha256=report.sealed_evidence_ref_sha256,
-            evaluator_artifacts=report.evaluator_artifacts,
-            metric_evidence=metrics,
-        )
+        return report._validated_snapshot()
     except (AttributeError, TypeError, ValueError) as exc:
         raise HardMedicalNonRegressionError(
             "sealed evidence report failed semantic revalidation"

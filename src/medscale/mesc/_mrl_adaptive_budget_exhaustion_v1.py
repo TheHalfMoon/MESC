@@ -165,9 +165,7 @@ class AdaptiveTierDisposition:
                 )
         else:
             if not self.reasons:
-                raise AdaptiveBudgetExhaustionError(
-                    "BLOCKED tier requires at least one reason"
-                )
+                raise AdaptiveBudgetExhaustionError("BLOCKED tier requires at least one reason")
             if AdaptiveBudgetBlockReason.TIER_NOT_ALLOWED in self.reasons:
                 if self.reasons != (AdaptiveBudgetBlockReason.TIER_NOT_ALLOWED,):
                     raise AdaptiveBudgetExhaustionError(
@@ -348,9 +346,7 @@ def build_adaptive_budget_disposition(
 ) -> AdaptiveBudgetDispositionReport:
     """Derive fail-closed adaptive-use state from exact frozen campaign accounting."""
     if type(objective) is not ResearchObjectiveContract:
-        raise AdaptiveBudgetExhaustionError(
-            "objective must be an exact ResearchObjectiveContract"
-        )
+        raise AdaptiveBudgetExhaustionError("objective must be an exact ResearchObjectiveContract")
     if type(campaign) is not ResearchCampaign:
         raise AdaptiveBudgetExhaustionError("campaign must be an exact ResearchCampaign")
 
@@ -365,9 +361,7 @@ def build_adaptive_budget_disposition(
         )
 
     allowed_tiers = set(objective.evaluation_tier_policy.allowed_tiers)
-    dispositions = tuple(
-        _derive_tier_disposition(item, allowed_tiers) for item in accounting.tiers
-    )
+    dispositions = tuple(_derive_tier_disposition(item, allowed_tiers) for item in accounting.tiers)
     return AdaptiveBudgetDispositionReport(
         objective_sha256=accounting.objective_sha256,
         campaign_sha256=accounting.campaign_sha256,

@@ -241,3 +241,12 @@ def test_exact_contract_types_are_required() -> None:
             objective,
             cast(SealedEvaluationEvidenceReport, object()),
         )
+
+
+def test_valid_sealed_report_identity_drift_fails_closed_before_hard_gate_evaluation() -> None:
+    objective = _objective()
+    sealed = _sealed_report(objective)
+    object.__setattr__(sealed, "sealed_evidence_ref_sha256", "1" * 64)
+
+    with pytest.raises(HardMedicalNonRegressionError, match="semantic revalidation"):
+        evaluate_hard_medical_non_regression(objective, sealed)

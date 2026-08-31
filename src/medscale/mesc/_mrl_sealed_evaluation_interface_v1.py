@@ -60,9 +60,7 @@ def _make_request_identity_registry() -> tuple[
     def load(value: SealedEvaluationRequest) -> str:
         identity = identities.get(id(value))
         if identity is None:
-            raise SealedEvaluationInterfaceError(
-                "sealed request construction identity is missing"
-            )
+            raise SealedEvaluationInterfaceError("sealed request construction identity is missing")
         return identity
 
     return store, load
@@ -89,9 +87,7 @@ def _make_handoff_identity_registry() -> tuple[
     def load(value: SealedEvaluationHandoff) -> str:
         identity = identities.get(id(value))
         if identity is None:
-            raise SealedEvaluationInterfaceError(
-                "sealed handoff construction identity is missing"
-            )
+            raise SealedEvaluationInterfaceError("sealed handoff construction identity is missing")
         return identity
 
     return store, load
@@ -122,9 +118,7 @@ class SealedEvaluationRequest:
 
     def _validated_snapshot(self) -> SealedEvaluationRequest:
         if type(self) is not SealedEvaluationRequest:
-            raise SealedEvaluationInterfaceError(
-                "request must be an exact SealedEvaluationRequest"
-            )
+            raise SealedEvaluationInterfaceError("request must be an exact SealedEvaluationRequest")
         bound_content_sha256 = _load_request_identity(self)
         _require_sha256(bound_content_sha256, "bound request content_sha256")
         snapshot = SealedEvaluationRequest(
@@ -190,9 +184,7 @@ class SealedEvaluationHandoff:
 
     def _validated_snapshot(self) -> SealedEvaluationHandoff:
         if type(self) is not SealedEvaluationHandoff:
-            raise SealedEvaluationInterfaceError(
-                "handoff must be an exact SealedEvaluationHandoff"
-            )
+            raise SealedEvaluationInterfaceError("handoff must be an exact SealedEvaluationHandoff")
         bound_content_sha256 = _load_handoff_identity(self)
         _require_sha256(bound_content_sha256, "bound handoff content_sha256")
         snapshot = SealedEvaluationHandoff(
