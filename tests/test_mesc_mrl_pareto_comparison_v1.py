@@ -170,7 +170,8 @@ def test_reference_dominance_and_equivalence_are_deterministic() -> None:
         is ParetoRelation.REFERENCE_DOMINATES
     )
     assert (
-        compare_pareto_evidence(objective, reference, equal).relation is ParetoRelation.EQUIVALENT
+        compare_pareto_evidence(objective, reference, equal).relation
+        is ParetoRelation.EQUIVALENT
     )
 
 
@@ -262,6 +263,106 @@ def test_report_is_deterministic_content_addressed_and_non_authoritative() -> No
     assert first.to_dict()["can_authorize"] is False
     assert b"PROMOTED" not in first.semantic_bytes
     assert b"promotion_decision" not in first.semantic_bytes
+
+
+def test_mutated_soft_metric_fails_closed_before_comparison() -> None:
+    objective = _multi_objective()
+    reference = _sealed_report(
+        objective,
+        candidate_marker="a",
+        cost="10",
+        safety="0.96",
+        subgroup_safety="0.94",
+    )
+    candidate = _sealed_report(
+        objective,
+        candidate_marker="b",
+        cost="5",
+        safety="0.97",
+        subgroup_safety="0.95",
+    )
+    object.__setattr__(candidate.metric_evidence[0], "value_decimal", "not-a-decimal")
+
+    with pytest.raises(ParetoComparisonError, match="hard-gate revalidation"):
+        compare_pareto_evidence(objective, reference, candidate)
+
+
+def test_mutated_comparison_metric_or_report_fails_closed_on_hash_views() -> None:
+    objective = _multi_objective()
+    reference = _sealed_report(
+        objective,
+        candidate_marker="a",
+        cost="10",
+        safety="0.96",
+        subgroup_safety="0.94",
+    )
+    candidate = _sealed_report(
+        objective,
+        candidate_marker="b",
+        cost="5",
+        safety="0.97",
+        subgroup_safety="0.95",
+    )
+    report = compare_pareto_evidence(objective, reference, candidate)
+    object.__setattr__(report.metrics[0], "relation", MetricComparisonRelation.WORSE)
+
+    with pytest.raises(ParetoComparisonError, match="deterministic directional comparison"):
+        _ = report.content_sha256
+
+    fresh = compare_pareto_evidence(objective, reference, candidate)
+    object.__setattr__(fresh, "candidate_evidence_report_sha256", "invalid")
+    with pytest.raises(ParetoComparisonError, match="64 lowercase hex"):
+        fresh.semantic_dict()
+
+
+def test_valid_comparison_metric_identity_mutation_fails_closed() -> None:
+    objective = _multi_objective()
+    reference = _sealed_report(
+        objective,
+        candidate_marker="a",
+        cost="10",
+        safety="0.96",
+        subgroup_safety="0.94",
+    )
+    candidate = _sealed_report(
+        objective,
+        candidate_marker="b",
+        cost="5",
+        safety="0.97",
+        subgroup_safety="0.95",
+    )
+    report = compare_pareto_evidence(objective, reference, candidate)
+    object.__setattr__(report.metrics[0], "candidate_evidence_artifact_sha256", "f" * 64)
+
+    with pytest.raises(ParetoComparisonError, match="identity changed"):
+        report.metrics[0].to_dict()
+    with pytest.raises(ParetoComparisonError, match="identity changed"):
+        _ = report.content_sha256
+
+
+def test_valid_comparison_report_identity_mutation_fails_closed() -> None:
+    objective = _multi_objective()
+    reference = _sealed_report(
+        objective,
+        candidate_marker="a",
+        cost="10",
+        safety="0.96",
+        subgroup_safety="0.94",
+    )
+    candidate = _sealed_report(
+        objective,
+        candidate_marker="b",
+        cost="5",
+        safety="0.97",
+        subgroup_safety="0.95",
+    )
+    report = compare_pareto_evidence(objective, reference, candidate)
+    object.__setattr__(report, "candidate_evidence_report_sha256", "f" * 64)
+
+    with pytest.raises(ParetoComparisonError, match="identity changed"):
+        report.semantic_dict()
+    with pytest.raises(ParetoComparisonError, match="identity changed"):
+        _ = report.content_sha256
 
 
 def test_mismatched_objective_or_evidence_fails_closed() -> None:
