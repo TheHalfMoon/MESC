@@ -182,9 +182,7 @@ class CanaryRecyclingGuardReport:
 
     def _validated_snapshot(self) -> CanaryRecyclingGuardReport:
         if type(self) is not CanaryRecyclingGuardReport:
-            raise CanaryRecyclingError(
-                "report must be an exact CanaryRecyclingGuardReport"
-            )
+            raise CanaryRecyclingError("report must be an exact CanaryRecyclingGuardReport")
         bound_content_sha256 = _load_report_identity(self)
         _require_sha256(bound_content_sha256, "bound report content_sha256")
         snapshot = CanaryRecyclingGuardReport(
@@ -256,9 +254,7 @@ def build_canary_recycling_guard_report(
 ) -> CanaryRecyclingGuardReport:
     """Evaluate training/search artifact identities against one sealed canary chain."""
     if type(receipt) is not TemporalCanaryFixtureReceipt:
-        raise CanaryRecyclingError(
-            "receipt must be an exact TemporalCanaryFixtureReceipt"
-        )
+        raise CanaryRecyclingError("receipt must be an exact TemporalCanaryFixtureReceipt")
     try:
         receipt_snapshot = receipt._validated_snapshot()
     except TemporalCanaryFixtureWorkflowError as exc:
@@ -277,9 +273,7 @@ def build_canary_recycling_guard_report(
         )
     )
     blocked_uses = tuple(
-        use
-        for use in attempted_snapshots
-        if use.artifact_sha256 in protected_artifact_sha256s
+        use for use in attempted_snapshots if use.artifact_sha256 in protected_artifact_sha256s
     )
     return CanaryRecyclingGuardReport(
         canary_receipt_sha256=receipt_snapshot.content_sha256,
