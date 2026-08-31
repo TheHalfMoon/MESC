@@ -147,9 +147,7 @@ def _validate_registry(
     for value in registry:
         if type(value) is not str or _SHA256.fullmatch(value) is None:
             error = ValueError if test_mode else ProcedureReviewTrustError
-            raise error(
-                f"{prefix}procedure-review trust entries must be 64 lowercase hex"
-            )
+            raise error(f"{prefix}procedure-review trust entries must be 64 lowercase hex")
 
 
 def _require_snapshot_admission(
@@ -165,10 +163,7 @@ def _require_snapshot_admission(
         raise ProcedureReviewTrustError(
             "expected procedure-review trust registry identity must be 64 lowercase hex"
         )
-    if (
-        type(review_receipt_sha256) is not str
-        or _SHA256.fullmatch(review_receipt_sha256) is None
-    ):
+    if type(review_receipt_sha256) is not str or _SHA256.fullmatch(review_receipt_sha256) is None:
         raise ProcedureReviewTrustError(
             "procedure-review receipt identity must be 64 lowercase hex"
         )

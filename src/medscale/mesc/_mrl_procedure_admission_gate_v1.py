@@ -213,9 +213,7 @@ class ProcedureReviewReceipt:
             "applicability_bounds": _rebuild_bounds(self.applicability_bounds).to_dict(),
             "replay_evidence_sha256s": list(self.replay_evidence_sha256s),
             "transfer_evidence_sha256s": list(self.transfer_evidence_sha256s),
-            "negative_control_evidence_sha256s": list(
-                self.negative_control_evidence_sha256s
-            ),
+            "negative_control_evidence_sha256s": list(self.negative_control_evidence_sha256s),
             "decision": self.decision.value,
             "reason": self.reason,
             "can_authorize_by_itself": False,
@@ -298,9 +296,7 @@ class ProcedureAdmissionGateResult:
     def _semantic_dict_validated(self) -> dict[str, object]:
         review_receipt = ProcedureReviewReceipt._validated_snapshot(self.review_receipt)
         transfer = ProcedureTransferTestReport._validated_snapshot(self.transfer_report)
-        negative = ProcedureNegativeControlReport._validated_snapshot(
-            self.negative_control_report
-        )
+        negative = ProcedureNegativeControlReport._validated_snapshot(self.negative_control_report)
         reviewed_sha256 = self.reviewed_report.content_sha256
         admitted_sha256 = (
             None if self.admitted_report is None else self.admitted_report.content_sha256
@@ -355,9 +351,7 @@ def evaluate_procedure_admission(
 ) -> ProcedureAdmissionGateResult:
     """Evaluate one candidate against exact evidence and independent review trust."""
     if type(procedure) is not ResearchProcedure:
-        raise ProcedureAdmissionGateError(
-            "procedure must be an exact ResearchProcedure"
-        )
+        raise ProcedureAdmissionGateError("procedure must be an exact ResearchProcedure")
     if type(transfer_report) is not ProcedureTransferTestReport:
         raise ProcedureAdmissionGateError(
             "transfer_report must be an exact ProcedureTransferTestReport"
@@ -367,9 +361,7 @@ def evaluate_procedure_admission(
             "negative_control_report must be an exact ProcedureNegativeControlReport"
         )
     if type(review_receipt) is not ProcedureReviewReceipt:
-        raise ProcedureAdmissionGateError(
-            "review_receipt must be an exact ProcedureReviewReceipt"
-        )
+        raise ProcedureAdmissionGateError("review_receipt must be an exact ProcedureReviewReceipt")
     _require_sha256(
         expected_review_trust_registry_sha256,
         "expected_review_trust_registry_sha256",
@@ -386,9 +378,7 @@ def evaluate_procedure_admission(
             )
         procedure_sha256 = procedure_snapshot.admission_subject_sha256
         applicability = _rebuild_bounds(procedure_snapshot.applicability_bounds)
-        transfer_snapshot = ProcedureTransferTestReport._validated_snapshot(
-            transfer_report
-        )
+        transfer_snapshot = ProcedureTransferTestReport._validated_snapshot(transfer_report)
         negative_snapshot = ProcedureNegativeControlReport._validated_snapshot(
             negative_control_report
         )
@@ -408,9 +398,7 @@ def evaluate_procedure_admission(
         ) from exc
 
     if transfer_snapshot.procedure_sha256 != procedure_sha256:
-        raise ProcedureAdmissionGateError(
-            "transfer evidence does not bind the supplied procedure"
-        )
+        raise ProcedureAdmissionGateError("transfer evidence does not bind the supplied procedure")
     if negative_snapshot.procedure_sha256 != procedure_sha256:
         raise ProcedureAdmissionGateError(
             "negative-control evidence does not bind the supplied procedure"
@@ -427,36 +415,23 @@ def evaluate_procedure_admission(
         replay.disposition is not ProcedureReplayDisposition.REPRODUCED
         for replay in replay_snapshots
     ):
-        raise ProcedureAdmissionGateError(
-            "procedure admission requires reproduced replay evidence"
-        )
+        raise ProcedureAdmissionGateError("procedure admission requires reproduced replay evidence")
 
-    replay_evidence_sha256s = tuple(
-        sorted(replay.content_sha256 for replay in replay_snapshots)
-    )
+    replay_evidence_sha256s = tuple(sorted(replay.content_sha256 for replay in replay_snapshots))
     transfer_evidence_sha256s = (transfer_snapshot.content_sha256,)
     negative_control_evidence_sha256s = (negative_snapshot.content_sha256,)
 
     if review_snapshot.procedure_sha256 != procedure_sha256:
-        raise ProcedureAdmissionGateError(
-            "review receipt does not bind the supplied procedure"
-        )
+        raise ProcedureAdmissionGateError("review receipt does not bind the supplied procedure")
     if review_snapshot.applicability_bounds.to_dict() != applicability.to_dict():
         raise ProcedureAdmissionGateError(
             "review receipt applicability does not match the procedure"
         )
     if review_snapshot.replay_evidence_sha256s != replay_evidence_sha256s:
-        raise ProcedureAdmissionGateError(
-            "review receipt does not bind exact replay evidence"
-        )
+        raise ProcedureAdmissionGateError("review receipt does not bind exact replay evidence")
     if review_snapshot.transfer_evidence_sha256s != transfer_evidence_sha256s:
-        raise ProcedureAdmissionGateError(
-            "review receipt does not bind exact transfer evidence"
-        )
-    if (
-        review_snapshot.negative_control_evidence_sha256s
-        != negative_control_evidence_sha256s
-    ):
+        raise ProcedureAdmissionGateError("review receipt does not bind exact transfer evidence")
+    if review_snapshot.negative_control_evidence_sha256s != negative_control_evidence_sha256s:
         raise ProcedureAdmissionGateError(
             "review receipt does not bind exact negative-control evidence"
         )
@@ -675,26 +650,18 @@ def _validate_gate_result(result: ProcedureAdmissionGateResult) -> None:
             "gate result evidence failed canonical revalidation"
         ) from exc
     if review.procedure_sha256 != result.procedure_sha256:
-        raise ProcedureAdmissionGateError(
-            "gate result review receipt changed procedure identity"
-        )
+        raise ProcedureAdmissionGateError("gate result review receipt changed procedure identity")
     if type(result.reviewed_report) is not ResearchProcedureAdmissionReport:
         raise ProcedureAdmissionGateError(
             "reviewed_report must be an exact ResearchProcedureAdmissionReport"
         )
     reviewed = result.reviewed_report._validated_snapshot()
     if reviewed.state is not ProcedureAdmissionState.REVIEWED:
-        raise ProcedureAdmissionGateError(
-            "gate result reviewed_report must end at REVIEWED"
-        )
+        raise ProcedureAdmissionGateError("gate result reviewed_report must end at REVIEWED")
     if reviewed.procedure_sha256 != result.procedure_sha256:
-        raise ProcedureAdmissionGateError(
-            "gate result reviewed report changed procedure identity"
-        )
+        raise ProcedureAdmissionGateError("gate result reviewed report changed procedure identity")
     if transfer.procedure_sha256 != result.procedure_sha256:
-        raise ProcedureAdmissionGateError(
-            "gate result transfer report changed procedure identity"
-        )
+        raise ProcedureAdmissionGateError("gate result transfer report changed procedure identity")
     if negative.procedure_sha256 != result.procedure_sha256:
         raise ProcedureAdmissionGateError(
             "gate result negative-control report changed procedure identity"
@@ -712,43 +679,27 @@ def _validate_gate_result(result: ProcedureAdmissionGateResult) -> None:
             "gate result reviewed report does not bind the review receipt"
         )
     if reviewed.decision is not review.decision:
-        raise ProcedureAdmissionGateError(
-            "gate result reviewed report changed the review decision"
-        )
+        raise ProcedureAdmissionGateError("gate result reviewed report changed the review decision")
 
     if review.decision is ProcedureAdmissionDecision.REJECT:
         if result.admitted_report is not None or result.admitted_procedure is not None:
-            raise ProcedureAdmissionGateError(
-                "rejected procedure cannot carry admitted artifacts"
-            )
+            raise ProcedureAdmissionGateError("rejected procedure cannot carry admitted artifacts")
         return
 
     if type(result.admitted_report) is not ResearchProcedureAdmissionReport:
-        raise ProcedureAdmissionGateError(
-            "ADMIT result requires an exact admitted report"
-        )
+        raise ProcedureAdmissionGateError("ADMIT result requires an exact admitted report")
     admitted = result.admitted_report._validated_snapshot()
     if admitted.state is not ProcedureAdmissionState.ADMITTED:
-        raise ProcedureAdmissionGateError(
-            "ADMIT result must end at ADMITTED"
-        )
+        raise ProcedureAdmissionGateError("ADMIT result must end at ADMITTED")
     if admitted.procedure_sha256 != result.procedure_sha256:
-        raise ProcedureAdmissionGateError(
-            "admitted report changed procedure identity"
-        )
+        raise ProcedureAdmissionGateError("admitted report changed procedure identity")
     if admitted.review_receipt_sha256 != review.content_sha256:
-        raise ProcedureAdmissionGateError(
-            "admitted report does not bind the review receipt"
-        )
+        raise ProcedureAdmissionGateError("admitted report does not bind the review receipt")
     if type(result.admitted_procedure) is not ResearchProcedure:
-        raise ProcedureAdmissionGateError(
-            "ADMIT result requires an exact admitted procedure"
-        )
+        raise ProcedureAdmissionGateError("ADMIT result requires an exact admitted procedure")
     procedure = result.admitted_procedure._validated_snapshot()
     if procedure.admission_report_sha256 != admitted.content_sha256:
-        raise ProcedureAdmissionGateError(
-            "admitted procedure does not bind the admitted report"
-        )
+        raise ProcedureAdmissionGateError("admitted procedure does not bind the admitted report")
     if procedure.admission_subject_sha256 != result.procedure_sha256:
         raise ProcedureAdmissionGateError(
             "admitted procedure changed the admission subject identity"
@@ -790,9 +741,7 @@ def _require_sorted_sha256s(
     for value in values:
         _require_sha256(value, label)
     if values != tuple(sorted(set(values))):
-        raise ProcedureAdmissionGateError(
-            f"{label} must be unique and strictly sorted"
-        )
+        raise ProcedureAdmissionGateError(f"{label} must be unique and strictly sorted")
 
 
 def _require_sha256(value: object, label: str) -> None:
@@ -802,8 +751,6 @@ def _require_sha256(value: object, label: str) -> None:
 
 def _require_text(value: object, label: str) -> None:
     if type(value) is not str or not value or value != value.strip():
-        raise ProcedureAdmissionGateError(
-            f"{label} must be canonical non-empty text"
-        )
+        raise ProcedureAdmissionGateError(f"{label} must be canonical non-empty text")
     if any(character in value for character in "\x00\r\n\t"):
         raise ProcedureAdmissionGateError(f"{label} cannot contain control characters")

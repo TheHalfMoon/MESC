@@ -56,9 +56,7 @@ def _review_receipt(
     *,
     decision: ProcedureAdmissionDecision = ProcedureAdmissionDecision.ADMIT,
 ) -> ProcedureReviewReceipt:
-    replay_sha256s = tuple(
-        sorted(case.replay_receipt.content_sha256 for case in transfer.cases)
-    )
+    replay_sha256s = tuple(sorted(case.replay_receipt.content_sha256 for case in transfer.cases))
     return ProcedureReviewReceipt(
         reviewer_authority_id="fixture-independent-reviewer",
         author_kind=ProcedureReportAuthorKind.INDEPENDENT_REVIEWER,
@@ -98,8 +96,7 @@ def test_well_formed_review_receipt_cannot_self_create_trust() -> None:
     procedure, transfer, negative = _evidence()
     receipt = _review_receipt(procedure, transfer, negative)
     assert (
-        review_trust.procedure_review_trust_snapshot().trusted_review_receipt_sha256
-        == frozenset()
+        review_trust.procedure_review_trust_snapshot().trusted_review_receipt_sha256 == frozenset()
     )
 
     with pytest.raises(
@@ -148,8 +145,7 @@ def test_trusted_independent_review_admits_only_after_exact_evidence_chain() -> 
     assert result.reviewed_report.review_receipt_sha256 == receipt.content_sha256
     assert result.admitted_report.review_receipt_sha256 == receipt.content_sha256
     assert (
-        result.admitted_procedure.admission_report_sha256
-        == result.admitted_report.content_sha256
+        result.admitted_procedure.admission_report_sha256 == result.admitted_report.content_sha256
     )
     assert result.content_sha256
 
@@ -207,10 +203,7 @@ def test_review_receipt_rejects_agent_authors(
             procedure_sha256=procedure.admission_subject_sha256,
             applicability_bounds=procedure.applicability_bounds,
             replay_evidence_sha256s=tuple(
-                sorted(
-                    case.replay_receipt.content_sha256
-                    for case in transfer.cases
-                )
+                sorted(case.replay_receipt.content_sha256 for case in transfer.cases)
             ),
             transfer_evidence_sha256s=(transfer.content_sha256,),
             negative_control_evidence_sha256s=(negative.content_sha256,),
@@ -316,15 +309,14 @@ def test_failed_negative_controls_cannot_be_admitted() -> None:
 def test_stale_review_trust_registry_identity_fails_closed() -> None:
     procedure, transfer, negative = _evidence()
     receipt = _review_receipt(procedure, transfer, negative)
-    with _trusted_receipt(receipt):
-        with pytest.raises(
-            ProcedureAdmissionGateError,
-            match="not trusted by canonical governance",
-        ):
-            evaluate_procedure_admission(
-                procedure,
-                transfer,
-                negative,
-                receipt,
-                expected_review_trust_registry_sha256="0" * 64,
-            )
+    with _trusted_receipt(receipt), pytest.raises(
+        ProcedureAdmissionGateError,
+        match="not trusted by canonical governance",
+    ):
+        evaluate_procedure_admission(
+            procedure,
+            transfer,
+            negative,
+            receipt,
+            expected_review_trust_registry_sha256="0" * 64,
+        )
