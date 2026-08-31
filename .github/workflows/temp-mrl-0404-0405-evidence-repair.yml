@@ -26,34 +26,36 @@ jobs:
 
           transfer = Path("src/medscale/mesc/_mrl_procedure_transfer_test_v1.py")
           text = transfer.read_text()
-          old = '''        snapshot = ProcedureTransferTestReport(
-              procedure_sha256=self.procedure_sha256,
-              cases=tuple(
-                  ProcedureTransferCaseEvidence._validated_snapshot(case) for case in self.cases
-              ),
-          )
-          current_content_sha256 = derive_content_sha256(snapshot._semantic_dict_validated())
-          if current_content_sha256 != bound_content_sha256:
-              raise ProcedureTransferTestError("transfer report identity changed after construction")
-          return snapshot
-          '''
-          new = '''        if len(self.cases) < 2:
-              raise ProcedureTransferTestError(
-                  "representative transfer evidence requires at least two exact cases"
-              )
-          if any(type(case) is not ProcedureTransferCaseEvidence for case in self.cases):
-              raise ProcedureTransferTestError("cases contains an invalid item type")
-          _require_sha256(self.procedure_sha256, "procedure_sha256")
-          current_content_sha256 = derive_content_sha256(self._semantic_dict_validated())
-          if current_content_sha256 != bound_content_sha256:
-              raise ProcedureTransferTestError("transfer report identity changed after construction")
-          return ProcedureTransferTestReport(
-              procedure_sha256=self.procedure_sha256,
-              cases=tuple(
-                  ProcedureTransferCaseEvidence._validated_snapshot(case) for case in self.cases
-              ),
-          )
-          '''
+          old = "\n".join([
+              "        snapshot = ProcedureTransferTestReport(",
+              "            procedure_sha256=self.procedure_sha256,",
+              "            cases=tuple(",
+              "                ProcedureTransferCaseEvidence._validated_snapshot(case) for case in self.cases",
+              "            ),",
+              "        )",
+              "        current_content_sha256 = derive_content_sha256(snapshot._semantic_dict_validated())",
+              "        if current_content_sha256 != bound_content_sha256:",
+              "            raise ProcedureTransferTestError(\"transfer report identity changed after construction\")",
+              "        return snapshot",
+          ])
+          new = "\n".join([
+              "        if len(self.cases) < 2:",
+              "            raise ProcedureTransferTestError(",
+              "                \"representative transfer evidence requires at least two exact cases\"",
+              "            )",
+              "        if any(type(case) is not ProcedureTransferCaseEvidence for case in self.cases):",
+              "            raise ProcedureTransferTestError(\"cases contains an invalid item type\")",
+              "        _require_sha256(self.procedure_sha256, \"procedure_sha256\")",
+              "        current_content_sha256 = derive_content_sha256(self._semantic_dict_validated())",
+              "        if current_content_sha256 != bound_content_sha256:",
+              "            raise ProcedureTransferTestError(\"transfer report identity changed after construction\")",
+              "        return ProcedureTransferTestReport(",
+              "            procedure_sha256=self.procedure_sha256,",
+              "            cases=tuple(",
+              "                ProcedureTransferCaseEvidence._validated_snapshot(case) for case in self.cases",
+              "            ),",
+              "        )",
+          ])
           if text.count(old) != 1:
               raise SystemExit("expected transfer snapshot block exactly once")
           text = text.replace(old, new)
@@ -65,21 +67,23 @@ jobs:
 
           negative = Path("src/medscale/mesc/_mrl_procedure_negative_control_v1.py")
           text = negative.read_text()
-          old = '''    case_snapshots = tuple(ProcedureNegativeControlCase._validated_snapshot(case) for case in cases)
-          return ProcedureNegativeControlReport(
-              procedure_sha256=procedure_sha256,
-              declared_failure_modes=declared_failure_modes,
-              cases=case_snapshots,
-          )
-          '''
-          new = '''    for case in cases:
-              ProcedureNegativeControlCase._validated_snapshot(case)
-          return ProcedureNegativeControlReport(
-              procedure_sha256=procedure_sha256,
-              declared_failure_modes=declared_failure_modes,
-              cases=cases,
-          )
-          '''
+          old = "\n".join([
+              "    case_snapshots = tuple(ProcedureNegativeControlCase._validated_snapshot(case) for case in cases)",
+              "    return ProcedureNegativeControlReport(",
+              "        procedure_sha256=procedure_sha256,",
+              "        declared_failure_modes=declared_failure_modes,",
+              "        cases=case_snapshots,",
+              "    )",
+          ])
+          new = "\n".join([
+              "    for case in cases:",
+              "        ProcedureNegativeControlCase._validated_snapshot(case)",
+              "    return ProcedureNegativeControlReport(",
+              "        procedure_sha256=procedure_sha256,",
+              "        declared_failure_modes=declared_failure_modes,",
+              "        cases=cases,",
+              "    )",
+          ])
           if text.count(old) != 1:
               raise SystemExit("expected negative-control builder block exactly once")
           negative.write_text(text.replace(old, new))
