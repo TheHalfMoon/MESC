@@ -251,7 +251,10 @@ class ResearcherComparisonReport:
             f"- Objective SHA-256: `{first_run.campaign.objective_sha256}`",
             f"- Report SHA-256: `{report.content_sha256}`",
             "- Scope: deterministic fixture-only benchmark evidence",
-            "- Authority: non-authoritative; no real execution, training, promotion, deployment, release, or clinical authority",
+            (
+                "- Authority: non-authoritative; no real execution, training, promotion, "
+                "deployment, release, or clinical authority"
+            ),
             "",
             "## Metrics",
             "",
@@ -273,13 +276,20 @@ class ResearcherComparisonReport:
                 "Only metrics available for all four fixture arms participate in Pareto dominance.",
                 "Unavailable contract dimensions are never replaced with inferred proxies.",
                 "",
-                f"- Comparable metrics: {', '.join(universal_metrics) if universal_metrics else 'none'}",
+                (
+                    "- Comparable metrics: "
+                    + (", ".join(universal_metrics) if universal_metrics else "none")
+                ),
                 "- Pareto frontier: "
                 + ", ".join(f"`{arm.value}`" for arm in pareto),
                 "",
                 "## Interpretation boundary",
                 "",
-                "This report compares deterministic fixture artifacts. It does not prove hidden agent cognition, real-world scientific efficacy, model promotion, training readiness, or clinical suitability.",
+                (
+                    "This report compares deterministic fixture artifacts. It does not prove "
+                    "hidden agent cognition, real-world scientific efficacy, model promotion, "
+                    "training readiness, or clinical suitability."
+                ),
                 "",
             ]
         )
