@@ -12,6 +12,8 @@ release, or clinical authority.
 
 from __future__ import annotations
 
+import weakref
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from medscale.mesc._mrl_campaign_history_projection_v1 import (
@@ -44,7 +46,69 @@ class ProcedureCandidateExtractionError(ValueError):
     """Fail-closed validation error for MRL-0402 candidate extraction."""
 
 
-@dataclass(frozen=True, slots=True)
+def _make_reference_identity_registry() -> tuple[
+    Callable[[ProcedureCandidateReference, str], None],
+    Callable[[ProcedureCandidateReference], str],
+]:
+    identities: dict[int, str] = {}
+
+    def remove(key: int) -> None:
+        identities.pop(key, None)
+
+    def store(value: ProcedureCandidateReference, content_sha256: str) -> None:
+        key = id(value)
+        if key in identities:
+            raise ProcedureCandidateExtractionError(
+                "candidate reference construction identity already exists"
+            )
+        identities[key] = content_sha256
+        weakref.finalize(value, remove, key)
+
+    def load(value: ProcedureCandidateReference) -> str:
+        identity = identities.get(id(value))
+        if identity is None:
+            raise ProcedureCandidateExtractionError(
+                "candidate reference construction identity is missing"
+            )
+        return identity
+
+    return store, load
+
+
+def _make_extraction_identity_registry() -> tuple[
+    Callable[[ProcedureCandidateExtraction, str], None],
+    Callable[[ProcedureCandidateExtraction], str],
+]:
+    identities: dict[int, str] = {}
+
+    def remove(key: int) -> None:
+        identities.pop(key, None)
+
+    def store(value: ProcedureCandidateExtraction, content_sha256: str) -> None:
+        key = id(value)
+        if key in identities:
+            raise ProcedureCandidateExtractionError(
+                "candidate extraction construction identity already exists"
+            )
+        identities[key] = content_sha256
+        weakref.finalize(value, remove, key)
+
+    def load(value: ProcedureCandidateExtraction) -> str:
+        identity = identities.get(id(value))
+        if identity is None:
+            raise ProcedureCandidateExtractionError(
+                "candidate extraction construction identity is missing"
+            )
+        return identity
+
+    return store, load
+
+
+_store_reference_identity, _load_reference_identity = _make_reference_identity_registry()
+_store_extraction_identity, _load_extraction_identity = _make_extraction_identity_registry()
+
+
+@dataclass(frozen=True, slots=True, weakref_slot=True)
 class ProcedureCandidateReference:
     """One exact procedure-candidate node bound to one canonical campaign snapshot."""
 
@@ -61,9 +125,32 @@ class ProcedureCandidateReference:
         _require_sha256(self.campaign_sha256, "campaign_sha256")
         _require_text(self.node_id, "node_id")
         _require_sha256(self.artifact_sha256, "artifact_sha256")
+        _store_reference_identity(
+            self,
+            derive_content_sha256(self._to_dict_validated()),
+        )
 
-    def to_dict(self) -> dict[str, object]:
-        """Return deterministic candidate-reference semantics."""
+    def _validated_snapshot(self) -> ProcedureCandidateReference:
+        if type(self) is not ProcedureCandidateReference:
+            raise ProcedureCandidateExtractionError(
+                "candidate reference must be an exact ProcedureCandidateReference"
+            )
+        bound_content_sha256 = _load_reference_identity(self)
+        _require_sha256(bound_content_sha256, "bound candidate reference content_sha256")
+        snapshot = ProcedureCandidateReference(
+            sequence_index=self.sequence_index,
+            campaign_sha256=self.campaign_sha256,
+            node_id=self.node_id,
+            artifact_sha256=self.artifact_sha256,
+        )
+        current_content_sha256 = derive_content_sha256(snapshot._to_dict_validated())
+        if current_content_sha256 != bound_content_sha256:
+            raise ProcedureCandidateExtractionError(
+                "candidate reference identity changed after construction"
+            )
+        return snapshot
+
+    def _to_dict_validated(self) -> dict[str, object]:
         return {
             "artifact_sha256": self.artifact_sha256,
             "campaign_sha256": self.campaign_sha256,
@@ -71,8 +158,13 @@ class ProcedureCandidateReference:
             "sequence_index": self.sequence_index,
         }
 
+    def to_dict(self) -> dict[str, object]:
+        """Return freshly revalidated deterministic candidate-reference semantics."""
+        snapshot = ProcedureCandidateReference._validated_snapshot(self)
+        return snapshot._to_dict_validated()
 
-@dataclass(frozen=True, slots=True)
+
+@dataclass(frozen=True, slots=True, weakref_slot=True)
 class ProcedureCandidateExtraction:
     """Non-authoritative extraction result after the canonical input gate succeeds."""
 
@@ -87,11 +179,41 @@ class ProcedureCandidateExtraction:
             raise ProcedureCandidateExtractionError("candidates must be an exact tuple")
         if any(type(item) is not ProcedureCandidateReference for item in self.candidates):
             raise ProcedureCandidateExtractionError("candidates contains an invalid item type")
-        keys = tuple((item.sequence_index, item.node_id) for item in self.candidates)
+        candidate_snapshots = tuple(
+            ProcedureCandidateReference._validated_snapshot(item) for item in self.candidates
+        )
+        keys = tuple((item.sequence_index, item.node_id) for item in candidate_snapshots)
         if keys != tuple(sorted(set(keys))):
             raise ProcedureCandidateExtractionError(
                 "candidates must be unique and sorted by sequence index and node id"
             )
+        _store_extraction_identity(
+            self,
+            derive_content_sha256(self._semantic_dict_validated()),
+        )
+
+    def _validated_snapshot(self) -> ProcedureCandidateExtraction:
+        if type(self) is not ProcedureCandidateExtraction:
+            raise ProcedureCandidateExtractionError(
+                "extraction must be an exact ProcedureCandidateExtraction"
+            )
+        if type(self.candidates) is not tuple:
+            raise ProcedureCandidateExtractionError("candidates must be an exact tuple")
+        bound_content_sha256 = _load_extraction_identity(self)
+        _require_sha256(bound_content_sha256, "bound extraction content_sha256")
+        snapshot = ProcedureCandidateExtraction(
+            history_projection_sha256=self.history_projection_sha256,
+            input_admission_sha256=self.input_admission_sha256,
+            candidates=tuple(
+                ProcedureCandidateReference._validated_snapshot(item) for item in self.candidates
+            ),
+        )
+        current_content_sha256 = derive_content_sha256(snapshot._semantic_dict_validated())
+        if current_content_sha256 != bound_content_sha256:
+            raise ProcedureCandidateExtractionError(
+                "candidate extraction identity changed after construction"
+            )
+        return snapshot
 
     @property
     def can_review_procedure(self) -> bool:
@@ -118,17 +240,21 @@ class ProcedureCandidateExtraction:
         """Return deterministic extraction identity."""
         return derive_content_sha256(self.semantic_dict())
 
-    def semantic_dict(self) -> dict[str, object]:
-        """Return complete non-authoritative extraction semantics."""
+    def _semantic_dict_validated(self) -> dict[str, object]:
         return {
             "can_admit_procedure": False,
             "can_authorize": False,
             "can_review_procedure": False,
-            "candidates": [item.to_dict() for item in self.candidates],
+            "candidates": [item._to_dict_validated() for item in self.candidates],
             "format": "MRL-PROCEDURE-CANDIDATE-EXTRACTION-V1",
             "history_projection_sha256": self.history_projection_sha256,
             "input_admission_sha256": self.input_admission_sha256,
         }
+
+    def semantic_dict(self) -> dict[str, object]:
+        """Return complete non-authoritative extraction semantics after revalidation."""
+        snapshot = ProcedureCandidateExtraction._validated_snapshot(self)
+        return snapshot._semantic_dict_validated()
 
     def to_dict(self) -> dict[str, object]:
         """Return extraction semantics plus derived identity."""
@@ -141,7 +267,7 @@ def extract_procedure_candidates(
     campaign: ResearchCampaign,
     admission: ResearchInputAdmissionContract,
 ) -> ProcedureCandidateExtraction:
-    """Extract exact procedure-candidate refs after canonical procedure-extraction admission."""
+    """Extract exact refs from one campaign snapshot after stable learning admission."""
     if type(campaign) is not ResearchCampaign:
         raise ProcedureCandidateExtractionError("campaign must be an exact ResearchCampaign")
     if type(admission) is not ResearchInputAdmissionContract:
@@ -150,10 +276,10 @@ def extract_procedure_candidates(
         )
 
     try:
-        history = build_campaign_history_projection(campaign)
-        admission.require_learning_admission(ResearchLearningSurface.PROCEDURE_EXTRACTION)
-        admission_sha256 = admission.content_sha256
-        candidates = _derive_candidate_references(campaign, history)
+        campaign_snapshot = campaign._validated_snapshot()
+        history = build_campaign_history_projection(campaign_snapshot)
+        admission_sha256 = _stable_learning_admission_sha256(admission)
+        candidates = _derive_candidate_references(campaign_snapshot, history)
     except ResearchInputAdmissionError as exc:
         raise ProcedureCandidateExtractionError(
             "research input is not canonically admitted for procedure extraction"
@@ -170,6 +296,21 @@ def extract_procedure_candidates(
         input_admission_sha256=admission_sha256,
         candidates=candidates,
     )
+
+
+def _stable_learning_admission_sha256(
+    admission: ResearchInputAdmissionContract,
+) -> str:
+    """Require the same exact admitted identity across two complete trust-gate passes."""
+    admission.require_learning_admission(ResearchLearningSurface.PROCEDURE_EXTRACTION)
+    first_sha256 = admission.content_sha256
+    admission.require_learning_admission(ResearchLearningSurface.PROCEDURE_EXTRACTION)
+    second_sha256 = admission.content_sha256
+    if first_sha256 != second_sha256:
+        raise ProcedureCandidateExtractionError(
+            "research input admission identity changed during procedure extraction"
+        )
+    return second_sha256
 
 
 def _derive_candidate_references(
