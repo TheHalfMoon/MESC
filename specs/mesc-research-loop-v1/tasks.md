@@ -333,39 +333,39 @@ is then present on canonical `main`. Any head mutation burns prior exact-head ev
 
 ## MRL-5 — Portfolio research and researcher benchmark
 
-- [ ] **MRL-0501 — Implement campaign frontier/portfolio policy**
+- [x] **MRL-0501 — Implement campaign frontier/portfolio policy**
   - Depends on: MRL-0499.
 
-- [ ] **MRL-0502 — Implement retained-alternative branches**
+- [x] **MRL-0502 — Implement retained-alternative branches**
   - Depends on: MRL-0501.
 
-- [ ] **MRL-0503 — Implement replication branch semantics**
+- [x] **MRL-0503 — Implement replication branch semantics**
   - Depends on: MRL-0501.
 
-- [ ] **MRL-0504 — Implement failure-signature deduplication**
+- [x] **MRL-0504 — Implement failure-signature deduplication**
   - Depends on: MRL-0501.
 
-- [ ] **MRL-0505 — Implement research-agent benchmark harness**
+- [x] **MRL-0505 — Implement research-agent benchmark harness**
   - Depends on: MRL-0502..0504.
 
-- [ ] **MRL-0506 — Benchmark stateless researcher**
+- [x] **MRL-0506 — Benchmark stateless researcher**
   - Depends on: MRL-0505.
 
-- [ ] **MRL-0507 — Benchmark history-only researcher**
+- [x] **MRL-0507 — Benchmark history-only researcher**
   - Depends on: MRL-0505.
 
-- [ ] **MRL-0508 — Benchmark admitted-procedure-memory researcher**
+- [x] **MRL-0508 — Benchmark admitted-procedure-memory researcher**
   - Depends on: MRL-0505.
 
-- [ ] **MRL-0509 — Benchmark portfolio/tree-search researcher**
+- [x] **MRL-0509 — Benchmark portfolio/tree-search researcher**
   - Depends on: MRL-0505.
 
-- [ ] **MRL-0510 — Publish deterministic researcher comparison report**
+- [x] **MRL-0510 — Publish deterministic researcher comparison report**
   - Depends on: MRL-0506..0509.
 
 ### MRL-5 gate
 
-- [ ] **MRL-0599 — Researcher-evaluation exact-head qualification**
+- [x] **MRL-0599 — Researcher-evaluation exact-head qualification**
   - Requires: MRL-0501..0510.
   - Exit: `MRL_RESEARCHER_EVAL_READY`.
 
