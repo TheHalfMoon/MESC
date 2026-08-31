@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 import medscale.mesc._mrl_procedure_candidate_extraction_v1 as extraction_module
+from medscale.mesc._mrl_campaign_history_projection_v1 import CampaignHistoryProjection
 from medscale.mesc._mrl_procedure_candidate_extraction_v1 import (
     ProcedureCandidateExtraction,
     ProcedureCandidateExtractionError,
@@ -81,7 +82,9 @@ def test_extraction_uses_one_campaign_snapshot_if_live_campaign_drifts_mid_build
         assert self is admission
         assert surface is ResearchLearningSurface.PROCEDURE_EXTRACTION
 
-    def mutate_live_campaign_then_build_snapshot(snapshot: ResearchCampaign):
+    def mutate_live_campaign_then_build_snapshot(
+        snapshot: ResearchCampaign,
+    ) -> CampaignHistoryProjection:
         nonlocal mutation_performed
         if not mutation_performed:
             mutation_performed = True
