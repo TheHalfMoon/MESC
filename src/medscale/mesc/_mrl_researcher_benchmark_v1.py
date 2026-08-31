@@ -75,18 +75,14 @@ def _make_identity_registry() -> tuple[
     def store(value: object, content_sha256: str) -> None:
         key = id(value)
         if key in identities:
-            raise ResearcherBenchmarkHarnessError(
-                "benchmark construction identity already exists"
-            )
+            raise ResearcherBenchmarkHarnessError("benchmark construction identity already exists")
         identities[key] = content_sha256
         weakref.finalize(value, remove, key)
 
     def load(value: object, label: str) -> str:
         identity = identities.get(id(value))
         if identity is None:
-            raise ResearcherBenchmarkHarnessError(
-                f"{label} construction identity is missing"
-            )
+            raise ResearcherBenchmarkHarnessError(f"{label} construction identity is missing")
         return identity
 
     return store, load
@@ -194,9 +190,7 @@ class ResearcherBenchmarkRun:
 
     def _validated_snapshot(self) -> ResearcherBenchmarkRun:
         if type(self) is not ResearcherBenchmarkRun:
-            raise ResearcherBenchmarkHarnessError(
-                "run must be an exact ResearcherBenchmarkRun"
-            )
+            raise ResearcherBenchmarkHarnessError("run must be an exact ResearcherBenchmarkRun")
         bound = _load_identity(self, "researcher benchmark run")
         _validate_run(self)
         current = derive_content_sha256(self._semantic_dict_validated())
@@ -218,9 +212,7 @@ class ResearcherBenchmarkRun:
             "campaign_sha256": campaign.content_sha256,
             "portfolio_frontier_sha256": frontier.content_sha256,
             "branch_semantics_sha256": semantics.content_sha256,
-            "procedure_transfer_report_sha256s": [
-                report.content_sha256 for report in reports
-            ],
+            "procedure_transfer_report_sha256s": [report.content_sha256 for report in reports],
             "metrics": metrics._semantic_dict_validated(),
             "fixture_only": self.fixture_only,
             "non_evidence": self.non_evidence,
@@ -286,10 +278,7 @@ def build_researcher_benchmark_run(
         raise ResearcherBenchmarkHarnessError(
             "branch semantics do not bind the exact benchmark campaign"
         )
-    if (
-        semantics_snapshot.portfolio_frontier.content_sha256
-        != frontier_snapshot.content_sha256
-    ):
+    if semantics_snapshot.portfolio_frontier.content_sha256 != frontier_snapshot.content_sha256:
         raise ResearcherBenchmarkHarnessError(
             "branch semantics do not bind the exact benchmark portfolio frontier"
         )
@@ -359,9 +348,7 @@ def _derive_metrics(
         evaluator_invocation_count=resources.evaluator_invocations,
         storage_bytes=resources.storage_bytes,
         procedure_transfer_attempt_count=len(reports),
-        procedure_transfer_success_count=sum(
-            report.all_cases_reproduced for report in reports
-        ),
+        procedure_transfer_success_count=sum(report.all_cases_reproduced for report in reports),
     )
 
 
@@ -372,8 +359,7 @@ def _experiments_to_first_replicated_gain(
     if not validated_relations:
         return None
     relation_keys = {
-        (relation.source_node_id, relation.replica_node_id)
-        for relation in validated_relations
+        (relation.source_node_id, relation.replica_node_id) for relation in validated_relations
     }
     chain = _oldest_first_campaign_chain(campaign)
     for snapshot in chain:
@@ -382,9 +368,7 @@ def _experiments_to_first_replicated_gain(
             for relation in snapshot.replications
         }
         if relation_keys.intersection(keys):
-            return sum(
-                node.kind is CampaignNodeKind.RECEIPT for node in snapshot.nodes
-            )
+            return sum(node.kind is CampaignNodeKind.RECEIPT for node in snapshot.nodes)
     raise ResearcherBenchmarkHarnessError(
         "validated replication relation is absent from canonical campaign history"
     )
@@ -403,11 +387,7 @@ def _oldest_first_campaign_chain(
 
 
 def _frontier_root_count(frontier: CampaignPortfolioFrontier) -> int:
-    roots = {
-        root
-        for entry in frontier.entries
-        for root in entry.hypothesis_root_node_ids
-    }
+    roots = {root for entry in frontier.entries for root in entry.hypothesis_root_node_ids}
     return len(roots)
 
 
@@ -474,22 +454,16 @@ def _validate_metrics(metrics: ResearcherBenchmarkMetrics) -> None:
             "validated replicated gains cannot exceed replication count"
         )
     if metrics.procedure_transfer_success_count > metrics.procedure_transfer_attempt_count:
-        raise ResearcherBenchmarkHarnessError(
-            "procedure transfer successes cannot exceed attempts"
-        )
+        raise ResearcherBenchmarkHarnessError("procedure transfer successes cannot exceed attempts")
 
 
 def _validated_campaign(campaign: ResearchCampaign) -> ResearchCampaign:
     if type(campaign) is not ResearchCampaign:
-        raise ResearcherBenchmarkHarnessError(
-            "campaign must be an exact ResearchCampaign"
-        )
+        raise ResearcherBenchmarkHarnessError("campaign must be an exact ResearchCampaign")
     try:
         return campaign._validated_snapshot()
     except ResearchCampaignError as exc:
-        raise ResearcherBenchmarkHarnessError(
-            "campaign failed canonical revalidation"
-        ) from exc
+        raise ResearcherBenchmarkHarnessError("campaign failed canonical revalidation") from exc
 
 
 def _validated_frontier(
@@ -526,9 +500,7 @@ def _validated_transfer_reports(
     reports: tuple[ProcedureTransferTestReport, ...],
 ) -> tuple[ProcedureTransferTestReport, ...]:
     if type(reports) is not tuple:
-        raise ResearcherBenchmarkHarnessError(
-            "procedure_transfer_reports must be an exact tuple"
-        )
+        raise ResearcherBenchmarkHarnessError("procedure_transfer_reports must be an exact tuple")
     snapshots: list[ProcedureTransferTestReport] = []
     for report in reports:
         if type(report) is not ProcedureTransferTestReport:
@@ -551,13 +523,9 @@ def _validated_transfer_reports(
 
 def _require_nonnegative_int(value: object, label: str) -> None:
     if type(value) is not int or value < 0:
-        raise ResearcherBenchmarkHarnessError(
-            f"{label} must be a non-negative exact int"
-        )
+        raise ResearcherBenchmarkHarnessError(f"{label} must be a non-negative exact int")
 
 
 def _require_exact_enum(value: object, enum_type: type[enum.Enum], label: str) -> None:
     if type(value) is not enum_type:
-        raise ResearcherBenchmarkHarnessError(
-            f"{label} must be an exact {enum_type.__name__}"
-        )
+        raise ResearcherBenchmarkHarnessError(f"{label} must be an exact {enum_type.__name__}")
