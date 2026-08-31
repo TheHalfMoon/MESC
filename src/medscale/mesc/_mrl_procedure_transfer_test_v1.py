@@ -55,18 +55,14 @@ def _make_case_identity_registry() -> tuple[
     def store(value: ProcedureTransferCaseEvidence, content_sha256: str) -> None:
         key = id(value)
         if key in identities:
-            raise ProcedureTransferTestError(
-                "transfer case construction identity already exists"
-            )
+            raise ProcedureTransferTestError("transfer case construction identity already exists")
         identities[key] = content_sha256
         weakref.finalize(value, remove, key)
 
     def load(value: ProcedureTransferCaseEvidence) -> str:
         identity = identities.get(id(value))
         if identity is None:
-            raise ProcedureTransferTestError(
-                "transfer case construction identity is missing"
-            )
+            raise ProcedureTransferTestError("transfer case construction identity is missing")
         return identity
 
     return store, load
@@ -84,18 +80,14 @@ def _make_report_identity_registry() -> tuple[
     def store(value: ProcedureTransferTestReport, content_sha256: str) -> None:
         key = id(value)
         if key in identities:
-            raise ProcedureTransferTestError(
-                "transfer report construction identity already exists"
-            )
+            raise ProcedureTransferTestError("transfer report construction identity already exists")
         identities[key] = content_sha256
         weakref.finalize(value, remove, key)
 
     def load(value: ProcedureTransferTestReport) -> str:
         identity = identities.get(id(value))
         if identity is None:
-            raise ProcedureTransferTestError(
-                "transfer report construction identity is missing"
-            )
+            raise ProcedureTransferTestError("transfer report construction identity is missing")
         return identity
 
     return store, load
@@ -147,9 +139,7 @@ class ProcedureTransferCaseEvidence:
         )
         current_content_sha256 = derive_content_sha256(snapshot._semantic_dict_validated())
         if current_content_sha256 != bound_content_sha256:
-            raise ProcedureTransferTestError(
-                "transfer case identity changed after construction"
-            )
+            raise ProcedureTransferTestError("transfer case identity changed after construction")
         return snapshot
 
     def _semantic_dict_validated(self) -> dict[str, object]:
@@ -216,9 +206,7 @@ class ProcedureTransferTestReport:
 
     def _validated_snapshot(self) -> ProcedureTransferTestReport:
         if type(self) is not ProcedureTransferTestReport:
-            raise ProcedureTransferTestError(
-                "report must be an exact ProcedureTransferTestReport"
-            )
+            raise ProcedureTransferTestError("report must be an exact ProcedureTransferTestReport")
         if type(self.cases) is not tuple:
             raise ProcedureTransferTestError("cases must be an exact tuple")
         bound_content_sha256 = _load_report_identity(self)
@@ -231,9 +219,7 @@ class ProcedureTransferTestReport:
         )
         current_content_sha256 = derive_content_sha256(snapshot._semantic_dict_validated())
         if current_content_sha256 != bound_content_sha256:
-            raise ProcedureTransferTestError(
-                "transfer report identity changed after construction"
-            )
+            raise ProcedureTransferTestError("transfer report identity changed after construction")
         return snapshot
 
     def _all_cases_reproduced_validated(self) -> bool:
