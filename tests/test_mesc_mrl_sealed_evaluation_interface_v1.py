@@ -68,6 +68,48 @@ def test_interface_surface_cannot_carry_sealed_item_content_or_scores() -> None:
     )
 
 
+def test_mutated_request_fails_closed_before_hash_or_handoff_binding() -> None:
+    request = _request()
+    object.__setattr__(request, "candidate_sha256", "invalid")
+
+    with pytest.raises(SealedEvaluationInterfaceError, match="candidate_sha256"):
+        _ = request.content_sha256
+    with pytest.raises(SealedEvaluationInterfaceError, match="candidate_sha256"):
+        request.semantic_dict()
+    with pytest.raises(SealedEvaluationInterfaceError, match="candidate_sha256"):
+        record_sealed_evidence_handoff(request, "c" * 64)
+
+
+def test_valid_request_identity_mutation_fails_closed() -> None:
+    request = _request()
+    object.__setattr__(request, "candidate_sha256", "f" * 64)
+
+    with pytest.raises(SealedEvaluationInterfaceError, match="identity changed"):
+        _ = request.content_sha256
+    with pytest.raises(SealedEvaluationInterfaceError, match="identity changed"):
+        record_sealed_evidence_handoff(request, "c" * 64)
+
+
+def test_mutated_handoff_fails_closed_before_semantic_or_hash_views() -> None:
+    handoff = record_sealed_evidence_handoff(_request(), "c" * 64)
+    object.__setattr__(handoff, "sealed_evidence_ref_sha256", "invalid")
+
+    with pytest.raises(SealedEvaluationInterfaceError, match="sealed_evidence_ref_sha256"):
+        handoff.semantic_dict()
+    with pytest.raises(SealedEvaluationInterfaceError, match="sealed_evidence_ref_sha256"):
+        _ = handoff.content_sha256
+
+
+def test_valid_handoff_identity_mutation_fails_closed() -> None:
+    handoff = record_sealed_evidence_handoff(_request(), "c" * 64)
+    object.__setattr__(handoff, "sealed_evidence_ref_sha256", "f" * 64)
+
+    with pytest.raises(SealedEvaluationInterfaceError, match="identity changed"):
+        handoff.semantic_dict()
+    with pytest.raises(SealedEvaluationInterfaceError, match="identity changed"):
+        _ = handoff.content_sha256
+
+
 def test_non_sealed_tier_contract_fails_closed() -> None:
     search = TierEvaluationContract(objective=_objective(), tier=EvaluationTier.SEARCH)
 

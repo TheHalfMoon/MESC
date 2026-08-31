@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import enum
 import re
+import weakref
+from collections.abc import Callable
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from typing import Final
@@ -68,7 +70,69 @@ class ParetoRelation(enum.Enum):
     TRADEOFF = "TRADEOFF"
 
 
-@dataclass(frozen=True, slots=True)
+def _make_metric_identity_registry() -> tuple[
+    Callable[[ParetoMetricComparison, str], None],
+    Callable[[ParetoMetricComparison], str],
+]:
+    identities: dict[int, str] = {}
+
+    def remove(key: int) -> None:
+        identities.pop(key, None)
+
+    def store(value: ParetoMetricComparison, content_sha256: str) -> None:
+        key = id(value)
+        if key in identities:
+            raise ParetoComparisonError(
+                "Pareto metric construction identity already exists"
+            )
+        identities[key] = content_sha256
+        weakref.finalize(value, remove, key)
+
+    def load(value: ParetoMetricComparison) -> str:
+        identity = identities.get(id(value))
+        if identity is None:
+            raise ParetoComparisonError(
+                "Pareto metric construction identity is missing"
+            )
+        return identity
+
+    return store, load
+
+
+def _make_report_identity_registry() -> tuple[
+    Callable[[ParetoComparisonReport, str], None],
+    Callable[[ParetoComparisonReport], str],
+]:
+    identities: dict[int, str] = {}
+
+    def remove(key: int) -> None:
+        identities.pop(key, None)
+
+    def store(value: ParetoComparisonReport, content_sha256: str) -> None:
+        key = id(value)
+        if key in identities:
+            raise ParetoComparisonError(
+                "Pareto report construction identity already exists"
+            )
+        identities[key] = content_sha256
+        weakref.finalize(value, remove, key)
+
+    def load(value: ParetoComparisonReport) -> str:
+        identity = identities.get(id(value))
+        if identity is None:
+            raise ParetoComparisonError(
+                "Pareto report construction identity is missing"
+            )
+        return identity
+
+    return store, load
+
+
+_store_metric_identity, _load_metric_identity = _make_metric_identity_registry()
+_store_report_identity, _load_report_identity = _make_report_identity_registry()
+
+
+@dataclass(frozen=True, slots=True, weakref_slot=True)
 class ParetoMetricComparison:
     """One frozen Tier 3 optimization metric compared in its declared direction."""
 
@@ -107,9 +171,34 @@ class ParetoMetricComparison:
             raise ParetoComparisonError(
                 "relation must equal the deterministic directional comparison"
             )
+        _store_metric_identity(
+            self,
+            derive_content_sha256(self._to_dict_validated()),
+        )
 
-    def to_dict(self) -> dict[str, object]:
-        """Return deterministic metric-comparison semantics."""
+    def _validated_snapshot(self) -> ParetoMetricComparison:
+        if type(self) is not ParetoMetricComparison:
+            raise ParetoComparisonError("metric must be an exact ParetoMetricComparison")
+        bound_content_sha256 = _load_metric_identity(self)
+        _require_sha256(bound_content_sha256, "bound metric content_sha256")
+        snapshot = ParetoMetricComparison(
+            metric_id=self.metric_id,
+            evaluator_id=self.evaluator_id,
+            direction=self.direction,
+            reference_value_decimal=self.reference_value_decimal,
+            candidate_value_decimal=self.candidate_value_decimal,
+            reference_evidence_artifact_sha256=self.reference_evidence_artifact_sha256,
+            candidate_evidence_artifact_sha256=self.candidate_evidence_artifact_sha256,
+            relation=self.relation,
+        )
+        current_content_sha256 = derive_content_sha256(snapshot._to_dict_validated())
+        if current_content_sha256 != bound_content_sha256:
+            raise ParetoComparisonError(
+                "Pareto metric identity changed after construction"
+            )
+        return snapshot
+
+    def _to_dict_validated(self) -> dict[str, object]:
         return {
             "candidate_evidence_artifact_sha256": self.candidate_evidence_artifact_sha256,
             "candidate_value_decimal": self.candidate_value_decimal,
@@ -121,8 +210,13 @@ class ParetoMetricComparison:
             "relation": self.relation.value,
         }
 
+    def to_dict(self) -> dict[str, object]:
+        """Return freshly revalidated metric-comparison semantics."""
+        snapshot = ParetoMetricComparison._validated_snapshot(self)
+        return snapshot._to_dict_validated()
 
-@dataclass(frozen=True, slots=True)
+
+@dataclass(frozen=True, slots=True, weakref_slot=True)
 class ParetoComparisonReport:
     """Evidence-only hard-gate-first relation between two sealed evaluation reports."""
 
@@ -158,7 +252,10 @@ class ParetoComparisonReport:
             raise ParetoComparisonError("metrics must be an exact tuple")
         if any(type(metric) is not ParetoMetricComparison for metric in self.metrics):
             raise ParetoComparisonError("metrics contains an invalid item type")
-        metric_ids = tuple(metric.metric_id for metric in self.metrics)
+        snapshots = tuple(
+            ParetoMetricComparison._validated_snapshot(metric) for metric in self.metrics
+        )
+        metric_ids = tuple(metric.metric_id for metric in snapshots)
         if metric_ids != tuple(sorted(set(metric_ids))):
             raise ParetoComparisonError("metrics must be unique and sorted by metric_id")
 
@@ -167,16 +264,46 @@ class ParetoComparisonReport:
             ParetoRelation.CANDIDATE_REJECTED_HARD_GATE,
             ParetoRelation.REFERENCE_REJECTED_HARD_GATE,
         }
-        if hard_gate_relation and self.metrics:
+        if hard_gate_relation and snapshots:
             raise ParetoComparisonError(
                 "optimization metrics must remain unevaluated when a hard gate fails"
             )
-        if not hard_gate_relation and not self.metrics:
+        if not hard_gate_relation and not snapshots:
             raise ParetoComparisonError(
                 "admissible Pareto comparison requires at least one frozen metric"
             )
-        if self.metrics and self.relation is not _pareto_relation(self.metrics):
+        if snapshots and self.relation is not _pareto_relation(snapshots):
             raise ParetoComparisonError("relation must equal the deterministic Pareto relation")
+        _store_report_identity(
+            self,
+            derive_content_sha256(self._semantic_dict_validated()),
+        )
+
+    def _validated_snapshot(self) -> ParetoComparisonReport:
+        if type(self) is not ParetoComparisonReport:
+            raise ParetoComparisonError("report must be an exact ParetoComparisonReport")
+        if type(self.metrics) is not tuple:
+            raise ParetoComparisonError("metrics must be an exact tuple")
+        bound_content_sha256 = _load_report_identity(self)
+        _require_sha256(bound_content_sha256, "bound report content_sha256")
+        snapshot = ParetoComparisonReport(
+            objective_sha256=self.objective_sha256,
+            reference_evidence_report_sha256=self.reference_evidence_report_sha256,
+            candidate_evidence_report_sha256=self.candidate_evidence_report_sha256,
+            reference_hard_gate_report_sha256=self.reference_hard_gate_report_sha256,
+            candidate_hard_gate_report_sha256=self.candidate_hard_gate_report_sha256,
+            relation=self.relation,
+            metrics=tuple(
+                ParetoMetricComparison._validated_snapshot(metric)
+                for metric in self.metrics
+            ),
+        )
+        current_content_sha256 = derive_content_sha256(snapshot._semantic_dict_validated())
+        if current_content_sha256 != bound_content_sha256:
+            raise ParetoComparisonError(
+                "Pareto report identity changed after construction"
+            )
+        return snapshot
 
     @property
     def can_authorize(self) -> bool:
@@ -190,28 +317,32 @@ class ParetoComparisonReport:
 
     @property
     def content_sha256(self) -> str:
-        """Return identity derived from deterministic comparison semantics."""
+        """Return identity derived from freshly validated comparison semantics."""
         return derive_content_sha256(self.semantic_dict())
 
     @property
     def semantic_bytes(self) -> bytes:
-        """Return canonical evidence-only bytes."""
+        """Return canonical evidence-only bytes after complete revalidation."""
         return canonical_semantic_bytes(self.semantic_dict())
 
-    def semantic_dict(self) -> dict[str, object]:
-        """Return complete non-authoritative comparison semantics."""
+    def _semantic_dict_validated(self) -> dict[str, object]:
         return {
             "can_authorize": False,
             "can_authorize_model_promotion": False,
             "candidate_evidence_report_sha256": self.candidate_evidence_report_sha256,
             "candidate_hard_gate_report_sha256": self.candidate_hard_gate_report_sha256,
             "format": "MRL-PARETO-COMPARISON-V1",
-            "metrics": [metric.to_dict() for metric in self.metrics],
+            "metrics": [metric._to_dict_validated() for metric in self.metrics],
             "objective_sha256": self.objective_sha256,
             "reference_evidence_report_sha256": self.reference_evidence_report_sha256,
             "reference_hard_gate_report_sha256": self.reference_hard_gate_report_sha256,
             "relation": self.relation.value,
         }
+
+    def semantic_dict(self) -> dict[str, object]:
+        """Return complete semantics from one freshly validated comparison snapshot."""
+        snapshot = ParetoComparisonReport._validated_snapshot(self)
+        return snapshot._semantic_dict_validated()
 
     def to_dict(self) -> dict[str, object]:
         """Return report semantics plus derived content identity."""
@@ -240,8 +371,16 @@ def compare_pareto_evidence(
     try:
         objective.semantic_dict()
         objective_sha256 = objective.content_sha256
-        reference_hard_gates = evaluate_hard_medical_non_regression(objective, reference_report)
-        candidate_hard_gates = evaluate_hard_medical_non_regression(objective, candidate_report)
+        reference_snapshot = _snapshot_sealed_report(reference_report)
+        candidate_snapshot = _snapshot_sealed_report(candidate_report)
+        reference_hard_gates = evaluate_hard_medical_non_regression(
+            objective,
+            reference_snapshot,
+        )
+        candidate_hard_gates = evaluate_hard_medical_non_regression(
+            objective,
+            candidate_snapshot,
+        )
     except (AttributeError, TypeError, ValueError) as exc:
         raise ParetoComparisonError(
             "objective or sealed evidence failed hard-gate revalidation"
@@ -251,8 +390,8 @@ def compare_pareto_evidence(
     if hard_relation is not None:
         return ParetoComparisonReport(
             objective_sha256=objective_sha256,
-            reference_evidence_report_sha256=reference_report.content_sha256,
-            candidate_evidence_report_sha256=candidate_report.content_sha256,
+            reference_evidence_report_sha256=reference_snapshot.content_sha256,
+            candidate_evidence_report_sha256=candidate_snapshot.content_sha256,
             reference_hard_gate_report_sha256=reference_hard_gates.content_sha256,
             candidate_hard_gate_report_sha256=candidate_hard_gates.content_sha256,
             relation=hard_relation,
@@ -265,21 +404,64 @@ def compare_pareto_evidence(
     if not metric_contracts:
         raise ParetoComparisonError("objective has no frozen Tier 3 metrics for Pareto comparison")
 
-    reference_metrics = _global_metric_evidence(reference_report)
-    candidate_metrics = _global_metric_evidence(candidate_report)
+    reference_metrics = _global_metric_evidence(reference_snapshot)
+    candidate_metrics = _global_metric_evidence(candidate_snapshot)
     metrics = tuple(
         _compare_metric(contract, reference_metrics, candidate_metrics)
         for contract in metric_contracts
     )
     return ParetoComparisonReport(
         objective_sha256=objective_sha256,
-        reference_evidence_report_sha256=reference_report.content_sha256,
-        candidate_evidence_report_sha256=candidate_report.content_sha256,
+        reference_evidence_report_sha256=reference_snapshot.content_sha256,
+        candidate_evidence_report_sha256=candidate_snapshot.content_sha256,
         reference_hard_gate_report_sha256=reference_hard_gates.content_sha256,
         candidate_hard_gate_report_sha256=candidate_hard_gates.content_sha256,
         relation=_pareto_relation(metrics),
         metrics=metrics,
     )
+
+
+def _snapshot_sealed_report(
+    report: SealedEvaluationEvidenceReport,
+) -> SealedEvaluationEvidenceReport:
+    if type(report) is not SealedEvaluationEvidenceReport:
+        raise ParetoComparisonError(
+            "sealed report must be an exact SealedEvaluationEvidenceReport"
+        )
+    if type(report.evaluator_artifacts) is not tuple:
+        raise ParetoComparisonError("sealed evaluator_artifacts must remain an exact tuple")
+    for item in report.evaluator_artifacts:
+        if type(item) is not tuple or len(item) != 2:
+            raise ParetoComparisonError("sealed evaluator_artifacts contains invalid entry")
+    if type(report.metric_evidence) is not tuple:
+        raise ParetoComparisonError("sealed metric_evidence must remain an exact tuple")
+    if any(type(item) is not SealedMetricEvidence for item in report.metric_evidence):
+        raise ParetoComparisonError("sealed metric_evidence contains invalid item type")
+
+    try:
+        metrics = tuple(
+            SealedMetricEvidence(
+                metric_id=item.metric_id,
+                evaluator_id=item.evaluator_id,
+                value_decimal=item.value_decimal,
+                evidence_artifact_sha256=item.evidence_artifact_sha256,
+                subgroup=item.subgroup,
+            )
+            for item in report.metric_evidence
+        )
+        return SealedEvaluationEvidenceReport(
+            objective_sha256=report.objective_sha256,
+            tier_contract_sha256=report.tier_contract_sha256,
+            request_sha256=report.request_sha256,
+            handoff_sha256=report.handoff_sha256,
+            sealed_evidence_ref_sha256=report.sealed_evidence_ref_sha256,
+            evaluator_artifacts=report.evaluator_artifacts,
+            metric_evidence=metrics,
+        )
+    except (AttributeError, TypeError, ValueError) as exc:
+        raise ParetoComparisonError(
+            "sealed evidence report failed canonical revalidation"
+        ) from exc
 
 
 def _hard_gate_relation(
