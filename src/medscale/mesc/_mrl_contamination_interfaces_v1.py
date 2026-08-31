@@ -21,7 +21,6 @@ from medscale.mesc._mrl_content_identity_v1 import (
 from medscale.mesc._mrl_training_example_lineage_v1 import (
     TrainingExampleLineageContract,
     TrainingExampleLineageError,
-    build_training_example_lineage,
 )
 
 __all__ = [
@@ -274,17 +273,15 @@ def build_contamination_evidence_report(
     lineage: TrainingExampleLineageContract,
     checks: tuple[ContaminationCheckEvidence, ...],
 ) -> ContaminationEvidenceReport:
-    """Bind supplied detector evidence to one freshly revalidated lineage identity."""
+    """Bind supplied detector evidence to the construction-bound lineage identity."""
     if type(lineage) is not TrainingExampleLineageContract:
         raise ContaminationInterfaceError("lineage must be an exact TrainingExampleLineageContract")
     try:
-        rebuilt = build_training_example_lineage(lineage.example)
+        _, lineage_sha256 = lineage._validated_example()
     except TrainingExampleLineageError as exc:
         raise ContaminationInterfaceError("training lineage failed canonical revalidation") from exc
-    if rebuilt.content_sha256 != lineage.content_sha256:
-        raise ContaminationInterfaceError("training lineage identity changed after construction")
     return ContaminationEvidenceReport(
-        training_lineage_sha256=rebuilt.content_sha256,
+        training_lineage_sha256=lineage_sha256,
         checks=checks,
     )
 
