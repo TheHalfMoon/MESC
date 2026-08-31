@@ -142,3 +142,15 @@ def test_mutated_lineage_fails_closed() -> None:
             transformation_kind="normalization",
             transformation_artifact_sha256="1" * 64,
         )
+
+
+def test_valid_post_construction_lineage_identity_drift_fails_closed() -> None:
+    lineage = build_training_example_lineage(_example())
+    object.__setattr__(lineage.example, "source_sha256", "c" * 64)
+
+    with pytest.raises(TrainingTransformationBindingError, match="canonical revalidation"):
+        build_training_transformation_binding(
+            lineage,
+            transformation_kind="normalization",
+            transformation_artifact_sha256="1" * 64,
+        )
