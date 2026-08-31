@@ -109,19 +109,22 @@ def test_equal_fixture_arms_all_remain_on_pareto_frontier(
 def test_markdown_is_deterministic_and_declares_fixture_boundary(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    first = build_researcher_comparison_report(_contexts(monkeypatch))
-    second = build_researcher_comparison_report(_contexts(monkeypatch))
+    contexts = _contexts(monkeypatch)
+    first = build_researcher_comparison_report(contexts)
+    second = build_researcher_comparison_report(contexts)
 
-    assert first.semantic_bytes == second.semantic_bytes
-    assert first.content_sha256 == second.content_sha256
-    assert first.render_markdown() == second.render_markdown()
+    first_semantic_bytes = first.semantic_bytes
+    first_content_sha256 = first.content_sha256
+    first_markdown = first.render_markdown()
+    assert first_semantic_bytes == second.semantic_bytes
+    assert first_content_sha256 == second.content_sha256
+    assert first_markdown == second.render_markdown()
 
-    markdown = first.render_markdown()
-    assert markdown.startswith("# MRL Researcher Comparison Report V1\n")
-    assert "N/A" in markdown
-    assert "fixture-only" in markdown
-    assert "hidden agent cognition" in markdown
-    assert first.content_sha256 in markdown
+    assert first_markdown.startswith("# MRL Researcher Comparison Report V1\n")
+    assert "N/A" in first_markdown
+    assert "fixture-only" in first_markdown
+    assert "hidden agent cognition" in first_markdown
+    assert first_content_sha256 in first_markdown
 
 
 def test_report_fails_closed_on_context_drift_after_construction(

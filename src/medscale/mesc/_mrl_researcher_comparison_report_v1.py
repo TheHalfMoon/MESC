@@ -155,27 +155,32 @@ class ResearcherComparisonReport:
         _validate_report(self)
         _store_identity(self, derive_content_sha256(self._semantic_dict_validated()))
 
-    def _validated_snapshot(self) -> ResearcherComparisonReport:
+    def _validated_semantic_dict(self) -> dict[str, object]:
         if type(self) is not ResearcherComparisonReport:
             raise ResearcherComparisonReportError(
                 "report must be an exact ResearcherComparisonReport"
             )
         bound = _load_identity(self, "researcher comparison report")
         _validate_report(self)
-        current = derive_content_sha256(self._semantic_dict_validated())
+        data = self._semantic_dict_validated()
+        current = derive_content_sha256(data)
         if current != bound:
             raise ResearcherComparisonReportError(
                 "researcher comparison report changed after construction"
             )
+        return data
+
+    def _validated_snapshot(self) -> ResearcherComparisonReport:
+        self._validated_semantic_dict()
         return self
 
     @property
     def content_sha256(self) -> str:
-        return derive_content_sha256(self.semantic_dict())
+        return derive_content_sha256(self._validated_semantic_dict())
 
     @property
     def semantic_bytes(self) -> bytes:
-        return canonical_semantic_bytes(self.semantic_dict())
+        return canonical_semantic_bytes(self._validated_semantic_dict())
 
     @property
     def pareto_frontier_arms(self) -> tuple[ResearcherBenchmarkArm, ...]:
@@ -226,7 +231,7 @@ class ResearcherComparisonReport:
         }
 
     def semantic_dict(self) -> dict[str, object]:
-        return self._validated_snapshot()._semantic_dict_validated()
+        return self._validated_semantic_dict()
 
     def to_dict(self) -> dict[str, object]:
         data = self.semantic_dict()
@@ -235,18 +240,19 @@ class ResearcherComparisonReport:
 
     def render_markdown(self) -> str:
         """Render a deterministic human-readable fixture comparison report."""
-        report = self._validated_snapshot()
-        observations = _observations_by_arm(report.contexts)
+        semantic = self._validated_semantic_dict()
+        observations = _observations_by_arm(self.contexts)
         universal_metrics = _universally_available_metric_names(observations)
         pareto = _pareto_frontier_from_observations(observations, universal_metrics)
-        first_run = report.contexts[0].benchmark_run._validated_snapshot()
+        first_run = self.contexts[0].benchmark_run._validated_snapshot()
+        report_sha256 = derive_content_sha256(semantic)
 
         lines = [
             "# MRL Researcher Comparison Report V1",
             "",
             f"- Campaign: `{first_run.campaign.campaign_id}`",
             f"- Objective SHA-256: `{first_run.campaign.objective_sha256}`",
-            f"- Report SHA-256: `{report.content_sha256}`",
+            f"- Report SHA-256: `{report_sha256}`",
             "- Scope: deterministic fixture-only benchmark evidence",
             (
                 "- Authority: non-authoritative; no real execution, training, promotion, "
