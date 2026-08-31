@@ -1,0 +1,68 @@
+name: Temporary MRL 0406 Preflight
+
+on:
+  push:
+    branches:
+      - feat/mrl-0406-procedure-admission-06ea81
+
+permissions:
+  contents: write
+
+jobs:
+  preflight:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: feat/mrl-0406-procedure-admission-06ea81
+          persist-credentials: true
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+        with:
+          enable-cache: false
+
+      - name: Sync locked environment
+        run: uv sync --locked --extra dev
+
+      - name: Apply canonical Ruff formatting
+        run: |
+          uv run ruff format \
+            src/medscale/mesc/_mrl_procedure_review_trust_v1.py \
+            src/medscale/mesc/_mrl_procedure_admission_gate_v1.py \
+            tests/test_mesc_mrl_procedure_review_trust_v1.py \
+            tests/test_mesc_mrl_procedure_admission_gate_v1.py
+
+      - name: Focused Ruff lint
+        run: |
+          uv run ruff check \
+            src/medscale/mesc/_mrl_procedure_review_trust_v1.py \
+            src/medscale/mesc/_mrl_procedure_admission_gate_v1.py \
+            tests/test_mesc_mrl_procedure_review_trust_v1.py \
+            tests/test_mesc_mrl_procedure_admission_gate_v1.py
+
+      - name: Strict mypy
+        run: uv run mypy --strict src tests
+
+      - name: Focused pytest
+        run: |
+          uv run pytest -q \
+            tests/test_mesc_mrl_procedure_review_trust_v1.py \
+            tests/test_mesc_mrl_procedure_admission_gate_v1.py \
+            tests/test_mesc_mrl_procedure_transfer_test_v1.py \
+            tests/test_mesc_mrl_procedure_negative_control_v1.py
+
+      - name: Commit formatting and remove temporary workflow
+        shell: bash
+        run: |
+          rm .github/workflows/temp-mrl-0406-preflight.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/medscale/mesc/_mrl_procedure_review_trust_v1.py \
+                  src/medscale/mesc/_mrl_procedure_admission_gate_v1.py \
+                  tests/test_mesc_mrl_procedure_review_trust_v1.py \
+                  tests/test_mesc_mrl_procedure_admission_gate_v1.py \
+                  .github/workflows/temp-mrl-0406-preflight.yml
+          git commit -m "style(mrl): qualify MRL-0406 preflight"
+          git push origin HEAD:feat/mrl-0406-procedure-admission-06ea81
