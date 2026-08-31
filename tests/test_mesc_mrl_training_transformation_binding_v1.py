@@ -85,9 +85,68 @@ def test_transformation_identity_changes_with_prompt_or_teacher_evidence() -> No
     assert first.content_sha256 != second.content_sha256
 
 
+def test_mutated_binding_identity_fails_closed_on_semantic_and_hash_views() -> None:
+    lineage = build_training_example_lineage(_example())
+    binding = build_training_transformation_binding(
+        lineage,
+        transformation_kind="normalization",
+        transformation_artifact_sha256="1" * 64,
+    )
+    object.__setattr__(binding, "transformation_artifact_sha256", "invalid")
+
+    with pytest.raises(TrainingTransformationBindingError, match="64 lowercase hex"):
+        binding.semantic_dict()
+    with pytest.raises(TrainingTransformationBindingError, match="64 lowercase hex"):
+        _ = binding.content_sha256
+
+
+def test_valid_binding_identity_mutation_fails_closed() -> None:
+    lineage = build_training_example_lineage(_example())
+    binding = build_training_transformation_binding(
+        lineage,
+        transformation_kind="normalization",
+        transformation_artifact_sha256="1" * 64,
+    )
+    object.__setattr__(binding, "transformation_artifact_sha256", "f" * 64)
+
+    with pytest.raises(TrainingTransformationBindingError, match="identity changed"):
+        binding.semantic_dict()
+    with pytest.raises(TrainingTransformationBindingError, match="identity changed"):
+        _ = binding.content_sha256
+
+
+def test_mutated_teacher_pair_fails_closed_on_semantic_and_hash_views() -> None:
+    lineage = build_training_example_lineage(_example())
+    binding = build_training_transformation_binding(
+        lineage,
+        transformation_kind="synthetic-generation",
+        transformation_artifact_sha256="1" * 64,
+        teacher_model_sha256="3" * 64,
+        teacher_output_sha256="4" * 64,
+    )
+    object.__setattr__(binding, "teacher_output_sha256", None)
+
+    with pytest.raises(TrainingTransformationBindingError, match="supplied together"):
+        binding.semantic_dict()
+    with pytest.raises(TrainingTransformationBindingError, match="supplied together"):
+        _ = binding.content_sha256
+
+
 def test_mutated_lineage_fails_closed() -> None:
     lineage = build_training_example_lineage(_example())
     object.__setattr__(lineage.example, "source_sha256", "invalid")
+
+    with pytest.raises(TrainingTransformationBindingError, match="canonical revalidation"):
+        build_training_transformation_binding(
+            lineage,
+            transformation_kind="normalization",
+            transformation_artifact_sha256="1" * 64,
+        )
+
+
+def test_valid_post_construction_lineage_identity_drift_fails_closed() -> None:
+    lineage = build_training_example_lineage(_example())
+    object.__setattr__(lineage.example, "source_sha256", "c" * 64)
 
     with pytest.raises(TrainingTransformationBindingError, match="canonical revalidation"):
         build_training_transformation_binding(

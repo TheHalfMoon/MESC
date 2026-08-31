@@ -76,3 +76,33 @@ def test_topic_tags_must_be_nonempty_sorted_and_unique() -> None:
             evaluator_artifact_sha256="b" * 64,
             topic_tags=("temporal", "fixture"),
         )
+
+
+def test_mutated_manifest_artifact_fails_closed_on_semantic_and_hash_views() -> None:
+    manifest = _manifest()
+    object.__setattr__(manifest, "canary_artifact_sha256", "invalid")
+
+    with pytest.raises(TemporalCanaryManifestError, match="64 lowercase hex"):
+        manifest.semantic_dict()
+    with pytest.raises(TemporalCanaryManifestError, match="64 lowercase hex"):
+        _ = manifest.content_sha256
+
+
+def test_valid_manifest_identity_mutation_fails_closed() -> None:
+    manifest = _manifest()
+    object.__setattr__(manifest, "canary_artifact_sha256", "f" * 64)
+
+    with pytest.raises(TemporalCanaryManifestError, match="identity changed"):
+        manifest.semantic_dict()
+    with pytest.raises(TemporalCanaryManifestError, match="identity changed"):
+        _ = manifest.content_sha256
+
+
+def test_mutated_manifest_temporal_boundary_fails_closed_on_semantic_and_hash_views() -> None:
+    manifest = _manifest()
+    object.__setattr__(manifest, "created_at", manifest.temporal_boundary_at)
+
+    with pytest.raises(TemporalCanaryManifestError, match="strictly after"):
+        manifest.semantic_dict()
+    with pytest.raises(TemporalCanaryManifestError, match="strictly after"):
+        _ = manifest.content_sha256
