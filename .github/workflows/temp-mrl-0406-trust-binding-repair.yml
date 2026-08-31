@@ -1,0 +1,122 @@
+name: Temporary MRL 0406 Trust Binding Repair
+
+on:
+  push:
+    branches:
+      - feat/mrl-0406-procedure-admission-06ea81
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: feat/mrl-0406-procedure-admission-06ea81
+          persist-credentials: true
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+        with:
+          enable-cache: false
+
+      - name: Sync locked environment
+        run: uv sync --frozen
+
+      - name: Bind canonical review trust lexically
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          source = Path("src/medscale/mesc/_mrl_procedure_admission_gate_v1.py")
+          text = source.read_text()
+
+          replacements = [
+              (
+                  "from collections.abc import Callable\nfrom dataclasses import dataclass, replace\nfrom typing import Final\n",
+                  "from collections.abc import Callable\nfrom contextlib import AbstractContextManager\nfrom dataclasses import dataclass, replace\nfrom typing import Final, Protocol\n",
+              ),
+              (
+                  "from medscale.mesc._mrl_procedure_review_trust_v1 import (\n    ProcedureReviewTrustError,\n    hold_procedure_review_trust,\n)\n",
+                  "from medscale.mesc._mrl_procedure_review_trust_v1 import (\n    ProcedureReviewTrustError,\n    ProcedureReviewTrustSnapshot,\n)\nfrom medscale.mesc._mrl_procedure_review_trust_v1 import (\n    hold_procedure_review_trust as _canonical_hold_procedure_review_trust,\n)\n",
+              ),
+              (
+                  "class ProcedureAdmissionGateError(ValueError):\n    \"\"\"Fail-closed validation error for independent procedure admission.\"\"\"\n\n\n",
+                  "class ProcedureAdmissionGateError(ValueError):\n    \"\"\"Fail-closed validation error for independent procedure admission.\"\"\"\n\n\nclass _ProcedureReviewTrustLease(Protocol):\n    def __call__(\n        self,\n        *,\n        expected_registry_sha256: str,\n        review_receipt_sha256: str,\n    ) -> AbstractContextManager[ProcedureReviewTrustSnapshot]: ...\n\n\nclass _ProcedureAdmissionEvaluator(Protocol):\n    def __call__(\n        self,\n        procedure: ResearchProcedure,\n        transfer_report: ProcedureTransferTestReport,\n        negative_control_report: ProcedureNegativeControlReport,\n        review_receipt: ProcedureReviewReceipt,\n        *,\n        expected_review_trust_registry_sha256: str,\n    ) -> ProcedureAdmissionGateResult: ...\n\n\ndef _bind_review_trust(\n    hold_review_trust: _ProcedureReviewTrustLease,\n) -> Callable[[Callable[..., ProcedureAdmissionGateResult]], _ProcedureAdmissionEvaluator]:\n    \"\"\"Capture canonical review trust outside ordinary module-level rebinding.\"\"\"\n\n    def decorate(\n        method: Callable[..., ProcedureAdmissionGateResult],\n    ) -> _ProcedureAdmissionEvaluator:\n        def guarded(\n            procedure: ResearchProcedure,\n            transfer_report: ProcedureTransferTestReport,\n            negative_control_report: ProcedureNegativeControlReport,\n            review_receipt: ProcedureReviewReceipt,\n            *,\n            expected_review_trust_registry_sha256: str,\n        ) -> ProcedureAdmissionGateResult:\n            return method(\n                hold_review_trust,\n                procedure,\n                transfer_report,\n                negative_control_report,\n                review_receipt,\n                expected_review_trust_registry_sha256=(\n                    expected_review_trust_registry_sha256\n                ),\n            )\n\n        return guarded\n\n    return decorate\n\n\n",
+              ),
+              (
+                  "def evaluate_procedure_admission(\n    procedure: ResearchProcedure,\n",
+                  "@_bind_review_trust(_canonical_hold_procedure_review_trust)\ndef evaluate_procedure_admission(\n    hold_review_trust: _ProcedureReviewTrustLease,\n    procedure: ResearchProcedure,\n",
+              ),
+              (
+                  "        with hold_procedure_review_trust(\n",
+                  "        with hold_review_trust(\n",
+              ),
+              (
+                  "    return result\n\n\ndef _build_admission_result(\n",
+                  "    return result\n\n\ndel _bind_review_trust\ndel _canonical_hold_procedure_review_trust\n\n\ndef _build_admission_result(\n",
+              ),
+          ]
+          for old, new in replacements:
+              if text.count(old) != 1:
+                  raise SystemExit(f"expected source block exactly once: {old[:80]!r}")
+              text = text.replace(old, new)
+          source.write_text(text)
+
+          test = Path("tests/test_mesc_mrl_procedure_admission_gate_v1.py")
+          text = test.read_text()
+          old = "import pytest\n\nfrom medscale.mesc import _mrl_procedure_review_trust_v1 as review_trust\n"
+          new = (
+              "import pytest\n\n"
+              "import medscale.mesc._mrl_procedure_admission_gate_v1 as gate_module\n"
+              "from medscale.mesc import _mrl_procedure_review_trust_v1 as review_trust\n"
+          )
+          if text.count(old) != 1:
+              raise SystemExit("expected test import block exactly once")
+          text = text.replace(old, new)
+          marker = "\ndef test_trusted_independent_review_admits_only_after_exact_evidence_chain() -> None:\n"
+          if text.count(marker) != 1:
+              raise SystemExit("expected test insertion marker exactly once")
+          regression = '''\n\ndef test_module_level_review_trust_rebinding_cannot_bypass_gate(\n    monkeypatch: pytest.MonkeyPatch,\n) -> None:\n    procedure, transfer, negative = _evidence()\n    receipt = _review_receipt(procedure, transfer, negative)\n\n    @contextmanager\n    def fabricated_hold(\n        *,\n        expected_registry_sha256: str,\n        review_receipt_sha256: str,\n    ) -> Iterator[object]:\n        del expected_registry_sha256, review_receipt_sha256\n        yield object()\n\n    monkeypatch.setattr(\n        gate_module,\n        "_canonical_hold_procedure_review_trust",\n        fabricated_hold,\n        raising=False,\n    )\n\n    with pytest.raises(\n        ProcedureAdmissionGateError,\n        match="not trusted by canonical governance",\n    ):\n        evaluate_procedure_admission(\n            procedure,\n            transfer,\n            negative,\n            receipt,\n            expected_review_trust_registry_sha256=(\n                review_trust.procedure_review_trust_registry_sha256()\n            ),\n        )\n'''
+          text = text.replace(marker, regression + marker)
+          test.write_text(text)
+          PY
+
+      - name: Format and lint
+        run: |
+          uv run ruff format \
+            src/medscale/mesc/_mrl_procedure_admission_gate_v1.py \
+            tests/test_mesc_mrl_procedure_admission_gate_v1.py
+          uv run ruff check --fix \
+            src/medscale/mesc/_mrl_procedure_admission_gate_v1.py \
+            tests/test_mesc_mrl_procedure_admission_gate_v1.py
+          uv run ruff check \
+            src/medscale/mesc/_mrl_procedure_admission_gate_v1.py \
+            tests/test_mesc_mrl_procedure_admission_gate_v1.py
+
+      - name: Strict mypy
+        run: uv run mypy
+
+      - name: Focused pytest
+        run: |
+          uv run pytest -q \
+            tests/test_mesc_mrl_procedure_review_trust_v1.py \
+            tests/test_mesc_mrl_procedure_admission_gate_v1.py \
+            tests/test_mesc_mrl_procedure_transfer_test_v1.py \
+            tests/test_mesc_mrl_procedure_negative_control_v1.py
+
+      - name: Commit repair and remove temporary workflow
+        shell: bash
+        run: |
+          rm .github/workflows/temp-mrl-0406-trust-binding-repair.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/medscale/mesc/_mrl_procedure_admission_gate_v1.py \
+                  tests/test_mesc_mrl_procedure_admission_gate_v1.py \
+                  .github/workflows/temp-mrl-0406-trust-binding-repair.yml
+          git commit -m "fix(mrl): bind procedure review trust lexically"
+          git push origin HEAD:feat/mrl-0406-procedure-admission-06ea81
