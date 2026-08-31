@@ -9,6 +9,7 @@ from medscale.mesc._mrl_campaign_history_projection_v1 import (
     CampaignHistoryProjectionError,
     build_campaign_history_projection,
 )
+from medscale.mesc._mrl_research_campaign_v1 import ResearchCampaign
 from test_mesc_mrl_research_campaign_v1 import _campaign, _resources, _tier_usage
 
 
@@ -86,7 +87,9 @@ def test_projection_uses_one_campaign_snapshot_if_live_campaign_drifts_mid_build
     original_chain = history_module._oldest_first_chain
     mutation_performed = False
 
-    def mutate_live_campaign_then_walk_snapshot(snapshot):
+    def mutate_live_campaign_then_walk_snapshot(
+        snapshot: ResearchCampaign,
+    ) -> tuple[ResearchCampaign, ...]:
         nonlocal mutation_performed
         if not mutation_performed:
             mutation_performed = True
