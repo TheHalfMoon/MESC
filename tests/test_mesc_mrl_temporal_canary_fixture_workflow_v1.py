@@ -189,6 +189,22 @@ def test_mutated_manifest_fails_closed() -> None:
         )
 
 
+def test_valid_manifest_identity_mutation_fails_closed() -> None:
+    evaluator = _evaluator()
+    surface = _surface(evaluator)
+    parameter_values = _values()
+    manifest = _bound_manifest(evaluator, surface, parameter_values)
+    object.__setattr__(manifest, "evaluator_artifact_sha256", "f" * 64)
+
+    with pytest.raises(TemporalCanaryFixtureWorkflowError, match="canonical validation"):
+        run_temporal_canary_fixture_workflow(
+            manifest,
+            surface,
+            evaluator,
+            parameter_values,
+        )
+
+
 def test_manifest_evaluator_identity_mismatch_fails_closed() -> None:
     evaluator = _evaluator()
     surface = _surface(evaluator)
