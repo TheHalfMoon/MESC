@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+import medscale.mesc._mrl_campaign_history_projection_v1 as history_module
 from medscale.mesc._mrl_campaign_history_projection_v1 import (
     CampaignHistoryProjectionError,
     build_campaign_history_projection,
@@ -75,6 +76,78 @@ def test_projection_content_identity_changes_when_history_appends() -> None:
 
     assert child_projection.content_sha256 != parent_projection.content_sha256
     assert len(child_projection.entries) == len(parent_projection.entries) + 1
+
+
+def test_projection_uses_one_campaign_snapshot_if_live_campaign_drifts_mid_build(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    campaign = _campaign()
+    original_campaign_sha256 = campaign.content_sha256
+    original_chain = history_module._oldest_first_chain
+    mutation_performed = False
+
+    def mutate_live_campaign_then_walk_snapshot(snapshot):
+        nonlocal mutation_performed
+        if not mutation_performed:
+            mutation_performed = True
+            object.__setattr__(
+                campaign.cumulative_resource_usage,
+                "wall_clock_seconds",
+                campaign.cumulative_resource_usage.wall_clock_seconds + 1,
+            )
+        return original_chain(snapshot)
+
+    monkeypatch.setattr(
+        history_module,
+        "_oldest_first_chain",
+        mutate_live_campaign_then_walk_snapshot,
+    )
+
+    projection = build_campaign_history_projection(campaign)
+
+    assert mutation_performed is True
+    assert projection.latest_campaign_sha256 == original_campaign_sha256
+    assert campaign.content_sha256 != original_campaign_sha256
+
+
+def test_mutated_history_entry_fails_closed_on_latest_and_hash_views() -> None:
+    projection = build_campaign_history_projection(_campaign())
+    object.__setattr__(projection.entries[0], "campaign_sha256", "invalid")
+
+    with pytest.raises(CampaignHistoryProjectionError, match="64 lowercase hex"):
+        _ = projection.latest_campaign_sha256
+    with pytest.raises(CampaignHistoryProjectionError, match="64 lowercase hex"):
+        _ = projection.content_sha256
+
+
+def test_valid_history_entry_identity_mutation_fails_closed() -> None:
+    projection = build_campaign_history_projection(_campaign())
+    object.__setattr__(projection.entries[0], "campaign_sha256", "f" * 64)
+
+    with pytest.raises(CampaignHistoryProjectionError, match="identity changed"):
+        projection.entries[0].to_dict()
+    with pytest.raises(CampaignHistoryProjectionError, match="identity changed"):
+        _ = projection.content_sha256
+
+
+def test_mutated_projection_identity_fails_closed_on_semantic_and_hash_views() -> None:
+    projection = build_campaign_history_projection(_campaign())
+    object.__setattr__(projection, "objective_sha256", "invalid")
+
+    with pytest.raises(CampaignHistoryProjectionError, match="64 lowercase hex"):
+        projection.semantic_dict()
+    with pytest.raises(CampaignHistoryProjectionError, match="64 lowercase hex"):
+        _ = projection.content_sha256
+
+
+def test_valid_projection_identity_mutation_fails_closed() -> None:
+    projection = build_campaign_history_projection(_campaign())
+    object.__setattr__(projection, "objective_sha256", "f" * 64)
+
+    with pytest.raises(CampaignHistoryProjectionError, match="identity changed"):
+        projection.semantic_dict()
+    with pytest.raises(CampaignHistoryProjectionError, match="identity changed"):
+        _ = projection.content_sha256
 
 
 def test_corrupted_campaign_chain_fails_closed() -> None:
