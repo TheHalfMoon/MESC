@@ -26,6 +26,27 @@ jobs:
       - name: Sync locked environment
         run: uv sync --frozen
 
+      - name: Apply deterministic typing repair
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("src/medscale/mesc/_mrl_procedure_search_index_v1.py")
+          text = path.read_text()
+          replacements = {
+              "admission = admission_by_artifact.get(admitted_sha256)": "matched_admission = admission_by_artifact.get(admitted_sha256)",
+              "if admission is None:\n            raise ProcedureSearchIndexError(\n                \"every active admitted procedure requires research-input admission\"\n            )": "if matched_admission is None:\n            raise ProcedureSearchIndexError(\n                \"every active admitted procedure requires research-input admission\"\n            )",
+              "_stable_search_admission_sha256(admission)": "_stable_search_admission_sha256(matched_admission)",
+              "used_admissions.append(admission)": "used_admissions.append(matched_admission)",
+          }
+          for old, new in replacements.items():
+              if text.count(old) != 1:
+                  raise SystemExit(f"expected search-index typing target exactly once: {old}")
+              text = text.replace(old, new)
+          path.write_text(text)
+          PY
+
       - name: Format and safe lint fixes
         run: |
           uv run ruff format \
