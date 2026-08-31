@@ -26,6 +26,21 @@ jobs:
       - name: Sync locked environment
         run: uv sync --frozen
 
+      - name: Apply deterministic typing repair
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("src/medscale/mesc/_mrl_procedure_memory_cost_comparison_v1.py")
+          text = path.read_text()
+          old = '''    for label, value in (\n        ("experiment_count", cost.experiment_count),\n        ("operation_count", cost.operation_count),\n        ("evaluator_invocations", cost.evaluator_invocations),\n        ("storage_bytes", cost.storage_bytes),\n        ("invalid_experiment_count", cost.invalid_experiment_count),\n        ("evidence_candidate_count", cost.evidence_candidate_count),\n        ("false_evidence_candidate_count", cost.false_evidence_candidate_count),\n    ):\n        if type(value) is not int or value < 0:\n            raise ProcedureMemoryCostComparisonError(\n                f"{label} must be an exact nonnegative integer"\n            )\n'''
+          new = '''    for label, counter_value in (\n        ("experiment_count", cost.experiment_count),\n        ("operation_count", cost.operation_count),\n        ("evaluator_invocations", cost.evaluator_invocations),\n        ("storage_bytes", cost.storage_bytes),\n        ("invalid_experiment_count", cost.invalid_experiment_count),\n        ("evidence_candidate_count", cost.evidence_candidate_count),\n        ("false_evidence_candidate_count", cost.false_evidence_candidate_count),\n    ):\n        if type(counter_value) is not int or counter_value < 0:\n            raise ProcedureMemoryCostComparisonError(\n                f"{label} must be an exact nonnegative integer"\n            )\n'''
+          if old not in text:
+              raise SystemExit("expected typing-repair target not found")
+          path.write_text(text.replace(old, new, 1))
+          PY
+
       - name: Format and safe lint fixes
         run: |
           uv run ruff format \
