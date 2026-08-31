@@ -7,7 +7,13 @@ from typing import cast
 
 import pytest
 
-from medscale.mesc._mrl_research_objective_v1 import AdaptiveQueryBudget, EvaluationTier
+import medscale.mesc._mrl_tier1_exposure_v1 as tier1_module
+from medscale.mesc._mrl_research_objective_v1 import (
+    AdaptiveQueryBudget,
+    EvaluationTier,
+    ResearchObjectiveContract,
+    TierResultExposure,
+)
 from medscale.mesc._mrl_tier1_exposure_v1 import (
     Tier1ExposureError,
     Tier1ExposurePolicy,
@@ -106,6 +112,41 @@ def test_post_construction_objective_mutation_cannot_expand_bound_tier1_budget()
         _ = policy.query_ceiling
     with pytest.raises(Tier1ExposureError, match="tier contract"):
         consume_tier1_query(policy, Tier1ExposureUsage())
+
+
+def test_policy_uses_one_objective_snapshot_if_live_contract_drifts_mid_call(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    policy = _policy()
+    original_search_exposure = tier1_module._search_exposure
+    mutation_performed = False
+
+    def mutate_live_contract_then_read_snapshot(
+        objective: ResearchObjectiveContract,
+    ) -> TierResultExposure:
+        nonlocal mutation_performed
+        if not mutation_performed:
+            mutation_performed = True
+            object.__setattr__(
+                policy.tier_contract.objective.adaptive_query_budget,
+                "tier_1_queries",
+                50,
+            )
+        return original_search_exposure(objective)
+
+    monkeypatch.setattr(
+        tier1_module,
+        "_search_exposure",
+        mutate_live_contract_then_read_snapshot,
+    )
+
+    payload = policy.to_dict()
+
+    assert mutation_performed is True
+    assert payload["query_ceiling"] == 5
+    assert payload["max_exposures"] == 5
+    with pytest.raises(Tier1ExposureError, match="tier contract"):
+        policy.to_dict()
 
 
 def test_policy_construction_identity_is_not_reachable_as_mutable_state() -> None:
