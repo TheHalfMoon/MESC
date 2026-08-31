@@ -85,9 +85,7 @@ def test_extraction_uses_one_campaign_snapshot_if_live_campaign_drifts_mid_build
         nonlocal mutation_performed
         if not mutation_performed:
             mutation_performed = True
-            candidate_node = next(
-                node for node in campaign.nodes if node.node_id == "procedure-a"
-            )
+            candidate_node = next(node for node in campaign.nodes if node.node_id == "procedure-a")
             object.__setattr__(candidate_node, "artifact_sha256", "9" * 64)
         return original_build_history(snapshot)
 
@@ -106,9 +104,10 @@ def test_extraction_uses_one_campaign_snapshot_if_live_campaign_drifts_mid_build
 
     assert mutation_performed is True
     assert extraction.candidates[0].artifact_sha256 == "1" * 64
-    assert next(
-        node for node in campaign.nodes if node.node_id == "procedure-a"
-    ).artifact_sha256 == "9" * 64
+    assert (
+        next(node for node in campaign.nodes if node.node_id == "procedure-a").artifact_sha256
+        == "9" * 64
+    )
 
 
 def test_admission_identity_drift_between_trust_passes_fails_closed(

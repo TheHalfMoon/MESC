@@ -140,9 +140,7 @@ class CampaignHistoryEntry:
 
     def _validated_snapshot(self) -> CampaignHistoryEntry:
         if type(self) is not CampaignHistoryEntry:
-            raise CampaignHistoryProjectionError(
-                "entry must be an exact CampaignHistoryEntry"
-            )
+            raise CampaignHistoryProjectionError("entry must be an exact CampaignHistoryEntry")
         bound_content_sha256 = _load_entry_identity(self)
         _require_sha256(bound_content_sha256, "bound entry content_sha256")
         snapshot = CampaignHistoryEntry(
