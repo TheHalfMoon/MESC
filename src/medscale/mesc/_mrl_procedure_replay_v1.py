@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import enum
 import re
+import weakref
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from medscale.mesc._mrl_content_identity_v1 import (
@@ -50,7 +52,35 @@ class ProcedureReplayDisposition(enum.Enum):
     MISMATCH = "MISMATCH"
 
 
-@dataclass(frozen=True, slots=True)
+def _make_receipt_identity_registry() -> tuple[
+    Callable[[ProcedureReplayReceipt, str], None],
+    Callable[[ProcedureReplayReceipt], str],
+]:
+    identities: dict[int, str] = {}
+
+    def remove(key: int) -> None:
+        identities.pop(key, None)
+
+    def store(value: ProcedureReplayReceipt, content_sha256: str) -> None:
+        key = id(value)
+        if key in identities:
+            raise ProcedureReplayError("replay receipt construction identity already exists")
+        identities[key] = content_sha256
+        weakref.finalize(value, remove, key)
+
+    def load(value: ProcedureReplayReceipt) -> str:
+        identity = identities.get(id(value))
+        if identity is None:
+            raise ProcedureReplayError("replay receipt construction identity is missing")
+        return identity
+
+    return store, load
+
+
+_store_receipt_identity, _load_receipt_identity = _make_receipt_identity_registry()
+
+
+@dataclass(frozen=True, slots=True, weakref_slot=True)
 class ProcedureReplayReceipt:
     """Immutable fixture replay evidence for one exact procedure candidate identity."""
 
@@ -92,6 +122,34 @@ class ProcedureReplayReceipt:
         )
         if self.disposition is not expected_disposition:
             raise ProcedureReplayError("replay disposition does not match observed evidence")
+        _store_receipt_identity(
+            self,
+            derive_content_sha256(self._semantic_dict_validated()),
+        )
+
+    def _validated_snapshot(self) -> ProcedureReplayReceipt:
+        if type(self) is not ProcedureReplayReceipt:
+            raise ProcedureReplayError("receipt must be an exact ProcedureReplayReceipt")
+        bound_content_sha256 = _load_receipt_identity(self)
+        _require_sha256(bound_content_sha256, "bound receipt content_sha256")
+        snapshot = ProcedureReplayReceipt(
+            procedure_admission_subject_sha256=self.procedure_admission_subject_sha256,
+            procedure_content_sha256=self.procedure_content_sha256,
+            surface_sha256=self.surface_sha256,
+            evaluator_sha256=self.evaluator_sha256,
+            candidate_sha256=self.candidate_sha256,
+            evaluation_sha256=self.evaluation_sha256,
+            metric_id=self.metric_id,
+            expected_score=self.expected_score,
+            expected_max_score=self.expected_max_score,
+            observed_score=self.observed_score,
+            observed_max_score=self.observed_max_score,
+            disposition=self.disposition,
+        )
+        current_content_sha256 = derive_content_sha256(snapshot._semantic_dict_validated())
+        if current_content_sha256 != bound_content_sha256:
+            raise ProcedureReplayError("replay receipt identity changed after construction")
+        return snapshot
 
     @property
     def fixture_only(self) -> bool:
@@ -117,8 +175,7 @@ class ProcedureReplayReceipt:
     def can_authorize_model_promotion(self) -> bool:
         return False
 
-    def semantic_dict(self) -> dict[str, object]:
-        """Return deterministic non-authoritative replay semantics."""
+    def _semantic_dict_validated(self) -> dict[str, object]:
         return {
             "can_advance_admission": False,
             "can_authorize": False,
@@ -140,6 +197,11 @@ class ProcedureReplayReceipt:
             "procedure_content_sha256": self.procedure_content_sha256,
             "surface_sha256": self.surface_sha256,
         }
+
+    def semantic_dict(self) -> dict[str, object]:
+        """Return freshly revalidated deterministic non-authoritative replay semantics."""
+        snapshot = ProcedureReplayReceipt._validated_snapshot(self)
+        return snapshot._semantic_dict_validated()
 
     @property
     def semantic_bytes(self) -> bytes:
@@ -164,7 +226,7 @@ def replay_procedure_fixture(
     expected_score: int,
     expected_max_score: int,
 ) -> ProcedureReplayReceipt:
-    """Replay one exact procedure on the canonical pure in-memory fixture evaluator."""
+    """Replay one coherent set of exact fixture snapshots in pure in-memory evaluation."""
     if type(procedure) is not ResearchProcedure:
         raise ProcedureReplayError("procedure must be an exact ResearchProcedure")
     if type(surface) is not FixtureResearchSurface:
@@ -173,15 +235,30 @@ def replay_procedure_fixture(
         raise ProcedureReplayError("evaluator must be an exact FixtureEvaluator")
     if type(parameter_values) is not tuple:
         raise ProcedureReplayError("parameter_values must be an exact tuple")
+    if any(type(value) is not FixtureParameterValue for value in parameter_values):
+        raise ProcedureReplayError("parameter_values contains an invalid item type")
     _require_score_pair(expected_score, expected_max_score, "expected")
 
     try:
-        procedure_subject_sha256 = procedure.admission_subject_sha256
-        procedure_content_sha256 = procedure.content_sha256
-        candidate: FixtureCandidate = build_fixture_candidate(surface, parameter_values)
+        procedure_snapshot = procedure._validated_snapshot()
+        surface_snapshot = FixtureResearchSurface._validated_snapshot(surface)
+        evaluator_snapshot = FixtureEvaluator._validated_snapshot(evaluator)
+        parameter_snapshots = tuple(
+            FixtureParameterValue(
+                parameter_id=value.parameter_id,
+                value=value.value,
+            )
+            for value in parameter_values
+        )
+        procedure_subject_sha256 = procedure_snapshot.admission_subject_sha256
+        procedure_content_sha256 = procedure_snapshot.content_sha256
+        candidate: FixtureCandidate = build_fixture_candidate(
+            surface_snapshot,
+            parameter_snapshots,
+        )
         evaluation: FixtureEvaluation = evaluate_fixture_candidate(
-            surface,
-            evaluator,
+            surface_snapshot,
+            evaluator_snapshot,
             candidate,
         )
     except (ResearchProcedureError, FixtureResearchSurfaceError) as exc:
@@ -195,8 +272,8 @@ def replay_procedure_fixture(
     return ProcedureReplayReceipt(
         procedure_admission_subject_sha256=procedure_subject_sha256,
         procedure_content_sha256=procedure_content_sha256,
-        surface_sha256=surface.content_sha256,
-        evaluator_sha256=evaluator.content_sha256,
+        surface_sha256=surface_snapshot.content_sha256,
+        evaluator_sha256=evaluator_snapshot.content_sha256,
         candidate_sha256=candidate.content_sha256,
         evaluation_sha256=evaluation.content_sha256,
         metric_id=evaluation.metric_id,

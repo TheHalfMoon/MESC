@@ -4,6 +4,13 @@ from __future__ import annotations
 
 import pytest
 
+import medscale.mesc._mrl_procedure_replay_v1 as replay_module
+from medscale.mesc._mrl_fixture_research_surface_v1 import (
+    FixtureCandidate,
+    FixtureParameterValue,
+    FixtureResearchSurface,
+    build_fixture_candidate,
+)
 from medscale.mesc._mrl_procedure_replay_v1 import (
     ProcedureReplayDisposition,
     ProcedureReplayError,
@@ -45,6 +52,48 @@ def test_fixture_replay_is_deterministic_and_binds_exact_evidence() -> None:
     assert first.evaluator_sha256 == evaluator.content_sha256
     assert first.observed_score == 1
     assert first.observed_max_score == 2
+
+
+def test_replay_uses_coherent_input_snapshots_if_live_evaluator_drifts_mid_call(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    procedure = _candidate_procedure()
+    evaluator = _evaluator()
+    surface = _surface(evaluator)
+    original_evaluator_sha256 = evaluator.content_sha256
+    original_metric_id = evaluator.metric_id
+    original_build_candidate = build_fixture_candidate
+    mutation_performed = False
+
+    def mutate_live_evaluator_then_build_snapshot(
+        surface_snapshot: FixtureResearchSurface,
+        parameter_values: tuple[FixtureParameterValue, ...],
+    ) -> FixtureCandidate:
+        nonlocal mutation_performed
+        if not mutation_performed:
+            mutation_performed = True
+            object.__setattr__(evaluator, "metric_id", "fixture-metric-mutated")
+        return original_build_candidate(surface_snapshot, parameter_values)
+
+    monkeypatch.setattr(
+        replay_module,
+        "build_fixture_candidate",
+        mutate_live_evaluator_then_build_snapshot,
+    )
+
+    receipt = replay_procedure_fixture(
+        procedure,
+        surface,
+        evaluator,
+        _values(),
+        expected_score=1,
+        expected_max_score=2,
+    )
+
+    assert mutation_performed is True
+    assert receipt.evaluator_sha256 == original_evaluator_sha256
+    assert receipt.metric_id == original_metric_id
+    assert evaluator.content_sha256 != original_evaluator_sha256
 
 
 def test_replay_mismatch_remains_first_class_evidence() -> None:
@@ -107,6 +156,66 @@ def test_receipt_disposition_cannot_disagree_with_observed_evidence() -> None:
             observed_max_score=2,
             disposition=ProcedureReplayDisposition.REPRODUCED,
         )
+
+
+def test_mutated_receipt_identity_fails_closed_on_semantic_and_hash_views() -> None:
+    procedure = _candidate_procedure()
+    evaluator = _evaluator()
+    surface = _surface(evaluator)
+    receipt = replay_procedure_fixture(
+        procedure,
+        surface,
+        evaluator,
+        _values(),
+        expected_score=1,
+        expected_max_score=2,
+    )
+    object.__setattr__(receipt, "evaluation_sha256", "invalid")
+
+    with pytest.raises(ProcedureReplayError, match="64 lowercase hex"):
+        receipt.semantic_dict()
+    with pytest.raises(ProcedureReplayError, match="64 lowercase hex"):
+        _ = receipt.content_sha256
+
+
+def test_valid_receipt_identity_mutation_fails_closed() -> None:
+    procedure = _candidate_procedure()
+    evaluator = _evaluator()
+    surface = _surface(evaluator)
+    receipt = replay_procedure_fixture(
+        procedure,
+        surface,
+        evaluator,
+        _values(),
+        expected_score=1,
+        expected_max_score=2,
+    )
+    object.__setattr__(receipt, "candidate_sha256", "f" * 64)
+
+    with pytest.raises(ProcedureReplayError, match="identity changed"):
+        receipt.semantic_dict()
+    with pytest.raises(ProcedureReplayError, match="identity changed"):
+        _ = receipt.content_sha256
+
+
+def test_mutated_receipt_disposition_fails_closed_on_semantic_and_hash_views() -> None:
+    procedure = _candidate_procedure()
+    evaluator = _evaluator()
+    surface = _surface(evaluator)
+    receipt = replay_procedure_fixture(
+        procedure,
+        surface,
+        evaluator,
+        _values(),
+        expected_score=1,
+        expected_max_score=2,
+    )
+    object.__setattr__(receipt, "disposition", ProcedureReplayDisposition.MISMATCH)
+
+    with pytest.raises(ProcedureReplayError, match="does not match"):
+        receipt.semantic_dict()
+    with pytest.raises(ProcedureReplayError, match="does not match"):
+        _ = receipt.content_sha256
 
 
 def test_mutated_procedure_fails_closed_before_replay_evidence() -> None:
