@@ -1,0 +1,42 @@
+name: Temporary Ruff Format MRL 0404 0405
+
+on:
+  push:
+    branches:
+      - feat/mrl-0404-0405-evidence-3c3127
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: feat/mrl-0404-0405-evidence-3c3127
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+      - name: Sync locked environment
+        run: uv sync --frozen
+      - name: Apply canonical Ruff formatting
+        run: |
+          uv run ruff format \
+            src/medscale/mesc/_mrl_procedure_transfer_test_v1.py \
+            src/medscale/mesc/_mrl_procedure_negative_control_v1.py \
+            tests/test_mesc_mrl_procedure_transfer_test_v1.py \
+            tests/test_mesc_mrl_procedure_negative_control_v1.py
+      - name: Remove temporary workflow and commit formatting
+        run: |
+          rm .github/workflows/temp-ruff-format-0404-0405.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            src/medscale/mesc/_mrl_procedure_transfer_test_v1.py \
+            src/medscale/mesc/_mrl_procedure_negative_control_v1.py \
+            tests/test_mesc_mrl_procedure_transfer_test_v1.py \
+            tests/test_mesc_mrl_procedure_negative_control_v1.py \
+            .github/workflows/temp-ruff-format-0404-0405.yml
+          git commit -m "style(mrl): apply canonical Ruff formatting"
+          git push origin HEAD:feat/mrl-0404-0405-evidence-3c3127
