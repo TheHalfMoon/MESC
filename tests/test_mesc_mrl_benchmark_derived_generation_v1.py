@@ -149,7 +149,7 @@ def test_mutated_contamination_evidence_fails_closed() -> None:
     lineage, contamination, transformation = _bound_inputs()
     object.__setattr__(contamination.checks[0], "detector_artifact_sha256", "invalid")
 
-    with pytest.raises(ValueError, match="64 lowercase hex"):
+    with pytest.raises(BenchmarkDerivedGenerationError, match="canonical revalidation"):
         build_benchmark_derived_generation_flags(
             lineage,
             contamination,
@@ -163,7 +163,49 @@ def test_mutated_contamination_container_fails_closed() -> None:
     lineage, contamination, transformation = _bound_inputs()
     object.__setattr__(contamination, "checks", list(contamination.checks))
 
-    with pytest.raises(BenchmarkDerivedGenerationError, match="exact tuple"):
+    with pytest.raises(BenchmarkDerivedGenerationError, match="canonical revalidation"):
+        build_benchmark_derived_generation_flags(
+            lineage,
+            contamination,
+            transformation,
+            assessment_artifact_sha256="8" * 64,
+            classification=BenchmarkDerivedGenerationClassification.INDETERMINATE,
+        )
+
+
+def test_valid_lineage_identity_mutation_fails_closed() -> None:
+    lineage, contamination, transformation = _bound_inputs()
+    object.__setattr__(lineage.example, "source_sha256", "f" * 64)
+
+    with pytest.raises(BenchmarkDerivedGenerationError, match="canonical revalidation"):
+        build_benchmark_derived_generation_flags(
+            lineage,
+            contamination,
+            transformation,
+            assessment_artifact_sha256="8" * 64,
+            classification=BenchmarkDerivedGenerationClassification.INDETERMINATE,
+        )
+
+
+def test_valid_contamination_identity_mutation_fails_closed() -> None:
+    lineage, contamination, transformation = _bound_inputs()
+    object.__setattr__(contamination.checks[0], "evidence_artifact_sha256", "f" * 64)
+
+    with pytest.raises(BenchmarkDerivedGenerationError, match="canonical revalidation"):
+        build_benchmark_derived_generation_flags(
+            lineage,
+            contamination,
+            transformation,
+            assessment_artifact_sha256="8" * 64,
+            classification=BenchmarkDerivedGenerationClassification.INDETERMINATE,
+        )
+
+
+def test_valid_transformation_identity_mutation_fails_closed() -> None:
+    lineage, contamination, transformation = _bound_inputs()
+    object.__setattr__(transformation, "transformation_artifact_sha256", "f" * 64)
+
+    with pytest.raises(BenchmarkDerivedGenerationError, match="canonical revalidation"):
         build_benchmark_derived_generation_flags(
             lineage,
             contamination,
