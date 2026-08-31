@@ -211,16 +211,22 @@ class ProcedureTransferTestReport:
             raise ProcedureTransferTestError("cases must be an exact tuple")
         bound_content_sha256 = _load_report_identity(self)
         _require_sha256(bound_content_sha256, "bound transfer report content_sha256")
-        snapshot = ProcedureTransferTestReport(
+        if len(self.cases) < 2:
+            raise ProcedureTransferTestError(
+                "representative transfer evidence requires at least two exact cases"
+            )
+        if any(type(case) is not ProcedureTransferCaseEvidence for case in self.cases):
+            raise ProcedureTransferTestError("cases contains an invalid item type")
+        _require_sha256(self.procedure_sha256, "procedure_sha256")
+        current_content_sha256 = derive_content_sha256(self._semantic_dict_validated())
+        if current_content_sha256 != bound_content_sha256:
+            raise ProcedureTransferTestError("transfer report identity changed after construction")
+        return ProcedureTransferTestReport(
             procedure_sha256=self.procedure_sha256,
             cases=tuple(
                 ProcedureTransferCaseEvidence._validated_snapshot(case) for case in self.cases
             ),
         )
-        current_content_sha256 = derive_content_sha256(snapshot._semantic_dict_validated())
-        if current_content_sha256 != bound_content_sha256:
-            raise ProcedureTransferTestError("transfer report identity changed after construction")
-        return snapshot
 
     def _all_cases_reproduced_validated(self) -> bool:
         return all(
@@ -301,7 +307,7 @@ def build_procedure_transfer_test_report(
             raise ProcedureTransferTestError(
                 "transfer replay does not bind the supplied procedure candidate"
             )
-        validated_cases.append(case_snapshot)
+        validated_cases.append(case)
 
     return ProcedureTransferTestReport(
         procedure_sha256=procedure_sha256,

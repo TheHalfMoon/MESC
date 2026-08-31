@@ -308,11 +308,12 @@ def build_procedure_negative_control_report(
         declared_failure_modes = tuple(sorted(procedure_snapshot.known_failure_modes))
     except ResearchProcedureError as exc:
         raise ProcedureNegativeControlError("procedure failed canonical revalidation") from exc
-    case_snapshots = tuple(ProcedureNegativeControlCase._validated_snapshot(case) for case in cases)
+    for case in cases:
+        ProcedureNegativeControlCase._validated_snapshot(case)
     return ProcedureNegativeControlReport(
         procedure_sha256=procedure_sha256,
         declared_failure_modes=declared_failure_modes,
-        cases=case_snapshots,
+        cases=cases,
     )
 
 
