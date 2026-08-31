@@ -309,9 +309,7 @@ def _validate_comparison(comparison: ProcedureMemoryCostComparison) -> None:
         raise ProcedureMemoryCostComparisonError("non_evidence must be exact True")
 
     matches = index.search(comparison.search_query)
-    if comparison.selected_procedure_sha256 not in {
-        item.procedure_sha256 for item in matches
-    }:
+    if comparison.selected_procedure_sha256 not in {item.procedure_sha256 for item in matches}:
         raise ProcedureMemoryCostComparisonError(
             "selected procedure is not returned by the exact procedure-memory search query"
         )
@@ -356,10 +354,7 @@ def _validate_comparison(comparison: ProcedureMemoryCostComparison) -> None:
         raise ProcedureMemoryCostComparisonError(
             "procedure memory cannot increase invalid experiment behavior"
         )
-    if (
-        memory_cost.false_evidence_candidate_count
-        > no_cost.false_evidence_candidate_count
-    ):
+    if memory_cost.false_evidence_candidate_count > no_cost.false_evidence_candidate_count:
         raise ProcedureMemoryCostComparisonError(
             "procedure memory cannot increase false evidence-candidate behavior"
         )
@@ -409,12 +404,10 @@ def _validated_index(index: ProcedureSearchIndex) -> ProcedureSearchIndex:
 
 def _validate_cost(cost: ProcedureMemoryResearchCost) -> None:
     if type(cost.result_sha256s) is not tuple or not cost.result_sha256s:
-        raise ProcedureMemoryCostComparisonError(
-            "result_sha256s must be a non-empty exact tuple"
-        )
+        raise ProcedureMemoryCostComparisonError("result_sha256s must be a non-empty exact tuple")
     for value in cost.result_sha256s:
         _require_sha256(value, "result_sha256s")
-    for label, value in (
+    for label, counter_value in (
         ("experiment_count", cost.experiment_count),
         ("operation_count", cost.operation_count),
         ("evaluator_invocations", cost.evaluator_invocations),
@@ -423,7 +416,7 @@ def _validate_cost(cost: ProcedureMemoryResearchCost) -> None:
         ("evidence_candidate_count", cost.evidence_candidate_count),
         ("false_evidence_candidate_count", cost.false_evidence_candidate_count),
     ):
-        if type(value) is not int or value < 0:
+        if type(counter_value) is not int or counter_value < 0:
             raise ProcedureMemoryCostComparisonError(
                 f"{label} must be an exact nonnegative integer"
             )
