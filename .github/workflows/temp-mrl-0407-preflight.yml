@@ -26,7 +26,22 @@ jobs:
       - name: Sync locked environment
         run: uv sync --frozen
 
-      - name: Format and safe lint fixes
+      - name: Apply deterministic registry repair
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("src/medscale/mesc/_mrl_procedure_registry_v1.py")
+          text = path.read_text()
+          old = "return ProcedureRegistry(events=registry.events + (event,))"
+          new = "return ProcedureRegistry(events=(*registry.events, event))"
+          if text.count(old) != 1:
+              raise SystemExit("expected registry tuple append exactly once")
+          path.write_text(text.replace(old, new))
+          PY
+
+      - name: Format and lint
         run: |
           uv run ruff format \
             src/medscale/mesc/_mrl_procedure_registry_v1.py \
