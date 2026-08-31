@@ -63,7 +63,9 @@ def _make_identity_registry() -> tuple[
     def store(value: object, content_sha256: str) -> None:
         key = id(value)
         if key in identities:
-            raise CampaignBranchSemanticsError("branch-semantics construction identity already exists")
+            raise CampaignBranchSemanticsError(
+                "branch-semantics construction identity already exists"
+            )
         identities[key] = content_sha256
         weakref.finalize(value, remove, key)
 
@@ -104,7 +106,9 @@ class RetainedAlternativeBranch:
         _validate_retained(self)
         current = derive_content_sha256(self._semantic_dict_validated())
         if current != bound:
-            raise CampaignBranchSemanticsError("retained alternative branch changed after construction")
+            raise CampaignBranchSemanticsError(
+                "retained alternative branch changed after construction"
+            )
         return self
 
     def _semantic_dict_validated(self) -> dict[str, object]:
@@ -243,7 +247,9 @@ class CampaignBranchSemantics:
         _validate_semantics(self)
         current = derive_content_sha256(self._semantic_dict_validated())
         if current != bound:
-            raise CampaignBranchSemanticsError("campaign branch semantics changed after construction")
+            raise CampaignBranchSemanticsError(
+                "campaign branch semantics changed after construction"
+            )
         return self
 
     def _semantic_dict_validated(self) -> dict[str, object]:
@@ -290,8 +296,7 @@ class CampaignBranchSemantics:
     def repeated_known_failure_count(self) -> int:
         semantics = self._validated_snapshot()
         return sum(
-            max(0, len(item.occurrence_node_ids) - 1)
-            for item in semantics.failure_signatures
+            max(0, len(item.occurrence_node_ids) - 1) for item in semantics.failure_signatures
         )
 
     @property
@@ -328,18 +333,14 @@ def build_campaign_branch_semantics(
             artifact_sha256=node_by_id[node_id].artifact_sha256,
             hypothesis_root_node_ids=_hypothesis_roots(node_id, node_by_id),
             terminal_outcome=(
-                None
-                if node_id not in outcome_by_node
-                else outcome_by_node[node_id].outcome
+                None if node_id not in outcome_by_node else outcome_by_node[node_id].outcome
             ),
             on_current_frontier=node_id in snapshot.current_frontier_node_ids,
             expandable=node_id not in outcome_by_node,
         )
         for node_id in snapshot.retained_alternative_node_ids
     )
-    replications = tuple(
-        _replication_view(item, node_by_id) for item in snapshot.replications
-    )
+    replications = tuple(_replication_view(item, node_by_id) for item in snapshot.replications)
     failures = _failure_groups(snapshot.branch_outcomes, node_by_id)
     return CampaignBranchSemantics(
         campaign=campaign,
@@ -419,12 +420,8 @@ def _replication_view(
         evidence_sha256s=relation.evidence_sha256s,
         source_node_kind=node_by_id[relation.source_node_id].kind,
         replica_node_kind=node_by_id[relation.replica_node_id].kind,
-        source_hypothesis_root_node_ids=_hypothesis_roots(
-            relation.source_node_id, node_by_id
-        ),
-        replica_hypothesis_root_node_ids=_hypothesis_roots(
-            relation.replica_node_id, node_by_id
-        ),
+        source_hypothesis_root_node_ids=_hypothesis_roots(relation.source_node_id, node_by_id),
+        replica_hypothesis_root_node_ids=_hypothesis_roots(relation.replica_node_id, node_by_id),
     )
 
 
@@ -550,7 +547,10 @@ def _validate_retained(value: RetainedAlternativeBranch) -> None:
         value.hypothesis_root_node_ids,
         "retained hypothesis_root_node_ids",
     )
-    if value.terminal_outcome is not None and type(value.terminal_outcome) is not CampaignBranchOutcomeKind:
+    if (
+        value.terminal_outcome is not None
+        and type(value.terminal_outcome) is not CampaignBranchOutcomeKind
+    ):
         raise CampaignBranchSemanticsError("retained terminal_outcome has an invalid type")
     if type(value.on_current_frontier) is not bool:
         raise CampaignBranchSemanticsError("on_current_frontier must be an exact bool")
