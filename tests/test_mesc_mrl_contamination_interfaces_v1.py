@@ -165,3 +165,11 @@ def test_mutated_lineage_fails_closed() -> None:
 
     with pytest.raises(ContaminationInterfaceError, match="canonical revalidation"):
         build_contamination_evidence_report(lineage, _checks())
+
+
+def test_valid_post_construction_lineage_identity_drift_fails_closed() -> None:
+    lineage = build_training_example_lineage(_example())
+    object.__setattr__(lineage.example, "source_sha256", "c" * 64)
+
+    with pytest.raises(ContaminationInterfaceError, match="canonical revalidation"):
+        build_contamination_evidence_report(lineage, _checks())
