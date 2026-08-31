@@ -15,8 +15,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from medscale.mesc._mrl_contamination_interfaces_v1 import (
-    ContaminationCheckEvidence,
     ContaminationEvidenceReport,
+    ContaminationInterfaceError,
 )
 from medscale.mesc._mrl_content_identity_v1 import (
     canonical_semantic_bytes,
@@ -25,9 +25,11 @@ from medscale.mesc._mrl_content_identity_v1 import (
 from medscale.mesc._mrl_training_example_lineage_v1 import (
     TrainingExampleLineageContract,
     TrainingExampleLineageError,
-    build_training_example_lineage,
 )
-from medscale.mesc._mrl_training_transformation_binding_v1 import TrainingTransformationBinding
+from medscale.mesc._mrl_training_transformation_binding_v1 import (
+    TrainingTransformationBinding,
+    TrainingTransformationBindingError,
+)
 
 __all__ = [
     "BenchmarkDerivedGenerationClassification",
@@ -214,7 +216,7 @@ def build_benchmark_derived_generation_flags(
     classification: BenchmarkDerivedGenerationClassification,
     benchmark_artifact_sha256: str | None = None,
 ) -> BenchmarkDerivedGenerationFlags:
-    """Bind supplied benchmark-derivation evidence to exact MRL-0601/0602/0603 identities."""
+    """Bind supplied benchmark evidence to construction-bound MRL-0601/0602/0603 inputs."""
     if type(lineage) is not TrainingExampleLineageContract:
         raise BenchmarkDerivedGenerationError(
             "lineage must be an exact TrainingExampleLineageContract"
@@ -229,19 +231,18 @@ def build_benchmark_derived_generation_flags(
         )
 
     try:
-        lineage_snapshot = build_training_example_lineage(lineage.example)
-    except TrainingExampleLineageError as exc:
+        example_snapshot, lineage_sha256 = lineage._validated_example()
+        contamination_snapshot = contamination_report._validated_snapshot()
+        transformation_snapshot = transformation_binding._validated_snapshot()
+    except (
+        TrainingExampleLineageError,
+        ContaminationInterfaceError,
+        TrainingTransformationBindingError,
+    ) as exc:
         raise BenchmarkDerivedGenerationError(
-            "training lineage failed canonical revalidation"
+            "benchmark derivation evidence failed canonical revalidation"
         ) from exc
-    if lineage_snapshot.content_sha256 != lineage.content_sha256:
-        raise BenchmarkDerivedGenerationError(
-            "training lineage identity changed after construction"
-        )
 
-    contamination_snapshot = _snapshot_contamination_report(contamination_report)
-    transformation_snapshot = _snapshot_transformation_binding(transformation_binding)
-    lineage_sha256 = lineage_snapshot.content_sha256
     if contamination_snapshot.training_lineage_sha256 != lineage_sha256:
         raise BenchmarkDerivedGenerationError(
             "contamination report does not bind the supplied training lineage"
@@ -250,7 +251,7 @@ def build_benchmark_derived_generation_flags(
         raise BenchmarkDerivedGenerationError(
             "transformation binding does not bind the supplied training lineage"
         )
-    if transformation_snapshot.source_sha256 != lineage_snapshot.example.source_sha256:
+    if transformation_snapshot.source_sha256 != example_snapshot.source_sha256:
         raise BenchmarkDerivedGenerationError(
             "transformation source identity does not match the canonical lineage source"
         )
@@ -262,49 +263,6 @@ def build_benchmark_derived_generation_flags(
         assessment_artifact_sha256=assessment_artifact_sha256,
         classification=classification,
         benchmark_artifact_sha256=benchmark_artifact_sha256,
-    )
-
-
-def _snapshot_contamination_report(
-    report: ContaminationEvidenceReport,
-) -> ContaminationEvidenceReport:
-    if type(report.checks) is not tuple:
-        raise BenchmarkDerivedGenerationError(
-            "contamination report checks must remain an exact tuple"
-        )
-    if any(type(item) is not ContaminationCheckEvidence for item in report.checks):
-        raise BenchmarkDerivedGenerationError(
-            "contamination report checks contains an invalid item type"
-        )
-    checks = tuple(
-        ContaminationCheckEvidence(
-            kind=item.kind,
-            detector_id=item.detector_id,
-            detector_artifact_sha256=item.detector_artifact_sha256,
-            evidence_artifact_sha256=item.evidence_artifact_sha256,
-            disposition=item.disposition,
-            similarity_decimal=item.similarity_decimal,
-            threshold_decimal=item.threshold_decimal,
-        )
-        for item in report.checks
-    )
-    return ContaminationEvidenceReport(
-        training_lineage_sha256=report.training_lineage_sha256,
-        checks=checks,
-    )
-
-
-def _snapshot_transformation_binding(
-    binding: TrainingTransformationBinding,
-) -> TrainingTransformationBinding:
-    return TrainingTransformationBinding(
-        training_lineage_sha256=binding.training_lineage_sha256,
-        source_sha256=binding.source_sha256,
-        transformation_kind=binding.transformation_kind,
-        transformation_artifact_sha256=binding.transformation_artifact_sha256,
-        prompt_template_sha256=binding.prompt_template_sha256,
-        teacher_model_sha256=binding.teacher_model_sha256,
-        teacher_output_sha256=binding.teacher_output_sha256,
     )
 
 
