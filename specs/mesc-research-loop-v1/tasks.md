@@ -286,22 +286,22 @@ is then present on canonical `main`. Any head mutation burns prior exact-head ev
 
 ## MRL-4 — Governed research memory
 
-- [ ] **MRL-0401 — Build append-only campaign-history projection**
+- [x] **MRL-0401 — Build append-only campaign-history projection**
   - Depends on: MRL-0399.
 
-- [ ] **MRL-0402 — Build procedure-candidate extraction interface**
+- [x] **MRL-0402 — Build procedure-candidate extraction interface**
   - Depends on: MRL-0401, MRL-0109.
 
-- [ ] **MRL-0403 — Build procedure replay harness**
+- [x] **MRL-0403 — Build procedure replay harness**
   - Depends on: MRL-0402.
 
-- [ ] **MRL-0404 — Build representative procedure transfer-test contract**
+- [x] **MRL-0404 — Build representative procedure transfer-test contract**
   - Depends on: MRL-0403.
 
-- [ ] **MRL-0405 — Build negative/failure-control contract**
+- [x] **MRL-0405 — Build negative/failure-control contract**
   - Depends on: MRL-0403.
 
-- [ ] **MRL-0406 — Build independent procedure admission gate**
+- [x] **MRL-0406 — Build independent procedure admission gate**
   - Depends on: MRL-0404, MRL-0405.
   - Lifecycle: DISCOVERED -> CANDIDATE -> REPLAYED -> TRANSFER_TESTED -> REVIEWED ->
     ADMITTED.
@@ -309,23 +309,23 @@ is then present on canonical `main`. Any head mutation burns prior exact-head ev
     for `REVIEWED`/`ADMITTED`.
   - Acceptance: typed applicability bounds are mandatory.
 
-- [ ] **MRL-0407 — Build admitted/rejected/superseded/invalidated procedure registry**
+- [x] **MRL-0407 — Build admitted/rejected/superseded/invalidated procedure registry**
   - Depends on: MRL-0406.
   - Acceptance: later known failure or boundary violation can invalidate/supersede without
     deleting historical admission evidence.
 
-- [ ] **MRL-0408 — Build rebuildable non-authoritative procedure search index**
+- [x] **MRL-0408 — Build rebuildable non-authoritative procedure search index**
   - Depends on: MRL-0407, MRL-0109.
   - Acceptance: index enforces research-input admission and is never canonical authority.
 
-- [ ] **MRL-0409 — Compare memory vs no-memory fixture research cost**
+- [x] **MRL-0409 — Compare memory vs no-memory fixture research cost**
   - Depends on: MRL-0408.
   - Acceptance: demonstrate a reproducible efficiency gain without increased invalid or
     false-evidence-candidate behavior.
 
 ### MRL-4 gate
 
-- [ ] **MRL-0499 — Procedure-memory exact-head qualification**
+- [x] **MRL-0499 — Procedure-memory exact-head qualification**
   - Requires: MRL-0401..0409.
   - Exit: `MRL_PROCEDURE_MEMORY_READY`.
 
