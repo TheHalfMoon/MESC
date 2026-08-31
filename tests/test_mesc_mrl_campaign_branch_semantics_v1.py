@@ -162,7 +162,7 @@ def test_failure_signatures_deduplicate_without_deleting_occurrences() -> None:
                     terminal_node_id="decision-b",
                     outcome=CampaignBranchOutcomeKind.REJECTED,
                     evidence_sha256s=("5" * 64,),
-                    reason="  REPEATED   known failure. ",
+                    reason="REPEATED   known failure.",
                 ),
             ),
             key=lambda item: item.terminal_node_id,
