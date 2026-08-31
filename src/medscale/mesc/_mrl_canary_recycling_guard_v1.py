@@ -92,7 +92,9 @@ def _make_report_identity_registry() -> tuple[
     def store(value: CanaryRecyclingGuardReport, content_sha256: str) -> None:
         key = id(value)
         if key in identities:
-            raise CanaryRecyclingError("canary recycling report construction identity already exists")
+            raise CanaryRecyclingError(
+                "canary recycling report construction identity already exists"
+            )
         identities[key] = content_sha256
         weakref.finalize(value, remove, key)
 
@@ -170,7 +172,8 @@ class CanaryRecyclingGuardReport:
             _use_key(use) for use in expected_blocked
         ):
             raise CanaryRecyclingError(
-                "blocked_uses must exactly equal attempted uses that overlap the protected canary chain"
+                "blocked_uses must exactly equal attempted uses that overlap "
+                "the protected canary chain"
             )
         _store_report_identity(
             self,
@@ -191,7 +194,9 @@ class CanaryRecyclingGuardReport:
             blocked_uses=tuple(use._validated_snapshot() for use in self.blocked_uses),
         )
         if derive_content_sha256(snapshot._semantic_dict_validated()) != bound_content_sha256:
-            raise CanaryRecyclingError("canary recycling report identity changed after construction")
+            raise CanaryRecyclingError(
+                "canary recycling report identity changed after construction"
+            )
         return snapshot
 
     def _disposition_validated(self) -> CanaryRecyclingDisposition:
