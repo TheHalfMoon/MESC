@@ -5,7 +5,10 @@ from __future__ import annotations
 import pytest
 
 import medscale.mesc._mrl_procedure_candidate_extraction_v1 as extraction_module
-from medscale.mesc._mrl_campaign_history_projection_v1 import CampaignHistoryProjection
+from medscale.mesc._mrl_campaign_history_projection_v1 import (
+    CampaignHistoryProjection,
+    build_campaign_history_projection,
+)
 from medscale.mesc._mrl_procedure_candidate_extraction_v1 import (
     ProcedureCandidateExtraction,
     ProcedureCandidateExtractionError,
@@ -72,7 +75,7 @@ def test_extraction_uses_one_campaign_snapshot_if_live_campaign_drifts_mid_build
 ) -> None:
     campaign = _candidate_campaign()
     admission = _untrusted_procedure_admission()
-    original_build_history = extraction_module.build_campaign_history_projection
+    original_build_history = build_campaign_history_projection
     mutation_performed = False
 
     def bypass_trust_for_fixture(
