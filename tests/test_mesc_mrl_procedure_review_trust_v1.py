@@ -83,12 +83,15 @@ def test_trust_registry_cannot_change_during_active_admission_lease() -> None:
     )
     try:
         registry_sha256 = procedure_review_trust_registry_sha256()
-        with hold_procedure_review_trust(
-            expected_registry_sha256=registry_sha256,
-            review_receipt_sha256=receipt_sha256,
-        ), pytest.raises(
-            ProcedureReviewTrustError,
-            match="cannot change during active admission",
+        with (
+            hold_procedure_review_trust(
+                expected_registry_sha256=registry_sha256,
+                review_receipt_sha256=receipt_sha256,
+            ),
+            pytest.raises(
+                ProcedureReviewTrustError,
+                match="cannot change during active admission",
+            ),
         ):
             review_trust._replace_procedure_review_trust_registry_for_tests(frozenset())
     finally:
