@@ -19,7 +19,6 @@ from medscale.mesc._mrl_content_identity_v1 import (
 from medscale.mesc._mrl_training_example_lineage_v1 import (
     TrainingExampleLineageContract,
     TrainingExampleLineageError,
-    build_training_example_lineage,
 )
 
 __all__ = [
@@ -181,24 +180,20 @@ def build_training_transformation_binding(
     teacher_model_sha256: str | None = None,
     teacher_output_sha256: str | None = None,
 ) -> TrainingTransformationBinding:
-    """Bind caller-supplied transformation identities to one revalidated lineage."""
+    """Bind transformation identities to one construction-bound lineage snapshot."""
     if type(lineage) is not TrainingExampleLineageContract:
         raise TrainingTransformationBindingError(
             "lineage must be an exact TrainingExampleLineageContract"
         )
     try:
-        rebuilt = build_training_example_lineage(lineage.example)
+        example_snapshot, lineage_sha256 = lineage._validated_example()
     except TrainingExampleLineageError as exc:
         raise TrainingTransformationBindingError(
             "training lineage failed canonical revalidation"
         ) from exc
-    if rebuilt.content_sha256 != lineage.content_sha256:
-        raise TrainingTransformationBindingError(
-            "training lineage identity changed after construction"
-        )
     return TrainingTransformationBinding(
-        training_lineage_sha256=rebuilt.content_sha256,
-        source_sha256=rebuilt.example.source_sha256,
+        training_lineage_sha256=lineage_sha256,
+        source_sha256=example_snapshot.source_sha256,
         transformation_kind=transformation_kind,
         transformation_artifact_sha256=transformation_artifact_sha256,
         prompt_template_sha256=prompt_template_sha256,
