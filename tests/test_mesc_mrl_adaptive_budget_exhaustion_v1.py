@@ -12,9 +12,11 @@ from medscale.mesc._mrl_adaptive_budget_exhaustion_v1 import (
     AdaptiveBudgetExhaustionError,
     AdaptiveTierDisposition,
     AdaptiveTierUseState,
+    _derive_tier_disposition,
     build_adaptive_budget_disposition,
     require_adaptive_tier_available,
 )
+from medscale.mesc._mrl_adaptive_campaign_accounting_v1 import AdaptiveTierAccounting
 from medscale.mesc._mrl_research_campaign_v1 import ResearchCampaign
 from medscale.mesc._mrl_research_objective_v1 import (
     EvaluationTier,
@@ -102,6 +104,23 @@ def test_disallowed_adaptive_tier_is_blocked_without_fabricating_budget_exhausti
     assert replication.reasons == (AdaptiveBudgetBlockReason.TIER_NOT_ALLOWED,)
     assert replication.queries_remaining == 0
     assert replication.result_exposures_remaining == 0
+
+
+def test_disallowed_derivation_clamps_retained_accounting_headroom() -> None:
+    accounting = AdaptiveTierAccounting(
+        tier=EvaluationTier.SEARCH,
+        queries_used=3,
+        query_ceiling=10,
+        result_exposures_used=1,
+        result_exposure_ceiling=4,
+    )
+
+    disposition = _derive_tier_disposition(accounting, {EvaluationTier.REPLICATION})
+
+    assert disposition.state is AdaptiveTierUseState.BLOCKED
+    assert disposition.reasons == (AdaptiveBudgetBlockReason.TIER_NOT_ALLOWED,)
+    assert disposition.queries_remaining == 0
+    assert disposition.result_exposures_remaining == 0
 
 
 def test_block_reasons_must_exactly_match_remaining_capacity() -> None:
