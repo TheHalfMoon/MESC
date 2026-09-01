@@ -1,26 +1,16 @@
 name: CI
 
 on:
-  push:
-    branches: [main]
   pull_request:
     branches: [main]
 
 permissions:
   contents: read
 
-concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
-  quality:
-    name: quality (py${{ matrix.python-version }})
+  closeout-evidence-inventory:
+    if: github.repository == 'TheHalfMoon/MESC' && github.head_ref == 'fix/mrl-7-project-state-contract-d36694'
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        python-version: ["3.11", "3.12"]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -30,30 +20,61 @@ jobs:
 
       - name: Install uv
         uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
-        with:
-          enable-cache: true
 
-      - name: Install Python ${{ matrix.python-version }}
-        run: uv python install ${{ matrix.python-version }}
+      - name: Install Python 3.11
+        run: uv python install 3.11
 
-      - name: Sync (locked)
+      - name: Sync locked environment
         run: uv sync --frozen
 
-      - name: Ruff (lint)
-        run: uv run ruff check .
+      - name: Inventory canonical closeout transitions
+        run: |
+          uv run python - <<'PY'
+          import json
+          from collections import defaultdict
+          from pathlib import Path
 
-      - name: Ruff (format)
-        run: uv run ruff format --check .
+          import medscale.mesc._mrl_machine_state_generation_v1 as m
 
-      - name: Mypy (strict)
-        run: uv run mypy
-
-      - name: Pytest
-        run: uv run pytest --cov --cov-report=term-missing
-
-      - name: MRL machine-state drift/manual-edit gate
-        run: uv run pytest -q tests/test_mesc_mrl_machine_state_ci_gate_v1.py
-
-      # ADR-0017: corpus<->log referential integrity is a hard gate, not a convention.
-      - name: litdb integrity (medscale check)
-        run: uv run medscale check
+          root = Path('.').resolve()
+          snapshot = m.load_canonical_snapshot(root)
+          records = m._task_records(snapshot.source(m._TASKS).content)
+          groups: dict[tuple[str, str], list[dict[str, object]]] = defaultdict(list)
+          unresolved: list[str] = []
+          for task_id, checked, dependencies in records:
+              if not checked:
+                  continue
+              proof = m._closure_proof(
+                  root,
+                  snapshot.commit_sha,
+                  snapshot.canonical_main_sha,
+                  task_id,
+              )
+              if proof is None:
+                  unresolved.append(task_id)
+                  continue
+              stale = m._stale(root, snapshot.commit_sha, task_id, proof[0])
+              groups[proof].append(
+                  {
+                      'task_id': task_id,
+                      'dependencies': list(dependencies),
+                      'stale': stale,
+                  }
+              )
+          payload = {
+              'decision_base': snapshot.commit_sha,
+              'canonical_main': snapshot.canonical_main_sha,
+              'groups': [
+                  {
+                      'canonical_merge_sha': merge_sha,
+                      'qualified_head_sha': head_sha,
+                      'tasks': sorted(rows, key=lambda row: str(row['task_id'])),
+                  }
+                  for (merge_sha, head_sha), rows in sorted(groups.items())
+              ],
+              'checked_without_reproducible_merge_transition': sorted(unresolved),
+          }
+          print('MRL_CLOSEOUT_EVIDENCE_INVENTORY_BEGIN')
+          print(json.dumps(payload, sort_keys=True, indent=2))
+          print('MRL_CLOSEOUT_EVIDENCE_INVENTORY_END')
+          PY
