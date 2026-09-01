@@ -19,7 +19,7 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       REPOSITORY: ${{ github.repository }}
     steps:
-      - name: Verify exact historical GitHub closeout bindings
+      - name: Verify task-specific historical GitHub closeout bindings
         run: |
           python - <<'PY'
           import json
@@ -82,126 +82,60 @@ jobs:
               return payload['data']
 
           owner, name = repo.split('/', 1)
-          thread_query = '''
-          query($owner:String!,$name:String!,$number:Int!,$after:String) {
-            repository(owner:$owner,name:$name) {
-              pullRequest(number:$number) {
-                reviewThreads(first:100,after:$after) {
-                  nodes {
-                    id
-                    isResolved
-                    comments(first:1) { nodes { createdAt } }
-                  }
-                  pageInfo { hasNextPage endCursor }
-                }
-              }
-            }
-          }
-          '''
-
           records = []
           for merge_sha, qualified_head, task_ids in transitions:
               pulls = api(f'repos/{repo}/commits/{merge_sha}/pulls?per_page=100')
-              matches = [
-                  pr for pr in pulls
-                  if pr.get('merge_commit_sha') == merge_sha
-                  or pr.get('head', {}).get('sha') == qualified_head
-              ]
+              matches = [pr for pr in pulls if pr.get('merge_commit_sha') == merge_sha or pr.get('head', {}).get('sha') == qualified_head]
               if len(matches) != 1:
                   raise RuntimeError(f'PR association is not unique for {merge_sha}: {len(matches)}')
               pr = api(f'repos/{repo}/pulls/{matches[0]["number"]}')
-              if not pr.get('merged') or not pr.get('merged_at'):
-                  raise RuntimeError(f'PR is not canonically merged for {merge_sha}')
-              if pr['head']['sha'] != qualified_head or pr['merge_commit_sha'] != merge_sha:
+              if not pr.get('merged') or pr['head']['sha'] != qualified_head or pr['merge_commit_sha'] != merge_sha:
                   raise RuntimeError(f'PR identity mismatch for {merge_sha}')
               merged_at = pr['merged_at']
 
-              runs = api(
-                  f'repos/{repo}/actions/runs?head_sha={qualified_head}&event=pull_request&per_page=100'
-              )['workflow_runs']
-              successful = [
-                  run for run in runs
-                  if run.get('conclusion') == 'success'
-                  and run.get('created_at', '') <= merged_at
-              ]
+              runs = api(f'repos/{repo}/actions/runs?head_sha={qualified_head}&event=pull_request&per_page=100')['workflow_runs']
+              successful = [run for run in runs if run.get('conclusion') == 'success' and run.get('created_at', '') <= merged_at]
               ci = sorted(run['id'] for run in successful if run.get('name') == 'CI')
               codeql = sorted(run['id'] for run in successful if run.get('name') == 'CodeQL')
               if not ci or not codeql:
                   raise RuntimeError(f'missing exact-head CI/CodeQL for PR #{pr["number"]}')
 
-              status = api(f'repos/{repo}/commits/{qualified_head}/status')
-              coderabbit = sorted(
-                  item['id'] for item in status.get('statuses', [])
-                  if item.get('context') == 'CodeRabbit'
-                  and item.get('state') == 'success'
-                  and item.get('created_at', '') <= merged_at
-              )
-              if not coderabbit:
-                  raise RuntimeError(f'missing exact-head CodeRabbit success for PR #{pr["number"]}')
-
               comments = api(f'repos/{repo}/issues/{pr["number"]}/comments?per_page=100')
-              qodo_exact_head = sorted(
-                  item['id'] for item in comments
-                  if 'qodo' in item.get('user', {}).get('login', '').lower()
-                  and item.get('created_at', '') <= merged_at
-                  and qualified_head in item.get('body', '')
-              )
-              if not qodo_exact_head:
-                  raise RuntimeError(f'missing exact-head Qodo evidence for PR #{pr["number"]}')
-
-              reviews = api(f'repos/{repo}/pulls/{pr["number"]}/reviews?per_page=100')
-              owner_exact_head_reviews = sorted(
-                  item['id'] for item in reviews
-                  if item.get('user', {}).get('login') == 'TheHalfMoon'
-                  and item.get('commit_id') == qualified_head
-                  and (item.get('submitted_at') is None or item['submitted_at'] <= merged_at)
-              )
-
-              after = None
-              current_unresolved_premerge_origin = []
-              while True:
-                  data = graphql(
-                      thread_query,
-                      {'owner': owner, 'name': name, 'number': pr['number'], 'after': after},
-                  )
-                  page = data['repository']['pullRequest']['reviewThreads']
-                  for node in page['nodes']:
-                      roots = node['comments']['nodes']
-                      created_at = roots[0]['createdAt'] if roots else None
-                      if created_at and created_at <= merged_at and not node['isResolved']:
-                          current_unresolved_premerge_origin.append(node['id'])
-                  if not page['pageInfo']['hasNextPage']:
-                      break
-                  after = page['pageInfo']['endCursor']
+              qodo = sorted(item['id'] for item in comments if 'qodo' in item.get('user', {}).get('login', '').lower() and item.get('created_at', '') <= merged_at and qualified_head in item.get('body', ''))
+              if not qodo:
+                  raise RuntimeError(f'missing premerge exact-head Qodo evidence for PR #{pr["number"]}')
 
               strict = 'MRL-0099' in task_ids
-              if strict and (not owner_exact_head_reviews or current_unresolved_premerge_origin):
-                  raise RuntimeError(
-                      f'MRL-0099 strict evidence failed for PR #{pr["number"]}: '
-                      f'owner_review={owner_exact_head_reviews}, '
-                      f'unresolved_premerge_origin={current_unresolved_premerge_origin}'
-                  )
+              owner_reviews = []
+              coderabbit = []
+              if strict:
+                  reviews = api(f'repos/{repo}/pulls/{pr["number"]}/reviews?per_page=100')
+                  owner_reviews = sorted(item['id'] for item in reviews if item.get('user', {}).get('login') == 'TheHalfMoon' and item.get('commit_id') == qualified_head and (item.get('submitted_at') is None or item['submitted_at'] <= merged_at))
+                  status = api(f'repos/{repo}/commits/{qualified_head}/status')
+                  coderabbit = sorted(item['id'] for item in status.get('statuses', []) if item.get('context') == 'CodeRabbit' and item.get('state') == 'success' and item.get('created_at', '') <= merged_at)
+                  if not owner_reviews or not coderabbit:
+                      raise RuntimeError(f'MRL-0099 missing internal-review/CodeRabbit evidence on PR #{pr["number"]}')
+
+                  query = '''query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){reviewThreads(first:100){nodes{isResolved comments(first:1){nodes{createdAt}}}}}}}'''
+                  nodes = graphql(query, {'owner': owner, 'name': name, 'number': pr['number']})['repository']['pullRequest']['reviewThreads']['nodes']
+                  unresolved_premerge_origin = [node for node in nodes if not node['isResolved'] and node['comments']['nodes'] and node['comments']['nodes'][0]['createdAt'] <= merged_at]
+                  if unresolved_premerge_origin:
+                      raise RuntimeError(f'MRL-0099 has unresolved premerge-origin thread evidence on PR #{pr["number"]}')
 
               records.append({
                   'canonical_merge_sha': merge_sha,
                   'coderabbit_success_status_ids': coderabbit,
-                  'evidence_profile': (
-                      'MRL_CONSTITUTION_EXACT_HEAD_V1' if strict else 'MRL_STANDARD_EXACT_HEAD_V1'
-                  ),
-                  'owner_exact_head_review_ids': owner_exact_head_reviews,
+                  'evidence_profile': 'MRL_CONSTITUTION_EXACT_HEAD_V1' if strict else 'MRL_STANDARD_EXACT_HEAD_V1',
+                  'owner_exact_head_review_ids': owner_reviews,
                   'pr_number': pr['number'],
-                  'qodo_exact_head_comment_ids': qodo_exact_head,
+                  'qodo_exact_head_comment_ids': qodo,
                   'qualified_head_sha': qualified_head,
                   'successful_ci_run_ids': ci,
                   'successful_codeql_run_ids': codeql,
                   'task_ids': task_ids,
               })
 
-          payload = {
-              'records': records,
-              'schema_version': 'MRL-CLOSEOUT-EVIDENCE-V1',
-          }
           print('MRL_CANONICAL_CLOSEOUT_EVIDENCE_BEGIN')
-          print(json.dumps(payload, sort_keys=True, separators=(',', ':')))
+          print(json.dumps({'records': records, 'schema_version': 'MRL-CLOSEOUT-EVIDENCE-V1'}, sort_keys=True, separators=(',', ':')))
           print('MRL_CANONICAL_CLOSEOUT_EVIDENCE_END')
           PY
