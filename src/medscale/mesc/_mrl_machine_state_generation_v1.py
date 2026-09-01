@@ -75,6 +75,7 @@ MachineStateGenerationError = _legacy.MachineStateGenerationError
 MachineStateRenderSet = _legacy.MachineStateRenderSet
 _REAL_EVIDENCE = _legacy._REAL_EVIDENCE
 _EXTERNAL_DEPENDENCY_TEXT: Final[dict[str, frozenset[str]]] = {
+    "MRL-0001": frozenset({"planning package acceptance"}),
     "MRL-0800": frozenset({"current training/runtime governance"}),
     "MRL-0801": frozenset({"separate real-asset authorization/evidence"}),
     "MRL-0802": frozenset({"separate real-asset authorization/evidence"}),
