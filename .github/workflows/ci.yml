@@ -7,7 +7,11 @@ on:
     branches: [main]
 
 permissions:
+  actions: read
   contents: read
+  issues: read
+  pull-requests: read
+  statuses: read
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -47,6 +51,14 @@ jobs:
 
       - name: Mypy (strict)
         run: uv run mypy
+
+      - name: MRL canonical closeout evidence live binding
+        if: github.event_name == 'pull_request' && matrix.python-version == '3.11'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          uv run python scripts/mrl_closeout_evidence.py
+          --verify specs/mesc-research-loop-v1/closeout-evidence-v1.json
 
       - name: Pytest
         run: uv run pytest --cov --cov-report=term-missing
