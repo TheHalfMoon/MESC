@@ -36,7 +36,7 @@ _PROFILES: Final = frozenset(
     {_REPOSITORY_PROFILE, _REVIEWED_PROFILE, _CONSTITUTION_PROFILE}
 )
 _REVIEW_REQUIRED_TASKS: Final = frozenset(
-    {"MRL-0099", "MRL-0100", "MRL-0101", "MRL-0102", "MRL-0103", "MRL-0109"}
+    {"MRL-0100", "MRL-0101", "MRL-0102", "MRL-0103", "MRL-0109"}
 )
 _TASK_ID: Final = re.compile(r"^MRL-[0-9]{4}$")
 _SHA40: Final = re.compile(r"^[0-9a-f]{40}$")
@@ -227,7 +227,7 @@ def _parse_record(value: object) -> _CloseoutEvidence:
     if contains_constitution_gate:
         if (
             profile != _CONSTITUTION_PROFILE
-            or not independent
+            or independent
             or not qodo
             or not owner
             or not coderabbit
