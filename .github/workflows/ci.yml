@@ -1,131 +1,59 @@
 name: CI
 
 on:
+  push:
+    branches: [main]
   pull_request:
     branches: [main]
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  provenance-repair:
-    if: github.repository == 'TheHalfMoon/MESC' && github.head_ref == 'fix/mrl-7-project-state-contract-d36694' && github.actor == 'TheHalfMoon'
+  quality:
+    name: quality (py${{ matrix.python-version }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: fix/mrl-7-project-state-contract-d36694
+          persist-credentials: false
           fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Install uv
         uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          enable-cache: true
 
-      - name: Install Python 3.11
-        run: uv python install 3.11
+      - name: Install Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
 
-      - name: Sync locked environment
+      - name: Sync (locked)
         run: uv sync --frozen
 
-      - name: Apply canonical provenance and dependency repairs
-        run: |
-          python - <<'PY'
-          from pathlib import Path
+      - name: Ruff (lint)
+        run: uv run ruff check .
 
-          generator = Path('src/medscale/mesc/_mrl_machine_state_generation_v1.py')
-          text = generator.read_text(encoding='utf-8')
+      - name: Ruff (format)
+        run: uv run ruff format --check .
 
-          old = '''class CanonicalRepositorySnapshot:\n    repository_root: Path\n    commit_sha: str\n    tree_sha: str\n    sources: tuple[CanonicalSourceSnapshot, ...]\n'''
-          new = '''class CanonicalRepositorySnapshot:\n    repository_root: Path\n    commit_sha: str\n    tree_sha: str\n    canonical_main_sha: str\n    sources: tuple[CanonicalSourceSnapshot, ...]\n'''
-          if text.count(old) != 1:
-              raise SystemExit('snapshot dataclass target is not unique')
-          text = text.replace(old, new, 1)
+      - name: Mypy (strict)
+        run: uv run mypy
 
-          old = '''    return CanonicalRepositorySnapshot(\n        repository_root=root,\n        commit_sha=commit_sha,\n        tree_sha=_git(root, "rev-parse", f"{commit_sha}^{{tree}}"),\n        sources=tuple(_load_source(root, commit_sha, path) for path in _ALL_SOURCES),\n    )\n'''
-          new = '''    return CanonicalRepositorySnapshot(\n        repository_root=root,\n        commit_sha=commit_sha,\n        tree_sha=_git(root, "rev-parse", f"{commit_sha}^{{tree}}"),\n        canonical_main_sha=_git(\n            root,\n            "rev-parse",\n            "--verify",\n            "refs/remotes/origin/main",\n        ),\n        sources=tuple(_load_source(root, commit_sha, path) for path in _ALL_SOURCES),\n    )\n'''
-          if text.count(old) != 1:
-              raise SystemExit('canonical-main snapshot target is not unique')
-          text = text.replace(old, new, 1)
+      - name: Pytest
+        run: uv run pytest --cov --cov-report=term-missing
 
-          old = '''            _closure_proof(snapshot.repository_root, snapshot.commit_sha, task_id)\n'''
-          new = '''            _closure_proof(\n                snapshot.repository_root,\n                snapshot.commit_sha,\n                snapshot.canonical_main_sha,\n                task_id,\n            )\n'''
-          if text.count(old) != 1:
-              raise SystemExit('closure call target is not unique')
-          text = text.replace(old, new, 1)
+      - name: MRL machine-state drift/manual-edit gate
+        run: uv run pytest -q tests/test_mesc_mrl_machine_state_ci_gate_v1.py
 
-          old = '''def _dependencies(lines: list[str], task_id: str) -> tuple[str, ...]:\n    text = "\\n".join(line for line in lines if "Depends on:" in line or "Requires:" in line)\n    result: set[str] = set()\n    for match in _DEP_RE.finditer(text):\n        start = int(match.group(1))\n        end_text = match.group(2)\n        if end_text is None:\n            result.add(f"MRL-{start:04d}")\n            continue\n        end = int(end_text)\n        if end < start:\n            raise MachineStateGenerationError("MRL dependency range is descending")\n        result.update(f"MRL-{value:04d}" for value in range(start, end + 1))\n    result.discard(task_id)\n    return tuple(sorted(result))\n'''
-          new = '''def _dependencies(lines: list[str], task_id: str) -> tuple[str, ...]:\n    text = "\\n".join(line for line in lines if "Depends on:" in line or "Requires:" in line)\n    matches = tuple(_DEP_RE.finditer(text))\n    for match in matches:\n        before = text[match.start() - 1] if match.start() else ""\n        after = text[match.end()] if match.end() < len(text) else ""\n        if (before and (before.isalnum() or before in "_-")) or (\n            after and (after.isalnum() or after in "_-")\n        ):\n            raise MachineStateGenerationError(\n                "MRL dependency reference or range is malformed or cross-prefix"\n            )\n    for occurrence in re.finditer(r"MRL-", text):\n        if not any(match.start() <= occurrence.start() < match.end() for match in matches):\n            raise MachineStateGenerationError(\n                "MRL dependency reference or range is malformed or cross-prefix"\n            )\n    for dots in re.finditer(r"\\.\\.", text):\n        if not any(match.start() <= dots.start() and dots.end() <= match.end() for match in matches):\n            raise MachineStateGenerationError(\n                "MRL dependency reference or range is malformed or cross-prefix"\n            )\n\n    result: set[str] = set()\n    for match in matches:\n        start = int(match.group(1))\n        end_text = match.group(2)\n        if end_text is None:\n            result.add(f"MRL-{start:04d}")\n            continue\n        end = int(end_text)\n        if end < start:\n            raise MachineStateGenerationError("MRL dependency range is descending")\n        result.update(f"MRL-{value:04d}" for value in range(start, end + 1))\n    if task_id in result:\n        raise MachineStateGenerationError(f"MRL task {task_id} cannot depend on itself")\n    return tuple(sorted(result))\n'''
-          if text.count(old) != 1:
-              raise SystemExit('dependency parser target is not unique')
-          text = text.replace(old, new, 1)
-
-          old = '''def _closure_proof(\n    root: Path,\n    decision_base: str,\n    task_id: str,\n) -> tuple[str, str] | None:\n'''
-          new = '''def _closure_proof(\n    root: Path,\n    decision_base: str,\n    canonical_main_sha: str,\n    task_id: str,\n) -> tuple[str, str] | None:\n'''
-          if text.count(old) != 1:
-              raise SystemExit('closure signature target is not unique')
-          text = text.replace(old, new, 1)
-
-          old = '''            and _task_checked_at(root, parents[1], task_id)\n        ):\n            return commit, parents[1]\n'''
-          new = '''            and _task_checked_at(root, parents[1], task_id)\n        ):\n            if not _is_ancestor(root, commit, canonical_main_sha):\n                return None\n            return commit, parents[1]\n'''
-          if text.count(old) != 1:
-              raise SystemExit('closure provenance target is not unique')
-          text = text.replace(old, new, 1)
-
-          old = '''def _git(root: Path, *arguments: str) -> str:\n'''
-          new = '''def _is_ancestor(root: Path, ancestor: str, descendant: str) -> bool:\n    try:\n        completed = subprocess.run(\n            ("git", "merge-base", "--is-ancestor", ancestor, descendant),\n            cwd=root,\n            check=False,\n            capture_output=True,\n        )\n    except OSError as exc:\n        raise MachineStateGenerationError("Git ancestry check could not execute") from exc\n    if completed.returncode == 0:\n        return True\n    if completed.returncode == 1:\n        return False\n    raise MachineStateGenerationError("Git ancestry check failed")\n\n\ndef _git(root: Path, *arguments: str) -> str:\n'''
-          if text.count(old) != 1:
-              raise SystemExit('ancestry helper insertion target is not unique')
-          generator.write_text(text.replace(old, new, 1), encoding='utf-8')
-
-          test_path = Path('tests/test_mesc_mrl_machine_state_ci_gate_v1.py')
-          text = test_path.read_text(encoding='utf-8')
-
-          old = '''    _run_git(clone, "config", "user.name", "MRL CI Fixture")\n    _run_git(clone, "config", "user.email", "mrl-ci-fixture@example.invalid")\n    return clone\n'''
-          new = '''    _run_git(clone, "config", "user.name", "MRL CI Fixture")\n    _run_git(clone, "config", "user.email", "mrl-ci-fixture@example.invalid")\n    _run_git(\n        clone,\n        "update-ref",\n        "refs/remotes/origin/main",\n        _git_text(clone, "rev-parse", "HEAD"),\n    )\n    return clone\n'''
-          if text.count(old) != 1:
-              raise SystemExit('fixture canonical-main target is not unique')
-          text = text.replace(old, new, 1)
-
-          old_call = '''    proof = machine_state._closure_proof(repository, decision_base, "MRL-0299")\n'''
-          new_call = '''    proof = machine_state._closure_proof(\n        repository,\n        decision_base,\n        _git_text(repository, "rev-parse", "refs/remotes/origin/main"),\n        "MRL-0299",\n    )\n'''
-          if text.count(old_call) != 1:
-              raise SystemExit('existing closure regression call target is not unique')
-          text = text.replace(old_call, new_call, 1)
-
-          marker = '''\ndef test_ci_gate_rejects_manually_edited_projection(tmp_path: Path) -> None:\n'''
-          regression = '''\ndef test_dependency_parser_rejects_self_dependency() -> None:\n    with pytest.raises(MachineStateGenerationError, match="cannot depend on itself"):\n        machine_state._dependencies(["  - Depends on: MRL-0800"], "MRL-0800")\n\n\ndef test_dependency_parser_accepts_terminal_punctuation_and_valid_range() -> None:\n    assert machine_state._dependencies(\n        ["  - Depends on: MRL-0001."],\n        "MRL-0999",\n    ) == ("MRL-0001",)\n    assert machine_state._dependencies(\n        ["  - Depends on: MRL-0001..MRL-0002."],\n        "MRL-0999",\n    ) == ("MRL-0001", "MRL-0002")\n\n\n@pytest.mark.parametrize(\n    "reference",\n    (\n        "MRL-0001..OTHER-0002",\n        "OTHER-0001..MRL-0002",\n        "MRL-0001...0002",\n        "MRL-00010",\n    ),\n)\ndef test_dependency_parser_rejects_malformed_or_cross_prefix_ranges(reference: str) -> None:\n    with pytest.raises(\n        MachineStateGenerationError,\n        match="malformed or cross-prefix",\n    ):\n        machine_state._dependencies([f"  - Depends on: {reference}"], "MRL-0999")\n\n\ndef test_branch_local_merge_cannot_establish_canonical_closure(tmp_path: Path) -> None:\n    repository = _clone_repository(tmp_path)\n    base = _git_text(repository, "rev-parse", "HEAD")\n    canonical_main = _git_text(repository, "rev-parse", "refs/remotes/origin/main")\n    tasks = repository / _TASKS_PATH\n\n    _run_git(repository, "checkout", "--quiet", "-b", "qualifier", base)\n    text = tasks.read_text(encoding="utf-8")\n    unchecked = "- [ ] **MRL-0800 — Enter real autonomous research preflight**"\n    checked = "- [x] **MRL-0800 — Enter real autonomous research preflight**"\n    assert text.count(unchecked) == 1\n    tasks.write_text(text.replace(unchecked, checked), encoding="utf-8")\n    _run_git(repository, "add", _TASKS_PATH.as_posix())\n    _run_git(repository, "commit", "--quiet", "-m", "test: qualifying branch checkbox")\n    qualifier = _git_text(repository, "rev-parse", "HEAD")\n\n    _run_git(repository, "checkout", "--quiet", "-b", "candidate", base)\n    _run_git(repository, "merge", "--quiet", "--no-ff", "--no-edit", qualifier)\n    decision_base = _git_text(repository, "rev-parse", "HEAD")\n\n    assert machine_state._closure_proof(\n        repository,\n        decision_base,\n        canonical_main,\n        "MRL-0800",\n    ) is None\n    assert not machine_state._is_ancestor(repository, decision_base, canonical_main)\n\n\n'''
-          if text.count(marker) != 1:
-              raise SystemExit('provenance/dependency regression insertion target is not unique')
-          test_path.write_text(text.replace(marker, regression + marker, 1), encoding='utf-8')
-          PY
-
-      - name: Format and validate provenance repairs
-        run: |
-          uv run ruff format \
-            src/medscale/mesc/_mrl_machine_state_generation_v1.py \
-            tests/test_mesc_mrl_machine_state_ci_gate_v1.py
-          uv run ruff check .
-          uv run ruff format --check .
-          uv run mypy \
-            src/medscale/mesc/_mrl_machine_state_generation_v1.py \
-            tests/test_mesc_mrl_machine_state_ci_gate_v1.py
-          uv run pytest -q \
-            tests/test_mesc_mrl_machine_state_ci_gate_v1.py \
-            tests/test_mesc_mrl_machine_state_generation_v1.py \
-            tests/test_mesc_mrl_project_state_admission_v1.py
-
-      - name: Verify exact repair scope
-        run: |
-          expected='src/medscale/mesc/_mrl_machine_state_generation_v1.py
-          tests/test_mesc_mrl_machine_state_ci_gate_v1.py'
-          actual="$(git diff --name-only | sort)"
-          test "$actual" = "$expected"
-
-      - name: Commit and push provenance repairs only
-        run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add \
-            src/medscale/mesc/_mrl_machine_state_generation_v1.py \
-            tests/test_mesc_mrl_machine_state_ci_gate_v1.py
-          git commit -m 'fix(mrl): require canonical merge provenance'
-          git push origin HEAD:fix/mrl-7-project-state-contract-d36694
+      # ADR-0017: corpus<->log referential integrity is a hard gate, not a convention.
+      - name: litdb integrity (medscale check)
+        run: uv run medscale check
