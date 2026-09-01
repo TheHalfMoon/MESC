@@ -174,3 +174,12 @@ def test_task_identity_state_dependencies_and_collections_fail_closed() -> None:
             sources=cast(tuple[ProjectStateSourceBinding, ...], [_source()]),
             entries=_entries(),
         )
+
+
+def test_source_path_rejects_values_beyond_frozen_schema_limit() -> None:
+    with pytest.raises(ProjectStateProjectionError, match="frozen schema limit"):
+        ProjectStateSourceBinding(
+            path="a" * 4097,
+            git_blob_sha="1" * 40,
+            sha256="2" * 64,
+        )

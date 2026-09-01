@@ -496,7 +496,12 @@ def _closure_proof(root: Path, task_id: str) -> tuple[str, str] | None:
         previous = _task_checked_at(root, parents[0], task_id)
         if current == previous:
             continue
-        if current and not previous and len(parents) == 2:
+        if (
+            current
+            and not previous
+            and len(parents) == 2
+            and _task_checked_at(root, parents[1], task_id)
+        ):
             return commit, parents[1]
         return None
     return None

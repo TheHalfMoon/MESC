@@ -127,6 +127,37 @@ def test_ci_gate_rejects_projection_after_canonical_source_commit_changes(
     generate_machine_state(repository, output_dir, check=True)
 
 
+def test_merge_commit_cannot_invent_checked_qualified_parent(tmp_path: Path) -> None:
+    repository = _clone_repository(tmp_path)
+    _run_git(repository, "switch", "-c", "unchecked-side-parent")
+    roadmap = repository / _ROADMAP_PATH
+    roadmap.write_text(
+        roadmap.read_text(encoding="utf-8")
+        + "\n<!-- MRL qualifying-parent adversarial fixture -->\n",
+        encoding="utf-8",
+    )
+    _run_git(repository, "add", _ROADMAP_PATH.as_posix())
+    _run_git(repository, "commit", "--quiet", "-m", "test: create unchecked side parent")
+    _run_git(repository, "switch", "-")
+    _run_git(repository, "merge", "--no-ff", "--no-commit", "unchecked-side-parent")
+
+    tasks = repository / _TASKS_PATH
+    original = tasks.read_text(encoding="utf-8")
+    unchecked = "- [ ] **MRL-0800 — Enter real autonomous research preflight**"
+    checked = "- [x] **MRL-0800 — Enter real autonomous research preflight**"
+    assert original.count(unchecked) == 1
+    tasks.write_text(original.replace(unchecked, checked), encoding="utf-8")
+    _run_git(repository, "add", _TASKS_PATH.as_posix())
+    _run_git(repository, "commit", "--quiet", "-m", "test: forge checked state only in merge")
+
+    output_dir = tmp_path / "machine-state-merge-parent"
+    rendered = generate_machine_state(repository, output_dir)
+    payload = admit_project_state_projection(repository, rendered.project_state)
+    task = _project_state_task(payload, "MRL-0800")
+    assert task["state"] != "CLOSED_CANONICAL"
+    assert task["evidence_refs"] == []
+
+
 def test_projection_precedence_rejects_narrative_and_projected_authority_claims(
     tmp_path: Path,
 ) -> None:

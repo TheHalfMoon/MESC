@@ -171,6 +171,8 @@ def _require_sha256(value: object, field: str) -> None:
 def _require_source_path(path: object) -> None:
     if type(path) is not str or not path or not path.isascii():
         raise ProjectStateProjectionError("source path must be non-empty ASCII text")
+    if len(path) > 4096:
+        raise ProjectStateProjectionError("source path exceeds frozen schema limit")
     if path.startswith("/") or "\\" in path:
         raise ProjectStateProjectionError("source path must be repository-relative POSIX form")
     components = path.split("/")
