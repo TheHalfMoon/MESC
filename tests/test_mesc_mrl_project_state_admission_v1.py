@@ -29,9 +29,7 @@ def _task(document: dict[str, object], task_id: str) -> dict[str, object]:
     tasks = document["tasks"]
     assert isinstance(tasks, list)
     found = next(
-        task
-        for task in tasks
-        if isinstance(task, dict) and task.get("task_id") == task_id
+        task for task in tasks if isinstance(task, dict) and task.get("task_id") == task_id
     )
     assert isinstance(found, dict)
     return found

@@ -61,9 +61,7 @@ def _project_state_task(
     tasks = payload["tasks"]
     assert isinstance(tasks, list)
     match = next(
-        task
-        for task in tasks
-        if isinstance(task, dict) and task.get("task_id") == task_id
+        task for task in tasks if isinstance(task, dict) and task.get("task_id") == task_id
     )
     assert isinstance(match, dict)
     return match
@@ -99,8 +97,7 @@ def test_ci_gate_rejects_projection_after_canonical_source_commit_changes(
 
     tasks = repository / _TASKS_PATH
     tasks.write_text(
-        tasks.read_text(encoding="utf-8")
-        + "\n<!-- MRL-0705 stale projection fixture -->\n",
+        tasks.read_text(encoding="utf-8") + "\n<!-- MRL-0705 stale projection fixture -->\n",
         encoding="utf-8",
     )
     _run_git(repository, "add", _TASKS_PATH.as_posix())

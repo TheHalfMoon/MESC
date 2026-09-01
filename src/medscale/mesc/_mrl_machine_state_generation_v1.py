@@ -47,9 +47,7 @@ __all__ = [
 _REGISTRY: Final = "docs/research/research_program_registry.md"
 _QUESTIONS: Final = "docs/research/research_questions.md"
 _ROADMAP: Final = "ROADMAP.md"
-_RECONCILIATION: Final = (
-    "docs/strategy/mesc_pr122_post_b0_reconciliation_2026-08-19.md"
-)
+_RECONCILIATION: Final = "docs/strategy/mesc_pr122_post_b0_reconciliation_2026-08-19.md"
 _TASKS: Final = "specs/mesc-research-loop-v1/tasks.md"
 _PROJECT_SOURCES: Final = tuple(
     sorted(
@@ -68,10 +66,7 @@ _PROJECT_SOURCES: Final = tuple(
     )
 )
 _ALL_SOURCES: Final = tuple(
-    sorted(
-        set(_PROJECT_SOURCES)
-        | {_REGISTRY, _QUESTIONS, _ROADMAP, _RECONCILIATION}
-    )
+    sorted(set(_PROJECT_SOURCES) | {_REGISTRY, _QUESTIONS, _ROADMAP, _RECONCILIATION})
 )
 _OUTPUTS: Final = (
     "CAPABILITY_MATRIX.json",
@@ -93,9 +88,7 @@ _STATES: Final = frozenset(
         "CLOSED_CANONICAL",
     }
 )
-_REAL_EVIDENCE: Final = frozenset(
-    {f"MRL-08{n:02d}" for n in range(1, 10)} | {"MRL-0899"}
-)
+_REAL_EVIDENCE: Final = frozenset({f"MRL-08{n:02d}" for n in range(1, 10)} | {"MRL-0899"})
 _MRL3_FRESHNESS: Final = (
     "src/medscale/mesc/_mrl_adaptive_budget_exhaustion_v1.py",
     "src/medscale/mesc/_mrl_adaptive_campaign_accounting_v1.py",
@@ -151,9 +144,7 @@ class CanonicalRepositorySnapshot:
     def source(self, path: str) -> CanonicalSourceSnapshot:
         rows = tuple(item for item in self.sources if item.path == path)
         if len(rows) != 1:
-            raise MachineStateGenerationError(
-                f"canonical source missing or duplicated: {path}"
-            )
+            raise MachineStateGenerationError(f"canonical source missing or duplicated: {path}")
         return rows[0]
 
 
@@ -224,9 +215,7 @@ def admit_project_state_projection(
         "tree_sha": snapshot.tree_sha,
     }
     if supplied["repository"] != expected_repo:
-        raise MachineStateGenerationError(
-            "project-state projection is stale for current Git HEAD"
-        )
+        raise MachineStateGenerationError("project-state projection is stale for current Git HEAD")
     expected = _project(
         snapshot,
         _research(snapshot),
@@ -276,9 +265,7 @@ def _foundational_questions(text: str) -> tuple[ResearchQuestionIndexEntry, ...]
     result = tuple(sorted(rows, key=lambda item: item.question_id))
     expected = tuple(f"RQ{index}" for index in range(1, 8))
     if tuple(row.question_id for row in result) != expected:
-        raise MachineStateGenerationError(
-            "research registry must preserve exactly RQ1-RQ7"
-        )
+        raise MachineStateGenerationError("research registry must preserve exactly RQ1-RQ7")
     return result
 
 
@@ -305,9 +292,7 @@ def _namespaces(text: str) -> tuple[ResearchProgramNamespace, ...]:
                 )
             )
     if not rows:
-        raise MachineStateGenerationError(
-            "research registry contains no later-program namespaces"
-        )
+        raise MachineStateGenerationError("research registry contains no later-program namespaces")
     return tuple(sorted(rows, key=lambda item: item.question_namespace))
 
 
@@ -427,18 +412,11 @@ def _project(
 def _special_gate(snapshot: CanonicalRepositorySnapshot, task_id: str) -> bool:
     if task_id != "MRL-0800":
         return True
-    trust = snapshot.source(
-        "src/medscale/mesc/_training_authorization_trust_v1.py"
-    ).content
-    runtime = snapshot.source(
-        "src/medscale/mesc/_training_runtime_qualification_v1.py"
-    ).content
-    readiness = snapshot.source(
-        "specs/mesc-training-readiness-v1/README.md"
-    ).content
+    trust = snapshot.source("src/medscale/mesc/_training_authorization_trust_v1.py").content
+    runtime = snapshot.source("src/medscale/mesc/_training_runtime_qualification_v1.py").content
+    readiness = snapshot.source("specs/mesc-training-readiness-v1/README.md").content
     return (
-        "TRUSTED_TRAINING_AUTHORIZATION_ARTIFACT_SHA256: frozenset[str] = "
-        "frozenset()" in trust
+        "TRUSTED_TRAINING_AUTHORIZATION_ARTIFACT_SHA256: frozenset[str] = frozenset()" in trust
         and "Fail-closed MESC training runtime-qualification" in runtime
         and "PRE-EXECUTION / NO TRAINING PERFORMED" in readiness
     )
@@ -468,9 +446,7 @@ def _task_records(text: str) -> tuple[tuple[str, bool, tuple[str, ...]], ...]:
         )
     ids = tuple(row[0] for row in rows)
     if not ids or len(set(ids)) != len(ids):
-        raise MachineStateGenerationError(
-            "MRL task ledger has missing or duplicate task IDs"
-        )
+        raise MachineStateGenerationError("MRL task ledger has missing or duplicate task IDs")
     known = set(ids)
     for task_id, _checked, dependencies in rows:
         missing = tuple(item for item in dependencies if item not in known)
@@ -482,11 +458,7 @@ def _task_records(text: str) -> tuple[tuple[str, bool, tuple[str, ...]], ...]:
 
 
 def _dependencies(lines: list[str], task_id: str) -> tuple[str, ...]:
-    text = "\n".join(
-        line
-        for line in lines
-        if "Depends on:" in line or "Requires:" in line
-    )
+    text = "\n".join(line for line in lines if "Depends on:" in line or "Requires:" in line)
     result: set[str] = set()
     for match in _DEP_RE.finditer(text):
         start = int(match.group(1))
@@ -496,12 +468,8 @@ def _dependencies(lines: list[str], task_id: str) -> tuple[str, ...]:
             continue
         end = int(end_text)
         if end < start:
-            raise MachineStateGenerationError(
-                "MRL dependency range is descending"
-            )
-        result.update(
-            f"MRL-{value:04d}" for value in range(start, end + 1)
-        )
+            raise MachineStateGenerationError("MRL dependency range is descending")
+        result.update(f"MRL-{value:04d}" for value in range(start, end + 1))
     result.discard(task_id)
     return tuple(sorted(result))
 
@@ -538,14 +506,11 @@ def _task_checked_at(root: Path, revision: str, task_id: str) -> bool:
     try:
         text = _git_bytes(root, "show", f"{revision}:{_TASKS}").decode("utf-8")
     except (MachineStateGenerationError, UnicodeDecodeError) as exc:
-        raise MachineStateGenerationError(
-            "cannot reproduce historical MRL task ledger"
-        ) from exc
+        raise MachineStateGenerationError("cannot reproduce historical MRL task ledger") from exc
     matches = [
         match.group(1) == "x"
         for line in text.splitlines()
-        if (match := _TASK_RE.match(line)) is not None
-        and match.group(2) == task_id
+        if (match := _TASK_RE.match(line)) is not None and match.group(2) == task_id
     ]
     if len(matches) != 1:
         raise MachineStateGenerationError(
@@ -579,9 +544,7 @@ def _validate_document(payload: bytes) -> dict[str, object]:
             "project-state projection is not valid UTF-8 JSON"
         ) from exc
     if type(loaded) is not dict:
-        raise MachineStateGenerationError(
-            "project-state projection must be a JSON object"
-        )
+        raise MachineStateGenerationError("project-state projection must be a JSON object")
     document = cast(dict[str, object], loaded)
     required = {
         "can_authorize",
@@ -593,17 +556,13 @@ def _validate_document(payload: bytes) -> dict[str, object]:
         "tasks",
     }
     if set(document) != required:
-        raise MachineStateGenerationError(
-            "project-state top-level schema is invalid"
-        )
+        raise MachineStateGenerationError("project-state top-level schema is invalid")
     if (
         document["schema_version"] != "MRL-PROJECT-STATE-V1"
         or document["projection_kind"] != "DERIVED_NON_AUTHORITATIVE"
         or document["can_authorize"] is not False
     ):
-        raise MachineStateGenerationError(
-            "project-state authority/schema constants are invalid"
-        )
+        raise MachineStateGenerationError("project-state authority/schema constants are invalid")
     _validate_repo(document["repository"])
     sources = _validate_sources(document["sources"])
     tasks = _validate_tasks(document["tasks"])
@@ -613,18 +572,12 @@ def _validate_document(payload: bytes) -> dict[str, object]:
         or _SHA64.fullmatch(digest) is None
         or canonical_sha256(sources) != digest
     ):
-        raise MachineStateGenerationError(
-            "project-state source_set_sha256 does not reproduce"
-        )
+        raise MachineStateGenerationError("project-state source_set_sha256 does not reproduce")
     if canonical_json_bytes(document) != payload:
-        raise MachineStateGenerationError(
-            "project-state projection is not canonical JSON bytes"
-        )
+        raise MachineStateGenerationError("project-state projection is not canonical JSON bytes")
     ids = [cast(str, row["task_id"]) for row in tasks]
     if ids != sorted(ids):
-        raise MachineStateGenerationError(
-            "project-state tasks must be sorted by task_id"
-        )
+        raise MachineStateGenerationError("project-state tasks must be sorted by task_id")
     return document
 
 
@@ -632,51 +585,36 @@ def _unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
     result: dict[str, object] = {}
     for key, value in pairs:
         if key in result:
-            raise MachineStateGenerationError(
-                f"duplicate JSON member rejected: {key}"
-            )
+            raise MachineStateGenerationError(f"duplicate JSON member rejected: {key}")
         result[key] = value
     return result
 
 
 def _validate_repo(value: object) -> None:
     if type(value) is not dict or set(value) != {"commit_sha", "tree_sha"}:
-        raise MachineStateGenerationError(
-            "project-state repository object is invalid"
-        )
+        raise MachineStateGenerationError("project-state repository object is invalid")
     repo = cast(dict[str, object], value)
     for field in ("commit_sha", "tree_sha"):
         item = repo[field]
         if type(item) is not str or _SHA40.fullmatch(item) is None:
-            raise MachineStateGenerationError(
-                "project-state repository identity is invalid"
-            )
+            raise MachineStateGenerationError("project-state repository identity is invalid")
 
 
 def _validate_sources(value: object) -> list[dict[str, object]]:
     if type(value) is not list or not value:
-        raise MachineStateGenerationError(
-            "project-state sources must be a non-empty array"
-        )
+        raise MachineStateGenerationError("project-state sources must be a non-empty array")
     rows = cast(list[object], value)
     result: list[dict[str, object]] = []
     seen: set[str] = set()
     for row in rows:
-        if (
-            type(row) is not dict
-            or set(row) != {"git_blob_sha", "path", "sha256"}
-        ):
-            raise MachineStateGenerationError(
-                "project-state source object is invalid"
-            )
+        if type(row) is not dict or set(row) != {"git_blob_sha", "path", "sha256"}:
+            raise MachineStateGenerationError("project-state source object is invalid")
         item = cast(dict[str, object], row)
         path = item["path"]
         _validate_path(path)
         path_text = cast(str, path)
         if path_text in seen:
-            raise MachineStateGenerationError(
-                "project-state source path is duplicated"
-            )
+            raise MachineStateGenerationError("project-state source path is duplicated")
         seen.add(path_text)
         blob = item["git_blob_sha"]
         digest = item["sha256"]
@@ -686,35 +624,28 @@ def _validate_sources(value: object) -> list[dict[str, object]]:
             or type(digest) is not str
             or _SHA64.fullmatch(digest) is None
         ):
-            raise MachineStateGenerationError(
-                "project-state source identity is invalid"
-            )
+            raise MachineStateGenerationError("project-state source identity is invalid")
         result.append(item)
     paths = [cast(str, row["path"]) for row in result]
     if paths != sorted(paths):
-        raise MachineStateGenerationError(
-            "project-state sources must be sorted by path"
-        )
+        raise MachineStateGenerationError("project-state sources must be sorted by path")
     return result
 
 
 def _validate_tasks(value: object) -> list[dict[str, object]]:
     if type(value) is not list:
-        raise MachineStateGenerationError(
-            "project-state tasks must be an array"
-        )
+        raise MachineStateGenerationError("project-state tasks must be an array")
     rows = cast(list[object], value)
     result: list[dict[str, object]] = []
     seen: set[str] = set()
     for row in rows:
-        if (
-            type(row) is not dict
-            or set(row)
-            != {"dependencies", "evidence_refs", "state", "task_id"}
-        ):
-            raise MachineStateGenerationError(
-                "project-state task object is invalid"
-            )
+        if type(row) is not dict or set(row) != {
+            "dependencies",
+            "evidence_refs",
+            "state",
+            "task_id",
+        }:
+            raise MachineStateGenerationError("project-state task object is invalid")
         item = cast(dict[str, object], row)
         task_id = item["task_id"]
         if (
@@ -722,15 +653,11 @@ def _validate_tasks(value: object) -> list[dict[str, object]]:
             or re.fullmatch(r"MRL-[0-9]{4}", task_id) is None
             or task_id in seen
         ):
-            raise MachineStateGenerationError(
-                "project-state task_id is invalid or duplicated"
-            )
+            raise MachineStateGenerationError("project-state task_id is invalid or duplicated")
         seen.add(task_id)
         state = item["state"]
         if type(state) is not str or state not in _STATES:
-            raise MachineStateGenerationError(
-                "project-state task state is invalid"
-            )
+            raise MachineStateGenerationError("project-state task state is invalid")
         dependencies = _string_array(
             item["dependencies"],
             "dependencies",
@@ -742,17 +669,11 @@ def _validate_tasks(value: object) -> list[dict[str, object]]:
             False,
         )
         if task_id in dependencies:
-            raise MachineStateGenerationError(
-                "project-state task cannot depend on itself"
-            )
+            raise MachineStateGenerationError("project-state task cannot depend on itself")
         if state == "CLOSED_CANONICAL" and not evidence:
-            raise MachineStateGenerationError(
-                "CLOSED_CANONICAL requires evidence_refs"
-            )
+            raise MachineStateGenerationError("CLOSED_CANONICAL requires evidence_refs")
         if state != "CLOSED_CANONICAL" and evidence:
-            raise MachineStateGenerationError(
-                "non-closed task cannot carry closure evidence_refs"
-            )
+            raise MachineStateGenerationError("non-closed task cannot carry closure evidence_refs")
         result.append(item)
     return result
 
@@ -763,25 +684,15 @@ def _string_array(
     task_ids: bool,
 ) -> list[str]:
     if type(value) is not list:
-        raise MachineStateGenerationError(
-            f"project-state {label} must be an array"
-        )
+        raise MachineStateGenerationError(f"project-state {label} must be an array")
     rows = cast(list[object], value)
     if any(type(row) is not str or not row for row in rows):
-        raise MachineStateGenerationError(
-            f"project-state {label} contains invalid text"
-        )
+        raise MachineStateGenerationError(f"project-state {label} contains invalid text")
     strings = cast(list[str], rows)
-    if task_ids and any(
-        re.fullmatch(r"MRL-[0-9]{4}", row) is None for row in strings
-    ):
-        raise MachineStateGenerationError(
-            f"project-state {label} contains invalid task identity"
-        )
+    if task_ids and any(re.fullmatch(r"MRL-[0-9]{4}", row) is None for row in strings):
+        raise MachineStateGenerationError(f"project-state {label} contains invalid task identity")
     if strings != sorted(strings) or len(strings) != len(set(strings)):
-        raise MachineStateGenerationError(
-            f"project-state {label} must be sorted and unique"
-        )
+        raise MachineStateGenerationError(f"project-state {label} must be sorted and unique")
     return strings
 
 
@@ -794,32 +705,20 @@ def _validate_path(value: object) -> None:
         or value.startswith("/")
         or "\\" in value
     ):
-        raise MachineStateGenerationError(
-            "project-state source path is invalid"
-        )
+        raise MachineStateGenerationError("project-state source path is invalid")
     parts = value.split("/")
-    if any(
-        part in {"", ".", ".."}
-        or _PATH_PART.fullmatch(part) is None
-        for part in parts
-    ):
-        raise MachineStateGenerationError(
-            "project-state source path is ambiguous"
-        )
+    if any(part in {"", ".", ".."} or _PATH_PART.fullmatch(part) is None for part in parts):
+        raise MachineStateGenerationError("project-state source path is ambiguous")
 
 
 def _load_source(root: Path, path: str) -> CanonicalSourceSnapshot:
     if _git(root, "cat-file", "-t", f"HEAD:{path}") != "blob":
-        raise MachineStateGenerationError(
-            f"canonical source is not a Git blob: {path}"
-        )
+        raise MachineStateGenerationError(f"canonical source is not a Git blob: {path}")
     payload = _git_bytes(root, "show", f"HEAD:{path}")
     try:
         content = payload.decode("utf-8")
     except UnicodeDecodeError as exc:
-        raise MachineStateGenerationError(
-            f"canonical source is not UTF-8: {path}"
-        ) from exc
+        raise MachineStateGenerationError(f"canonical source is not UTF-8: {path}") from exc
     return CanonicalSourceSnapshot(
         path,
         _git(root, "rev-parse", f"HEAD:{path}"),
@@ -848,9 +747,7 @@ def _git(root: Path, *arguments: str) -> str:
     try:
         return _git_bytes(root, *arguments).decode("ascii").strip()
     except UnicodeDecodeError as exc:
-        raise MachineStateGenerationError(
-            "Git identity output was not ASCII"
-        ) from exc
+        raise MachineStateGenerationError("Git identity output was not ASCII") from exc
 
 
 def _git_bytes(root: Path, *arguments: str) -> bytes:
@@ -862,9 +759,7 @@ def _git_bytes(root: Path, *arguments: str) -> bytes:
             capture_output=True,
         )
     except (OSError, subprocess.CalledProcessError) as exc:
-        raise MachineStateGenerationError(
-            f"Git command failed: git {' '.join(arguments)}"
-        ) from exc
+        raise MachineStateGenerationError(f"Git command failed: git {' '.join(arguments)}") from exc
     return completed.stdout
 
 
@@ -899,17 +794,11 @@ def _check(output_dir: Path, rendered: MachineStateRenderSet) -> None:
                 f"machine-state projection missing or unreadable: {name}"
             ) from exc
         if actual != expected:
-            raise MachineStateGenerationError(
-                f"machine-state projection drift detected: {name}"
-            )
+            raise MachineStateGenerationError(f"machine-state projection drift detected: {name}")
     unexpected = sorted(
         path.name
         for path in output_dir.iterdir()
-        if path.is_file()
-        and path.name.endswith(".json")
-        and path.name not in _OUTPUTS
+        if path.is_file() and path.name.endswith(".json") and path.name not in _OUTPUTS
     )
     if unexpected:
-        raise MachineStateGenerationError(
-            f"unexpected machine-state JSON output: {unexpected[0]}"
-        )
+        raise MachineStateGenerationError(f"unexpected machine-state JSON output: {unexpected[0]}")

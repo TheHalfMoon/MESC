@@ -119,9 +119,7 @@ def test_research_program_and_capability_semantics_come_from_canonical_sources(
     namespaces = research["namespaces"]
     assert isinstance(questions, list)
     assert isinstance(namespaces, list)
-    assert [item["question_id"] for item in questions] == [
-        f"RQ{i}" for i in range(1, 8)
-    ]
+    assert [item["question_id"] for item in questions] == [f"RQ{i}" for i in range(1, 8)]
     assert {item["question_namespace"] for item in namespaces} == {
         "AMGE-RQ-<NNNN>",
         "ARABIC-RQ-<NNNN>",
