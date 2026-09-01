@@ -35,33 +35,32 @@ jobs:
           text = generator.read_text(encoding='utf-8')
           old = '''        if current and not previous and len(parents) == 2:\n            return commit, parents[1]\n'''
           new = '''        if (\n            current\n            and not previous\n            and len(parents) == 2\n            and _task_checked_at(root, parents[1], task_id)\n        ):\n            return commit, parents[1]\n'''
-          if text.count(old) != 1:
-              raise SystemExit('qualifying-parent patch target is not unique')
-          generator.write_text(text.replace(old, new), encoding='utf-8')
+          if old not in text:
+              raise SystemExit('qualifying-parent patch target missing')
+          generator.write_text(text.replace(old, new, 1), encoding='utf-8')
 
           project_state = Path('src/medscale/mesc/_mrl_project_state_v1.py')
           text = project_state.read_text(encoding='utf-8')
           old = '''    if type(path) is not str or not path or not path.isascii():\n        raise ProjectStateProjectionError("source path must be non-empty ASCII text")\n    if path.startswith("/") or "\\\\" in path:\n'''
           new = '''    if type(path) is not str or not path or not path.isascii():\n        raise ProjectStateProjectionError("source path must be non-empty ASCII text")\n    if len(path) > 4096:\n        raise ProjectStateProjectionError("source path exceeds frozen schema limit")\n    if path.startswith("/") or "\\\\" in path:\n'''
-          if text.count(old) != 1:
-              raise SystemExit('source-path limit patch target is not unique')
-          project_state.write_text(text.replace(old, new), encoding='utf-8')
+          if old not in text:
+              raise SystemExit('source-path limit patch target missing')
+          project_state.write_text(text.replace(old, new, 1), encoding='utf-8')
 
           ci_test = Path('tests/test_mesc_mrl_machine_state_ci_gate_v1.py')
           text = ci_test.read_text(encoding='utf-8')
           marker = '''\ndef test_projection_precedence_rejects_narrative_and_projected_authority_claims(\n'''
           regression = '''\ndef test_merge_commit_cannot_invent_checked_qualified_parent(tmp_path: Path) -> None:\n    repository = _clone_repository(tmp_path)\n    _run_git(repository, "switch", "-c", "unchecked-side-parent")\n    roadmap = repository / _ROADMAP_PATH\n    roadmap.write_text(\n        roadmap.read_text(encoding="utf-8")\n        + "\\n<!-- MRL qualifying-parent adversarial fixture -->\\n",\n        encoding="utf-8",\n    )\n    _run_git(repository, "add", _ROADMAP_PATH.as_posix())\n    _run_git(repository, "commit", "--quiet", "-m", "test: create unchecked side parent")\n    _run_git(repository, "switch", "-")\n    _run_git(repository, "merge", "--no-ff", "--no-commit", "unchecked-side-parent")\n\n    tasks = repository / _TASKS_PATH\n    original = tasks.read_text(encoding="utf-8")\n    unchecked = "- [ ] **MRL-0800 — Enter real autonomous research preflight**"\n    checked = "- [x] **MRL-0800 — Enter real autonomous research preflight**"\n    assert original.count(unchecked) == 1\n    tasks.write_text(original.replace(unchecked, checked), encoding="utf-8")\n    _run_git(repository, "add", _TASKS_PATH.as_posix())\n    _run_git(repository, "commit", "--quiet", "-m", "test: forge checked state only in merge")\n\n    output_dir = tmp_path / "machine-state-merge-parent"\n    rendered = generate_machine_state(repository, output_dir)\n    payload = admit_project_state_projection(repository, rendered.project_state)\n    task = _project_state_task(payload, "MRL-0800")\n    assert task["state"] != "CLOSED_CANONICAL"\n    assert task["evidence_refs"] == []\n\n\n'''
-          if text.count(marker) != 1:
-              raise SystemExit('CI regression insertion point is not unique')
-          ci_test.write_text(text.replace(marker, regression + marker), encoding='utf-8')
+          if marker not in text:
+              raise SystemExit('CI regression insertion point missing')
+          ci_test.write_text(text.replace(marker, regression + marker, 1), encoding='utf-8')
 
           state_test = Path('tests/test_mesc_mrl_project_state_v1.py')
           text = state_test.read_text(encoding='utf-8')
-          marker = '''\ndef test_project_state_projection_cannot_encode_authority() -> None:\n'''
-          regression = '''\ndef test_source_path_rejects_values_beyond_frozen_schema_limit() -> None:\n    with pytest.raises(ProjectStateProjectionError, match="frozen schema limit"):\n        ProjectStateSourceBinding(\n            path="a" * 4097,\n            git_blob_sha="1" * 40,\n            sha256="2" * 64,\n        )\n\n\n'''
-          if text.count(marker) != 1:
-              raise SystemExit('project-state regression insertion point is not unique')
-          state_test.write_text(text.replace(marker, regression + marker), encoding='utf-8')
+          regression = '''\n\ndef test_source_path_rejects_values_beyond_frozen_schema_limit() -> None:\n    with pytest.raises(ProjectStateProjectionError, match="frozen schema limit"):\n        ProjectStateSourceBinding(\n            path="a" * 4097,\n            git_blob_sha="1" * 40,\n            sha256="2" * 64,\n        )\n'''
+          if 'test_source_path_rejects_values_beyond_frozen_schema_limit' in text:
+              raise SystemExit('project-state regression already exists unexpectedly')
+          state_test.write_text(text.rstrip() + regression + '\n', encoding='utf-8')
           PY
 
       - name: Format and validate review repairs
