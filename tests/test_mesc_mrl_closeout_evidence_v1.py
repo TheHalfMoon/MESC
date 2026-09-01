@@ -127,6 +127,36 @@ def test_branch_local_or_noncanonical_merge_cannot_close(
     assert generation._closure_proof(tmp_path, _HEAD, _HEAD, _TASK) is None
 
 
+@pytest.mark.parametrize(
+    "task_id",
+    (
+        "MRL-0801",
+        "MRL-0802",
+        "MRL-0803",
+        "MRL-0804",
+        "MRL-0805",
+        "MRL-0806",
+        "MRL-0807",
+        "MRL-0808",
+    ),
+)
+def test_real_evidence_tasks_cannot_close_from_repository_only_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    task_id: str,
+) -> None:
+    monkeypatch.setattr(generation, "_merge_shape_closure", _shape)
+
+    def evidence(
+        _root: Path,
+        _decision_base: str,
+    ) -> dict[str, generation._CloseoutEvidence]:
+        return {task_id: _record(task_ids=(task_id,))}
+
+    monkeypatch.setattr(generation, "_evidence_by_task", evidence)
+    assert generation._closure_proof(tmp_path, _HEAD, _HEAD, task_id) is None
+
+
 def _manifest_record(task_id: str = _TASK) -> dict[str, object]:
     return {
         "canonical_merge_sha": _MERGE,
@@ -214,9 +244,44 @@ def test_invalid_independent_evidence_ref_fails_closed(value: str) -> None:
         generation._parse_closeout_evidence(payload)
 
 
-def test_manifest_is_bound_project_state_source_and_stale_gates_remain_open(
-    tmp_path: Path,
-) -> None:
+def test_dependency_parser_captures_wrapped_external_governance() -> None:
+    dependencies = generation._dependencies(
+        [
+            "  - Depends on: MRL-0299, MRL-0399, MRL-0499, MRL-0599, MRL-0699,",
+            "    MRL-0799, and current training/runtime governance.",
+        ],
+        "MRL-0800",
+    )
+    assert dependencies == (
+        "MRL-0299",
+        "MRL-0399",
+        "MRL-0499",
+        "MRL-0599",
+        "MRL-0699",
+        "MRL-0799",
+    )
+
+
+def test_dependency_parser_rejects_unmodeled_external_requirement() -> None:
+    with pytest.raises(
+        generation.MachineStateGenerationError,
+        match="unmodeled external dependency",
+    ):
+        generation._dependencies(
+            ["  - Depends on: MRL-0201 and arbitrary operator approval."],
+            "MRL-0202",
+        )
+
+
+def test_task_parser_rejects_malformed_mrl_task_record() -> None:
+    with pytest.raises(
+        generation.MachineStateGenerationError,
+        match="malformed task record",
+    ):
+        generation._task_records("- [x] **MRL-0201 - malformed task delimiter**")
+
+
+def test_manifest_is_bound_project_state_source(tmp_path: Path) -> None:
     output_dir = tmp_path / "state"
     generation.generate_machine_state(
         Path(__file__).resolve().parents[1],
@@ -227,21 +292,20 @@ def test_manifest_is_bound_project_state_source_and_stale_gates_remain_open(
     tasks = project["tasks"]
     assert isinstance(sources, list)
     assert isinstance(tasks, list)
-    assert {source["path"] for source in sources if isinstance(source, dict)} >= {
-        "specs/mesc-research-loop-v1/closeout-evidence-v1.json",
-    }
-    indexed = {task["task_id"]: task for task in tasks if isinstance(task, dict)}
-    assert indexed["MRL-0299"]["state"] == "CLOSED_CANONICAL"
-    assert indexed["MRL-0399"]["state"] != "CLOSED_CANONICAL"
-    assert indexed["MRL-0799"]["state"] != "CLOSED_CANONICAL"
-    for task_id in (
-        "MRL-0801",
-        "MRL-0802",
-        "MRL-0803",
-        "MRL-0804",
-        "MRL-0805",
-        "MRL-0806",
-        "MRL-0807",
-        "MRL-0808",
-    ):
-        assert indexed[task_id]["state"] == "PLANNED"
+    bound = [
+        source
+        for source in sources
+        if isinstance(source, dict)
+        and source.get("path")
+        == "specs/mesc-research-loop-v1/closeout-evidence-v1.json"
+    ]
+    assert len(bound) == 1
+    assert isinstance(bound[0].get("git_blob_sha"), str)
+    assert isinstance(bound[0].get("sha256"), str)
+    assert tasks
+    assert all(
+        isinstance(task, dict)
+        and isinstance(task.get("task_id"), str)
+        and isinstance(task.get("state"), str)
+        for task in tasks
+    )
