@@ -1,0 +1,107 @@
+name: MRL strict typing repair
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  apply-strict-typing-repair:
+    if: github.repository == 'TheHalfMoon/MESC' && github.head_ref == 'fix/mrl-7-project-state-contract-d36694'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: true
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+
+      - name: Install Python 3.12
+        run: uv python install 3.12
+
+      - name: Sync locked environment
+        run: uv sync --frozen
+
+      - name: Apply deterministic typing repair
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace(path: str, old: str, new: str, expected: int = 1) -> None:
+              file = Path(path)
+              text = file.read_text(encoding="utf-8")
+              count = text.count(old)
+              if count == expected:
+                  file.write_text(text.replace(old, new), encoding="utf-8")
+                  return
+              if count == 0 and new in text:
+                  return
+              raise SystemExit(f"unexpected replacement count for {path}: {old!r}: {count}")
+
+          replace(
+              "scripts/mrl_closeout_evidence.py",
+              "    return cast(str, value)\n",
+              "    return value\n",
+          )
+          replace(
+              "scripts/mrl_closeout_evidence.py",
+              "    return cast(int, value)\n",
+              "    return value\n",
+          )
+
+          machine = "src/medscale/mesc/_mrl_machine_state_generation_v1.py"
+          replace(machine, "    profile = cast(str, evidence_profile)\n", "    profile = evidence_profile\n")
+          replace(machine, "    return cast(str, value)\n", "    return value\n")
+          replace(machine, "    return cast(int, value)\n", "    return value\n")
+          replace(machine, "        result.append(cast(str, item))\n", "        result.append(item)\n", expected=2)
+
+          test = "tests/test_mesc_mrl_machine_state_ci_gate_v1.py"
+          replace(
+              test,
+              "import medscale.mesc._mrl_machine_state_generation_v1 as machine_state\n",
+              "import medscale.mesc._mrl_machine_state_generation_legacy_v1 as legacy_machine_state\nimport medscale.mesc._mrl_machine_state_generation_v1 as machine_state\n",
+          )
+          replace(test, "    original_load = machine_state._load_source\n", "    original_load = legacy_machine_state._load_source\n")
+          replace(
+              test,
+              "    ) -> machine_state.CanonicalSourceSnapshot:\n",
+              "    ) -> legacy_machine_state.CanonicalSourceSnapshot:\n",
+          )
+          replace(
+              test,
+              "    monkeypatch.setattr(machine_state, \"_load_source\", advancing_load)\n",
+              "    monkeypatch.setattr(legacy_machine_state, \"_load_source\", advancing_load)\n",
+          )
+          replace(test, "machine_state._dependencies", "legacy_machine_state._dependencies", expected=4)
+          replace(test, "machine_state._is_ancestor", "legacy_machine_state._is_ancestor")
+          PY
+
+      - name: Format changed Python files
+        run: |
+          uv run ruff format \
+            scripts/mrl_closeout_evidence.py \
+            src/medscale/mesc/_mrl_machine_state_generation_v1.py \
+            tests/test_mesc_mrl_machine_state_ci_gate_v1.py
+
+      - name: Verify strict typing before commit
+        run: uv run mypy
+
+      - name: Commit verified typing repair
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            scripts/mrl_closeout_evidence.py \
+            src/medscale/mesc/_mrl_machine_state_generation_v1.py \
+            tests/test_mesc_mrl_machine_state_ci_gate_v1.py
+          if git diff --cached --quiet; then
+            echo "Typing repair already present."
+            exit 0
+          fi
+          git commit -m "fix(mrl): repair strict typing after facade split"
+          git push origin HEAD:${{ github.head_ref }}
