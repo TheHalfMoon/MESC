@@ -221,6 +221,16 @@ def test_mutated_evaluator_artifact_fails_closed_on_semantic_view() -> None:
         report.semantic_dict()
 
 
+def test_malformed_evaluator_artifact_entry_uses_sealed_error_domain() -> None:
+    report = _report()
+    object.__setattr__(report, "evaluator_artifacts", (("eval.sealed",),))
+
+    with pytest.raises(SealedEvaluationEvidenceError, match="invalid entry"):
+        report.semantic_dict()
+    with pytest.raises(SealedEvaluationEvidenceError, match="invalid entry"):
+        _ = report.content_sha256
+
+
 def test_non_sealed_and_fabricated_inputs_fail_closed() -> None:
     search = TierEvaluationContract(objective=_objective(), tier=EvaluationTier.SEARCH)
 
