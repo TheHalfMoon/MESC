@@ -15,7 +15,7 @@ import re
 import weakref
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Final
+from typing import Final, NoReturn
 
 from medscale.mesc._mrl_content_identity_v1 import (
     canonical_semantic_bytes,
@@ -97,6 +97,12 @@ _store_request_identity, _load_request_identity = _make_request_identity_registr
 _store_handoff_identity, _load_handoff_identity = _make_handoff_identity_registry()
 
 
+def _reject_reconstruction(label: str) -> NoReturn:
+    raise SealedEvaluationInterfaceError(
+        f"{label} copy/pickle reconstruction is unsupported; rebuild from canonical semantics"
+    )
+
+
 @dataclass(frozen=True, slots=True, weakref_slot=True)
 class SealedEvaluationRequest:
     """Content-addressed request containing identities only, never sealed item content."""
@@ -115,6 +121,18 @@ class SealedEvaluationRequest:
             self,
             derive_content_sha256(self._semantic_dict_validated()),
         )
+
+    def __copy__(self) -> NoReturn:
+        """Reject alternate construction paths that bypass identity registration."""
+        _reject_reconstruction("sealed request")
+
+    def __deepcopy__(self, memo: dict[int, object]) -> NoReturn:
+        """Reject alternate construction paths that bypass identity registration."""
+        _reject_reconstruction("sealed request")
+
+    def __reduce_ex__(self, protocol: int) -> NoReturn:
+        """Reject pickle reconstruction that would bypass construction identity."""
+        _reject_reconstruction("sealed request")
 
     def _validated_snapshot(self) -> SealedEvaluationRequest:
         if type(self) is not SealedEvaluationRequest:
@@ -181,6 +199,18 @@ class SealedEvaluationHandoff:
             self,
             derive_content_sha256(self._semantic_dict_validated()),
         )
+
+    def __copy__(self) -> NoReturn:
+        """Reject alternate construction paths that bypass identity registration."""
+        _reject_reconstruction("sealed handoff")
+
+    def __deepcopy__(self, memo: dict[int, object]) -> NoReturn:
+        """Reject alternate construction paths that bypass identity registration."""
+        _reject_reconstruction("sealed handoff")
+
+    def __reduce_ex__(self, protocol: int) -> NoReturn:
+        """Reject pickle reconstruction that would bypass construction identity."""
+        _reject_reconstruction("sealed handoff")
 
     def _validated_snapshot(self) -> SealedEvaluationHandoff:
         if type(self) is not SealedEvaluationHandoff:
