@@ -88,7 +88,7 @@ _STATES: Final = frozenset(
         "CLOSED_CANONICAL",
     }
 )
-_REAL_EVIDENCE: Final = frozenset({f"MRL-08{n:02d}" for n in range(1, 10)} | {"MRL-0899"})
+_REAL_EVIDENCE: Final = frozenset(f"MRL-08{n:02d}" for n in range(1, 9))
 _MRL3_FRESHNESS: Final = (
     "src/medscale/mesc/_mrl_adaptive_budget_exhaustion_v1.py",
     "src/medscale/mesc/_mrl_adaptive_campaign_accounting_v1.py",

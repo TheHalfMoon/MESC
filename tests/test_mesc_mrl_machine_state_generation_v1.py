@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 from medscale.mesc._mrl_machine_state_generation_v1 import (
+    _REAL_EVIDENCE,
     MachineStateGenerationError,
     admit_project_state_projection,
     generate_machine_state,
@@ -136,6 +137,26 @@ def test_research_program_and_capability_semantics_come_from_canonical_sources(
     assert indexed["PILOT_01_B0_BASELINE"]["evidence_state"] == "PROVEN"
     assert indexed["T0_REPOSITORY_FOUNDATION"]["implementation_state"] == "IMPLEMENTED"
     assert indexed["TRAINING_EXECUTION"]["authority_state"] == "NOT_AUTHORIZED"
+
+
+def test_external_real_evidence_hold_excludes_dependency_only_gates() -> None:
+    assert (
+        frozenset(
+            {
+                "MRL-0801",
+                "MRL-0802",
+                "MRL-0803",
+                "MRL-0804",
+                "MRL-0805",
+                "MRL-0806",
+                "MRL-0807",
+                "MRL-0808",
+            }
+        )
+        == _REAL_EVIDENCE
+    )
+    assert "MRL-0809" not in _REAL_EVIDENCE
+    assert "MRL-0899" not in _REAL_EVIDENCE
 
 
 def test_project_state_matches_frozen_schema_and_requalifies_stale_gates(
