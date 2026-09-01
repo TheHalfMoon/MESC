@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import copy
+import pickle
 from dataclasses import fields
 from typing import cast
 
@@ -108,6 +110,28 @@ def test_valid_handoff_identity_mutation_fails_closed() -> None:
         handoff.semantic_dict()
     with pytest.raises(SealedEvaluationInterfaceError, match="identity changed"):
         _ = handoff.content_sha256
+
+
+def test_request_explicitly_rejects_copy_and_pickle_reconstruction() -> None:
+    request = _request()
+
+    with pytest.raises(SealedEvaluationInterfaceError, match="copy/pickle reconstruction"):
+        copy.copy(request)
+    with pytest.raises(SealedEvaluationInterfaceError, match="copy/pickle reconstruction"):
+        copy.deepcopy(request)
+    with pytest.raises(SealedEvaluationInterfaceError, match="copy/pickle reconstruction"):
+        pickle.dumps(request)
+
+
+def test_handoff_explicitly_rejects_copy_and_pickle_reconstruction() -> None:
+    handoff = record_sealed_evidence_handoff(_request(), "c" * 64)
+
+    with pytest.raises(SealedEvaluationInterfaceError, match="copy/pickle reconstruction"):
+        copy.copy(handoff)
+    with pytest.raises(SealedEvaluationInterfaceError, match="copy/pickle reconstruction"):
+        copy.deepcopy(handoff)
+    with pytest.raises(SealedEvaluationInterfaceError, match="copy/pickle reconstruction"):
+        pickle.dumps(handoff)
 
 
 def test_non_sealed_tier_contract_fails_closed() -> None:
