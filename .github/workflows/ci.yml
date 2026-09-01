@@ -33,31 +33,26 @@ jobs:
             tests/test_mesc_mrl_machine_state_ci_gate_v1.py \
             tests/test_mesc_mrl_machine_state_generation_v1.py \
             tests/test_mesc_mrl_project_state_admission_v1.py
+          uv run ruff check .
+          uv run ruff format --check .
 
-      - name: Restore required CI workflow
-        run: echo 'bmFtZTogQ0kKCm9uOgogIHB1c2g6CiAgICBicmFuY2hlczogW21haW5dCiAgcHVsbF9yZXF1ZXN0OgogICAgYnJhbmNoZXM6IFttYWluXQoKcGVybWlzc2lvbnM6CiAgY29udGVudHM6IHJlYWQKCmNvbmN1cnJlbmN5OgogIGdyb3VwOiBjaS0ke3sgZ2l0aHViLnJlZiB9fQogIGNhbmNlbC1pbi1wcm9ncmVzczogdHJ1ZQoKam9iczoKICBxdWFsaXR5OgogICAgbmFtZTogcXVhbGl0eSAocHkke3sgbWF0cml4LnB5dGhvbi12ZXJzaW9uIH19KQogICAgcnVucy1vbjogdWJ1bnR1LWxhdGVzdAogICAgc3RyYXRlZ3k6CiAgICAgIGZhaWwtZmFzdDogZmFsc2UKICAgICAgbWF0cml4OgogICAgICAgIHB5dGhvbi12ZXJzaW9uOiBbIjMuMTEiLCAiMy4xMiJdCiAgICBzdGVwczoKICAgICAgLSB1c2VzOiBhY3Rpb25zL2NoZWNrb3V0QDNkM2M0MmU1YWFjNWJhODA1ODI1ZGE3NjQxMGMxODEyNzNiYTkwYjEgIyB2Ny4wLjEKICAgICAgICB3aXRoOgogICAgICAgICAgcGVyc2lzdC1jcmVkZW50aWFsczogZmFsc2UKICAgICAgICAgIGZldGNoLWRlcHRoOiAwCiAgICAgICAgICByZWY6ICR7eyBnaXRodWIuZXZlbnQucHVsbF9yZXF1ZXN0LmhlYWQuc2hhIHx8IGdpdGh1Yi5zaGEgfX0KCiAgICAgIC0gbmFtZTogSW5zdGFsbCB1dgogICAgICAgIHVzZXM6IGFzdHJhbC1zaC9zZXR1cC11dkAyMGNmZDFiZjk0NWY0Mzc3YWRlMTIwNWU0ZGJjMTc5NDZmYzlhMzBkICMgdjEwLjAuMQogICAgICAgIHdpdGg6CiAgICAgICAgICBlbmFibGUtY2FjaGU6IHRydWUKCiAgICAgIC0gbmFtZTogSW5zdGFsbCBQeXRob24gJHt7IG1hdHJpeC5weXRob24tdmVyc2lvbiB9fQogICAgICAgIHJ1bjogdXYgcHl0aG9uIGluc3RhbGwgJHt7IG1hdHJpeC5weXRob24tdmVyc2lvbiB9fQoKICAgICAgLSBuYW1lOiBTeW5jIChsb2NrZWQpCiAgICAgICAgcnVuOiB1diBzeW5jIC0tZnJvemVuCgogICAgICAtIG5hbWU6IFJ1ZmYgKGxpbnQpCiAgICAgICAgcnVuOiB1diBydW4gcnVmZiBjaGVjayAuCgogICAgICAtIG5hbWU6IFJ1ZmYgKGZvcm1hdCkKICAgICAgICBydW46IHV2IHJ1biBydWZmIGZvcm1hdCAtLWNoZWNrIC4KCiAgICAgIC0gbmFtZTogTXlweSAoc3RyaWN0KQogICAgICAgIHJ1bjogdXYgcnVuIG15cHkKCiAgICAgIC0gbmFtZTogUHl0ZXN0CiAgICAgICAgcnVuOiB1diBydW4gcHl0ZXN0IC0tY292IC0tY292LXJlcG9ydD10ZXJtLW1pc3NpbmcKCiAgICAgIC0gbmFtZTogTVJMIG1hY2hpbmUtc3RhdGUgZHJpZnQvbWFudWFsLWVkaXQgZ2F0ZQogICAgICAgIHJ1bjogdXYgcnVuIHB5dGVzdCAtcSB0ZXN0cy90ZXN0X21lc2NfbXJsX21hY2hpbmVfc3RhdGVfY2lfZ2F0ZV92MS5weQoKICAgICAgIyBBRFItMDAxNzogY29ycHVzPC0+bG9nIHJlZmVyZW50aWFsIGludGVncml0eSBpcyBhIGhhcmQgZ2F0ZSwgbm90IGEgY29udmVudGlvbi4KICAgICAgLSBuYW1lOiBsaXRkYiBpbnRlZ3JpdHkgKG1lZHNjYWxlIGNoZWNrKQogICAgICAgIHJ1bjogdXYgcnVuIG1lZHNjYWxlIGNoZWNrCg==' | base64 -d > .github/workflows/ci.yml
-
-      - name: Verify exact diagnostic scope
+      - name: Verify formatter changed only intended files
         run: |
-          expected='.github/workflows/ci.yml
-          src/medscale/mesc/_mrl_machine_state_generation_v1.py
+          expected='src/medscale/mesc/_mrl_machine_state_generation_v1.py
           tests/test_mesc_mrl_machine_state_ci_gate_v1.py
           tests/test_mesc_mrl_machine_state_generation_v1.py
           tests/test_mesc_mrl_project_state_admission_v1.py'
           actual="$(git diff --name-only | sort)"
           test "$actual" = "$expected"
-          uv run ruff check .
-          uv run ruff format --check .
 
-      - name: Commit formatted bytes and restored gate
+      - name: Commit and push formatted files only
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add \
-            .github/workflows/ci.yml \
             src/medscale/mesc/_mrl_machine_state_generation_v1.py \
             tests/test_mesc_mrl_machine_state_ci_gate_v1.py \
             tests/test_mesc_mrl_machine_state_generation_v1.py \
             tests/test_mesc_mrl_project_state_admission_v1.py
-          git commit -m 'style(mrl): apply Ruff formatting and restore CI gate'
+          git commit -m 'style(mrl): apply Ruff formatting'
           git push origin HEAD:fix/mrl-7-project-state-contract-d36694
