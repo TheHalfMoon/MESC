@@ -12,19 +12,18 @@ permissions:
   statuses: read
 
 jobs:
-  closeout-evidence-harvest:
+  closeout-evidence-binding-harvest:
     if: github.repository == 'TheHalfMoon/MESC' && github.head_ref == 'fix/mrl-7-project-state-contract-d36694'
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ github.token }}
       REPOSITORY: ${{ github.repository }}
     steps:
-      - name: Harvest exact historical GitHub qualification evidence
+      - name: Verify exact historical GitHub closeout bindings
         run: |
           python - <<'PY'
           import json
           import os
-          import urllib.error
           import urllib.request
 
           repo = os.environ['REPOSITORY']
@@ -60,15 +59,11 @@ jobs:
               ('a201b528ff63dfe9709bfe13a25975791c07d723','247c4b61f63a5a9fe24b44b11fe64ed51717033b',[f'MRL-07{n:02d}' for n in range(1,8)]+['MRL-0799']),
           ]
 
-          def api(path, method='GET', body=None):
-              url = 'https://api.github.com/' + path.lstrip('/')
-              data = None if body is None else json.dumps(body).encode()
-              request = urllib.request.Request(url, data=data, method=method)
+          def api(path):
+              request = urllib.request.Request('https://api.github.com/' + path.lstrip('/'))
               request.add_header('Authorization', f'Bearer {token}')
               request.add_header('Accept', 'application/vnd.github+json')
               request.add_header('X-GitHub-Api-Version', '2022-11-28')
-              if data is not None:
-                  request.add_header('Content-Type', 'application/json')
               with urllib.request.urlopen(request, timeout=30) as response:
                   return json.load(response)
 
@@ -87,6 +82,23 @@ jobs:
               return payload['data']
 
           owner, name = repo.split('/', 1)
+          thread_query = '''
+          query($owner:String!,$name:String!,$number:Int!,$after:String) {
+            repository(owner:$owner,name:$name) {
+              pullRequest(number:$number) {
+                reviewThreads(first:100,after:$after) {
+                  nodes {
+                    id
+                    isResolved
+                    comments(first:1) { nodes { createdAt } }
+                  }
+                  pageInfo { hasNextPage endCursor }
+                }
+              }
+            }
+          }
+          '''
+
           records = []
           for merge_sha, qualified_head, task_ids in transitions:
               pulls = api(f'repos/{repo}/commits/{merge_sha}/pulls?per_page=100')
@@ -98,6 +110,8 @@ jobs:
               if len(matches) != 1:
                   raise RuntimeError(f'PR association is not unique for {merge_sha}: {len(matches)}')
               pr = api(f'repos/{repo}/pulls/{matches[0]["number"]}')
+              if not pr.get('merged') or not pr.get('merged_at'):
+                  raise RuntimeError(f'PR is not canonically merged for {merge_sha}')
               if pr['head']['sha'] != qualified_head or pr['merge_commit_sha'] != merge_sha:
                   raise RuntimeError(f'PR identity mismatch for {merge_sha}')
               merged_at = pr['merged_at']
@@ -108,81 +122,86 @@ jobs:
               successful = [
                   run for run in runs
                   if run.get('conclusion') == 'success'
-                  and (merged_at is None or run.get('created_at','') <= merged_at)
+                  and run.get('created_at', '') <= merged_at
               ]
-              ci = sorted(
-                  [run['id'] for run in successful if run.get('name') == 'CI']
-              )
-              codeql = sorted(
-                  [run['id'] for run in successful if run.get('name') == 'CodeQL']
-              )
+              ci = sorted(run['id'] for run in successful if run.get('name') == 'CI')
+              codeql = sorted(run['id'] for run in successful if run.get('name') == 'CodeQL')
+              if not ci or not codeql:
+                  raise RuntimeError(f'missing exact-head CI/CodeQL for PR #{pr["number"]}')
 
               status = api(f'repos/{repo}/commits/{qualified_head}/status')
-              coderabbit = [
-                  {'id': item['id'], 'state': item['state']}
-                  for item in status.get('statuses', [])
+              coderabbit = sorted(
+                  item['id'] for item in status.get('statuses', [])
                   if item.get('context') == 'CodeRabbit'
-              ]
-
-              reviews = api(f'repos/{repo}/pulls/{pr["number"]}/reviews?per_page=100')
-              review_rows = [
-                  {
-                      'id': item['id'],
-                      'author': item.get('user',{}).get('login'),
-                      'state': item.get('state'),
-                      'commit_id': item.get('commit_id'),
-                  }
-                  for item in reviews
-                  if item.get('submitted_at') is None
-                  or merged_at is None
-                  or item['submitted_at'] <= merged_at
-              ]
+                  and item.get('state') == 'success'
+                  and item.get('created_at', '') <= merged_at
+              )
+              if not coderabbit:
+                  raise RuntimeError(f'missing exact-head CodeRabbit success for PR #{pr["number"]}')
 
               comments = api(f'repos/{repo}/issues/{pr["number"]}/comments?per_page=100')
-              qodo = [
+              qodo_exact_head = sorted(
                   item['id'] for item in comments
-                  if 'qodo' in item.get('user',{}).get('login','').lower()
-                  and (item.get('created_at') is None or merged_at is None or item['created_at'] <= merged_at)
-              ]
+                  if 'qodo' in item.get('user', {}).get('login', '').lower()
+                  and item.get('created_at', '') <= merged_at
+                  and qualified_head in item.get('body', '')
+              )
+              if not qodo_exact_head:
+                  raise RuntimeError(f'missing exact-head Qodo evidence for PR #{pr["number"]}')
 
-              query = '''
-              query($owner:String!,$name:String!,$number:Int!,$after:String) {
-                repository(owner:$owner,name:$name) {
-                  pullRequest(number:$number) {
-                    reviewThreads(first:100,after:$after) {
-                      nodes { isResolved }
-                      pageInfo { hasNextPage endCursor }
-                    }
-                  }
-                }
-              }
-              '''
+              reviews = api(f'repos/{repo}/pulls/{pr["number"]}/reviews?per_page=100')
+              owner_exact_head_reviews = sorted(
+                  item['id'] for item in reviews
+                  if item.get('user', {}).get('login') == 'TheHalfMoon'
+                  and item.get('commit_id') == qualified_head
+                  and (item.get('submitted_at') is None or item['submitted_at'] <= merged_at)
+              )
+
               after = None
-              unresolved_threads = 0
+              current_unresolved_premerge_origin = []
               while True:
-                  data = graphql(query, {'owner': owner, 'name': name, 'number': pr['number'], 'after': after})
+                  data = graphql(
+                      thread_query,
+                      {'owner': owner, 'name': name, 'number': pr['number'], 'after': after},
+                  )
                   page = data['repository']['pullRequest']['reviewThreads']
-                  unresolved_threads += sum(not node['isResolved'] for node in page['nodes'])
+                  for node in page['nodes']:
+                      roots = node['comments']['nodes']
+                      created_at = roots[0]['createdAt'] if roots else None
+                      if created_at and created_at <= merged_at and not node['isResolved']:
+                          current_unresolved_premerge_origin.append(node['id'])
                   if not page['pageInfo']['hasNextPage']:
                       break
                   after = page['pageInfo']['endCursor']
 
-              record = {
+              strict = 'MRL-0099' in task_ids
+              if strict and (not owner_exact_head_reviews or current_unresolved_premerge_origin):
+                  raise RuntimeError(
+                      f'MRL-0099 strict evidence failed for PR #{pr["number"]}: '
+                      f'owner_review={owner_exact_head_reviews}, '
+                      f'unresolved_premerge_origin={current_unresolved_premerge_origin}'
+                  )
+
+              records.append({
                   'canonical_merge_sha': merge_sha,
-                  'qualified_head_sha': qualified_head,
-                  'task_ids': task_ids,
+                  'coderabbit_success_status_ids': coderabbit,
+                  'evidence_profile': (
+                      'MRL_CONSTITUTION_EXACT_HEAD_V1' if strict else 'MRL_STANDARD_EXACT_HEAD_V1'
+                  ),
+                  'owner_exact_head_review_ids': owner_exact_head_reviews,
                   'pr_number': pr['number'],
-                  'merged_at': merged_at,
+                  'qodo_exact_head_comment_ids': qodo_exact_head,
+                  'qualified_head_sha': qualified_head,
                   'successful_ci_run_ids': ci,
                   'successful_codeql_run_ids': codeql,
-                  'coderabbit_statuses': coderabbit,
-                  'review_evidence': review_rows,
-                  'qodo_comment_ids': qodo,
-                  'unresolved_review_threads': unresolved_threads,
-              }
-              records.append(record)
+                  'task_ids': task_ids,
+              })
 
-          print('MRL_GITHUB_CLOSEOUT_EVIDENCE_BEGIN')
-          print(json.dumps({'schema_version':'MRL-GITHUB-CLOSEOUT-EVIDENCE-CANDIDATE-V1','records':records}, sort_keys=True, separators=(',',':')))
-          print('MRL_GITHUB_CLOSEOUT_EVIDENCE_END')
+          payload = {
+              'records': records,
+              'schema_version': 'MRL-CLOSEOUT-EVIDENCE-V1',
+          }
+          print('MRL_CANONICAL_CLOSEOUT_EVIDENCE_BEGIN')
+          print(json.dumps(payload, sort_keys=True, separators=(',', ':')))
+          print('MRL_CANONICAL_CLOSEOUT_EVIDENCE_END')
           PY
