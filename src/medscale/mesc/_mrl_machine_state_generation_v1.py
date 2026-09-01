@@ -1,495 +1,434 @@
-"""Deterministic generation/check engine for MRL machine-state projections.
+"""Evidence-bound admission facade for deterministic MRL machine-state projections.
 
-MRL-0704 reads a fixed set of canonical sources from one exact Git commit, derives the
-three MRL-7 projections, and renders canonical bytes. Generated views are
-non-authoritative and are intentionally emitted outside their represented Git commit to
-avoid self-referential commit hashing.
+The implementation that existed before the closeout-evidence repair is preserved
+byte-for-byte in ``_mrl_machine_state_generation_legacy_v1``. This facade adds one
+canonical source and replaces merge-shape-only closure with fail-closed admission
+against independently harvested exact-head GitHub qualification evidence.
 
-MRL-0705 owns CI drift/manual-edit enforcement. This module grants no execution,
-training, promotion, deployment, release, or clinical authority.
+The manifest is evidence, not authority: projections remain derived and
+non-authoritative, and no model/data/runtime/training/release authority is granted.
 """
 
 from __future__ import annotations
 
-import hashlib
+import json
 import re
-import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Final
+from typing import Final, cast
 
-from medscale.mesc._mrl_capability_matrix_v1 import (
-    CapabilityMatrixEntry,
-    CapabilityMatrixProjection,
-    CapabilityRepositoryBinding,
-    CapabilitySourceBinding,
-)
-from medscale.mesc._mrl_project_state_v1 import (
-    ProjectStateEntry,
-    ProjectStateProjection,
-    ProjectStateSourceBinding,
-)
-from medscale.mesc._mrl_research_program_index_v1 import (
-    RepositoryBinding,
-    ResearchProgramIndexProjection,
-    ResearchProgramNamespace,
-    ResearchQuestionIndexEntry,
-    SourceBinding,
-)
+from medscale.mesc import _mrl_machine_state_generation_legacy_v1 as _legacy
 
 __all__ = [
     "MachineStateGenerationError",
     "MachineStateRenderSet",
+    "admit_project_state_projection",
     "generate_machine_state",
     "load_canonical_snapshot",
 ]
 
-_REGISTRY_PATH: Final = "docs/research/research_program_registry.md"
-_QUESTIONS_PATH: Final = "docs/research/research_questions.md"
-_ROADMAP_PATH: Final = "ROADMAP.md"
-_RECONCILIATION_PATH: Final = "docs/strategy/mesc_pr122_post_b0_reconciliation_2026-08-19.md"
-_TASKS_PATH: Final = "specs/mesc-research-loop-v1/tasks.md"
-_SOURCE_PATHS: Final = (
-    _ROADMAP_PATH,
-    _REGISTRY_PATH,
-    _QUESTIONS_PATH,
-    _RECONCILIATION_PATH,
-    _TASKS_PATH,
+_CLOSEOUT_EVIDENCE: Final = "specs/mesc-research-loop-v1/closeout-evidence-v1.json"
+_SCHEMA_VERSION: Final = "MRL-CLOSEOUT-EVIDENCE-V1"
+_REPOSITORY_PROFILE: Final = "MRL_REPOSITORY_EXACT_HEAD_V1"
+_REVIEWED_PROFILE: Final = "MRL_REVIEWED_EXACT_HEAD_V1"
+_CONSTITUTION_PROFILE: Final = "MRL_CONSTITUTION_EXACT_HEAD_V1"
+_PROFILES: Final = frozenset({_REPOSITORY_PROFILE, _REVIEWED_PROFILE, _CONSTITUTION_PROFILE})
+_REVIEW_REQUIRED_TASKS: Final = frozenset(
+    {"MRL-0100", "MRL-0101", "MRL-0102", "MRL-0103", "MRL-0109"}
 )
-_OUTPUT_NAMES: Final = (
-    "CAPABILITY_MATRIX.json",
-    "PROJECT_STATE.json",
-    "RESEARCH_PROGRAM_INDEX.json",
+_TASK_ID: Final = re.compile(r"^MRL-[0-9]{4}$")
+_SHA40: Final = re.compile(r"^[0-9a-f]{40}$")
+_INDEPENDENT_REF: Final = re.compile(r"^(?:comment|review):[1-9][0-9]*$")
+_RECORD_FIELDS: Final = frozenset(
+    {
+        "canonical_merge_sha",
+        "coderabbit_success_status_ids",
+        "evidence_profile",
+        "independent_exact_head_evidence_refs",
+        "owner_exact_head_review_ids",
+        "pr_number",
+        "qodo_exact_head_comment_ids",
+        "qualified_head_sha",
+        "successful_ci_run_ids",
+        "successful_codeql_run_ids",
+        "task_ids",
+    }
 )
-_TASK_PATTERN: Final = re.compile(r"^- \[([ x])\] \*\*(MRL-[0-9]{4}) — ")
-_DEPENDENCY_PATTERN: Final = re.compile(r"MRL-([0-9]{4})(?:\.\.(?:MRL-)?([0-9]{4}))?")
-
-
-class MachineStateGenerationError(ValueError):
-    """Fail-closed error for canonical MRL machine-state generation/checking."""
 
 
 @dataclass(frozen=True, slots=True)
-class CanonicalSourceSnapshot:
-    """One exact source as stored in the represented Git commit."""
-
-    path: str
-    git_blob_sha: str
-    sha256: str
-    content: str
-
-
-@dataclass(frozen=True, slots=True)
-class CanonicalRepositorySnapshot:
-    """Fixed canonical inputs used to derive all MRL-7 projections."""
-
-    commit_sha: str
-    tree_sha: str
-    sources: tuple[CanonicalSourceSnapshot, ...]
-
-    def source(self, path: str) -> CanonicalSourceSnapshot:
-        matches = tuple(source for source in self.sources if source.path == path)
-        if len(matches) != 1:
-            raise MachineStateGenerationError(f"canonical source missing or duplicated: {path}")
-        return matches[0]
+class _CloseoutEvidence:
+    canonical_merge_sha: str
+    qualified_head_sha: str
+    pr_number: int
+    evidence_profile: str
+    successful_ci_run_ids: tuple[int, ...]
+    successful_codeql_run_ids: tuple[int, ...]
+    independent_exact_head_evidence_refs: tuple[str, ...]
+    qodo_exact_head_comment_ids: tuple[int, ...]
+    owner_exact_head_review_ids: tuple[int, ...]
+    coderabbit_success_status_ids: tuple[int, ...]
+    task_ids: tuple[str, ...]
 
 
-@dataclass(frozen=True, slots=True)
-class MachineStateRenderSet:
-    """Canonical bytes for all three projections represented by one Git commit."""
+MachineStateGenerationError = _legacy.MachineStateGenerationError
+MachineStateRenderSet = _legacy.MachineStateRenderSet
+_REAL_EVIDENCE = _legacy._REAL_EVIDENCE
+_EXTERNAL_DEPENDENCY_TEXT: Final[dict[str, frozenset[str]]] = {
+    "MRL-0001": frozenset({"planning package acceptance"}),
+    "MRL-0800": frozenset({"current training/runtime governance"}),
+    "MRL-0801": frozenset({"separate real-asset authorization/evidence"}),
+    "MRL-0802": frozenset({"separate real-asset authorization/evidence"}),
+    "MRL-0803": frozenset({"actual corpus/evaluation evidence"}),
+    "MRL-0804": frozenset({"real runtime evidence"}),
+    "MRL-0805": frozenset(
+        {"independent authority artifact/trust path and current training governance"}
+    ),
+    "MRL-0806": frozenset({"selected real experiment"}),
+    "MRL-0807": frozenset({"real evaluation assets"}),
+    "MRL-0808": frozenset({"real runtime/sandbox evidence"}),
+}
 
-    commit_sha: str
-    tree_sha: str
-    capability_matrix: bytes
-    project_state: bytes
-    research_program_index: bytes
+_merge_shape_closure = _legacy._closure_proof
+_legacy_dependencies = _legacy._dependencies
 
-    def files(self) -> tuple[tuple[str, bytes], ...]:
-        """Return projection files in deterministic filename order."""
-        return (
-            ("CAPABILITY_MATRIX.json", self.capability_matrix),
-            ("PROJECT_STATE.json", self.project_state),
-            ("RESEARCH_PROGRAM_INDEX.json", self.research_program_index),
-        )
-
-
-def load_canonical_snapshot(repository_root: Path) -> CanonicalRepositorySnapshot:
-    """Read the fixed MRL-7 source set from the exact local Git HEAD commit."""
-    root = repository_root.resolve()
-    commit_sha = _run_git_text(root, "rev-parse", "HEAD")
-    tree_sha = _run_git_text(root, "rev-parse", "HEAD^{tree}")
-    sources = tuple(_load_source(root, path) for path in _SOURCE_PATHS)
-    return CanonicalRepositorySnapshot(
-        commit_sha=commit_sha,
-        tree_sha=tree_sha,
-        sources=sources,
-    )
+_project_sources = tuple(sorted(set(_legacy._PROJECT_SOURCES) | {_CLOSEOUT_EVIDENCE}))
+_all_sources = tuple(sorted(set(_legacy._ALL_SOURCES) | {_CLOSEOUT_EVIDENCE}))
+vars(_legacy)["_PROJECT_SOURCES"] = _project_sources
+vars(_legacy)["_ALL_SOURCES"] = _all_sources
 
 
-def generate_machine_state(
-    repository_root: Path,
-    output_dir: Path,
-    *,
-    check: bool = False,
-) -> MachineStateRenderSet:
-    """Generate projections or fail closed when existing outputs differ byte-for-byte."""
-    snapshot = load_canonical_snapshot(repository_root)
-    render_set = _render_snapshot(snapshot)
-    destination = output_dir.resolve()
-    if check:
-        _check_outputs(destination, render_set)
-    else:
-        destination.mkdir(parents=True, exist_ok=True)
-        for filename, payload in render_set.files():
-            (destination / filename).write_bytes(payload)
-    return render_set
-
-
-def _render_snapshot(snapshot: CanonicalRepositorySnapshot) -> MachineStateRenderSet:
-    research_program_index = _build_research_program_index(snapshot)
-    capability_matrix = _build_capability_matrix(snapshot)
-    project_state = _build_project_state(
-        snapshot,
-        research_program_index,
-        capability_matrix,
-    )
-    return MachineStateRenderSet(
-        commit_sha=snapshot.commit_sha,
-        tree_sha=snapshot.tree_sha,
-        capability_matrix=capability_matrix.semantic_bytes,
-        project_state=project_state.semantic_bytes,
-        research_program_index=research_program_index.semantic_bytes,
-    )
-
-
-def _build_research_program_index(
-    snapshot: CanonicalRepositorySnapshot,
-) -> ResearchProgramIndexProjection:
-    registry = snapshot.source(_REGISTRY_PATH)
-    questions_source = snapshot.source(_QUESTIONS_PATH)
-    sources = tuple(
-        sorted(
-            (
-                _research_source_binding(registry),
-                _research_source_binding(questions_source),
-            ),
-            key=lambda item: item.path,
-        )
-    )
-    questions = _parse_foundational_questions(registry.content)
-    namespaces = _parse_namespaces(registry.content)
-    return ResearchProgramIndexProjection(
-        repository=RepositoryBinding(
-            commit_sha=snapshot.commit_sha,
-            tree_sha=snapshot.tree_sha,
-        ),
-        sources=sources,
-        questions=questions,
-        namespaces=namespaces,
-    )
-
-
-def _parse_foundational_questions(text: str) -> tuple[ResearchQuestionIndexEntry, ...]:
-    rows: list[ResearchQuestionIndexEntry] = []
-    for line in text.splitlines():
-        cells = _table_cells(line)
-        if len(cells) != 3 or not cells[0].startswith("`RQ"):
-            continue
-        question_id = _strip_code(cells[0])
-        if question_id not in {f"RQ{index}" for index in range(1, 8)}:
-            continue
-        source_path = _strip_code(cells[1])
-        status = cells[2].split("—", 1)[0].strip()
-        rows.append(
-            ResearchQuestionIndexEntry(
-                question_id=question_id,
-                program="Foundational MESC research",
-                status=status,
-                canonical_source_path=source_path,
-            )
-        )
-    result = tuple(sorted(rows, key=lambda item: item.question_id))
-    if tuple(item.question_id for item in result) != tuple(f"RQ{index}" for index in range(1, 8)):
-        raise MachineStateGenerationError(
-            "research registry must preserve exactly one RQ1-RQ7 foundational row"
-        )
-    return result
-
-
-def _parse_namespaces(text: str) -> tuple[ResearchProgramNamespace, ...]:
-    rows: list[ResearchProgramNamespace] = []
-    in_namespace_table = False
-    for line in text.splitlines():
-        if line == "## Later-program namespaces":
-            in_namespace_table = True
-            continue
-        if in_namespace_table and line.startswith("## "):
-            break
-        if not in_namespace_table:
-            continue
-        cells = _table_cells(line)
-        if len(cells) != 5 or "<NNNN>" not in cells[1]:
-            continue
-        rows.append(
-            ResearchProgramNamespace(
-                program=cells[0],
-                question_namespace=_strip_code(cells[1]),
-                program_status=cells[2],
-                canonical_source_paths=(_REGISTRY_PATH,),
-                question_catalog_status=cells[4],
-            )
-        )
-    if not rows:
-        raise MachineStateGenerationError("research registry contains no later-program namespaces")
-    return tuple(sorted(rows, key=lambda item: item.question_namespace))
-
-
-def _build_capability_matrix(
-    snapshot: CanonicalRepositorySnapshot,
-) -> CapabilityMatrixProjection:
-    roadmap = snapshot.source(_ROADMAP_PATH)
-    reconciliation = snapshot.source(_RECONCILIATION_PATH)
-    _require_text_fragment(
-        roadmap.content,
-        "| **T0** | Repository & engineering foundation | ✅ complete | — |",
-        _ROADMAP_PATH,
-    )
-    _require_text_fragment(
-        reconciliation.content,
-        "`3f34b35daf4050d010a5f0061d6e8387f9649c10`",
-        _RECONCILIATION_PATH,
-    )
-    _require_text_fragment(
-        reconciliation.content,
-        "- training/fine-tuning: NOT AUTHORIZED",
-        _RECONCILIATION_PATH,
-    )
-    sources = tuple(
-        sorted(
-            (
-                _capability_source_binding(roadmap),
-                _capability_source_binding(reconciliation),
-            ),
-            key=lambda item: item.path,
-        )
-    )
-    capabilities = (
-        CapabilityMatrixEntry(
-            capability_id="PILOT_01_B0_BASELINE",
-            implementation_state="HISTORICAL",
-            evidence_state="PROVEN",
-            authority_state="NOT_APPLICABLE",
-            canonical_source_paths=(_RECONCILIATION_PATH,),
-            evidence_refs=("merge:3f34b35daf4050d010a5f0061d6e8387f9649c10",),
-        ),
-        CapabilityMatrixEntry(
-            capability_id="T0_REPOSITORY_FOUNDATION",
-            implementation_state="IMPLEMENTED",
-            evidence_state="PROVEN",
-            authority_state="NOT_APPLICABLE",
-            canonical_source_paths=(_ROADMAP_PATH,),
-            evidence_refs=("roadmap:T0",),
-        ),
-        CapabilityMatrixEntry(
-            capability_id="TRAINING_EXECUTION",
-            implementation_state="NOT_STARTED",
-            evidence_state="UNPROVEN",
-            authority_state="NOT_AUTHORIZED",
-            canonical_source_paths=(_RECONCILIATION_PATH,),
-        ),
-    )
-    return CapabilityMatrixProjection(
-        repository=CapabilityRepositoryBinding(
-            commit_sha=snapshot.commit_sha,
-            tree_sha=snapshot.tree_sha,
-        ),
-        sources=sources,
-        capabilities=capabilities,
-    )
-
-
-def _build_project_state(
-    snapshot: CanonicalRepositorySnapshot,
-    research_program_index: ResearchProgramIndexProjection,
-    capability_matrix: CapabilityMatrixProjection,
-) -> ProjectStateProjection:
-    tasks = snapshot.source(_TASKS_PATH)
-    records = _parse_task_records(tasks.content)
-    checked = {task_id for task_id, is_checked, _ in records if is_checked}
-    entries: list[ProjectStateEntry] = []
-    for task_id, is_checked, dependencies in records:
-        evidence_refs: tuple[str, ...]
-        if is_checked:
-            lifecycle_state = "CLOSED_CANONICAL"
-            evidence_refs = (f"ledger:{tasks.git_blob_sha}:{task_id}",)
-        elif all(dependency in checked for dependency in dependencies):
-            lifecycle_state = "ELIGIBLE"
-            evidence_refs = ()
-        else:
-            lifecycle_state = "PLANNED"
-            evidence_refs = ()
-        entries.append(
-            ProjectStateEntry(
-                state_id=task_id,
-                lifecycle_state=lifecycle_state,
-                canonical_source_paths=(_TASKS_PATH,),
-                dependency_ids=dependencies,
-                evidence_refs=evidence_refs,
-            )
-        )
-    return ProjectStateProjection(
-        research_program_index=research_program_index,
-        capability_matrix=capability_matrix,
-        sources=(
-            ProjectStateSourceBinding(
-                path=tasks.path,
-                git_blob_sha=tasks.git_blob_sha,
-                sha256=tasks.sha256,
-            ),
-        ),
-        entries=tuple(entries),
-    )
-
-
-def _parse_task_records(text: str) -> tuple[tuple[str, bool, tuple[str, ...]], ...]:
-    lines = text.splitlines()
-    records: list[tuple[str, bool, tuple[str, ...]]] = []
+def _dependency_clauses(lines: list[str]) -> tuple[str, ...]:
+    clauses: list[str] = []
     for index, line in enumerate(lines):
-        match = _TASK_PATTERN.match(line)
-        if match is None:
+        if "Depends on:" in line:
+            marker = "Depends on:"
+        elif "Requires:" in line:
+            marker = "Requires:"
+        else:
             continue
-        task_id = match.group(2)
+
+        parts = [line.split(marker, 1)[1].strip()]
+        cursor = index + 1
+        while cursor < len(lines):
+            continuation = lines[cursor]
+            if continuation.startswith("    ") and not continuation.lstrip().startswith("- "):
+                parts.append(continuation.strip())
+                cursor += 1
+                continue
+            break
+
+        clause = " ".join(part for part in parts if part)
+        if not clause:
+            raise MachineStateGenerationError("MRL dependency clause must not be empty")
+        clauses.append(clause)
+    return tuple(clauses)
+
+
+def _external_dependency_text(clause: str) -> str:
+    residual = _legacy._DEP_RE.sub(" ", clause)
+    residual = residual.replace(",", " ").replace(".", " ")
+    words = residual.split()
+    while words and words[0] in {"and", "plus"}:
+        words.pop(0)
+    return " ".join(words)
+
+
+def _dependencies(lines: list[str], task_id: str) -> tuple[str, ...]:
+    clauses = _dependency_clauses(lines)
+    synthetic = [f"  - Depends on: {clause}" for clause in clauses]
+    dependencies = _legacy_dependencies(synthetic, task_id)
+
+    allowed_external = _EXTERNAL_DEPENDENCY_TEXT.get(task_id, frozenset())
+    for clause in clauses:
+        external = _external_dependency_text(clause)
+        if external and external not in allowed_external:
+            raise MachineStateGenerationError(
+                f"MRL task {task_id} contains unmodeled external dependency: {external}"
+            )
+    return dependencies
+
+
+def _task_records(text: str) -> tuple[tuple[str, bool, tuple[str, ...]], ...]:
+    lines = text.splitlines()
+    rows: list[tuple[str, bool, tuple[str, ...]]] = []
+    for index, line in enumerate(lines):
+        match = _legacy._TASK_RE.match(line)
+        if match is None:
+            if line.startswith("- [") and "MRL-" in line:
+                raise MachineStateGenerationError("MRL task ledger contains malformed task record")
+            continue
         block: list[str] = []
         cursor = index + 1
-        while cursor < len(lines) and _TASK_PATTERN.match(lines[cursor]) is None:
-            if lines[cursor].startswith("## ") or lines[cursor].startswith("### "):
+        while cursor < len(lines) and _legacy._TASK_RE.match(lines[cursor]) is None:
+            if lines[cursor].startswith(("## ", "### ")):
                 break
             block.append(lines[cursor])
             cursor += 1
-        dependencies = _extract_dependencies(block, task_id)
-        records.append((task_id, match.group(1) == "x", dependencies))
-    identifiers = tuple(record[0] for record in records)
-    if not identifiers or len(set(identifiers)) != len(identifiers):
+        task_id = match.group(2)
+        rows.append(
+            (
+                task_id,
+                match.group(1) == "x",
+                _dependencies(block, task_id),
+            )
+        )
+    ids = tuple(row[0] for row in rows)
+    if not ids or len(set(ids)) != len(ids):
         raise MachineStateGenerationError("MRL task ledger has missing or duplicate task IDs")
-    known = set(identifiers)
-    for task_id, _, dependencies in records:
-        missing = tuple(dependency for dependency in dependencies if dependency not in known)
+    known = set(ids)
+    for task_id, _checked, dependencies in rows:
+        missing = tuple(item for item in dependencies if item not in known)
         if missing:
             raise MachineStateGenerationError(
                 f"MRL task {task_id} references unknown dependency {missing[0]}"
             )
-    return tuple(sorted(records, key=lambda item: item[0]))
+    return tuple(sorted(rows, key=lambda row: row[0]))
 
 
-def _extract_dependencies(lines: list[str], task_id: str) -> tuple[str, ...]:
-    relevant = "\n".join(line for line in lines if "Depends on:" in line or "Requires:" in line)
-    dependencies: set[str] = set()
-    for match in _DEPENDENCY_PATTERN.finditer(relevant):
-        start = int(match.group(1))
-        end_text = match.group(2)
-        if end_text is None:
-            dependencies.add(f"MRL-{start:04d}")
-            continue
-        end = int(end_text)
-        if end < start:
-            raise MachineStateGenerationError("MRL dependency range is descending")
-        dependencies.update(f"MRL-{value:04d}" for value in range(start, end + 1))
-    dependencies.discard(task_id)
-    return tuple(sorted(dependencies))
-
-
-def _research_source_binding(source: CanonicalSourceSnapshot) -> SourceBinding:
-    return SourceBinding(
-        path=source.path,
-        git_blob_sha=source.git_blob_sha,
-        sha256=source.sha256,
+def _closure_proof(
+    root: Path,
+    decision_base: str,
+    canonical_main_sha: str,
+    task_id: str,
+) -> tuple[str, str] | None:
+    """Return closure only when Git transition and admitted evidence agree exactly."""
+    if task_id in _REAL_EVIDENCE:
+        return None
+    transition = _merge_shape_closure(
+        root,
+        decision_base,
+        canonical_main_sha,
+        task_id,
     )
+    if transition is None:
+        return None
+    record = _evidence_by_task(root, decision_base).get(task_id)
+    if record is None:
+        return None
+    if record.canonical_merge_sha != transition[0] or record.qualified_head_sha != transition[1]:
+        return None
+    return transition
 
 
-def _capability_source_binding(source: CanonicalSourceSnapshot) -> CapabilitySourceBinding:
-    return CapabilitySourceBinding(
-        path=source.path,
-        git_blob_sha=source.git_blob_sha,
-        sha256=source.sha256,
-    )
-
-
-def _load_source(root: Path, path: str) -> CanonicalSourceSnapshot:
-    payload = _run_git_bytes(root, "show", f"HEAD:{path}")
+def _evidence_by_task(
+    root: Path,
+    decision_base: str,
+) -> dict[str, _CloseoutEvidence]:
     try:
-        content = payload.decode("utf-8")
-    except UnicodeDecodeError as exc:
-        raise MachineStateGenerationError(f"canonical source is not UTF-8: {path}") from exc
-    return CanonicalSourceSnapshot(
-        path=path,
-        git_blob_sha=_run_git_text(root, "rev-parse", f"HEAD:{path}"),
-        sha256=hashlib.sha256(payload).hexdigest(),
-        content=content,
-    )
-
-
-def _run_git_text(root: Path, *arguments: str) -> str:
-    payload = _run_git_bytes(root, *arguments)
-    try:
-        return payload.decode("ascii").strip()
-    except UnicodeDecodeError as exc:
-        raise MachineStateGenerationError("Git identity output was not ASCII") from exc
-
-
-def _run_git_bytes(root: Path, *arguments: str) -> bytes:
-    try:
-        completed = subprocess.run(
-            ("git", *arguments),
-            cwd=root,
-            check=True,
-            capture_output=True,
+        payload = _legacy._git_bytes(
+            root,
+            "show",
+            f"{decision_base}:{_CLOSEOUT_EVIDENCE}",
         )
-    except (OSError, subprocess.CalledProcessError) as exc:
-        raise MachineStateGenerationError(f"Git command failed: git {' '.join(arguments)}") from exc
-    return completed.stdout
+    except MachineStateGenerationError:
+        return {}
+    try:
+        text = payload.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise MachineStateGenerationError("MRL closeout evidence manifest is not UTF-8") from exc
+    return _parse_closeout_evidence(text)
 
 
-def _table_cells(line: str) -> tuple[str, ...]:
-    if not line.startswith("|") or not line.endswith("|"):
-        return ()
-    cells = tuple(cell.strip() for cell in line[1:-1].split("|"))
-    if cells and all(cell and set(cell) <= {"-", ":"} for cell in cells):
-        return ()
-    return cells
+def _parse_closeout_evidence(text: str) -> dict[str, _CloseoutEvidence]:
+    try:
+        loaded: object = json.loads(text, object_pairs_hook=_unique_object)
+    except json.JSONDecodeError as exc:
+        raise MachineStateGenerationError(
+            "MRL closeout evidence manifest is not valid JSON"
+        ) from exc
+    if type(loaded) is not dict:
+        raise MachineStateGenerationError("MRL closeout evidence manifest must be a JSON object")
+    document = cast(dict[str, object], loaded)
+    if set(document) != {"records", "schema_version"}:
+        raise MachineStateGenerationError("MRL closeout evidence top-level schema is invalid")
+    if document["schema_version"] != _SCHEMA_VERSION:
+        raise MachineStateGenerationError("MRL closeout evidence schema version is invalid")
+    rows = document["records"]
+    if type(rows) is not list or not rows:
+        raise MachineStateGenerationError("MRL closeout evidence records must be a non-empty array")
+
+    records: list[_CloseoutEvidence] = []
+    for row in cast(list[object], rows):
+        records.append(_parse_record(row))
+
+    first_ids = tuple(record.task_ids[0] for record in records)
+    if first_ids != tuple(sorted(first_ids)):
+        raise MachineStateGenerationError(
+            "MRL closeout evidence records must be sorted by first task_id"
+        )
+
+    result: dict[str, _CloseoutEvidence] = {}
+    for record in records:
+        for task_id in record.task_ids:
+            if task_id in result:
+                raise MachineStateGenerationError(
+                    f"MRL closeout evidence duplicates task: {task_id}"
+                )
+            result[task_id] = record
+    return result
 
 
-def _strip_code(value: str) -> str:
-    if len(value) >= 2 and value.startswith("`") and value.endswith("`"):
-        return value[1:-1]
+def _parse_record(value: object) -> _CloseoutEvidence:
+    if type(value) is not dict or set(value) != _RECORD_FIELDS:
+        raise MachineStateGenerationError("MRL closeout evidence record schema is invalid")
+    row = cast(dict[str, object], value)
+    canonical_merge_sha = _sha40(row["canonical_merge_sha"], "canonical merge")
+    qualified_head_sha = _sha40(row["qualified_head_sha"], "qualified head")
+    pr_number = _positive_int(row["pr_number"], "PR number")
+    evidence_profile = row["evidence_profile"]
+    if type(evidence_profile) is not str or evidence_profile not in _PROFILES:
+        raise MachineStateGenerationError("MRL closeout evidence profile is invalid")
+    profile = evidence_profile
+    task_ids = _task_ids(row["task_ids"])
+    ci = _positive_ids(row["successful_ci_run_ids"], "CI run IDs")
+    codeql = _positive_ids(row["successful_codeql_run_ids"], "CodeQL run IDs")
+    independent = _independent_refs(row["independent_exact_head_evidence_refs"])
+    qodo = _positive_ids(
+        row["qodo_exact_head_comment_ids"],
+        "Qodo exact-head comment IDs",
+        allow_empty=True,
+    )
+    owner = _positive_ids(
+        row["owner_exact_head_review_ids"],
+        "owner exact-head review IDs",
+        allow_empty=True,
+    )
+    coderabbit = _positive_ids(
+        row["coderabbit_success_status_ids"],
+        "CodeRabbit success status IDs",
+        allow_empty=True,
+    )
+
+    if not ci or not codeql:
+        raise MachineStateGenerationError(
+            "MRL closeout evidence requires successful exact-head CI and CodeQL"
+        )
+
+    contains_constitution_gate = "MRL-0099" in task_ids
+    contains_review_gate = bool(_REVIEW_REQUIRED_TASKS.intersection(task_ids))
+    if contains_constitution_gate:
+        if (
+            profile != _CONSTITUTION_PROFILE
+            or independent
+            or not qodo
+            or not owner
+            or not coderabbit
+        ):
+            raise MachineStateGenerationError(
+                "MRL-0099 evidence does not satisfy the constitution exact-head profile"
+            )
+    elif contains_review_gate:
+        if profile != _REVIEWED_PROFILE or not independent or qodo or owner or coderabbit:
+            raise MachineStateGenerationError(
+                "review-required MRL closeout evidence has the wrong profile"
+            )
+    elif profile != _REPOSITORY_PROFILE or independent or qodo or owner or coderabbit:
+        raise MachineStateGenerationError(
+            "repository-only MRL closeout evidence has the wrong profile"
+        )
+
+    return _CloseoutEvidence(
+        canonical_merge_sha=canonical_merge_sha,
+        qualified_head_sha=qualified_head_sha,
+        pr_number=pr_number,
+        evidence_profile=profile,
+        successful_ci_run_ids=ci,
+        successful_codeql_run_ids=codeql,
+        independent_exact_head_evidence_refs=independent,
+        qodo_exact_head_comment_ids=qodo,
+        owner_exact_head_review_ids=owner,
+        coderabbit_success_status_ids=coderabbit,
+        task_ids=task_ids,
+    )
+
+
+def _sha40(value: object, label: str) -> str:
+    if type(value) is not str or _SHA40.fullmatch(value) is None:
+        raise MachineStateGenerationError(f"MRL closeout evidence {label} SHA is invalid")
     return value
 
 
-def _require_text_fragment(text: str, fragment: str, path: str) -> None:
-    if fragment not in text:
+def _positive_int(value: object, label: str) -> int:
+    if type(value) is not int or value <= 0:
+        raise MachineStateGenerationError(f"MRL closeout evidence {label} is invalid")
+    return value
+
+
+def _positive_ids(
+    value: object,
+    label: str,
+    *,
+    allow_empty: bool = False,
+) -> tuple[int, ...]:
+    if type(value) is not list:
+        raise MachineStateGenerationError(f"MRL closeout evidence {label} must be an array")
+    raw = cast(list[object], value)
+    result = tuple(_positive_int(item, label) for item in raw)
+    if not allow_empty and not result:
+        raise MachineStateGenerationError(f"MRL closeout evidence {label} must not be empty")
+    if result != tuple(sorted(result)) or len(result) != len(set(result)):
         raise MachineStateGenerationError(
-            f"canonical source no longer matches frozen derivation rule: {path}"
+            f"MRL closeout evidence {label} must be sorted and unique"
         )
+    return result
 
 
-def _check_outputs(output_dir: Path, render_set: MachineStateRenderSet) -> None:
-    for filename, expected in render_set.files():
-        path = output_dir / filename
-        try:
-            actual = path.read_bytes()
-        except OSError as exc:
+def _independent_refs(value: object) -> tuple[str, ...]:
+    if type(value) is not list:
+        raise MachineStateGenerationError(
+            "MRL closeout evidence independent exact-head evidence refs must be an array"
+        )
+    raw = cast(list[object], value)
+    result: list[str] = []
+    for item in raw:
+        if type(item) is not str or _INDEPENDENT_REF.fullmatch(item) is None:
             raise MachineStateGenerationError(
-                f"machine-state projection missing or unreadable: {filename}"
-            ) from exc
-        if actual != expected:
-            raise MachineStateGenerationError(
-                f"machine-state projection drift detected: {filename}"
+                "MRL closeout evidence independent exact-head evidence ref is invalid"
             )
-    unexpected = tuple(
-        sorted(
-            path.name
-            for path in output_dir.iterdir()
-            if path.is_file() and path.name.endswith(".json") and path.name not in _OUTPUT_NAMES
+        result.append(item)
+    refs = tuple(result)
+    if refs != tuple(sorted(refs)) or len(refs) != len(set(refs)):
+        raise MachineStateGenerationError(
+            "MRL closeout evidence independent exact-head evidence refs must be sorted and unique"
         )
-    )
-    if unexpected:
-        raise MachineStateGenerationError(f"unexpected machine-state JSON output: {unexpected[0]}")
+    return refs
+
+
+def _task_ids(value: object) -> tuple[str, ...]:
+    if type(value) is not list:
+        raise MachineStateGenerationError("MRL closeout evidence task_ids must be an array")
+    raw = cast(list[object], value)
+    if not raw:
+        raise MachineStateGenerationError("MRL closeout evidence task_ids must not be empty")
+    result: list[str] = []
+    for item in raw:
+        if type(item) is not str or _TASK_ID.fullmatch(item) is None:
+            raise MachineStateGenerationError("MRL closeout evidence task identity is invalid")
+        result.append(item)
+    task_ids = tuple(result)
+    if task_ids != tuple(sorted(task_ids)) or len(task_ids) != len(set(task_ids)):
+        raise MachineStateGenerationError(
+            "MRL closeout evidence task_ids must be sorted and unique"
+        )
+    return task_ids
+
+
+def _unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    result: dict[str, object] = {}
+    for key, value in pairs:
+        if key in result:
+            raise MachineStateGenerationError(
+                f"duplicate MRL closeout evidence JSON member rejected: {key}"
+            )
+        result[key] = value
+    return result
+
+
+vars(_legacy)["_dependencies"] = _dependencies
+vars(_legacy)["_task_records"] = _task_records
+vars(_legacy)["_closure_proof"] = _closure_proof
+
+admit_project_state_projection = _legacy.admit_project_state_projection
+generate_machine_state = _legacy.generate_machine_state
+load_canonical_snapshot = _legacy.load_canonical_snapshot

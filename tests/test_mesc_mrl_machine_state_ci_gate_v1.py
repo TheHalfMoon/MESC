@@ -1,4 +1,4 @@
-"""MRL-0705/0707 CI proofs for machine-state precedence and drift rejection."""
+"""MRL-0705/0707 CI proofs for machine-state precedence and admission."""
 
 from __future__ import annotations
 
@@ -8,9 +8,12 @@ from pathlib import Path
 
 import pytest
 
+import medscale.mesc._mrl_machine_state_generation_legacy_v1 as legacy_machine_state
+import medscale.mesc._mrl_machine_state_generation_v1 as machine_state
 from medscale.mesc._canonical_json_v1 import canonical_json_bytes
 from medscale.mesc._mrl_machine_state_generation_v1 import (
     MachineStateGenerationError,
+    admit_project_state_projection,
     generate_machine_state,
 )
 
@@ -26,6 +29,17 @@ def _run_git(repository: Path, *arguments: str) -> None:
         check=True,
         capture_output=True,
     )
+
+
+def _git_text(repository: Path, *arguments: str) -> str:
+    completed = subprocess.run(
+        ("git", *arguments),
+        cwd=repository,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return completed.stdout.strip()
 
 
 def _clone_repository(tmp_path: Path) -> Path:
@@ -44,6 +58,12 @@ def _clone_repository(tmp_path: Path) -> Path:
     )
     _run_git(clone, "config", "user.name", "MRL CI Fixture")
     _run_git(clone, "config", "user.email", "mrl-ci-fixture@example.invalid")
+    _run_git(
+        clone,
+        "update-ref",
+        "refs/remotes/origin/main",
+        _git_text(clone, "rev-parse", "HEAD"),
+    )
     return clone
 
 
@@ -53,28 +73,218 @@ def _load_project_state(path: Path) -> dict[str, object]:
     return payload
 
 
-def _project_state_entry(payload: dict[str, object], state_id: str) -> dict[str, object]:
-    entries = payload["entries"]
-    assert isinstance(entries, list)
+def _project_state_task(
+    payload: dict[str, object],
+    task_id: str,
+) -> dict[str, object]:
+    tasks = payload["tasks"]
+    assert isinstance(tasks, list)
     match = next(
-        entry for entry in entries if isinstance(entry, dict) and entry.get("state_id") == state_id
+        task for task in tasks if isinstance(task, dict) and task.get("task_id") == task_id
     )
     assert isinstance(match, dict)
     return match
 
 
+def test_snapshot_sources_remain_pinned_when_live_head_moves(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repository = _clone_repository(tmp_path)
+    decision_base = _git_text(repository, "rev-parse", "HEAD")
+    expected_tree = _git_text(repository, "rev-parse", f"{decision_base}^{{tree}}")
+    expected_roadmap = subprocess.run(
+        ("git", "show", f"{decision_base}:ROADMAP.md"),
+        cwd=repository,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    original_load = legacy_machine_state._load_source
+    advanced = False
+
+    def advancing_load(
+        root: Path,
+        revision: str,
+        path: str,
+    ) -> legacy_machine_state.CanonicalSourceSnapshot:
+        nonlocal advanced
+        if not advanced:
+            advanced = True
+            roadmap = repository / _ROADMAP_PATH
+            roadmap.write_text(
+                roadmap.read_text(encoding="utf-8")
+                + "\n<!-- immutable snapshot race fixture -->\n",
+                encoding="utf-8",
+            )
+            _run_git(repository, "add", _ROADMAP_PATH.as_posix())
+            _run_git(repository, "commit", "--quiet", "-m", "test: advance live HEAD")
+        return original_load(root, revision, path)
+
+    monkeypatch.setattr(legacy_machine_state, "_load_source", advancing_load)
+    snapshot = machine_state.load_canonical_snapshot(repository)
+
+    assert snapshot.commit_sha == decision_base
+    assert snapshot.tree_sha == expected_tree
+    assert _git_text(repository, "rev-parse", "HEAD") != decision_base
+    assert snapshot.source("ROADMAP.md").content == expected_roadmap
+
+
+def test_closure_history_uses_pinned_decision_base_after_head_moves(tmp_path: Path) -> None:
+    repository = _clone_repository(tmp_path)
+    decision_base = _git_text(repository, "rev-parse", "HEAD")
+    tasks = repository / _TASKS_PATH
+    text = tasks.read_text(encoding="utf-8")
+    checked = "- [x] **MRL-0299 — Fixture loop exact-head qualification**"
+    unchecked = "- [ ] **MRL-0299 — Fixture loop exact-head qualification**"
+    assert text.count(checked) == 1
+    tasks.write_text(text.replace(checked, unchecked), encoding="utf-8")
+    _run_git(repository, "add", _TASKS_PATH.as_posix())
+    _run_git(repository, "commit", "--quiet", "-m", "test: advance task ledger after decision base")
+
+    proof = machine_state._closure_proof(
+        repository,
+        decision_base,
+        _git_text(repository, "rev-parse", "refs/remotes/origin/main"),
+        "MRL-0299",
+    )
+
+    assert proof is not None
+    assert _git_text(repository, "rev-parse", "HEAD") != decision_base
+
+
+def test_dependency_parser_rejects_self_dependency() -> None:
+    with pytest.raises(MachineStateGenerationError, match="cannot depend on itself"):
+        legacy_machine_state._dependencies(["  - Depends on: MRL-0800"], "MRL-0800")
+
+
+def test_dependency_parser_accepts_terminal_punctuation_and_valid_range() -> None:
+    assert legacy_machine_state._dependencies(
+        ["  - Depends on: MRL-0001."],
+        "MRL-0999",
+    ) == ("MRL-0001",)
+    assert legacy_machine_state._dependencies(
+        ["  - Depends on: MRL-0001..MRL-0002."],
+        "MRL-0999",
+    ) == ("MRL-0001", "MRL-0002")
+
+
+@pytest.mark.parametrize(
+    "reference",
+    (
+        "MRL-0001..OTHER-0002",
+        "OTHER-0001..MRL-0002",
+        "MRL-0001...0002",
+        "MRL-00010",
+    ),
+)
+def test_dependency_parser_rejects_malformed_or_cross_prefix_ranges(reference: str) -> None:
+    with pytest.raises(
+        MachineStateGenerationError,
+        match="malformed or cross-prefix",
+    ):
+        legacy_machine_state._dependencies([f"  - Depends on: {reference}"], "MRL-0999")
+
+
+def test_branch_local_merge_cannot_establish_canonical_closure(tmp_path: Path) -> None:
+    repository = _clone_repository(tmp_path)
+    base = _git_text(repository, "rev-parse", "HEAD")
+    canonical_main = _git_text(repository, "rev-parse", "refs/remotes/origin/main")
+    tasks = repository / _TASKS_PATH
+
+    _run_git(repository, "checkout", "--quiet", "-b", "qualifier", base)
+    text = tasks.read_text(encoding="utf-8")
+    unchecked = "- [ ] **MRL-0800 — Enter real autonomous research preflight**"
+    checked = "- [x] **MRL-0800 — Enter real autonomous research preflight**"
+    assert text.count(unchecked) == 1
+    tasks.write_text(text.replace(unchecked, checked), encoding="utf-8")
+    _run_git(repository, "add", _TASKS_PATH.as_posix())
+    _run_git(repository, "commit", "--quiet", "-m", "test: qualifying branch checkbox")
+    qualifier = _git_text(repository, "rev-parse", "HEAD")
+
+    _run_git(repository, "checkout", "--quiet", "-b", "candidate", base)
+    _run_git(repository, "merge", "--quiet", "--no-ff", "--no-edit", qualifier)
+    decision_base = _git_text(repository, "rev-parse", "HEAD")
+
+    assert (
+        machine_state._closure_proof(
+            repository,
+            decision_base,
+            canonical_main,
+            "MRL-0800",
+        )
+        is None
+    )
+    assert not legacy_machine_state._is_ancestor(repository, decision_base, canonical_main)
+
+
+def test_canonical_main_anchor_is_explicit_and_stales_old_projection(tmp_path: Path) -> None:
+    repository = _clone_repository(tmp_path)
+    decision_base = _git_text(repository, "rev-parse", "HEAD")
+    first_dir = tmp_path / "first-anchor"
+    first = generate_machine_state(repository, first_dir)
+    first_payload = _load_project_state(first_dir / "PROJECT_STATE.json")
+    first_task = _project_state_task(first_payload, "MRL-0299")
+    first_refs = first_task["evidence_refs"]
+    assert isinstance(first_refs, list)
+    assert f"canonical-main:{decision_base}" in first_refs
+
+    _run_git(repository, "checkout", "--quiet", "-b", "canonical-main-advance", decision_base)
+    roadmap = repository / _ROADMAP_PATH
+    roadmap.write_text(
+        roadmap.read_text(encoding="utf-8") + "\n<!-- canonical-main anchor advance fixture -->\n",
+        encoding="utf-8",
+    )
+    _run_git(repository, "add", _ROADMAP_PATH.as_posix())
+    _run_git(repository, "commit", "--quiet", "-m", "test: advance canonical main anchor")
+    advanced_main = _git_text(repository, "rev-parse", "HEAD")
+    _run_git(repository, "update-ref", "refs/remotes/origin/main", advanced_main)
+    _run_git(repository, "checkout", "--quiet", "--detach", decision_base)
+
+    second_dir = tmp_path / "second-anchor"
+    second = generate_machine_state(repository, second_dir)
+    second_payload = _load_project_state(second_dir / "PROJECT_STATE.json")
+    second_task = _project_state_task(second_payload, "MRL-0299")
+    second_refs = second_task["evidence_refs"]
+    assert isinstance(second_refs, list)
+
+    assert second.commit_sha == first.commit_sha == decision_base
+    assert second.project_state != first.project_state
+    assert f"canonical-main:{advanced_main}" in second_refs
+    assert f"canonical-main:{decision_base}" not in second_refs
+
+    with pytest.raises(
+        MachineStateGenerationError,
+        match="independent canonical recomputation",
+    ):
+        admit_project_state_projection(repository, first.project_state)
+    admit_project_state_projection(repository, second.project_state)
+
+
 def test_ci_gate_rejects_manually_edited_projection(tmp_path: Path) -> None:
     output_dir = tmp_path / "machine-state"
-    generate_machine_state(_REPOSITORY_ROOT, output_dir)
-
+    generated = generate_machine_state(_REPOSITORY_ROOT, output_dir)
     project_state = output_dir / "PROJECT_STATE.json"
     project_state.write_bytes(project_state.read_bytes() + b" ")
 
-    with pytest.raises(MachineStateGenerationError, match="projection drift detected"):
+    with pytest.raises(
+        MachineStateGenerationError,
+        match="projection drift detected",
+    ):
         generate_machine_state(_REPOSITORY_ROOT, output_dir, check=True)
+    with pytest.raises(
+        MachineStateGenerationError,
+        match="canonical JSON bytes",
+    ):
+        admit_project_state_projection(
+            _REPOSITORY_ROOT,
+            generated.project_state + b" ",
+        )
 
 
-def test_ci_gate_rejects_projection_after_canonical_source_commit_changes(tmp_path: Path) -> None:
+def test_ci_gate_rejects_projection_after_canonical_source_commit_changes(
+    tmp_path: Path,
+) -> None:
     repository = _clone_repository(tmp_path)
     output_dir = tmp_path / "machine-state"
     generated = generate_machine_state(repository, output_dir)
@@ -85,18 +295,65 @@ def test_ci_gate_rejects_projection_after_canonical_source_commit_changes(tmp_pa
         encoding="utf-8",
     )
     _run_git(repository, "add", _TASKS_PATH.as_posix())
-    _run_git(repository, "commit", "--quiet", "-m", "test: advance canonical source fixture")
+    _run_git(
+        repository,
+        "commit",
+        "--quiet",
+        "-m",
+        "test: advance canonical source fixture",
+    )
 
-    with pytest.raises(MachineStateGenerationError, match="projection drift detected"):
+    with pytest.raises(
+        MachineStateGenerationError,
+        match="projection drift detected",
+    ):
         generate_machine_state(repository, output_dir, check=True)
+    with pytest.raises(
+        MachineStateGenerationError,
+        match="stale for current Git HEAD",
+    ):
+        admit_project_state_projection(repository, generated.project_state)
 
     regenerated = generate_machine_state(repository, output_dir)
     assert regenerated.commit_sha != generated.commit_sha
     assert regenerated.project_state != generated.project_state
+    admit_project_state_projection(repository, regenerated.project_state)
     generate_machine_state(repository, output_dir, check=True)
 
 
-def test_projection_precedence_rejects_narrative_and_projection_authority_claims(
+def test_merge_commit_cannot_invent_checked_qualified_parent(tmp_path: Path) -> None:
+    repository = _clone_repository(tmp_path)
+    baseline = _git_text(repository, "rev-parse", "HEAD")
+    _run_git(repository, "switch", "-c", "unchecked-side-parent")
+    roadmap = repository / _ROADMAP_PATH
+    roadmap.write_text(
+        roadmap.read_text(encoding="utf-8")
+        + "\n<!-- MRL qualifying-parent adversarial fixture -->\n",
+        encoding="utf-8",
+    )
+    _run_git(repository, "add", _ROADMAP_PATH.as_posix())
+    _run_git(repository, "commit", "--quiet", "-m", "test: create unchecked side parent")
+    _run_git(repository, "switch", "--detach", baseline)
+    _run_git(repository, "merge", "--no-ff", "--no-commit", "unchecked-side-parent")
+
+    tasks = repository / _TASKS_PATH
+    original = tasks.read_text(encoding="utf-8")
+    unchecked = "- [ ] **MRL-0800 — Enter real autonomous research preflight**"
+    checked = "- [x] **MRL-0800 — Enter real autonomous research preflight**"
+    assert original.count(unchecked) == 1
+    tasks.write_text(original.replace(unchecked, checked), encoding="utf-8")
+    _run_git(repository, "add", _TASKS_PATH.as_posix())
+    _run_git(repository, "commit", "--quiet", "-m", "test: forge checked state only in merge")
+
+    output_dir = tmp_path / "machine-state-merge-parent"
+    rendered = generate_machine_state(repository, output_dir)
+    payload = admit_project_state_projection(repository, rendered.project_state)
+    task = _project_state_task(payload, "MRL-0800")
+    assert task["state"] != "CLOSED_CANONICAL"
+    assert task["evidence_refs"] == []
+
+
+def test_projection_precedence_rejects_narrative_and_projected_authority_claims(
     tmp_path: Path,
 ) -> None:
     repository = _clone_repository(tmp_path)
@@ -112,31 +369,39 @@ def test_projection_precedence_rejects_narrative_and_projection_authority_claims
         "commit",
         "--quiet",
         "-m",
-        "test: add conflicting narrative status fixture",
+        "test: add conflicting narrative fixture",
     )
 
     output_dir = tmp_path / "machine-state"
-    generate_machine_state(repository, output_dir)
+    rendered = generate_machine_state(repository, output_dir)
     project_path = output_dir / "PROJECT_STATE.json"
     canonical_payload = _load_project_state(project_path)
-    canonical_entry = _project_state_entry(canonical_payload, "MRL-0800")
+    canonical_task = _project_state_task(canonical_payload, "MRL-0800")
 
-    assert canonical_entry["lifecycle_state"] != "CLOSED_CANONICAL"
+    assert canonical_task["state"] != "CLOSED_CANONICAL"
     assert canonical_payload["can_authorize"] is False
+    admit_project_state_projection(repository, rendered.project_state)
 
     forged_payload = _load_project_state(project_path)
-    forged_entry = _project_state_entry(forged_payload, "MRL-0800")
-    forged_entry["lifecycle_state"] = "CLOSED_CANONICAL"
-    forged_entry["evidence_refs"] = ["narrative:ROADMAP.md:MRL-0800"]
-    project_path.write_bytes(canonical_json_bytes(forged_payload))
+    forged_task = _project_state_task(forged_payload, "MRL-0800")
+    forged_task["state"] = "CLOSED_CANONICAL"
+    forged_task["evidence_refs"] = ["narrative:ROADMAP.md:MRL-0800"]
+    forged_bytes = canonical_json_bytes(forged_payload)
+    project_path.write_bytes(forged_bytes)
 
-    with pytest.raises(MachineStateGenerationError, match="projection drift detected"):
+    with pytest.raises(
+        MachineStateGenerationError,
+        match="projection drift detected",
+    ):
         generate_machine_state(repository, output_dir, check=True)
+    with pytest.raises(
+        MachineStateGenerationError,
+        match="independent canonical recomputation",
+    ):
+        admit_project_state_projection(repository, forged_bytes)
 
     regenerated = generate_machine_state(repository, output_dir)
-    admitted_payload = json.loads(regenerated.project_state)
-    assert isinstance(admitted_payload, dict)
-    admitted_entry = _project_state_entry(admitted_payload, "MRL-0800")
-    assert admitted_entry["lifecycle_state"] != "CLOSED_CANONICAL"
-    assert admitted_payload["can_authorize"] is False
-    generate_machine_state(repository, output_dir, check=True)
+    admitted = admit_project_state_projection(repository, regenerated.project_state)
+    admitted_task = _project_state_task(admitted, "MRL-0800")
+    assert admitted_task["state"] != "CLOSED_CANONICAL"
+    assert admitted["can_authorize"] is False
