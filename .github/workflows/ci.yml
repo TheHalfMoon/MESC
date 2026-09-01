@@ -1,144 +1,59 @@
 name: CI
 
 on:
+  push:
+    branches: [main]
   pull_request:
     branches: [main]
 
 permissions:
-  actions: read
   contents: read
-  issues: read
-  pull-requests: read
-  statuses: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  closeout-evidence-binding-harvest:
-    if: github.repository == 'TheHalfMoon/MESC' && github.head_ref == 'fix/mrl-7-project-state-contract-d36694'
+  quality:
+    name: quality (py${{ matrix.python-version }})
     runs-on: ubuntu-latest
-    env:
-      GH_TOKEN: ${{ github.token }}
-      REPOSITORY: ${{ github.repository }}
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
     steps:
-      - name: Verify task-specific historical GitHub closeout bindings
-        run: |
-          python - <<'PY'
-          import json
-          import os
-          import urllib.request
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
-          repo = os.environ['REPOSITORY']
-          token = os.environ['GH_TOKEN']
-          transitions = [
-              ('e926a198a3696f84d89d3278443d3f13dbc3d472','d9539dc0447cc51b61989f38b220e19fd3ef4f98',[f'MRL-{n:04d}' for n in range(1,9)]+['MRL-0099']),
-              ('c0f56d3cb01b7eac4d5a0dabebaacaced2b5d33f','a701eaf06784bf485e73daec3cab2e23c9dc8cf9',['MRL-0100']),
-              ('27c7c08696e0e636f6382064a1549e64006069a3','ebf8e06deca459b0b74c793e0e135c9eb93622f9',['MRL-0101']),
-              ('4432c93394dc09b3598ef048c740876a6e3a658e','d5072fecace6583ce9b6100b96787f20f65c2670',['MRL-0102']),
-              ('fcbd241d35fa2b7af222fbdf2e7f6288225a9c4d','2cfc7d2ed1b8a0997233e9cfd48033fe4978dd38',['MRL-0103']),
-              ('5bfcd35b0c404c8369dd200b06ccf5e0381c4f50','2658392ae52592615ca4922c97aa36bafe056c1a',['MRL-0104']),
-              ('a79fa2aace9ff06a2ef4bec8d9f06d6beb3ca36f','da72465eb33814442c2128a02fc218a6f43e0614',['MRL-0105']),
-              ('a5d8af2df996b1f95534b196f5fda0dda7a05548','7c5379711818f729dff0621ee5ab07eb8db187b2',['MRL-0106']),
-              ('dc90d4995fee8d63d79a8d0990b6796f23040cb4','90d4de39251f448e7cf0aa6d99db59485b732d83',['MRL-0107']),
-              ('b675c7c6c31f12a98164ba75c0c9e7df9c46490d','63b2d6ec520bb9ec7825934addc84da70c11343e',['MRL-0108']),
-              ('56cd5f468cb5bd21950efbdb6404fac2db9058ff','1f5145f372ecc0d278a082360fb9f610be91692c',['MRL-0109']),
-              ('0cd2baaa32cabb21d6df4f9fe4a9d2b54c24496b','4eb7a3d87f090e8b1c35365340763358bbae30a8',['MRL-0199']),
-              ('ac06310d2af42388d105d69a70366fe04630f0ef','616fa371cbfb481d179ef8509875565a58187895',['MRL-0201']),
-              ('7c3a55c8b9dc9276e8c4e7f7fc4922bebb711209','6d8425d723c30c367356091c13a747d94b4fac5e',['MRL-0202']),
-              ('3a82cff9708c9014ff8b5182eda39e30840cbf27','9ce2ee2125f74699a730443893580f42237b309d',['MRL-0203']),
-              ('e5516c31117059e2eda655678823a31ebfaf0232','7c1c6545ab2988ebae37e2f45add5df6e8b48031',['MRL-0204']),
-              ('3c6e2d15b875e264103a0d7ee0cb0c8976db5e9a','e72ff5df7a79e292458a0a0786895e64f7857274',['MRL-0205']),
-              ('7d1cdc4565b2478a83d9faec5c7605749d1acc10','9dd6b45e88e8f35a6b39a48d65516b73435314e9',['MRL-0206']),
-              ('f8ca6a4118e216adeee0720245a1fb8f1d57adee','e25ec3d367b913c38883151b4adc73bd69a1a5ad',['MRL-0207']),
-              ('6c1c9ec62fdde4364f24c19d57e4c9e8ec298523','d0ca76a8f365a3cbdceb445579cb1a8bc535c1ad',['MRL-0208']),
-              ('d388c7378022d06a12804d2be6ff6eb76653eb19','ccb4b9782469af65df0834b750eda6d31160292d',['MRL-0209']),
-              ('703538f3555fd57041a128caf5a6ae13b8df92f9','d6ea5a5138cc1f390ef609f664f4a314ac0a0e72',['MRL-0210']),
-              ('3b353b974b4553b7a08836beae3b4619eb8fc955','49f76248d462857cb325a07c241975a9c0ac1812',['MRL-0211','MRL-0212','MRL-0213','MRL-0299']),
-              ('acc20bf1427974eb976c4f8d81e23eabee211b71','d2e16606249d0cf9d0beb087f4bd9afbe432a0d2',[f'MRL-03{n:02d}' for n in range(1,10)]+['MRL-0399']),
-              ('54698d5d94119386068719e44ff6aaa218922d16','ff2bf024136c47f751886e6f93fa28f462b932e7',[f'MRL-04{n:02d}' for n in range(1,10)]+['MRL-0499']),
-              ('c58c3150ef995f195c7bc873c69aae9a72a2cc1e','13c836da527bb9108b59c8cb064f7221fd6d8aca',[f'MRL-05{n:02d}' for n in range(1,11)]+['MRL-0599']),
-              ('3de64a7b48643acfffb4612c8cb72e80ab110379','a27b080875cf0115df6842d6c276fc9347afe1d8',[f'MRL-06{n:02d}' for n in range(1,8)]+['MRL-0699']),
-              ('a201b528ff63dfe9709bfe13a25975791c07d723','247c4b61f63a5a9fe24b44b11fe64ed51717033b',[f'MRL-07{n:02d}' for n in range(1,8)]+['MRL-0799']),
-          ]
-          review_required_tasks = {'MRL-0099', 'MRL-0100', 'MRL-0101', 'MRL-0102', 'MRL-0103', 'MRL-0109'}
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          enable-cache: true
 
-          def api(path):
-              request = urllib.request.Request('https://api.github.com/' + path.lstrip('/'))
-              request.add_header('Authorization', f'Bearer {token}')
-              request.add_header('Accept', 'application/vnd.github+json')
-              request.add_header('X-GitHub-Api-Version', '2022-11-28')
-              with urllib.request.urlopen(request, timeout=30) as response:
-                  return json.load(response)
+      - name: Install Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
 
-          def graphql(query, variables):
-              request = urllib.request.Request('https://api.github.com/graphql', data=json.dumps({'query': query, 'variables': variables}).encode(), method='POST')
-              request.add_header('Authorization', f'Bearer {token}')
-              request.add_header('Content-Type', 'application/json')
-              with urllib.request.urlopen(request, timeout=30) as response:
-                  payload = json.load(response)
-              if payload.get('errors'):
-                  raise RuntimeError(payload['errors'])
-              return payload['data']
+      - name: Sync (locked)
+        run: uv sync --frozen
 
-          owner, name = repo.split('/', 1)
-          records = []
-          for merge_sha, qualified_head, task_ids in transitions:
-              pulls = api(f'repos/{repo}/commits/{merge_sha}/pulls?per_page=100')
-              matches = [pr for pr in pulls if pr.get('merge_commit_sha') == merge_sha or pr.get('head', {}).get('sha') == qualified_head]
-              if len(matches) != 1:
-                  raise RuntimeError(f'PR association is not unique for {merge_sha}: {len(matches)}')
-              pr = api(f'repos/{repo}/pulls/{matches[0]["number"]}')
-              if not pr.get('merged') or pr['head']['sha'] != qualified_head or pr['merge_commit_sha'] != merge_sha:
-                  raise RuntimeError(f'PR identity mismatch for {merge_sha}')
-              merged_at = pr['merged_at']
+      - name: Ruff (lint)
+        run: uv run ruff check .
 
-              runs = api(f'repos/{repo}/actions/runs?head_sha={qualified_head}&event=pull_request&per_page=100')['workflow_runs']
-              successful = [run for run in runs if run.get('conclusion') == 'success' and run.get('created_at', '') <= merged_at]
-              ci = sorted(run['id'] for run in successful if run.get('name') == 'CI')
-              codeql = sorted(run['id'] for run in successful if run.get('name') == 'CodeQL')
-              if not ci or not codeql:
-                  raise RuntimeError(f'missing exact-head CI/CodeQL for PR #{pr["number"]}')
+      - name: Ruff (format)
+        run: uv run ruff format --check .
 
-              review_required = bool(review_required_tasks.intersection(task_ids))
-              qodo = []
-              if review_required:
-                  comments = api(f'repos/{repo}/issues/{pr["number"]}/comments?per_page=100')
-                  qodo = sorted(item['id'] for item in comments if 'qodo' in item.get('user', {}).get('login', '').lower() and item.get('created_at', '') <= merged_at and qualified_head in item.get('body', ''))
-                  if not qodo:
-                      raise RuntimeError(f'missing required premerge exact-head Qodo evidence for PR #{pr["number"]}')
+      - name: Mypy (strict)
+        run: uv run mypy
 
-              strict = 'MRL-0099' in task_ids
-              owner_reviews = []
-              coderabbit = []
-              if strict:
-                  reviews = api(f'repos/{repo}/pulls/{pr["number"]}/reviews?per_page=100')
-                  owner_reviews = sorted(item['id'] for item in reviews if item.get('user', {}).get('login') == 'TheHalfMoon' and item.get('commit_id') == qualified_head and (item.get('submitted_at') is None or item['submitted_at'] <= merged_at))
-                  status = api(f'repos/{repo}/commits/{qualified_head}/status')
-                  coderabbit = sorted(item['id'] for item in status.get('statuses', []) if item.get('context') == 'CodeRabbit' and item.get('state') == 'success' and item.get('created_at', '') <= merged_at)
-                  if not owner_reviews or not coderabbit:
-                      raise RuntimeError(f'MRL-0099 missing internal-review/CodeRabbit evidence on PR #{pr["number"]}')
-                  query = '''query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){reviewThreads(first:100){nodes{isResolved comments(first:1){nodes{createdAt}}}}}}}'''
-                  nodes = graphql(query, {'owner': owner, 'name': name, 'number': pr['number']})['repository']['pullRequest']['reviewThreads']['nodes']
-                  if [node for node in nodes if not node['isResolved'] and node['comments']['nodes'] and node['comments']['nodes'][0]['createdAt'] <= merged_at]:
-                      raise RuntimeError(f'MRL-0099 has unresolved premerge-origin thread evidence on PR #{pr["number"]}')
+      - name: Pytest
+        run: uv run pytest --cov --cov-report=term-missing
 
-              profile = 'MRL_REPOSITORY_EXACT_HEAD_V1'
-              if review_required:
-                  profile = 'MRL_REVIEWED_EXACT_HEAD_V1'
-              if strict:
-                  profile = 'MRL_CONSTITUTION_EXACT_HEAD_V1'
-              records.append({
-                  'canonical_merge_sha': merge_sha,
-                  'coderabbit_success_status_ids': coderabbit,
-                  'evidence_profile': profile,
-                  'owner_exact_head_review_ids': owner_reviews,
-                  'pr_number': pr['number'],
-                  'qodo_exact_head_comment_ids': qodo,
-                  'qualified_head_sha': qualified_head,
-                  'successful_ci_run_ids': ci,
-                  'successful_codeql_run_ids': codeql,
-                  'task_ids': task_ids,
-              })
+      - name: MRL machine-state drift/manual-edit gate
+        run: uv run pytest -q tests/test_mesc_mrl_machine_state_ci_gate_v1.py
 
-          print('MRL_CANONICAL_CLOSEOUT_EVIDENCE_BEGIN')
-          print(json.dumps({'records': records, 'schema_version': 'MRL-CLOSEOUT-EVIDENCE-V1'}, sort_keys=True, separators=(',', ':')))
-          print('MRL_CANONICAL_CLOSEOUT_EVIDENCE_END')
-          PY
+      # ADR-0017: corpus<->log referential integrity is a hard gate, not a convention.
+      - name: litdb integrity (medscale check)
+        run: uv run medscale check
