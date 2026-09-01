@@ -323,6 +323,7 @@ def test_ci_gate_rejects_projection_after_canonical_source_commit_changes(
 
 def test_merge_commit_cannot_invent_checked_qualified_parent(tmp_path: Path) -> None:
     repository = _clone_repository(tmp_path)
+    baseline = _git_text(repository, "rev-parse", "HEAD")
     _run_git(repository, "switch", "-c", "unchecked-side-parent")
     roadmap = repository / _ROADMAP_PATH
     roadmap.write_text(
@@ -332,7 +333,7 @@ def test_merge_commit_cannot_invent_checked_qualified_parent(tmp_path: Path) -> 
     )
     _run_git(repository, "add", _ROADMAP_PATH.as_posix())
     _run_git(repository, "commit", "--quiet", "-m", "test: create unchecked side parent")
-    _run_git(repository, "switch", "-")
+    _run_git(repository, "switch", "--detach", baseline)
     _run_git(repository, "merge", "--no-ff", "--no-commit", "unchecked-side-parent")
 
     tasks = repository / _TASKS_PATH
