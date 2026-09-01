@@ -296,8 +296,7 @@ def test_manifest_is_bound_project_state_source(tmp_path: Path) -> None:
         source
         for source in sources
         if isinstance(source, dict)
-        and source.get("path")
-        == "specs/mesc-research-loop-v1/closeout-evidence-v1.json"
+        and source.get("path") == "specs/mesc-research-loop-v1/closeout-evidence-v1.json"
     ]
     assert len(bound) == 1
     assert isinstance(bound[0].get("git_blob_sha"), str)
