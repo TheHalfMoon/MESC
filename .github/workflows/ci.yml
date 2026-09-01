@@ -78,6 +78,12 @@ jobs:
 
           test_path = Path('tests/test_mesc_mrl_machine_state_ci_gate_v1.py')
           text = test_path.read_text(encoding='utf-8')
+          old_call = '''    proof = machine_state._closure_proof(repository, decision_base, "MRL-0299")\n'''
+          new_call = '''    proof = machine_state._closure_proof(\n        repository,\n        decision_base,\n        _git_text(repository, "rev-parse", "refs/remotes/origin/main"),\n        "MRL-0299",\n    )\n'''
+          if text.count(old_call) != 1:
+              raise SystemExit('existing closure regression call target is not unique')
+          text = text.replace(old_call, new_call, 1)
+
           marker = '''\ndef test_ci_gate_rejects_manually_edited_projection(tmp_path: Path) -> None:\n'''
           regression = '''\ndef test_dependency_parser_rejects_self_dependency() -> None:\n    with pytest.raises(MachineStateGenerationError, match="cannot depend on itself"):\n        machine_state._dependencies(["  - Depends on: MRL-0800"], "MRL-0800")\n\n\ndef test_branch_local_merge_cannot_establish_canonical_closure(tmp_path: Path) -> None:\n    repository = _clone_repository(tmp_path)\n    base = _git_text(repository, "rev-parse", "HEAD")\n    canonical_main = _git_text(repository, "rev-parse", "refs/remotes/origin/main")\n    tasks = repository / _TASKS_PATH\n\n    _run_git(repository, "checkout", "--quiet", "-b", "qualifier", base)\n    text = tasks.read_text(encoding="utf-8")\n    unchecked = "- [ ] **MRL-0800 — Enter real autonomous research preflight**"\n    checked = "- [x] **MRL-0800 — Enter real autonomous research preflight**"\n    assert text.count(unchecked) == 1\n    tasks.write_text(text.replace(unchecked, checked), encoding="utf-8")\n    _run_git(repository, "add", _TASKS_PATH.as_posix())\n    _run_git(repository, "commit", "--quiet", "-m", "test: qualifying branch checkbox")\n    qualifier = _git_text(repository, "rev-parse", "HEAD")\n\n    _run_git(repository, "checkout", "--quiet", "-b", "candidate", base)\n    _run_git(repository, "merge", "--quiet", "--no-ff", "--no-edit", qualifier)\n    decision_base = _git_text(repository, "rev-parse", "HEAD")\n\n    assert machine_state._closure_proof(\n        repository,\n        decision_base,\n        canonical_main,\n        "MRL-0800",\n    ) is None\n    assert not machine_state._is_ancestor(repository, decision_base, canonical_main)\n\n\n'''
           if text.count(marker) != 1:
