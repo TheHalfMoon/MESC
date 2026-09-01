@@ -198,6 +198,7 @@ class SealedEvaluationEvidenceReport:
             raise SealedEvaluationEvidenceError("metric_evidence must be a non-empty exact tuple")
         bound_content_sha256 = _load_report_identity(self)
         _require_sha256(bound_content_sha256, "bound report content_sha256")
+        _require_evaluator_artifacts(self.evaluator_artifacts)
         evaluator_artifacts = tuple(
             (evaluator_id, artifact_sha256)
             for evaluator_id, artifact_sha256 in self.evaluator_artifacts
