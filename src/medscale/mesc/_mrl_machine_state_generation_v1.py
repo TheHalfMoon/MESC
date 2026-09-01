@@ -119,9 +119,7 @@ def _dependency_clauses(lines: list[str]) -> tuple[str, ...]:
 
         clause = " ".join(part for part in parts if part)
         if not clause:
-            raise MachineStateGenerationError(
-                "MRL dependency clause must not be empty"
-            )
+            raise MachineStateGenerationError("MRL dependency clause must not be empty")
         clauses.append(clause)
     return tuple(clauses)
 
@@ -157,9 +155,7 @@ def _task_records(text: str) -> tuple[tuple[str, bool, tuple[str, ...]], ...]:
         match = _legacy._TASK_RE.match(line)
         if match is None:
             if line.startswith("- [") and "MRL-" in line:
-                raise MachineStateGenerationError(
-                    "MRL task ledger contains malformed task record"
-                )
+                raise MachineStateGenerationError("MRL task ledger contains malformed task record")
             continue
         block: list[str] = []
         cursor = index + 1
