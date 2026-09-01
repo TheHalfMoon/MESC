@@ -114,6 +114,22 @@ def test_mutated_policy_objective_cannot_expand_frozen_replication_budget() -> N
         build_replication_set(policy, _members(3))
 
 
+def test_malformed_policy_objective_uses_policy_error_domain() -> None:
+    policy = _policy()
+    object.__setattr__(policy.objective, "adaptive_query_budget", object())
+
+    with pytest.raises(ReplicationSetPolicyError, match="objective failed canonical snapshot"):
+        policy.to_dict()
+
+
+def test_policy_subclass_is_rejected_at_construction() -> None:
+    class PolicySubclass(ReplicationSetPolicy):
+        pass
+
+    with pytest.raises(ReplicationSetPolicyError, match="exact ReplicationSetPolicy"):
+        PolicySubclass(objective=_all_tier_objective())
+
+
 def test_policy_construction_identity_is_not_reachable_as_mutable_state() -> None:
     policy = _policy()
 
