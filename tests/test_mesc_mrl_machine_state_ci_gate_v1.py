@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+import medscale.mesc._mrl_machine_state_generation_v1 as machine_state
 from medscale.mesc._canonical_json_v1 import canonical_json_bytes
 from medscale.mesc._mrl_machine_state_generation_v1 import (
     MachineStateGenerationError,
@@ -27,6 +28,17 @@ def _run_git(repository: Path, *arguments: str) -> None:
         check=True,
         capture_output=True,
     )
+
+
+def _git_text(repository: Path, *arguments: str) -> str:
+    completed = subprocess.run(
+        ("git", *arguments),
+        cwd=repository,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return completed.stdout.strip()
 
 
 def _clone_repository(tmp_path: Path) -> Path:
@@ -65,6 +77,68 @@ def _project_state_task(
     )
     assert isinstance(match, dict)
     return match
+
+
+def test_snapshot_sources_remain_pinned_when_live_head_moves(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repository = _clone_repository(tmp_path)
+    decision_base = _git_text(repository, "rev-parse", "HEAD")
+    expected_tree = _git_text(repository, "rev-parse", f"{decision_base}^{{tree}}")
+    expected_roadmap = subprocess.run(
+        ("git", "show", f"{decision_base}:ROADMAP.md"),
+        cwd=repository,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    original_load = machine_state._load_source
+    advanced = False
+
+    def advancing_load(
+        root: Path,
+        revision: str,
+        path: str,
+    ) -> machine_state.CanonicalSourceSnapshot:
+        nonlocal advanced
+        if not advanced:
+            advanced = True
+            roadmap = repository / _ROADMAP_PATH
+            roadmap.write_text(
+                roadmap.read_text(encoding="utf-8")
+                + "\n<!-- immutable snapshot race fixture -->\n",
+                encoding="utf-8",
+            )
+            _run_git(repository, "add", _ROADMAP_PATH.as_posix())
+            _run_git(repository, "commit", "--quiet", "-m", "test: advance live HEAD")
+        return original_load(root, revision, path)
+
+    monkeypatch.setattr(machine_state, "_load_source", advancing_load)
+    snapshot = machine_state.load_canonical_snapshot(repository)
+
+    assert snapshot.commit_sha == decision_base
+    assert snapshot.tree_sha == expected_tree
+    assert _git_text(repository, "rev-parse", "HEAD") != decision_base
+    assert snapshot.source("ROADMAP.md").content == expected_roadmap
+
+
+def test_closure_history_uses_pinned_decision_base_after_head_moves(tmp_path: Path) -> None:
+    repository = _clone_repository(tmp_path)
+    decision_base = _git_text(repository, "rev-parse", "HEAD")
+    tasks = repository / _TASKS_PATH
+    text = tasks.read_text(encoding="utf-8")
+    checked = "- [x] **MRL-0299 — Fixture loop exact-head qualification**"
+    unchecked = "- [ ] **MRL-0299 — Fixture loop exact-head qualification**"
+    assert text.count(checked) == 1
+    tasks.write_text(text.replace(checked, unchecked), encoding="utf-8")
+    _run_git(repository, "add", _TASKS_PATH.as_posix())
+    _run_git(repository, "commit", "--quiet", "-m", "test: advance task ledger after decision base")
+
+    proof = machine_state._closure_proof(repository, decision_base, "MRL-0299")
+
+    assert proof is not None
+    assert _git_text(repository, "rev-parse", "HEAD") != decision_base
 
 
 def test_ci_gate_rejects_manually_edited_projection(tmp_path: Path) -> None:

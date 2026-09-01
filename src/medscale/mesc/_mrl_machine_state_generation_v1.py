@@ -165,13 +165,14 @@ class MachineStateRenderSet:
 
 
 def load_canonical_snapshot(repository_root: Path) -> CanonicalRepositorySnapshot:
-    """Load the fixed source set from the exact local Git HEAD."""
+    """Load the fixed source set from one immutable Git decision base."""
     root = repository_root.resolve()
+    commit_sha = _git(root, "rev-parse", "HEAD")
     return CanonicalRepositorySnapshot(
         repository_root=root,
-        commit_sha=_git(root, "rev-parse", "HEAD"),
-        tree_sha=_git(root, "rev-parse", "HEAD^{tree}"),
-        sources=tuple(_load_source(root, path) for path in _ALL_SOURCES),
+        commit_sha=commit_sha,
+        tree_sha=_git(root, "rev-parse", f"{commit_sha}^{{tree}}"),
+        sources=tuple(_load_source(root, commit_sha, path) for path in _ALL_SOURCES),
     )
 
 
@@ -361,9 +362,14 @@ def _project(
     closed: set[str] = set()
     evidence: dict[str, tuple[str, ...]] = {}
     for task_id, checked, _dependencies in records:
-        proof = _closure_proof(snapshot.repository_root, task_id) if checked else None
+        proof = (
+            _closure_proof(snapshot.repository_root, snapshot.commit_sha, task_id)
+            if checked
+            else None
+        )
         if proof is not None and not _stale(
             snapshot.repository_root,
+            snapshot.commit_sha,
             task_id,
             proof[0],
         ):
@@ -474,13 +480,17 @@ def _dependencies(lines: list[str], task_id: str) -> tuple[str, ...]:
     return tuple(sorted(result))
 
 
-def _closure_proof(root: Path, task_id: str) -> tuple[str, str] | None:
+def _closure_proof(
+    root: Path,
+    decision_base: str,
+    task_id: str,
+) -> tuple[str, str] | None:
     history = _git(
         root,
         "log",
         "--first-parent",
         "--format=%H%x09%P",
-        "HEAD",
+        decision_base,
         "--",
         _TASKS,
     )
@@ -524,7 +534,12 @@ def _task_checked_at(root: Path, revision: str, task_id: str) -> bool:
     return matches[0]
 
 
-def _stale(root: Path, task_id: str, merge_sha: str) -> bool:
+def _stale(
+    root: Path,
+    decision_base: str,
+    task_id: str,
+    merge_sha: str,
+) -> bool:
     paths = _FRESHNESS.get(task_id)
     if paths is None:
         return False
@@ -533,7 +548,7 @@ def _stale(root: Path, task_id: str, merge_sha: str) -> bool:
             root,
             "rev-list",
             "-1",
-            f"{merge_sha}..HEAD",
+            f"{merge_sha}..{decision_base}",
             "--",
             *paths,
         )
@@ -716,17 +731,18 @@ def _validate_path(value: object) -> None:
         raise MachineStateGenerationError("project-state source path is ambiguous")
 
 
-def _load_source(root: Path, path: str) -> CanonicalSourceSnapshot:
-    if _git(root, "cat-file", "-t", f"HEAD:{path}") != "blob":
+def _load_source(root: Path, revision: str, path: str) -> CanonicalSourceSnapshot:
+    source_ref = f"{revision}:{path}"
+    if _git(root, "cat-file", "-t", source_ref) != "blob":
         raise MachineStateGenerationError(f"canonical source is not a Git blob: {path}")
-    payload = _git_bytes(root, "show", f"HEAD:{path}")
+    payload = _git_bytes(root, "show", source_ref)
     try:
         content = payload.decode("utf-8")
     except UnicodeDecodeError as exc:
         raise MachineStateGenerationError(f"canonical source is not UTF-8: {path}") from exc
     return CanonicalSourceSnapshot(
         path,
-        _git(root, "rev-parse", f"HEAD:{path}"),
+        _git(root, "rev-parse", source_ref),
         hashlib.sha256(payload).hexdigest(),
         content,
     )
