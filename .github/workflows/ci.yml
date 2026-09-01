@@ -58,6 +58,7 @@ jobs:
               ('3de64a7b48643acfffb4612c8cb72e80ab110379','a27b080875cf0115df6842d6c276fc9347afe1d8',[f'MRL-06{n:02d}' for n in range(1,8)]+['MRL-0699']),
               ('a201b528ff63dfe9709bfe13a25975791c07d723','247c4b61f63a5a9fe24b44b11fe64ed51717033b',[f'MRL-07{n:02d}' for n in range(1,8)]+['MRL-0799']),
           ]
+          review_required_tasks = {'MRL-0099', 'MRL-0100', 'MRL-0101', 'MRL-0102', 'MRL-0103', 'MRL-0109'}
 
           def api(path):
               request = urllib.request.Request('https://api.github.com/' + path.lstrip('/'))
@@ -68,11 +69,7 @@ jobs:
                   return json.load(response)
 
           def graphql(query, variables):
-              request = urllib.request.Request(
-                  'https://api.github.com/graphql',
-                  data=json.dumps({'query': query, 'variables': variables}).encode(),
-                  method='POST',
-              )
+              request = urllib.request.Request('https://api.github.com/graphql', data=json.dumps({'query': query, 'variables': variables}).encode(), method='POST')
               request.add_header('Authorization', f'Bearer {token}')
               request.add_header('Content-Type', 'application/json')
               with urllib.request.urlopen(request, timeout=30) as response:
@@ -100,10 +97,13 @@ jobs:
               if not ci or not codeql:
                   raise RuntimeError(f'missing exact-head CI/CodeQL for PR #{pr["number"]}')
 
-              comments = api(f'repos/{repo}/issues/{pr["number"]}/comments?per_page=100')
-              qodo = sorted(item['id'] for item in comments if 'qodo' in item.get('user', {}).get('login', '').lower() and item.get('created_at', '') <= merged_at and qualified_head in item.get('body', ''))
-              if not qodo:
-                  raise RuntimeError(f'missing premerge exact-head Qodo evidence for PR #{pr["number"]}')
+              review_required = bool(review_required_tasks.intersection(task_ids))
+              qodo = []
+              if review_required:
+                  comments = api(f'repos/{repo}/issues/{pr["number"]}/comments?per_page=100')
+                  qodo = sorted(item['id'] for item in comments if 'qodo' in item.get('user', {}).get('login', '').lower() and item.get('created_at', '') <= merged_at and qualified_head in item.get('body', ''))
+                  if not qodo:
+                      raise RuntimeError(f'missing required premerge exact-head Qodo evidence for PR #{pr["number"]}')
 
               strict = 'MRL-0099' in task_ids
               owner_reviews = []
@@ -115,17 +115,20 @@ jobs:
                   coderabbit = sorted(item['id'] for item in status.get('statuses', []) if item.get('context') == 'CodeRabbit' and item.get('state') == 'success' and item.get('created_at', '') <= merged_at)
                   if not owner_reviews or not coderabbit:
                       raise RuntimeError(f'MRL-0099 missing internal-review/CodeRabbit evidence on PR #{pr["number"]}')
-
                   query = '''query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){reviewThreads(first:100){nodes{isResolved comments(first:1){nodes{createdAt}}}}}}}'''
                   nodes = graphql(query, {'owner': owner, 'name': name, 'number': pr['number']})['repository']['pullRequest']['reviewThreads']['nodes']
-                  unresolved_premerge_origin = [node for node in nodes if not node['isResolved'] and node['comments']['nodes'] and node['comments']['nodes'][0]['createdAt'] <= merged_at]
-                  if unresolved_premerge_origin:
+                  if [node for node in nodes if not node['isResolved'] and node['comments']['nodes'] and node['comments']['nodes'][0]['createdAt'] <= merged_at]:
                       raise RuntimeError(f'MRL-0099 has unresolved premerge-origin thread evidence on PR #{pr["number"]}')
 
+              profile = 'MRL_REPOSITORY_EXACT_HEAD_V1'
+              if review_required:
+                  profile = 'MRL_REVIEWED_EXACT_HEAD_V1'
+              if strict:
+                  profile = 'MRL_CONSTITUTION_EXACT_HEAD_V1'
               records.append({
                   'canonical_merge_sha': merge_sha,
                   'coderabbit_success_status_ids': coderabbit,
-                  'evidence_profile': 'MRL_CONSTITUTION_EXACT_HEAD_V1' if strict else 'MRL_STANDARD_EXACT_HEAD_V1',
+                  'evidence_profile': profile,
                   'owner_exact_head_review_ids': owner_reviews,
                   'pr_number': pr['number'],
                   'qodo_exact_head_comment_ids': qodo,
