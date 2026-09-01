@@ -39,7 +39,6 @@ jobs:
           tasks_path = 'specs/mesc-research-loop-v1/tasks.md'
           task_re = re.compile(r'^- \[([ x])\] \*\*(MRL-[0-9]{4}) — ')
           review_required_tasks = {
-              'MRL-0099',
               'MRL-0100',
               'MRL-0101',
               'MRL-0102',
