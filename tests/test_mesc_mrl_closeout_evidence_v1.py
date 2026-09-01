@@ -27,7 +27,7 @@ def _record(
         evidence_profile="MRL_REPOSITORY_EXACT_HEAD_V1",
         successful_ci_run_ids=(1,),
         successful_codeql_run_ids=(2,),
-        independent_exact_head_review_ids=(),
+        independent_exact_head_evidence_refs=(),
         qodo_exact_head_comment_ids=(),
         owner_exact_head_review_ids=(),
         coderabbit_success_status_ids=(),
@@ -132,7 +132,7 @@ def _manifest_record(task_id: str = _TASK) -> dict[str, object]:
         "canonical_merge_sha": _MERGE,
         "coderabbit_success_status_ids": [],
         "evidence_profile": "MRL_REPOSITORY_EXACT_HEAD_V1",
-        "independent_exact_head_review_ids": [],
+        "independent_exact_head_evidence_refs": [],
         "owner_exact_head_review_ids": [],
         "pr_number": 1,
         "qodo_exact_head_comment_ids": [],
@@ -178,10 +178,10 @@ def test_review_profile_cannot_omit_required_review_evidence() -> None:
         generation._parse_closeout_evidence(payload)
 
 
-def test_review_profile_accepts_trusted_exact_head_review_binding() -> None:
+def test_review_profile_accepts_typed_trusted_exact_head_evidence() -> None:
     record = _manifest_record("MRL-0109")
     record["evidence_profile"] = "MRL_REVIEWED_EXACT_HEAD_V1"
-    record["independent_exact_head_review_ids"] = [3]
+    record["independent_exact_head_evidence_refs"] = ["review:3"]
     payload = json.dumps(
         {
             "records": [record],
@@ -191,7 +191,27 @@ def test_review_profile_accepts_trusted_exact_head_review_binding() -> None:
         separators=(",", ":"),
     )
     parsed = generation._parse_closeout_evidence(payload)
-    assert parsed["MRL-0109"].independent_exact_head_review_ids == (3,)
+    assert parsed["MRL-0109"].independent_exact_head_evidence_refs == ("review:3",)
+
+
+@pytest.mark.parametrize("value", ["3", "review:0", "issue:3", "review:x"])
+def test_invalid_independent_evidence_ref_fails_closed(value: str) -> None:
+    record = _manifest_record("MRL-0100")
+    record["evidence_profile"] = "MRL_REVIEWED_EXACT_HEAD_V1"
+    record["independent_exact_head_evidence_refs"] = [value]
+    payload = json.dumps(
+        {
+            "records": [record],
+            "schema_version": "MRL-CLOSEOUT-EVIDENCE-V1",
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    with pytest.raises(
+        generation.MachineStateGenerationError,
+        match="evidence ref is invalid",
+    ):
+        generation._parse_closeout_evidence(payload)
 
 
 def test_manifest_is_bound_project_state_source_and_stale_gates_remain_open(
