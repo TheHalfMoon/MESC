@@ -25,6 +25,7 @@ _EXPECTED_FILES = (
 _REQUIRED_PROJECT_SOURCES = {
     "docs/adr/0035-mrl-governance-constitution.md",
     "specs/mesc-research-loop-v1/README.md",
+    "specs/mesc-research-loop-v1/closeout-evidence-v1.json",
     "specs/mesc-research-loop-v1/plan.md",
     "specs/mesc-research-loop-v1/project-state-contract.md",
     "specs/mesc-research-loop-v1/project-state-v1.schema.json",
