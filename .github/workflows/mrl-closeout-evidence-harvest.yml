@@ -1,0 +1,325 @@
+name: MRL closeout evidence harvest
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  actions: read
+  contents: read
+  issues: read
+  pull-requests: read
+  statuses: read
+
+jobs:
+  strict-closeout-evidence-harvest:
+    if: github.repository == 'TheHalfMoon/MESC' && github.head_ref == 'fix/mrl-7-project-state-contract-d36694'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Harvest independently verified historical closeout evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import re
+          import subprocess
+          import urllib.request
+
+          repo = os.environ['REPOSITORY']
+          token = os.environ['GH_TOKEN']
+          tasks_path = 'specs/mesc-research-loop-v1/tasks.md'
+          task_re = re.compile(r'^- \[([ x])\] \*\*(MRL-[0-9]{4}) — ')
+          review_required_tasks = {
+              'MRL-0099',
+              'MRL-0100',
+              'MRL-0101',
+              'MRL-0102',
+              'MRL-0103',
+              'MRL-0109',
+          }
+
+          def git(*args):
+              return subprocess.run(
+                  ('git', *args),
+                  check=True,
+                  capture_output=True,
+                  text=True,
+              ).stdout.strip()
+
+          def task_states_at(revision):
+              text = git('show', f'{revision}:{tasks_path}')
+              result = {}
+              for line in text.splitlines():
+                  match = task_re.match(line)
+                  if match is None:
+                      continue
+                  task_id = match.group(2)
+                  if task_id in result:
+                      raise RuntimeError(f'duplicate historical task identity: {task_id}')
+                  result[task_id] = match.group(1) == 'x'
+              if not result:
+                  raise RuntimeError(f'no MRL tasks at {revision}')
+              return result
+
+          def request_json(url, *, body=None):
+              data = None if body is None else json.dumps(body).encode()
+              request = urllib.request.Request(url, data=data, method='POST' if body is not None else 'GET')
+              request.add_header('Authorization', f'Bearer {token}')
+              request.add_header('Accept', 'application/vnd.github+json')
+              request.add_header('X-GitHub-Api-Version', '2022-11-28')
+              if body is not None:
+                  request.add_header('Content-Type', 'application/json')
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  payload = json.load(response)
+              return payload
+
+          def api(path):
+              return request_json('https://api.github.com/' + path.lstrip('/'))
+
+          def api_list_pages(path):
+              items = []
+              page = 1
+              while True:
+                  separator = '&' if '?' in path else '?'
+                  batch = api(f'{path}{separator}per_page=100&page={page}')
+                  if not isinstance(batch, list):
+                      raise RuntimeError(f'expected list response for {path}')
+                  items.extend(batch)
+                  if len(batch) < 100:
+                      return items
+                  page += 1
+
+          def workflow_runs(head_sha):
+              items = []
+              page = 1
+              while True:
+                  payload = api(
+                      f'repos/{repo}/actions/runs?head_sha={head_sha}&event=pull_request&per_page=100&page={page}'
+                  )
+                  batch = payload.get('workflow_runs', [])
+                  if not isinstance(batch, list):
+                      raise RuntimeError('workflow_runs response is malformed')
+                  items.extend(batch)
+                  if len(batch) < 100:
+                      return items
+                  page += 1
+
+          def graphql(query, variables):
+              payload = request_json(
+                  'https://api.github.com/graphql',
+                  body={'query': query, 'variables': variables},
+              )
+              if payload.get('errors'):
+                  raise RuntimeError(payload['errors'])
+              return payload['data']
+
+          def unresolved_premerge_origin_threads(owner, name, number, merged_at):
+              query = '''
+              query($owner:String!,$name:String!,$number:Int!,$after:String){
+                repository(owner:$owner,name:$name){
+                  pullRequest(number:$number){
+                    reviewThreads(first:100,after:$after){
+                      pageInfo{hasNextPage endCursor}
+                      nodes{isResolved comments(first:1){nodes{createdAt}}}
+                    }
+                  }
+                }
+              }
+              '''
+              cursor = None
+              offenders = 0
+              while True:
+                  data = graphql(
+                      query,
+                      {'owner': owner, 'name': name, 'number': number, 'after': cursor},
+                  )
+                  connection = data['repository']['pullRequest']['reviewThreads']
+                  for node in connection['nodes']:
+                      comments = node['comments']['nodes']
+                      if (
+                          not node['isResolved']
+                          and comments
+                          and comments[0]['createdAt'] <= merged_at
+                      ):
+                          offenders += 1
+                  page_info = connection['pageInfo']
+                  if not page_info['hasNextPage']:
+                      return offenders
+                  cursor = page_info['endCursor']
+                  if not cursor:
+                      raise RuntimeError('review-thread pagination lost its cursor')
+
+          canonical_main = git('rev-parse', '--verify', 'refs/remotes/origin/main')
+          canonical_states = task_states_at(canonical_main)
+          history = []
+          for line in git(
+              'log',
+              '--first-parent',
+              '--format=%H%x09%P',
+              canonical_main,
+              '--',
+              tasks_path,
+          ).splitlines():
+              commit, parents_text = line.split('\t', 1)
+              history.append((commit, tuple(parents_text.split())))
+
+          transitions = {}
+          for task_id, checked in sorted(canonical_states.items()):
+              if not checked:
+                  continue
+              found = None
+              for commit, parents in history:
+                  if not parents:
+                      continue
+                  current = task_states_at(commit).get(task_id)
+                  previous = task_states_at(parents[0]).get(task_id)
+                  if current == previous:
+                      continue
+                  if (
+                      current is True
+                      and previous is False
+                      and len(parents) == 2
+                      and task_states_at(parents[1]).get(task_id) is True
+                  ):
+                      found = (commit, parents[1])
+                  break
+              if found is None:
+                  raise RuntimeError(f'checked task has no canonical merge transition: {task_id}')
+              transitions.setdefault(found, []).append(task_id)
+
+          owner, name = repo.split('/', 1)
+          records = []
+          for (merge_sha, qualified_head), task_ids in sorted(
+              transitions.items(), key=lambda item: item[1][0]
+          ):
+              pulls = api_list_pages(f'repos/{repo}/commits/{merge_sha}/pulls')
+              matches = [
+                  pr
+                  for pr in pulls
+                  if pr.get('merge_commit_sha') == merge_sha
+                  or pr.get('head', {}).get('sha') == qualified_head
+              ]
+              if len(matches) != 1:
+                  raise RuntimeError(
+                      f'PR association is not unique for {merge_sha}: {len(matches)}'
+                  )
+              pr = api(f'repos/{repo}/pulls/{matches[0]["number"]}')
+              if (
+                  not pr.get('merged')
+                  or pr.get('head', {}).get('sha') != qualified_head
+                  or pr.get('merge_commit_sha') != merge_sha
+              ):
+                  raise RuntimeError(f'PR identity mismatch for {merge_sha}')
+              merged_at = pr['merged_at']
+
+              successful = [
+                  run
+                  for run in workflow_runs(qualified_head)
+                  if run.get('conclusion') == 'success'
+                  and run.get('created_at', '') <= merged_at
+                  and run.get('updated_at', '') <= merged_at
+              ]
+              ci = sorted(run['id'] for run in successful if run.get('name') == 'CI')
+              codeql = sorted(
+                  run['id'] for run in successful if run.get('name') == 'CodeQL'
+              )
+              if not ci or not codeql:
+                  raise RuntimeError(
+                      f'missing completed premerge exact-head CI/CodeQL for PR #{pr["number"]}'
+                  )
+
+              review_required = bool(review_required_tasks.intersection(task_ids))
+              qodo = []
+              if review_required:
+                  comments = api_list_pages(f'repos/{repo}/issues/{pr["number"]}/comments')
+                  qodo = sorted(
+                      item['id']
+                      for item in comments
+                      if item.get('user', {}).get('login') == 'qodo-code-review[bot]'
+                      and item.get('created_at', '') <= merged_at
+                      and item.get('updated_at', '') <= merged_at
+                      and qualified_head in item.get('body', '')
+                  )
+                  if not qodo:
+                      raise RuntimeError(
+                          f'missing trusted premerge exact-head Qodo evidence for PR #{pr["number"]}'
+                      )
+
+              strict = 'MRL-0099' in task_ids
+              owner_reviews = []
+              coderabbit = []
+              if strict:
+                  reviews = api_list_pages(f'repos/{repo}/pulls/{pr["number"]}/reviews')
+                  owner_reviews = sorted(
+                      item['id']
+                      for item in reviews
+                      if item.get('user', {}).get('login') == 'TheHalfMoon'
+                      and item.get('commit_id') == qualified_head
+                      and item.get('state') in {'APPROVED', 'COMMENTED'}
+                      and (item.get('submitted_at') or '') <= merged_at
+                      and qualified_head in item.get('body', '')
+                      and 'PASS' in item.get('body', '')
+                  )
+                  statuses = api_list_pages(f'repos/{repo}/commits/{qualified_head}/statuses')
+                  coderabbit = sorted(
+                      item['id']
+                      for item in statuses
+                      if item.get('context') == 'CodeRabbit'
+                      and item.get('creator', {}).get('login') == 'coderabbitai[bot]'
+                      and item.get('state') == 'success'
+                      and item.get('created_at', '') <= merged_at
+                      and item.get('updated_at', '') <= merged_at
+                  )
+                  if not owner_reviews or not coderabbit:
+                      raise RuntimeError(
+                          f'MRL-0099 missing trusted internal-review/CodeRabbit evidence on PR #{pr["number"]}'
+                      )
+                  unresolved = unresolved_premerge_origin_threads(
+                      owner,
+                      name,
+                      pr['number'],
+                      merged_at,
+                  )
+                  if unresolved:
+                      raise RuntimeError(
+                          f'MRL-0099 has {unresolved} unresolved premerge-origin review thread(s) on PR #{pr["number"]}'
+                      )
+
+              profile = 'MRL_REPOSITORY_EXACT_HEAD_V1'
+              if review_required:
+                  profile = 'MRL_REVIEWED_EXACT_HEAD_V1'
+              if strict:
+                  profile = 'MRL_CONSTITUTION_EXACT_HEAD_V1'
+              records.append(
+                  {
+                      'canonical_merge_sha': merge_sha,
+                      'coderabbit_success_status_ids': coderabbit,
+                      'evidence_profile': profile,
+                      'owner_exact_head_review_ids': owner_reviews,
+                      'pr_number': pr['number'],
+                      'qodo_exact_head_comment_ids': qodo,
+                      'qualified_head_sha': qualified_head,
+                      'successful_ci_run_ids': ci,
+                      'successful_codeql_run_ids': codeql,
+                      'task_ids': sorted(task_ids),
+                  }
+              )
+
+          manifest = {
+              'records': records,
+              'schema_version': 'MRL-CLOSEOUT-EVIDENCE-V1',
+          }
+          rendered = json.dumps(manifest, sort_keys=True, separators=(',', ':')) + '\n'
+          print('MRL_STRICT_CLOSEOUT_EVIDENCE_BEGIN')
+          print(rendered, end='')
+          print('MRL_STRICT_CLOSEOUT_EVIDENCE_END')
+          PY
