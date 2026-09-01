@@ -10,6 +10,7 @@ import pytest
 from medscale.mesc._mrl_adaptive_budget_exhaustion_v1 import (
     AdaptiveBudgetBlockReason,
     AdaptiveBudgetExhaustionError,
+    AdaptiveTierDisposition,
     AdaptiveTierUseState,
     build_adaptive_budget_disposition,
     require_adaptive_tier_available,
@@ -103,6 +104,25 @@ def test_disallowed_adaptive_tier_is_blocked_without_fabricating_budget_exhausti
     assert replication.result_exposures_remaining == 0
 
 
+def test_block_reasons_must_exactly_match_remaining_capacity() -> None:
+    with pytest.raises(AdaptiveBudgetExhaustionError, match="at least one exhausted capacity"):
+        AdaptiveTierDisposition(
+            tier=EvaluationTier.SEARCH,
+            state=AdaptiveTierUseState.BLOCKED,
+            reasons=(AdaptiveBudgetBlockReason.QUERY_BUDGET_EXHAUSTED,),
+            queries_remaining=1,
+            result_exposures_remaining=1,
+        )
+    with pytest.raises(AdaptiveBudgetExhaustionError, match="zero remaining adaptive capacity"):
+        AdaptiveTierDisposition(
+            tier=EvaluationTier.REPLICATION,
+            state=AdaptiveTierUseState.BLOCKED,
+            reasons=(AdaptiveBudgetBlockReason.TIER_NOT_ALLOWED,),
+            queries_remaining=1,
+            result_exposures_remaining=0,
+        )
+
+
 def test_available_tier_guard_returns_exact_non_authoritative_disposition() -> None:
     objective = _all_tier_objective()
     campaign = _campaign(objective)
@@ -119,6 +139,57 @@ def test_usage_beyond_frozen_ceiling_fails_closed_before_disposition() -> None:
 
     with pytest.raises(AdaptiveBudgetExhaustionError, match="accounting failed closed"):
         build_adaptive_budget_disposition(objective, campaign)
+
+
+def test_mutated_tier_disposition_fails_closed_before_report_views() -> None:
+    objective = _all_tier_objective()
+    campaign = _campaign(objective)
+    report = build_adaptive_budget_disposition(objective, campaign)
+    object.__setattr__(report.tiers[0], "queries_remaining", 0)
+
+    with pytest.raises(AdaptiveBudgetExhaustionError, match="AVAILABLE tier must retain"):
+        _ = report.blocked_tiers
+    with pytest.raises(AdaptiveBudgetExhaustionError, match="AVAILABLE tier must retain"):
+        _ = report.content_sha256
+
+
+def test_valid_tier_disposition_identity_mutation_fails_closed() -> None:
+    objective = _all_tier_objective()
+    campaign = _campaign(objective)
+    report = build_adaptive_budget_disposition(objective, campaign)
+    object.__setattr__(report.tiers[0], "queries_remaining", 1)
+
+    with pytest.raises(AdaptiveBudgetExhaustionError, match="identity changed"):
+        report.tiers[0].to_dict()
+    with pytest.raises(AdaptiveBudgetExhaustionError, match="identity changed"):
+        _ = report.content_sha256
+
+
+def test_mutated_block_reason_or_report_identity_fails_closed() -> None:
+    objective = _all_tier_objective()
+    campaign = _campaign(objective, search_queries=5)
+    report = build_adaptive_budget_disposition(objective, campaign)
+    object.__setattr__(report.tiers[0], "queries_remaining", 1)
+
+    with pytest.raises(AdaptiveBudgetExhaustionError, match="at least one exhausted capacity"):
+        report.semantic_dict()
+
+    fresh = build_adaptive_budget_disposition(objective, campaign)
+    object.__setattr__(fresh, "accounting_sha256", "invalid")
+    with pytest.raises(AdaptiveBudgetExhaustionError, match="64 lowercase hex"):
+        _ = fresh.content_sha256
+
+
+def test_valid_budget_report_identity_mutation_fails_closed() -> None:
+    objective = _all_tier_objective()
+    campaign = _campaign(objective)
+    report = build_adaptive_budget_disposition(objective, campaign)
+    object.__setattr__(report, "accounting_sha256", "f" * 64)
+
+    with pytest.raises(AdaptiveBudgetExhaustionError, match="identity changed"):
+        report.semantic_dict()
+    with pytest.raises(AdaptiveBudgetExhaustionError, match="identity changed"):
+        _ = report.content_sha256
 
 
 def test_disposition_cannot_expand_budget_or_request_additional_sealed_detail() -> None:
