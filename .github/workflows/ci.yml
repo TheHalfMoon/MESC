@@ -42,14 +42,28 @@ jobs:
       - name: Ruff (lint)
         run: uv run ruff check .
 
-      - name: Ruff formatter diagnostic
+      - name: Apply Ruff formatter diagnostic
         run: |
-          uv run ruff format --diff \
+          uv run ruff format \
             src/medscale/mesc/_mrl_machine_state_generation_v1.py \
             tests/test_mesc_mrl_machine_state_ci_gate_v1.py \
             tests/test_mesc_mrl_machine_state_generation_v1.py \
             tests/test_mesc_mrl_project_state_admission_v1.py
-          exit 1
+
+      - name: Upload formatted diagnostic files
+        if: matrix.python-version == '3.11'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: mrl7-ruff-formatted
+          path: |
+            src/medscale/mesc/_mrl_machine_state_generation_v1.py
+            tests/test_mesc_mrl_machine_state_ci_gate_v1.py
+            tests/test_mesc_mrl_machine_state_generation_v1.py
+            tests/test_mesc_mrl_project_state_admission_v1.py
+          if-no-files-found: error
+
+      - name: Stop diagnostic run
+        run: exit 1
 
       - name: Mypy (strict)
         run: uv run mypy
