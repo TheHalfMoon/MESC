@@ -196,6 +196,7 @@ is then present on canonical `main`. Any head mutation burns prior exact-head ev
 
 - [x] **MRL-0205 — Implement replication and retained-lead behavior**
   - Depends on: MRL-0204.
+
 - [x] **MRL-0206 — Add metric-tampering adversarial test**
   - Depends on: MRL-0204.
   - Must prove: agent-controlled metric fabrication/evaluator modification cannot produce
@@ -395,6 +396,7 @@ is then present on canonical `main`. Any head mutation burns prior exact-head ev
   - Depends on: MRL-0606.
 
 ### MRL-6 gate
+
 - [x] **MRL-0699 — Contamination-v2 exact-head qualification**
   - Requires: MRL-0601..0607.
   - Exit: `MRL_CONTAMINATION_V2_READY`.
