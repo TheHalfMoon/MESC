@@ -174,11 +174,17 @@ class ReplicationSetPolicy:
 
     def __post_init__(self) -> None:
         if type(self) is not ReplicationSetPolicy:
-            return
+            raise ReplicationSetPolicyError("policy must be an exact ReplicationSetPolicy")
         if type(self.objective) is not ResearchObjectiveContract:
             raise ReplicationSetPolicyError("objective must be an exact ResearchObjectiveContract")
-        self.objective.semantic_dict()
-        _store_policy_identity(self, self.objective.content_sha256)
+        try:
+            self.objective.semantic_dict()
+            objective_sha256 = self.objective.content_sha256
+        except (AttributeError, TypeError, ValueError) as exc:
+            raise ReplicationSetPolicyError(
+                "objective failed canonical snapshot revalidation"
+            ) from exc
+        _store_policy_identity(self, objective_sha256)
         self.search_contract.semantic_dict()
         self.replication_contract.semantic_dict()
         replication = self.replication_exposure
@@ -195,8 +201,14 @@ class ReplicationSetPolicy:
             raise ReplicationSetPolicyError("objective must be an exact ResearchObjectiveContract")
         bound_objective_sha256 = _load_policy_identity(self)
         _require_sha256(bound_objective_sha256, "bound objective_sha256")
-        self.objective.semantic_dict()
-        if self.objective.content_sha256 != bound_objective_sha256:
+        try:
+            self.objective.semantic_dict()
+            current_objective_sha256 = self.objective.content_sha256
+        except (AttributeError, TypeError, ValueError) as exc:
+            raise ReplicationSetPolicyError(
+                "objective failed canonical snapshot revalidation"
+            ) from exc
+        if current_objective_sha256 != bound_objective_sha256:
             raise ReplicationSetPolicyError(
                 "objective identity changed after replication policy construction"
             )
