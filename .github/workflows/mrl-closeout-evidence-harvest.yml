@@ -46,6 +46,10 @@ jobs:
               'MRL-0103',
               'MRL-0109',
           }
+          trusted_independent_reviewers = {
+              'coderabbitai[bot]',
+              'qodo-code-review[bot]',
+          }
 
           def git(*args):
               return subprocess.run(
@@ -72,15 +76,18 @@ jobs:
 
           def request_json(url, *, body=None):
               data = None if body is None else json.dumps(body).encode()
-              request = urllib.request.Request(url, data=data, method='POST' if body is not None else 'GET')
+              request = urllib.request.Request(
+                  url,
+                  data=data,
+                  method='POST' if body is not None else 'GET',
+              )
               request.add_header('Authorization', f'Bearer {token}')
               request.add_header('Accept', 'application/vnd.github+json')
               request.add_header('X-GitHub-Api-Version', '2022-11-28')
               if body is not None:
                   request.add_header('Content-Type', 'application/json')
               with urllib.request.urlopen(request, timeout=30) as response:
-                  payload = json.load(response)
-              return payload
+                  return json.load(response)
 
           def api(path):
               return request_json('https://api.github.com/' + path.lstrip('/'))
@@ -103,7 +110,8 @@ jobs:
               page = 1
               while True:
                   payload = api(
-                      f'repos/{repo}/actions/runs?head_sha={head_sha}&event=pull_request&per_page=100&page={page}'
+                      f'repos/{repo}/actions/runs?head_sha={head_sha}'
+                      f'&event=pull_request&per_page=100&page={page}'
                   )
                   batch = payload.get('workflow_runs', [])
                   if not isinstance(batch, list):
@@ -193,7 +201,9 @@ jobs:
                       found = (commit, parents[1])
                   break
               if found is None:
-                  raise RuntimeError(f'checked task has no canonical merge transition: {task_id}')
+                  raise RuntimeError(
+                      f'checked task has no canonical merge transition: {task_id}'
+                  )
               transitions.setdefault(found, []).append(task_id)
 
           owner, name = repo.split('/', 1)
@@ -237,9 +247,30 @@ jobs:
                       f'missing completed premerge exact-head CI/CodeQL for PR #{pr["number"]}'
                   )
 
+              reviews = api_list_pages(f'repos/{repo}/pulls/{pr["number"]}/reviews')
               review_required = bool(review_required_tasks.intersection(task_ids))
-              qodo = []
+              independent_reviews = []
               if review_required:
+                  independent_reviews = sorted(
+                      item['id']
+                      for item in reviews
+                      if item.get('user', {}).get('login') in trusted_independent_reviewers
+                      and item.get('commit_id') == qualified_head
+                      and item.get('state') in {'APPROVED', 'COMMENTED'}
+                      and bool(item.get('submitted_at'))
+                      and item['submitted_at'] <= merged_at
+                  )
+                  if not independent_reviews:
+                      raise RuntimeError(
+                          f'missing trusted premerge independent exact-head review '
+                          f'for PR #{pr["number"]}'
+                      )
+
+              strict = 'MRL-0099' in task_ids
+              qodo = []
+              owner_reviews = []
+              coderabbit = []
+              if strict:
                   comments = api_list_pages(f'repos/{repo}/issues/{pr["number"]}/comments')
                   qodo = sorted(
                       item['id']
@@ -249,23 +280,14 @@ jobs:
                       and item.get('updated_at', '') <= merged_at
                       and qualified_head in item.get('body', '')
                   )
-                  if not qodo:
-                      raise RuntimeError(
-                          f'missing trusted premerge exact-head Qodo evidence for PR #{pr["number"]}'
-                      )
-
-              strict = 'MRL-0099' in task_ids
-              owner_reviews = []
-              coderabbit = []
-              if strict:
-                  reviews = api_list_pages(f'repos/{repo}/pulls/{pr["number"]}/reviews')
                   owner_reviews = sorted(
                       item['id']
                       for item in reviews
                       if item.get('user', {}).get('login') == 'TheHalfMoon'
                       and item.get('commit_id') == qualified_head
                       and item.get('state') in {'APPROVED', 'COMMENTED'}
-                      and (item.get('submitted_at') or '') <= merged_at
+                      and bool(item.get('submitted_at'))
+                      and item['submitted_at'] <= merged_at
                       and qualified_head in item.get('body', '')
                       and 'PASS' in item.get('body', '')
                   )
@@ -279,9 +301,10 @@ jobs:
                       and item.get('created_at', '') <= merged_at
                       and item.get('updated_at', '') <= merged_at
                   )
-                  if not owner_reviews or not coderabbit:
+                  if not qodo or not owner_reviews or not coderabbit:
                       raise RuntimeError(
-                          f'MRL-0099 missing trusted internal-review/CodeRabbit evidence on PR #{pr["number"]}'
+                          f'MRL-0099 missing trusted Qodo/internal-review/CodeRabbit '
+                          f'evidence on PR #{pr["number"]}'
                       )
                   unresolved = unresolved_premerge_origin_threads(
                       owner,
@@ -291,7 +314,8 @@ jobs:
                   )
                   if unresolved:
                       raise RuntimeError(
-                          f'MRL-0099 has {unresolved} unresolved premerge-origin review thread(s) on PR #{pr["number"]}'
+                          f'MRL-0099 has {unresolved} unresolved premerge-origin '
+                          f'review thread(s) on PR #{pr["number"]}'
                       )
 
               profile = 'MRL_REPOSITORY_EXACT_HEAD_V1'
@@ -304,6 +328,7 @@ jobs:
                       'canonical_merge_sha': merge_sha,
                       'coderabbit_success_status_ids': coderabbit,
                       'evidence_profile': profile,
+                      'independent_exact_head_review_ids': independent_reviews,
                       'owner_exact_head_review_ids': owner_reviews,
                       'pr_number': pr['number'],
                       'qodo_exact_head_comment_ids': qodo,
