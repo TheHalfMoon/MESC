@@ -74,13 +74,119 @@ class _CloseoutEvidence:
 MachineStateGenerationError = _legacy.MachineStateGenerationError
 MachineStateRenderSet = _legacy.MachineStateRenderSet
 _REAL_EVIDENCE = _legacy._REAL_EVIDENCE
+_EXTERNAL_DEPENDENCY_TEXT: Final[dict[str, frozenset[str]]] = {
+    "MRL-0800": frozenset({"current training/runtime governance"}),
+    "MRL-0801": frozenset({"separate real-asset authorization/evidence"}),
+    "MRL-0802": frozenset({"separate real-asset authorization/evidence"}),
+    "MRL-0803": frozenset({"actual corpus/evaluation evidence"}),
+    "MRL-0804": frozenset({"real runtime evidence"}),
+    "MRL-0805": frozenset(
+        {"independent authority artifact/trust path and current training governance"}
+    ),
+    "MRL-0806": frozenset({"selected real experiment"}),
+    "MRL-0807": frozenset({"real evaluation assets"}),
+    "MRL-0808": frozenset({"real runtime/sandbox evidence"}),
+}
 
 _merge_shape_closure = _legacy._closure_proof
+_legacy_dependencies = _legacy._dependencies
 
 _project_sources = tuple(sorted(set(_legacy._PROJECT_SOURCES) | {_CLOSEOUT_EVIDENCE}))
 _all_sources = tuple(sorted(set(_legacy._ALL_SOURCES) | {_CLOSEOUT_EVIDENCE}))
 vars(_legacy)["_PROJECT_SOURCES"] = _project_sources
 vars(_legacy)["_ALL_SOURCES"] = _all_sources
+
+
+def _dependency_clauses(lines: list[str]) -> tuple[str, ...]:
+    clauses: list[str] = []
+    for index, line in enumerate(lines):
+        if "Depends on:" in line:
+            marker = "Depends on:"
+        elif "Requires:" in line:
+            marker = "Requires:"
+        else:
+            continue
+
+        parts = [line.split(marker, 1)[1].strip()]
+        cursor = index + 1
+        while cursor < len(lines):
+            continuation = lines[cursor]
+            if continuation.startswith("    ") and not continuation.lstrip().startswith("- "):
+                parts.append(continuation.strip())
+                cursor += 1
+                continue
+            break
+
+        clause = " ".join(part for part in parts if part)
+        if not clause:
+            raise MachineStateGenerationError(
+                "MRL dependency clause must not be empty"
+            )
+        clauses.append(clause)
+    return tuple(clauses)
+
+
+def _external_dependency_text(clause: str) -> str:
+    residual = _legacy._DEP_RE.sub(" ", clause)
+    residual = residual.replace(",", " ").replace(".", " ")
+    words = residual.split()
+    while words and words[0] in {"and", "plus"}:
+        words.pop(0)
+    return " ".join(words)
+
+
+def _dependencies(lines: list[str], task_id: str) -> tuple[str, ...]:
+    clauses = _dependency_clauses(lines)
+    synthetic = [f"  - Depends on: {clause}" for clause in clauses]
+    dependencies = _legacy_dependencies(synthetic, task_id)
+
+    allowed_external = _EXTERNAL_DEPENDENCY_TEXT.get(task_id, frozenset())
+    for clause in clauses:
+        external = _external_dependency_text(clause)
+        if external and external not in allowed_external:
+            raise MachineStateGenerationError(
+                f"MRL task {task_id} contains unmodeled external dependency: {external}"
+            )
+    return dependencies
+
+
+def _task_records(text: str) -> tuple[tuple[str, bool, tuple[str, ...]], ...]:
+    lines = text.splitlines()
+    rows: list[tuple[str, bool, tuple[str, ...]]] = []
+    for index, line in enumerate(lines):
+        match = _legacy._TASK_RE.match(line)
+        if match is None:
+            if line.startswith("- [") and "MRL-" in line:
+                raise MachineStateGenerationError(
+                    "MRL task ledger contains malformed task record"
+                )
+            continue
+        block: list[str] = []
+        cursor = index + 1
+        while cursor < len(lines) and _legacy._TASK_RE.match(lines[cursor]) is None:
+            if lines[cursor].startswith(("## ", "### ")):
+                break
+            block.append(lines[cursor])
+            cursor += 1
+        task_id = match.group(2)
+        rows.append(
+            (
+                task_id,
+                match.group(1) == "x",
+                _dependencies(block, task_id),
+            )
+        )
+    ids = tuple(row[0] for row in rows)
+    if not ids or len(set(ids)) != len(ids):
+        raise MachineStateGenerationError("MRL task ledger has missing or duplicate task IDs")
+    known = set(ids)
+    for task_id, _checked, dependencies in rows:
+        missing = tuple(item for item in dependencies if item not in known)
+        if missing:
+            raise MachineStateGenerationError(
+                f"MRL task {task_id} references unknown dependency {missing[0]}"
+            )
+    return tuple(sorted(rows, key=lambda row: row[0]))
 
 
 def _closure_proof(
@@ -90,6 +196,8 @@ def _closure_proof(
     task_id: str,
 ) -> tuple[str, str] | None:
     """Return closure only when Git transition and admitted evidence agree exactly."""
+    if task_id in _REAL_EVIDENCE:
+        return None
     transition = _merge_shape_closure(
         root,
         decision_base,
@@ -320,6 +428,8 @@ def _unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
     return result
 
 
+vars(_legacy)["_dependencies"] = _dependencies
+vars(_legacy)["_task_records"] = _task_records
 vars(_legacy)["_closure_proof"] = _closure_proof
 
 admit_project_state_projection = _legacy.admit_project_state_projection
