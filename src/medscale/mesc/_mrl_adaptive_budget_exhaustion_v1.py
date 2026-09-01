@@ -405,6 +405,8 @@ def _derive_tier_disposition(
     result_exposures_remaining = snapshot.result_exposures_remaining
     reasons: list[AdaptiveBudgetBlockReason] = []
     if snapshot.tier not in allowed_tiers:
+        queries_remaining = 0
+        result_exposures_remaining = 0
         reasons.append(AdaptiveBudgetBlockReason.TIER_NOT_ALLOWED)
     else:
         if queries_remaining == 0:
