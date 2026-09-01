@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import copy
+import pickle
 from dataclasses import fields
 from typing import cast
 
@@ -66,6 +68,70 @@ def test_interface_surface_cannot_carry_sealed_item_content_or_scores() -> None:
         "request_sha256",
         "sealed_evidence_ref_sha256",
     )
+
+
+def test_mutated_request_fails_closed_before_hash_or_handoff_binding() -> None:
+    request = _request()
+    object.__setattr__(request, "candidate_sha256", "invalid")
+
+    with pytest.raises(SealedEvaluationInterfaceError, match="candidate_sha256"):
+        _ = request.content_sha256
+    with pytest.raises(SealedEvaluationInterfaceError, match="candidate_sha256"):
+        request.semantic_dict()
+    with pytest.raises(SealedEvaluationInterfaceError, match="candidate_sha256"):
+        record_sealed_evidence_handoff(request, "c" * 64)
+
+
+def test_valid_request_identity_mutation_fails_closed() -> None:
+    request = _request()
+    object.__setattr__(request, "candidate_sha256", "f" * 64)
+
+    with pytest.raises(SealedEvaluationInterfaceError, match="identity changed"):
+        _ = request.content_sha256
+    with pytest.raises(SealedEvaluationInterfaceError, match="identity changed"):
+        record_sealed_evidence_handoff(request, "c" * 64)
+
+
+def test_mutated_handoff_fails_closed_before_semantic_or_hash_views() -> None:
+    handoff = record_sealed_evidence_handoff(_request(), "c" * 64)
+    object.__setattr__(handoff, "sealed_evidence_ref_sha256", "invalid")
+
+    with pytest.raises(SealedEvaluationInterfaceError, match="sealed_evidence_ref_sha256"):
+        handoff.semantic_dict()
+    with pytest.raises(SealedEvaluationInterfaceError, match="sealed_evidence_ref_sha256"):
+        _ = handoff.content_sha256
+
+
+def test_valid_handoff_identity_mutation_fails_closed() -> None:
+    handoff = record_sealed_evidence_handoff(_request(), "c" * 64)
+    object.__setattr__(handoff, "sealed_evidence_ref_sha256", "f" * 64)
+
+    with pytest.raises(SealedEvaluationInterfaceError, match="identity changed"):
+        handoff.semantic_dict()
+    with pytest.raises(SealedEvaluationInterfaceError, match="identity changed"):
+        _ = handoff.content_sha256
+
+
+def test_request_explicitly_rejects_copy_and_pickle_reconstruction() -> None:
+    request = _request()
+
+    with pytest.raises(SealedEvaluationInterfaceError, match="copy/pickle reconstruction"):
+        copy.copy(request)
+    with pytest.raises(SealedEvaluationInterfaceError, match="copy/pickle reconstruction"):
+        copy.deepcopy(request)
+    with pytest.raises(SealedEvaluationInterfaceError, match="copy/pickle reconstruction"):
+        pickle.dumps(request)
+
+
+def test_handoff_explicitly_rejects_copy_and_pickle_reconstruction() -> None:
+    handoff = record_sealed_evidence_handoff(_request(), "c" * 64)
+
+    with pytest.raises(SealedEvaluationInterfaceError, match="copy/pickle reconstruction"):
+        copy.copy(handoff)
+    with pytest.raises(SealedEvaluationInterfaceError, match="copy/pickle reconstruction"):
+        copy.deepcopy(handoff)
+    with pytest.raises(SealedEvaluationInterfaceError, match="copy/pickle reconstruction"):
+        pickle.dumps(handoff)
 
 
 def test_non_sealed_tier_contract_fails_closed() -> None:

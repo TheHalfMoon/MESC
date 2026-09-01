@@ -164,6 +164,50 @@ def test_fabricated_evaluator_or_metric_binding_fails_closed() -> None:
         evaluate_hard_medical_non_regression(objective, wrong_metric_report)
 
 
+def test_mutated_gate_fails_closed_before_public_report_views() -> None:
+    objective = _objective()
+    report = evaluate_hard_medical_non_regression(objective, _sealed_report(objective))
+    object.__setattr__(report.gates[0], "satisfied", False)
+
+    with pytest.raises(HardMedicalNonRegressionError, match="deterministic floor comparison"):
+        _ = report.all_hard_gates_satisfied
+    with pytest.raises(HardMedicalNonRegressionError, match="deterministic floor comparison"):
+        _ = report.content_sha256
+
+
+def test_valid_gate_identity_mutation_fails_closed() -> None:
+    objective = _objective()
+    report = evaluate_hard_medical_non_regression(objective, _sealed_report(objective))
+    object.__setattr__(report.gates[0], "evidence_artifact_sha256", "1" * 64)
+
+    with pytest.raises(HardMedicalNonRegressionError, match="identity changed"):
+        report.gates[0].to_dict()
+    with pytest.raises(HardMedicalNonRegressionError, match="identity changed"):
+        _ = report.content_sha256
+
+
+def test_mutated_report_identity_fails_closed_before_semantic_or_hash_views() -> None:
+    objective = _objective()
+    report = evaluate_hard_medical_non_regression(objective, _sealed_report(objective))
+    object.__setattr__(report, "sealed_evidence_report_sha256", "invalid")
+
+    with pytest.raises(HardMedicalNonRegressionError, match="64 lowercase hex"):
+        report.semantic_dict()
+    with pytest.raises(HardMedicalNonRegressionError, match="64 lowercase hex"):
+        _ = report.content_sha256
+
+
+def test_valid_report_identity_mutation_fails_closed() -> None:
+    objective = _objective()
+    report = evaluate_hard_medical_non_regression(objective, _sealed_report(objective))
+    object.__setattr__(report, "sealed_evidence_report_sha256", "1" * 64)
+
+    with pytest.raises(HardMedicalNonRegressionError, match="identity changed"):
+        report.semantic_dict()
+    with pytest.raises(HardMedicalNonRegressionError, match="identity changed"):
+        _ = report.content_sha256
+
+
 def test_report_remains_evidence_only_and_cannot_encode_promotion_authority() -> None:
     objective = _objective()
     report = evaluate_hard_medical_non_regression(objective, _sealed_report(objective))
@@ -197,3 +241,12 @@ def test_exact_contract_types_are_required() -> None:
             objective,
             cast(SealedEvaluationEvidenceReport, object()),
         )
+
+
+def test_valid_sealed_report_identity_drift_fails_closed_before_hard_gate_evaluation() -> None:
+    objective = _objective()
+    sealed = _sealed_report(objective)
+    object.__setattr__(sealed, "sealed_evidence_ref_sha256", "1" * 64)
+
+    with pytest.raises(HardMedicalNonRegressionError, match="semantic revalidation"):
+        evaluate_hard_medical_non_regression(objective, sealed)

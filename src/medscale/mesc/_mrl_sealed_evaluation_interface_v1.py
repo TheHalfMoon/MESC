@@ -12,8 +12,10 @@ execution, training, promotion, deployment, release, or clinical authority.
 from __future__ import annotations
 
 import re
+import weakref
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Final
+from typing import Final, NoReturn, SupportsIndex
 
 from medscale.mesc._mrl_content_identity_v1 import (
     canonical_semantic_bytes,
@@ -37,7 +39,71 @@ class SealedEvaluationInterfaceError(ValueError):
     """Fail-closed error for the MRL-0304 sealed boundary."""
 
 
-@dataclass(frozen=True, slots=True)
+def _make_request_identity_registry() -> tuple[
+    Callable[[SealedEvaluationRequest, str], None],
+    Callable[[SealedEvaluationRequest], str],
+]:
+    identities: dict[int, str] = {}
+
+    def remove(key: int) -> None:
+        identities.pop(key, None)
+
+    def store(value: SealedEvaluationRequest, content_sha256: str) -> None:
+        key = id(value)
+        if key in identities:
+            raise SealedEvaluationInterfaceError(
+                "sealed request construction identity already exists"
+            )
+        identities[key] = content_sha256
+        weakref.finalize(value, remove, key)
+
+    def load(value: SealedEvaluationRequest) -> str:
+        identity = identities.get(id(value))
+        if identity is None:
+            raise SealedEvaluationInterfaceError("sealed request construction identity is missing")
+        return identity
+
+    return store, load
+
+
+def _make_handoff_identity_registry() -> tuple[
+    Callable[[SealedEvaluationHandoff, str], None],
+    Callable[[SealedEvaluationHandoff], str],
+]:
+    identities: dict[int, str] = {}
+
+    def remove(key: int) -> None:
+        identities.pop(key, None)
+
+    def store(value: SealedEvaluationHandoff, content_sha256: str) -> None:
+        key = id(value)
+        if key in identities:
+            raise SealedEvaluationInterfaceError(
+                "sealed handoff construction identity already exists"
+            )
+        identities[key] = content_sha256
+        weakref.finalize(value, remove, key)
+
+    def load(value: SealedEvaluationHandoff) -> str:
+        identity = identities.get(id(value))
+        if identity is None:
+            raise SealedEvaluationInterfaceError("sealed handoff construction identity is missing")
+        return identity
+
+    return store, load
+
+
+_store_request_identity, _load_request_identity = _make_request_identity_registry()
+_store_handoff_identity, _load_handoff_identity = _make_handoff_identity_registry()
+
+
+def _reject_reconstruction(label: str) -> NoReturn:
+    raise SealedEvaluationInterfaceError(
+        f"{label} copy/pickle reconstruction is unsupported; rebuild from canonical semantics"
+    )
+
+
+@dataclass(frozen=True, slots=True, weakref_slot=True)
 class SealedEvaluationRequest:
     """Content-addressed request containing identities only, never sealed item content."""
 
@@ -51,19 +117,42 @@ class SealedEvaluationRequest:
         _require_sha256(self.candidate_sha256, "candidate_sha256")
         _require_sha256(self.source_receipt_sha256, "source_receipt_sha256")
         _require_sorted_unique_text(self.evaluator_ids, "evaluator_ids")
+        _store_request_identity(
+            self,
+            derive_content_sha256(self._semantic_dict_validated()),
+        )
 
-    @property
-    def content_sha256(self) -> str:
-        """Return identity derived from canonical request semantics."""
-        return derive_content_sha256(self.semantic_dict())
+    def __copy__(self) -> NoReturn:
+        """Reject alternate construction paths that bypass identity registration."""
+        _reject_reconstruction("sealed request")
 
-    @property
-    def semantic_bytes(self) -> bytes:
-        """Return deterministic bytes for the sealed-evaluation request."""
-        return canonical_semantic_bytes(self.semantic_dict())
+    def __deepcopy__(self, memo: dict[int, object]) -> NoReturn:
+        """Reject alternate construction paths that bypass identity registration."""
+        _reject_reconstruction("sealed request")
 
-    def semantic_dict(self) -> dict[str, object]:
-        """Return identity-only request semantics."""
+    def __reduce_ex__(self, protocol: SupportsIndex) -> NoReturn:
+        """Reject pickle reconstruction that would bypass construction identity."""
+        _reject_reconstruction("sealed request")
+
+    def _validated_snapshot(self) -> SealedEvaluationRequest:
+        if type(self) is not SealedEvaluationRequest:
+            raise SealedEvaluationInterfaceError("request must be an exact SealedEvaluationRequest")
+        bound_content_sha256 = _load_request_identity(self)
+        _require_sha256(bound_content_sha256, "bound request content_sha256")
+        snapshot = SealedEvaluationRequest(
+            tier_contract_sha256=self.tier_contract_sha256,
+            candidate_sha256=self.candidate_sha256,
+            source_receipt_sha256=self.source_receipt_sha256,
+            evaluator_ids=self.evaluator_ids,
+        )
+        current_content_sha256 = derive_content_sha256(snapshot._semantic_dict_validated())
+        if current_content_sha256 != bound_content_sha256:
+            raise SealedEvaluationInterfaceError(
+                "sealed request identity changed after construction"
+            )
+        return snapshot
+
+    def _semantic_dict_validated(self) -> dict[str, object]:
         return {
             "candidate_sha256": self.candidate_sha256,
             "evaluator_ids": list(self.evaluator_ids),
@@ -73,6 +162,22 @@ class SealedEvaluationRequest:
             "tier_contract_sha256": self.tier_contract_sha256,
         }
 
+    @property
+    def content_sha256(self) -> str:
+        """Return identity derived from freshly revalidated request semantics."""
+        snapshot = SealedEvaluationRequest._validated_snapshot(self)
+        return derive_content_sha256(snapshot._semantic_dict_validated())
+
+    @property
+    def semantic_bytes(self) -> bytes:
+        """Return deterministic bytes for the sealed-evaluation request."""
+        return canonical_semantic_bytes(self.semantic_dict())
+
+    def semantic_dict(self) -> dict[str, object]:
+        """Return freshly revalidated identity-only request semantics."""
+        snapshot = SealedEvaluationRequest._validated_snapshot(self)
+        return snapshot._semantic_dict_validated()
+
     def to_dict(self) -> dict[str, object]:
         """Return request semantics plus derived identity."""
         data = self.semantic_dict()
@@ -80,7 +185,7 @@ class SealedEvaluationRequest:
         return data
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, weakref_slot=True)
 class SealedEvaluationHandoff:
     """Opaque sealed-evidence reference delivered outside the adaptive result stream."""
 
@@ -90,19 +195,40 @@ class SealedEvaluationHandoff:
     def __post_init__(self) -> None:
         _require_sha256(self.request_sha256, "request_sha256")
         _require_sha256(self.sealed_evidence_ref_sha256, "sealed_evidence_ref_sha256")
+        _store_handoff_identity(
+            self,
+            derive_content_sha256(self._semantic_dict_validated()),
+        )
 
-    @property
-    def content_sha256(self) -> str:
-        """Return content identity for the opaque handoff."""
-        return derive_content_sha256(self.semantic_dict())
+    def __copy__(self) -> NoReturn:
+        """Reject alternate construction paths that bypass identity registration."""
+        _reject_reconstruction("sealed handoff")
 
-    @property
-    def semantic_bytes(self) -> bytes:
-        """Return deterministic bytes without sealed item-level content."""
-        return canonical_semantic_bytes(self.semantic_dict())
+    def __deepcopy__(self, memo: dict[int, object]) -> NoReturn:
+        """Reject alternate construction paths that bypass identity registration."""
+        _reject_reconstruction("sealed handoff")
 
-    def semantic_dict(self) -> dict[str, object]:
-        """Return permanent non-iterative and non-authoritative handoff semantics."""
+    def __reduce_ex__(self, protocol: SupportsIndex) -> NoReturn:
+        """Reject pickle reconstruction that would bypass construction identity."""
+        _reject_reconstruction("sealed handoff")
+
+    def _validated_snapshot(self) -> SealedEvaluationHandoff:
+        if type(self) is not SealedEvaluationHandoff:
+            raise SealedEvaluationInterfaceError("handoff must be an exact SealedEvaluationHandoff")
+        bound_content_sha256 = _load_handoff_identity(self)
+        _require_sha256(bound_content_sha256, "bound handoff content_sha256")
+        snapshot = SealedEvaluationHandoff(
+            request_sha256=self.request_sha256,
+            sealed_evidence_ref_sha256=self.sealed_evidence_ref_sha256,
+        )
+        current_content_sha256 = derive_content_sha256(snapshot._semantic_dict_validated())
+        if current_content_sha256 != bound_content_sha256:
+            raise SealedEvaluationInterfaceError(
+                "sealed handoff identity changed after construction"
+            )
+        return snapshot
+
+    def _semantic_dict_validated(self) -> dict[str, object]:
         return {
             "agent_visible_result_fields": [],
             "can_authorize": False,
@@ -114,6 +240,22 @@ class SealedEvaluationHandoff:
             "sealed_item_level_search_context": False,
             "tier": int(EvaluationTier.SEALED),
         }
+
+    @property
+    def content_sha256(self) -> str:
+        """Return content identity for the freshly revalidated opaque handoff."""
+        snapshot = SealedEvaluationHandoff._validated_snapshot(self)
+        return derive_content_sha256(snapshot._semantic_dict_validated())
+
+    @property
+    def semantic_bytes(self) -> bytes:
+        """Return deterministic bytes without sealed item-level content."""
+        return canonical_semantic_bytes(self.semantic_dict())
+
+    def semantic_dict(self) -> dict[str, object]:
+        """Return revalidated non-iterative and non-authoritative handoff semantics."""
+        snapshot = SealedEvaluationHandoff._validated_snapshot(self)
+        return snapshot._semantic_dict_validated()
 
     def to_dict(self) -> dict[str, object]:
         """Return handoff semantics plus derived identity."""
@@ -157,8 +299,9 @@ def record_sealed_evidence_handoff(
     """Record only an opaque independent evidence reference for later MRL-0305 use."""
     if type(request) is not SealedEvaluationRequest:
         raise SealedEvaluationInterfaceError("request must be an exact SealedEvaluationRequest")
+    request_snapshot = request._validated_snapshot()
     return SealedEvaluationHandoff(
-        request_sha256=request.content_sha256,
+        request_sha256=derive_content_sha256(request_snapshot._semantic_dict_validated()),
         sealed_evidence_ref_sha256=sealed_evidence_ref_sha256,
     )
 
