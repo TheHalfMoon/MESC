@@ -47,7 +47,7 @@ jobs:
               raise SystemExit('generation test import target is not unique')
           text = text.replace(old_import, new_import, 1)
           marker = '''\ndef test_project_state_matches_frozen_schema_and_requalifies_stale_gates(\n'''
-          regression = '''\ndef test_external_real_evidence_hold_excludes_dependency_only_gates() -> None:\n    assert _REAL_EVIDENCE == frozenset(\n        {\n            "MRL-0801",\n            "MRL-0802",\n            "MRL-0803",\n            "MRL-0804",\n            "MRL-0805",\n            "MRL-0806",\n            "MRL-0807",\n            "MRL-0808",\n        }\n    )\n    assert "MRL-0809" not in _REAL_EVIDENCE\n    assert "MRL-0899" not in _REAL_EVIDENCE\n\n\n'''
+          regression = '''\ndef test_external_real_evidence_hold_excludes_dependency_only_gates() -> None:\n    assert frozenset(\n        {\n            "MRL-0801",\n            "MRL-0802",\n            "MRL-0803",\n            "MRL-0804",\n            "MRL-0805",\n            "MRL-0806",\n            "MRL-0807",\n            "MRL-0808",\n        }\n    ) == _REAL_EVIDENCE\n    assert "MRL-0809" not in _REAL_EVIDENCE\n    assert "MRL-0899" not in _REAL_EVIDENCE\n\n\n'''
           if text.count(marker) != 1:
               raise SystemExit('MRL-8 regression insertion point is not unique')
           test_path.write_text(text.replace(marker, regression + marker, 1), encoding='utf-8')
