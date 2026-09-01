@@ -15,7 +15,7 @@ import re
 import weakref
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Final, NoReturn
+from typing import Final, NoReturn, SupportsIndex
 
 from medscale.mesc._mrl_content_identity_v1 import (
     canonical_semantic_bytes,
@@ -130,7 +130,7 @@ class SealedEvaluationRequest:
         """Reject alternate construction paths that bypass identity registration."""
         _reject_reconstruction("sealed request")
 
-    def __reduce_ex__(self, protocol: int) -> NoReturn:
+    def __reduce_ex__(self, protocol: SupportsIndex) -> NoReturn:
         """Reject pickle reconstruction that would bypass construction identity."""
         _reject_reconstruction("sealed request")
 
@@ -208,7 +208,7 @@ class SealedEvaluationHandoff:
         """Reject alternate construction paths that bypass identity registration."""
         _reject_reconstruction("sealed handoff")
 
-    def __reduce_ex__(self, protocol: int) -> NoReturn:
+    def __reduce_ex__(self, protocol: SupportsIndex) -> NoReturn:
         """Reject pickle reconstruction that would bypass construction identity."""
         _reject_reconstruction("sealed handoff")
 
