@@ -40,12 +40,13 @@ _REVIEW_REQUIRED_TASKS: Final = frozenset(
 )
 _TASK_ID: Final = re.compile(r"^MRL-[0-9]{4}$")
 _SHA40: Final = re.compile(r"^[0-9a-f]{40}$")
+_INDEPENDENT_REF: Final = re.compile(r"^(?:comment|review):[1-9][0-9]*$")
 _RECORD_FIELDS: Final = frozenset(
     {
         "canonical_merge_sha",
         "coderabbit_success_status_ids",
         "evidence_profile",
-        "independent_exact_head_review_ids",
+        "independent_exact_head_evidence_refs",
         "owner_exact_head_review_ids",
         "pr_number",
         "qodo_exact_head_comment_ids",
@@ -65,7 +66,7 @@ class _CloseoutEvidence:
     evidence_profile: str
     successful_ci_run_ids: tuple[int, ...]
     successful_codeql_run_ids: tuple[int, ...]
-    independent_exact_head_review_ids: tuple[int, ...]
+    independent_exact_head_evidence_refs: tuple[str, ...]
     qodo_exact_head_comment_ids: tuple[int, ...]
     owner_exact_head_review_ids: tuple[int, ...]
     coderabbit_success_status_ids: tuple[int, ...]
@@ -196,11 +197,7 @@ def _parse_record(value: object) -> _CloseoutEvidence:
     task_ids = _task_ids(row["task_ids"])
     ci = _positive_ids(row["successful_ci_run_ids"], "CI run IDs")
     codeql = _positive_ids(row["successful_codeql_run_ids"], "CodeQL run IDs")
-    independent = _positive_ids(
-        row["independent_exact_head_review_ids"],
-        "independent exact-head review IDs",
-        allow_empty=True,
-    )
+    independent = _independent_refs(row["independent_exact_head_evidence_refs"])
     qodo = _positive_ids(
         row["qodo_exact_head_comment_ids"],
         "Qodo exact-head comment IDs",
@@ -258,7 +255,7 @@ def _parse_record(value: object) -> _CloseoutEvidence:
         evidence_profile=profile,
         successful_ci_run_ids=ci,
         successful_codeql_run_ids=codeql,
-        independent_exact_head_review_ids=independent,
+        independent_exact_head_evidence_refs=independent,
         qodo_exact_head_comment_ids=qodo,
         owner_exact_head_review_ids=owner,
         coderabbit_success_status_ids=coderabbit,
@@ -303,6 +300,27 @@ def _positive_ids(
             f"MRL closeout evidence {label} must be sorted and unique"
         )
     return result
+
+
+def _independent_refs(value: object) -> tuple[str, ...]:
+    if type(value) is not list:
+        raise MachineStateGenerationError(
+            "MRL closeout evidence independent exact-head evidence refs must be an array"
+        )
+    raw = cast(list[object], value)
+    result: list[str] = []
+    for item in raw:
+        if type(item) is not str or _INDEPENDENT_REF.fullmatch(item) is None:
+            raise MachineStateGenerationError(
+                "MRL closeout evidence independent exact-head evidence ref is invalid"
+            )
+        result.append(cast(str, item))
+    refs = tuple(result)
+    if refs != tuple(sorted(refs)) or len(refs) != len(set(refs)):
+        raise MachineStateGenerationError(
+            "MRL closeout evidence independent exact-head evidence refs must be sorted and unique"
+        )
+    return refs
 
 
 def _task_ids(value: object) -> tuple[str, ...]:
