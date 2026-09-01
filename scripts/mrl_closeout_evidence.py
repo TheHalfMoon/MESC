@@ -26,9 +26,7 @@ _TASK_RE: Final = re.compile(r"^- \[([ x])\] \*\*(MRL-[0-9]{4}) — ")
 _REVIEW_REQUIRED_TASKS: Final = frozenset(
     {"MRL-0100", "MRL-0101", "MRL-0102", "MRL-0103", "MRL-0109"}
 )
-_TRUSTED_INDEPENDENT_REVIEWERS: Final = frozenset(
-    {"coderabbitai[bot]", "qodo-code-review[bot]"}
-)
+_TRUSTED_INDEPENDENT_REVIEWERS: Final = frozenset({"coderabbitai[bot]", "qodo-code-review[bot]"})
 
 
 class CloseoutEvidenceError(RuntimeError):
@@ -45,9 +43,7 @@ def _git(root: Path, *arguments: str) -> str:
             text=True,
         )
     except (OSError, subprocess.CalledProcessError) as exc:
-        raise CloseoutEvidenceError(
-            f"Git command failed: git {' '.join(arguments)}"
-        ) from exc
+        raise CloseoutEvidenceError(f"Git command failed: git {' '.join(arguments)}") from exc
     return completed.stdout.strip()
 
 
@@ -60,9 +56,7 @@ def _task_states_at(root: Path, revision: str) -> dict[str, bool]:
             continue
         task_id = match.group(2)
         if task_id in result:
-            raise CloseoutEvidenceError(
-                f"duplicate historical task identity: {task_id}"
-            )
+            raise CloseoutEvidenceError(f"duplicate historical task identity: {task_id}")
         result[task_id] = match.group(1) == "x"
     if not result:
         raise CloseoutEvidenceError(f"no MRL tasks at {revision}")
@@ -104,8 +98,7 @@ class _GitHub:
         while True:
             separator = "&" if "?" in path else "?"
             value = self._request(
-                "https://api.github.com/"
-                + f"{path.lstrip('/')}{separator}per_page=100&page={page}"
+                "https://api.github.com/" + f"{path.lstrip('/')}{separator}per_page=100&page={page}"
             )
             if type(value) is not list:
                 raise CloseoutEvidenceError(f"expected list response for {path}")
@@ -352,9 +345,7 @@ def harvest(
             and cast(str, run["updated_at"]) <= merged_at
         ]
         ci = sorted(
-            _int(run.get("id"), "CI run ID")
-            for run in successful
-            if run.get("name") == "CI"
+            _int(run.get("id"), "CI run ID") for run in successful if run.get("name") == "CI"
         )
         codeql = sorted(
             _int(run.get("id"), "CodeQL run ID")
@@ -391,8 +382,7 @@ def harvest(
             qodo = sorted(
                 _int(item.get("id"), "Qodo comment ID")
                 for item in comments
-                if _dict(item.get("user"), "comment user").get("login")
-                == "qodo-code-review[bot]"
+                if _dict(item.get("user"), "comment user").get("login") == "qodo-code-review[bot]"
                 and type(item.get("created_at")) is str
                 and cast(str, item["created_at"]) <= merged_at
                 and type(item.get("updated_at")) is str
@@ -412,15 +402,12 @@ def harvest(
                 and qualified_head in cast(str, item["body"])
                 and "PASS" in cast(str, item["body"])
             )
-            statuses = github.list_pages(
-                f"repos/{repository}/commits/{qualified_head}/statuses"
-            )
+            statuses = github.list_pages(f"repos/{repository}/commits/{qualified_head}/statuses")
             coderabbit = sorted(
                 _int(item.get("id"), "CodeRabbit status ID")
                 for item in statuses
                 if item.get("context") == "CodeRabbit"
-                and _dict(item.get("creator"), "status creator").get("login")
-                == "coderabbitai[bot]"
+                and _dict(item.get("creator"), "status creator").get("login") == "coderabbitai[bot]"
                 and item.get("state") == "success"
                 and type(item.get("created_at")) is str
                 and cast(str, item["created_at"]) <= merged_at
@@ -468,8 +455,7 @@ def harvest(
 
     document = {"records": records, "schema_version": _SCHEMA_VERSION}
     return (
-        json.dumps(document, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-        + "\n"
+        json.dumps(document, sort_keys=True, separators=(",", ":"), ensure_ascii=False) + "\n"
     ).encode("utf-8")
 
 

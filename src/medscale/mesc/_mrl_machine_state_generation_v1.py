@@ -32,9 +32,7 @@ _SCHEMA_VERSION: Final = "MRL-CLOSEOUT-EVIDENCE-V1"
 _REPOSITORY_PROFILE: Final = "MRL_REPOSITORY_EXACT_HEAD_V1"
 _REVIEWED_PROFILE: Final = "MRL_REVIEWED_EXACT_HEAD_V1"
 _CONSTITUTION_PROFILE: Final = "MRL_CONSTITUTION_EXACT_HEAD_V1"
-_PROFILES: Final = frozenset(
-    {_REPOSITORY_PROFILE, _REVIEWED_PROFILE, _CONSTITUTION_PROFILE}
-)
+_PROFILES: Final = frozenset({_REPOSITORY_PROFILE, _REVIEWED_PROFILE, _CONSTITUTION_PROFILE})
 _REVIEW_REQUIRED_TASKS: Final = frozenset(
     {"MRL-0100", "MRL-0101", "MRL-0102", "MRL-0103", "MRL-0109"}
 )
@@ -103,10 +101,7 @@ def _closure_proof(
     record = _evidence_by_task(root, decision_base).get(task_id)
     if record is None:
         return None
-    if (
-        record.canonical_merge_sha != transition[0]
-        or record.qualified_head_sha != transition[1]
-    ):
+    if record.canonical_merge_sha != transition[0] or record.qualified_head_sha != transition[1]:
         return None
     return transition
 
@@ -126,9 +121,7 @@ def _evidence_by_task(
     try:
         text = payload.decode("utf-8")
     except UnicodeDecodeError as exc:
-        raise MachineStateGenerationError(
-            "MRL closeout evidence manifest is not UTF-8"
-        ) from exc
+        raise MachineStateGenerationError("MRL closeout evidence manifest is not UTF-8") from exc
     return _parse_closeout_evidence(text)
 
 
@@ -140,23 +133,15 @@ def _parse_closeout_evidence(text: str) -> dict[str, _CloseoutEvidence]:
             "MRL closeout evidence manifest is not valid JSON"
         ) from exc
     if type(loaded) is not dict:
-        raise MachineStateGenerationError(
-            "MRL closeout evidence manifest must be a JSON object"
-        )
+        raise MachineStateGenerationError("MRL closeout evidence manifest must be a JSON object")
     document = cast(dict[str, object], loaded)
     if set(document) != {"records", "schema_version"}:
-        raise MachineStateGenerationError(
-            "MRL closeout evidence top-level schema is invalid"
-        )
+        raise MachineStateGenerationError("MRL closeout evidence top-level schema is invalid")
     if document["schema_version"] != _SCHEMA_VERSION:
-        raise MachineStateGenerationError(
-            "MRL closeout evidence schema version is invalid"
-        )
+        raise MachineStateGenerationError("MRL closeout evidence schema version is invalid")
     rows = document["records"]
     if type(rows) is not list or not rows:
-        raise MachineStateGenerationError(
-            "MRL closeout evidence records must be a non-empty array"
-        )
+        raise MachineStateGenerationError("MRL closeout evidence records must be a non-empty array")
 
     records: list[_CloseoutEvidence] = []
     for row in cast(list[object], rows):
@@ -181,18 +166,14 @@ def _parse_closeout_evidence(text: str) -> dict[str, _CloseoutEvidence]:
 
 def _parse_record(value: object) -> _CloseoutEvidence:
     if type(value) is not dict or set(value) != _RECORD_FIELDS:
-        raise MachineStateGenerationError(
-            "MRL closeout evidence record schema is invalid"
-        )
+        raise MachineStateGenerationError("MRL closeout evidence record schema is invalid")
     row = cast(dict[str, object], value)
     canonical_merge_sha = _sha40(row["canonical_merge_sha"], "canonical merge")
     qualified_head_sha = _sha40(row["qualified_head_sha"], "qualified head")
     pr_number = _positive_int(row["pr_number"], "PR number")
     evidence_profile = row["evidence_profile"]
     if type(evidence_profile) is not str or evidence_profile not in _PROFILES:
-        raise MachineStateGenerationError(
-            "MRL closeout evidence profile is invalid"
-        )
+        raise MachineStateGenerationError("MRL closeout evidence profile is invalid")
     profile = cast(str, evidence_profile)
     task_ids = _task_ids(row["task_ids"])
     ci = _positive_ids(row["successful_ci_run_ids"], "CI run IDs")
@@ -233,13 +214,7 @@ def _parse_record(value: object) -> _CloseoutEvidence:
                 "MRL-0099 evidence does not satisfy the constitution exact-head profile"
             )
     elif contains_review_gate:
-        if (
-            profile != _REVIEWED_PROFILE
-            or not independent
-            or qodo
-            or owner
-            or coderabbit
-        ):
+        if profile != _REVIEWED_PROFILE or not independent or qodo or owner or coderabbit:
             raise MachineStateGenerationError(
                 "review-required MRL closeout evidence has the wrong profile"
             )
@@ -265,17 +240,13 @@ def _parse_record(value: object) -> _CloseoutEvidence:
 
 def _sha40(value: object, label: str) -> str:
     if type(value) is not str or _SHA40.fullmatch(value) is None:
-        raise MachineStateGenerationError(
-            f"MRL closeout evidence {label} SHA is invalid"
-        )
+        raise MachineStateGenerationError(f"MRL closeout evidence {label} SHA is invalid")
     return cast(str, value)
 
 
 def _positive_int(value: object, label: str) -> int:
     if type(value) is not int or value <= 0:
-        raise MachineStateGenerationError(
-            f"MRL closeout evidence {label} is invalid"
-        )
+        raise MachineStateGenerationError(f"MRL closeout evidence {label} is invalid")
     return cast(int, value)
 
 
@@ -286,15 +257,11 @@ def _positive_ids(
     allow_empty: bool = False,
 ) -> tuple[int, ...]:
     if type(value) is not list:
-        raise MachineStateGenerationError(
-            f"MRL closeout evidence {label} must be an array"
-        )
+        raise MachineStateGenerationError(f"MRL closeout evidence {label} must be an array")
     raw = cast(list[object], value)
     result = tuple(_positive_int(item, label) for item in raw)
     if not allow_empty and not result:
-        raise MachineStateGenerationError(
-            f"MRL closeout evidence {label} must not be empty"
-        )
+        raise MachineStateGenerationError(f"MRL closeout evidence {label} must not be empty")
     if result != tuple(sorted(result)) or len(result) != len(set(result)):
         raise MachineStateGenerationError(
             f"MRL closeout evidence {label} must be sorted and unique"
@@ -325,20 +292,14 @@ def _independent_refs(value: object) -> tuple[str, ...]:
 
 def _task_ids(value: object) -> tuple[str, ...]:
     if type(value) is not list:
-        raise MachineStateGenerationError(
-            "MRL closeout evidence task_ids must be an array"
-        )
+        raise MachineStateGenerationError("MRL closeout evidence task_ids must be an array")
     raw = cast(list[object], value)
     if not raw:
-        raise MachineStateGenerationError(
-            "MRL closeout evidence task_ids must not be empty"
-        )
+        raise MachineStateGenerationError("MRL closeout evidence task_ids must not be empty")
     result: list[str] = []
     for item in raw:
         if type(item) is not str or _TASK_ID.fullmatch(item) is None:
-            raise MachineStateGenerationError(
-                "MRL closeout evidence task identity is invalid"
-            )
+            raise MachineStateGenerationError("MRL closeout evidence task identity is invalid")
         result.append(cast(str, item))
     task_ids = tuple(result)
     if task_ids != tuple(sorted(task_ids)) or len(task_ids) != len(set(task_ids)):

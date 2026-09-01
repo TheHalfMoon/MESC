@@ -227,18 +227,10 @@ def test_manifest_is_bound_project_state_source_and_stale_gates_remain_open(
     tasks = project["tasks"]
     assert isinstance(sources, list)
     assert isinstance(tasks, list)
-    assert {
-        source["path"]
-        for source in sources
-        if isinstance(source, dict)
-    } >= {
+    assert {source["path"] for source in sources if isinstance(source, dict)} >= {
         "specs/mesc-research-loop-v1/closeout-evidence-v1.json",
     }
-    indexed = {
-        task["task_id"]: task
-        for task in tasks
-        if isinstance(task, dict)
-    }
+    indexed = {task["task_id"]: task for task in tasks if isinstance(task, dict)}
     assert indexed["MRL-0299"]["state"] == "CLOSED_CANONICAL"
     assert indexed["MRL-0399"]["state"] != "CLOSED_CANONICAL"
     assert indexed["MRL-0799"]["state"] != "CLOSED_CANONICAL"
