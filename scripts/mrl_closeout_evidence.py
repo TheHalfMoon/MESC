@@ -156,13 +156,13 @@ def _dict(value: object, label: str) -> dict[str, object]:
 def _text(value: object, label: str) -> str:
     if type(value) is not str or not value:
         raise CloseoutEvidenceError(f"{label} is malformed")
-    return cast(str, value)
+    return value
 
 
 def _int(value: object, label: str) -> int:
     if type(value) is not int or value <= 0:
         raise CloseoutEvidenceError(f"{label} is malformed")
-    return cast(int, value)
+    return value
 
 
 def _unresolved_premerge_origin_threads(

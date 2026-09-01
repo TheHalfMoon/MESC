@@ -174,7 +174,7 @@ def _parse_record(value: object) -> _CloseoutEvidence:
     evidence_profile = row["evidence_profile"]
     if type(evidence_profile) is not str or evidence_profile not in _PROFILES:
         raise MachineStateGenerationError("MRL closeout evidence profile is invalid")
-    profile = cast(str, evidence_profile)
+    profile = evidence_profile
     task_ids = _task_ids(row["task_ids"])
     ci = _positive_ids(row["successful_ci_run_ids"], "CI run IDs")
     codeql = _positive_ids(row["successful_codeql_run_ids"], "CodeQL run IDs")
@@ -241,13 +241,13 @@ def _parse_record(value: object) -> _CloseoutEvidence:
 def _sha40(value: object, label: str) -> str:
     if type(value) is not str or _SHA40.fullmatch(value) is None:
         raise MachineStateGenerationError(f"MRL closeout evidence {label} SHA is invalid")
-    return cast(str, value)
+    return value
 
 
 def _positive_int(value: object, label: str) -> int:
     if type(value) is not int or value <= 0:
         raise MachineStateGenerationError(f"MRL closeout evidence {label} is invalid")
-    return cast(int, value)
+    return value
 
 
 def _positive_ids(
@@ -281,7 +281,7 @@ def _independent_refs(value: object) -> tuple[str, ...]:
             raise MachineStateGenerationError(
                 "MRL closeout evidence independent exact-head evidence ref is invalid"
             )
-        result.append(cast(str, item))
+        result.append(item)
     refs = tuple(result)
     if refs != tuple(sorted(refs)) or len(refs) != len(set(refs)):
         raise MachineStateGenerationError(
@@ -300,7 +300,7 @@ def _task_ids(value: object) -> tuple[str, ...]:
     for item in raw:
         if type(item) is not str or _TASK_ID.fullmatch(item) is None:
             raise MachineStateGenerationError("MRL closeout evidence task identity is invalid")
-        result.append(cast(str, item))
+        result.append(item)
     task_ids = tuple(result)
     if task_ids != tuple(sorted(task_ids)) or len(task_ids) != len(set(task_ids)):
         raise MachineStateGenerationError(

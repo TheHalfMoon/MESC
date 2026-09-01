@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+import medscale.mesc._mrl_machine_state_generation_legacy_v1 as legacy_machine_state
 import medscale.mesc._mrl_machine_state_generation_v1 as machine_state
 from medscale.mesc._canonical_json_v1 import canonical_json_bytes
 from medscale.mesc._mrl_machine_state_generation_v1 import (
@@ -99,14 +100,14 @@ def test_snapshot_sources_remain_pinned_when_live_head_moves(
         capture_output=True,
         text=True,
     ).stdout
-    original_load = machine_state._load_source
+    original_load = legacy_machine_state._load_source
     advanced = False
 
     def advancing_load(
         root: Path,
         revision: str,
         path: str,
-    ) -> machine_state.CanonicalSourceSnapshot:
+    ) -> legacy_machine_state.CanonicalSourceSnapshot:
         nonlocal advanced
         if not advanced:
             advanced = True
@@ -120,7 +121,7 @@ def test_snapshot_sources_remain_pinned_when_live_head_moves(
             _run_git(repository, "commit", "--quiet", "-m", "test: advance live HEAD")
         return original_load(root, revision, path)
 
-    monkeypatch.setattr(machine_state, "_load_source", advancing_load)
+    monkeypatch.setattr(legacy_machine_state, "_load_source", advancing_load)
     snapshot = machine_state.load_canonical_snapshot(repository)
 
     assert snapshot.commit_sha == decision_base
@@ -154,15 +155,15 @@ def test_closure_history_uses_pinned_decision_base_after_head_moves(tmp_path: Pa
 
 def test_dependency_parser_rejects_self_dependency() -> None:
     with pytest.raises(MachineStateGenerationError, match="cannot depend on itself"):
-        machine_state._dependencies(["  - Depends on: MRL-0800"], "MRL-0800")
+        legacy_machine_state._dependencies(["  - Depends on: MRL-0800"], "MRL-0800")
 
 
 def test_dependency_parser_accepts_terminal_punctuation_and_valid_range() -> None:
-    assert machine_state._dependencies(
+    assert legacy_machine_state._dependencies(
         ["  - Depends on: MRL-0001."],
         "MRL-0999",
     ) == ("MRL-0001",)
-    assert machine_state._dependencies(
+    assert legacy_machine_state._dependencies(
         ["  - Depends on: MRL-0001..MRL-0002."],
         "MRL-0999",
     ) == ("MRL-0001", "MRL-0002")
@@ -182,7 +183,7 @@ def test_dependency_parser_rejects_malformed_or_cross_prefix_ranges(reference: s
         MachineStateGenerationError,
         match="malformed or cross-prefix",
     ):
-        machine_state._dependencies([f"  - Depends on: {reference}"], "MRL-0999")
+        legacy_machine_state._dependencies([f"  - Depends on: {reference}"], "MRL-0999")
 
 
 def test_branch_local_merge_cannot_establish_canonical_closure(tmp_path: Path) -> None:
@@ -214,7 +215,7 @@ def test_branch_local_merge_cannot_establish_canonical_closure(tmp_path: Path) -
         )
         is None
     )
-    assert not machine_state._is_ancestor(repository, decision_base, canonical_main)
+    assert not legacy_machine_state._is_ancestor(repository, decision_base, canonical_main)
 
 
 def test_canonical_main_anchor_is_explicit_and_stales_old_projection(tmp_path: Path) -> None:
