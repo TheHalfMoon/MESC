@@ -278,7 +278,7 @@ is then present on canonical `main`. Any head mutation burns prior exact-head ev
 
 ### MRL-3 gate
 
-- [x] **MRL-0399 — Evaluation-control exact-head qualification**
+- [ ] **MRL-0399 — Evaluation-control exact-head qualification**
   - Requires: MRL-0301..0309.
   - Exit: `MRL_EVALUATION_CONTROL_READY`.
 
@@ -435,7 +435,7 @@ is then present on canonical `main`. Any head mutation burns prior exact-head ev
 
 ### MRL-7 gate
 
-- [x] **MRL-0799 — Machine-state exact-head qualification**
+- [ ] **MRL-0799 — Machine-state exact-head qualification**
   - Requires: MRL-0701..0707.
   - Exit: `MESC_MACHINE_STATE_READY`.
 
