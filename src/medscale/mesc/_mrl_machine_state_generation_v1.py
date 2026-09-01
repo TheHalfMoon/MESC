@@ -387,6 +387,7 @@ def _project(
         ):
             closed.add(task_id)
             evidence[task_id] = (
+                f"canonical-main:{snapshot.canonical_main_sha}",
                 f"canonical-merge:{proof[0]}",
                 f"qualified-head:{proof[1]}",
             )

@@ -217,6 +217,49 @@ def test_branch_local_merge_cannot_establish_canonical_closure(tmp_path: Path) -
     assert not machine_state._is_ancestor(repository, decision_base, canonical_main)
 
 
+def test_canonical_main_anchor_is_explicit_and_stales_old_projection(tmp_path: Path) -> None:
+    repository = _clone_repository(tmp_path)
+    decision_base = _git_text(repository, "rev-parse", "HEAD")
+    first_dir = tmp_path / "first-anchor"
+    first = generate_machine_state(repository, first_dir)
+    first_payload = _load_project_state(first_dir / "PROJECT_STATE.json")
+    first_task = _project_state_task(first_payload, "MRL-0299")
+    first_refs = first_task["evidence_refs"]
+    assert isinstance(first_refs, list)
+    assert f"canonical-main:{decision_base}" in first_refs
+
+    _run_git(repository, "checkout", "--quiet", "-b", "canonical-main-advance", decision_base)
+    roadmap = repository / _ROADMAP_PATH
+    roadmap.write_text(
+        roadmap.read_text(encoding="utf-8") + "\n<!-- canonical-main anchor advance fixture -->\n",
+        encoding="utf-8",
+    )
+    _run_git(repository, "add", _ROADMAP_PATH.as_posix())
+    _run_git(repository, "commit", "--quiet", "-m", "test: advance canonical main anchor")
+    advanced_main = _git_text(repository, "rev-parse", "HEAD")
+    _run_git(repository, "update-ref", "refs/remotes/origin/main", advanced_main)
+    _run_git(repository, "checkout", "--quiet", "--detach", decision_base)
+
+    second_dir = tmp_path / "second-anchor"
+    second = generate_machine_state(repository, second_dir)
+    second_payload = _load_project_state(second_dir / "PROJECT_STATE.json")
+    second_task = _project_state_task(second_payload, "MRL-0299")
+    second_refs = second_task["evidence_refs"]
+    assert isinstance(second_refs, list)
+
+    assert second.commit_sha == first.commit_sha == decision_base
+    assert second.project_state != first.project_state
+    assert f"canonical-main:{advanced_main}" in second_refs
+    assert f"canonical-main:{decision_base}" not in second_refs
+
+    with pytest.raises(
+        MachineStateGenerationError,
+        match="independent canonical recomputation",
+    ):
+        admit_project_state_projection(repository, first.project_state)
+    admit_project_state_projection(repository, second.project_state)
+
+
 def test_ci_gate_rejects_manually_edited_projection(tmp_path: Path) -> None:
     output_dir = tmp_path / "machine-state"
     generated = generate_machine_state(_REPOSITORY_ROOT, output_dir)
