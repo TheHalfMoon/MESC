@@ -139,6 +139,7 @@ class CanonicalRepositorySnapshot:
     repository_root: Path
     commit_sha: str
     tree_sha: str
+    canonical_main_sha: str
     sources: tuple[CanonicalSourceSnapshot, ...]
 
     def source(self, path: str) -> CanonicalSourceSnapshot:
@@ -172,6 +173,12 @@ def load_canonical_snapshot(repository_root: Path) -> CanonicalRepositorySnapsho
         repository_root=root,
         commit_sha=commit_sha,
         tree_sha=_git(root, "rev-parse", f"{commit_sha}^{{tree}}"),
+        canonical_main_sha=_git(
+            root,
+            "rev-parse",
+            "--verify",
+            "refs/remotes/origin/main",
+        ),
         sources=tuple(_load_source(root, commit_sha, path) for path in _ALL_SOURCES),
     )
 
@@ -363,7 +370,12 @@ def _project(
     evidence: dict[str, tuple[str, ...]] = {}
     for task_id, checked, _dependencies in records:
         proof = (
-            _closure_proof(snapshot.repository_root, snapshot.commit_sha, task_id)
+            _closure_proof(
+                snapshot.repository_root,
+                snapshot.commit_sha,
+                snapshot.canonical_main_sha,
+                task_id,
+            )
             if checked
             else None
         )
@@ -465,8 +477,31 @@ def _task_records(text: str) -> tuple[tuple[str, bool, tuple[str, ...]], ...]:
 
 def _dependencies(lines: list[str], task_id: str) -> tuple[str, ...]:
     text = "\n".join(line for line in lines if "Depends on:" in line or "Requires:" in line)
+    matches = tuple(_DEP_RE.finditer(text))
+    for match in matches:
+        before = text[match.start() - 1] if match.start() else ""
+        after = text[match.end()] if match.end() < len(text) else ""
+        if (before and (before.isalnum() or before in "_-")) or (
+            after and (after.isalnum() or after in "_-")
+        ):
+            raise MachineStateGenerationError(
+                "MRL dependency reference or range is malformed or cross-prefix"
+            )
+    for occurrence in re.finditer(r"MRL-", text):
+        if not any(match.start() <= occurrence.start() < match.end() for match in matches):
+            raise MachineStateGenerationError(
+                "MRL dependency reference or range is malformed or cross-prefix"
+            )
+    for dots in re.finditer(r"\.\.", text):
+        if not any(
+            match.start() <= dots.start() and dots.end() <= match.end() for match in matches
+        ):
+            raise MachineStateGenerationError(
+                "MRL dependency reference or range is malformed or cross-prefix"
+            )
+
     result: set[str] = set()
-    for match in _DEP_RE.finditer(text):
+    for match in matches:
         start = int(match.group(1))
         end_text = match.group(2)
         if end_text is None:
@@ -476,13 +511,15 @@ def _dependencies(lines: list[str], task_id: str) -> tuple[str, ...]:
         if end < start:
             raise MachineStateGenerationError("MRL dependency range is descending")
         result.update(f"MRL-{value:04d}" for value in range(start, end + 1))
-    result.discard(task_id)
+    if task_id in result:
+        raise MachineStateGenerationError(f"MRL task {task_id} cannot depend on itself")
     return tuple(sorted(result))
 
 
 def _closure_proof(
     root: Path,
     decision_base: str,
+    canonical_main_sha: str,
     task_id: str,
 ) -> tuple[str, str] | None:
     history = _git(
@@ -512,6 +549,8 @@ def _closure_proof(
             and len(parents) == 2
             and _task_checked_at(root, parents[1], task_id)
         ):
+            if not _is_ancestor(root, commit, canonical_main_sha):
+                return None
             return commit, parents[1]
         return None
     return None
@@ -762,6 +801,23 @@ def _cap_source(source: CanonicalSourceSnapshot) -> CapabilitySourceBinding:
         source.git_blob_sha,
         source.sha256,
     )
+
+
+def _is_ancestor(root: Path, ancestor: str, descendant: str) -> bool:
+    try:
+        completed = subprocess.run(
+            ("git", "merge-base", "--is-ancestor", ancestor, descendant),
+            cwd=root,
+            check=False,
+            capture_output=True,
+        )
+    except OSError as exc:
+        raise MachineStateGenerationError("Git ancestry check could not execute") from exc
+    if completed.returncode == 0:
+        return True
+    if completed.returncode == 1:
+        return False
+    raise MachineStateGenerationError("Git ancestry check failed")
 
 
 def _git(root: Path, *arguments: str) -> str:

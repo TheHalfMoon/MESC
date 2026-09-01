@@ -57,6 +57,12 @@ def _clone_repository(tmp_path: Path) -> Path:
     )
     _run_git(clone, "config", "user.name", "MRL CI Fixture")
     _run_git(clone, "config", "user.email", "mrl-ci-fixture@example.invalid")
+    _run_git(
+        clone,
+        "update-ref",
+        "refs/remotes/origin/main",
+        _git_text(clone, "rev-parse", "HEAD"),
+    )
     return clone
 
 
@@ -135,10 +141,80 @@ def test_closure_history_uses_pinned_decision_base_after_head_moves(tmp_path: Pa
     _run_git(repository, "add", _TASKS_PATH.as_posix())
     _run_git(repository, "commit", "--quiet", "-m", "test: advance task ledger after decision base")
 
-    proof = machine_state._closure_proof(repository, decision_base, "MRL-0299")
+    proof = machine_state._closure_proof(
+        repository,
+        decision_base,
+        _git_text(repository, "rev-parse", "refs/remotes/origin/main"),
+        "MRL-0299",
+    )
 
     assert proof is not None
     assert _git_text(repository, "rev-parse", "HEAD") != decision_base
+
+
+def test_dependency_parser_rejects_self_dependency() -> None:
+    with pytest.raises(MachineStateGenerationError, match="cannot depend on itself"):
+        machine_state._dependencies(["  - Depends on: MRL-0800"], "MRL-0800")
+
+
+def test_dependency_parser_accepts_terminal_punctuation_and_valid_range() -> None:
+    assert machine_state._dependencies(
+        ["  - Depends on: MRL-0001."],
+        "MRL-0999",
+    ) == ("MRL-0001",)
+    assert machine_state._dependencies(
+        ["  - Depends on: MRL-0001..MRL-0002."],
+        "MRL-0999",
+    ) == ("MRL-0001", "MRL-0002")
+
+
+@pytest.mark.parametrize(
+    "reference",
+    (
+        "MRL-0001..OTHER-0002",
+        "OTHER-0001..MRL-0002",
+        "MRL-0001...0002",
+        "MRL-00010",
+    ),
+)
+def test_dependency_parser_rejects_malformed_or_cross_prefix_ranges(reference: str) -> None:
+    with pytest.raises(
+        MachineStateGenerationError,
+        match="malformed or cross-prefix",
+    ):
+        machine_state._dependencies([f"  - Depends on: {reference}"], "MRL-0999")
+
+
+def test_branch_local_merge_cannot_establish_canonical_closure(tmp_path: Path) -> None:
+    repository = _clone_repository(tmp_path)
+    base = _git_text(repository, "rev-parse", "HEAD")
+    canonical_main = _git_text(repository, "rev-parse", "refs/remotes/origin/main")
+    tasks = repository / _TASKS_PATH
+
+    _run_git(repository, "checkout", "--quiet", "-b", "qualifier", base)
+    text = tasks.read_text(encoding="utf-8")
+    unchecked = "- [ ] **MRL-0800 — Enter real autonomous research preflight**"
+    checked = "- [x] **MRL-0800 — Enter real autonomous research preflight**"
+    assert text.count(unchecked) == 1
+    tasks.write_text(text.replace(unchecked, checked), encoding="utf-8")
+    _run_git(repository, "add", _TASKS_PATH.as_posix())
+    _run_git(repository, "commit", "--quiet", "-m", "test: qualifying branch checkbox")
+    qualifier = _git_text(repository, "rev-parse", "HEAD")
+
+    _run_git(repository, "checkout", "--quiet", "-b", "candidate", base)
+    _run_git(repository, "merge", "--quiet", "--no-ff", "--no-edit", qualifier)
+    decision_base = _git_text(repository, "rev-parse", "HEAD")
+
+    assert (
+        machine_state._closure_proof(
+            repository,
+            decision_base,
+            canonical_main,
+            "MRL-0800",
+        )
+        is None
+    )
+    assert not machine_state._is_ancestor(repository, decision_base, canonical_main)
 
 
 def test_ci_gate_rejects_manually_edited_projection(tmp_path: Path) -> None:
