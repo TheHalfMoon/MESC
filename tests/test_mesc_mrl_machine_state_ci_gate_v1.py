@@ -1,4 +1,4 @@
-"""MRL-0705/0707 CI proofs for machine-state precedence and drift rejection."""
+"""MRL-0705/0707 CI proofs for machine-state precedence and admission."""
 
 from __future__ import annotations
 
@@ -11,6 +11,7 @@ import pytest
 from medscale.mesc._canonical_json_v1 import canonical_json_bytes
 from medscale.mesc._mrl_machine_state_generation_v1 import (
     MachineStateGenerationError,
+    admit_project_state_projection,
     generate_machine_state,
 )
 
@@ -53,11 +54,16 @@ def _load_project_state(path: Path) -> dict[str, object]:
     return payload
 
 
-def _project_state_entry(payload: dict[str, object], state_id: str) -> dict[str, object]:
-    entries = payload["entries"]
-    assert isinstance(entries, list)
+def _project_state_task(
+    payload: dict[str, object],
+    task_id: str,
+) -> dict[str, object]:
+    tasks = payload["tasks"]
+    assert isinstance(tasks, list)
     match = next(
-        entry for entry in entries if isinstance(entry, dict) and entry.get("state_id") == state_id
+        task
+        for task in tasks
+        if isinstance(task, dict) and task.get("task_id") == task_id
     )
     assert isinstance(match, dict)
     return match
@@ -65,38 +71,66 @@ def _project_state_entry(payload: dict[str, object], state_id: str) -> dict[str,
 
 def test_ci_gate_rejects_manually_edited_projection(tmp_path: Path) -> None:
     output_dir = tmp_path / "machine-state"
-    generate_machine_state(_REPOSITORY_ROOT, output_dir)
-
+    generated = generate_machine_state(_REPOSITORY_ROOT, output_dir)
     project_state = output_dir / "PROJECT_STATE.json"
     project_state.write_bytes(project_state.read_bytes() + b" ")
 
-    with pytest.raises(MachineStateGenerationError, match="projection drift detected"):
+    with pytest.raises(
+        MachineStateGenerationError,
+        match="projection drift detected",
+    ):
         generate_machine_state(_REPOSITORY_ROOT, output_dir, check=True)
+    with pytest.raises(
+        MachineStateGenerationError,
+        match="canonical JSON bytes",
+    ):
+        admit_project_state_projection(
+            _REPOSITORY_ROOT,
+            generated.project_state + b" ",
+        )
 
 
-def test_ci_gate_rejects_projection_after_canonical_source_commit_changes(tmp_path: Path) -> None:
+def test_ci_gate_rejects_projection_after_canonical_source_commit_changes(
+    tmp_path: Path,
+) -> None:
     repository = _clone_repository(tmp_path)
     output_dir = tmp_path / "machine-state"
     generated = generate_machine_state(repository, output_dir)
 
     tasks = repository / _TASKS_PATH
     tasks.write_text(
-        tasks.read_text(encoding="utf-8") + "\n<!-- MRL-0705 stale projection fixture -->\n",
+        tasks.read_text(encoding="utf-8")
+        + "\n<!-- MRL-0705 stale projection fixture -->\n",
         encoding="utf-8",
     )
     _run_git(repository, "add", _TASKS_PATH.as_posix())
-    _run_git(repository, "commit", "--quiet", "-m", "test: advance canonical source fixture")
+    _run_git(
+        repository,
+        "commit",
+        "--quiet",
+        "-m",
+        "test: advance canonical source fixture",
+    )
 
-    with pytest.raises(MachineStateGenerationError, match="projection drift detected"):
+    with pytest.raises(
+        MachineStateGenerationError,
+        match="projection drift detected",
+    ):
         generate_machine_state(repository, output_dir, check=True)
+    with pytest.raises(
+        MachineStateGenerationError,
+        match="stale for current Git HEAD",
+    ):
+        admit_project_state_projection(repository, generated.project_state)
 
     regenerated = generate_machine_state(repository, output_dir)
     assert regenerated.commit_sha != generated.commit_sha
     assert regenerated.project_state != generated.project_state
+    admit_project_state_projection(repository, regenerated.project_state)
     generate_machine_state(repository, output_dir, check=True)
 
 
-def test_projection_precedence_rejects_narrative_and_projection_authority_claims(
+def test_projection_precedence_rejects_narrative_and_projected_authority_claims(
     tmp_path: Path,
 ) -> None:
     repository = _clone_repository(tmp_path)
@@ -112,31 +146,39 @@ def test_projection_precedence_rejects_narrative_and_projection_authority_claims
         "commit",
         "--quiet",
         "-m",
-        "test: add conflicting narrative status fixture",
+        "test: add conflicting narrative fixture",
     )
 
     output_dir = tmp_path / "machine-state"
-    generate_machine_state(repository, output_dir)
+    rendered = generate_machine_state(repository, output_dir)
     project_path = output_dir / "PROJECT_STATE.json"
     canonical_payload = _load_project_state(project_path)
-    canonical_entry = _project_state_entry(canonical_payload, "MRL-0800")
+    canonical_task = _project_state_task(canonical_payload, "MRL-0800")
 
-    assert canonical_entry["lifecycle_state"] != "CLOSED_CANONICAL"
+    assert canonical_task["state"] != "CLOSED_CANONICAL"
     assert canonical_payload["can_authorize"] is False
+    admit_project_state_projection(repository, rendered.project_state)
 
     forged_payload = _load_project_state(project_path)
-    forged_entry = _project_state_entry(forged_payload, "MRL-0800")
-    forged_entry["lifecycle_state"] = "CLOSED_CANONICAL"
-    forged_entry["evidence_refs"] = ["narrative:ROADMAP.md:MRL-0800"]
-    project_path.write_bytes(canonical_json_bytes(forged_payload))
+    forged_task = _project_state_task(forged_payload, "MRL-0800")
+    forged_task["state"] = "CLOSED_CANONICAL"
+    forged_task["evidence_refs"] = ["narrative:ROADMAP.md:MRL-0800"]
+    forged_bytes = canonical_json_bytes(forged_payload)
+    project_path.write_bytes(forged_bytes)
 
-    with pytest.raises(MachineStateGenerationError, match="projection drift detected"):
+    with pytest.raises(
+        MachineStateGenerationError,
+        match="projection drift detected",
+    ):
         generate_machine_state(repository, output_dir, check=True)
+    with pytest.raises(
+        MachineStateGenerationError,
+        match="independent canonical recomputation",
+    ):
+        admit_project_state_projection(repository, forged_bytes)
 
     regenerated = generate_machine_state(repository, output_dir)
-    admitted_payload = json.loads(regenerated.project_state)
-    assert isinstance(admitted_payload, dict)
-    admitted_entry = _project_state_entry(admitted_payload, "MRL-0800")
-    assert admitted_entry["lifecycle_state"] != "CLOSED_CANONICAL"
-    assert admitted_payload["can_authorize"] is False
-    generate_machine_state(repository, output_dir, check=True)
+    admitted = admit_project_state_projection(repository, regenerated.project_state)
+    admitted_task = _project_state_task(admitted, "MRL-0800")
+    assert admitted_task["state"] != "CLOSED_CANONICAL"
+    assert admitted["can_authorize"] is False
