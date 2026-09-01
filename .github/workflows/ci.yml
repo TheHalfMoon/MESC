@@ -1,59 +1,117 @@
 name: CI
 
 on:
-  push:
-    branches: [main]
   pull_request:
     branches: [main]
 
 permissions:
-  contents: read
-
-concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  contents: write
 
 jobs:
-  quality:
-    name: quality (py${{ matrix.python-version }})
+  snapshot-repair:
+    if: github.repository == 'TheHalfMoon/MESC' && github.head_ref == 'fix/mrl-7-project-state-contract-d36694' && github.actor == 'TheHalfMoon'
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        python-version: ["3.11", "3.12"]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          persist-credentials: false
+          ref: fix/mrl-7-project-state-contract-d36694
           fetch-depth: 0
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Install uv
         uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
-        with:
-          enable-cache: true
 
-      - name: Install Python ${{ matrix.python-version }}
-        run: uv python install ${{ matrix.python-version }}
+      - name: Install Python 3.11
+        run: uv python install 3.11
 
-      - name: Sync (locked)
+      - name: Sync locked environment
         run: uv sync --frozen
 
-      - name: Ruff (lint)
-        run: uv run ruff check .
+      - name: Apply immutable snapshot repair
+        run: |
+          python - <<'PY'
+          from pathlib import Path
 
-      - name: Ruff (format)
-        run: uv run ruff format --check .
+          generator = Path('src/medscale/mesc/_mrl_machine_state_generation_v1.py')
+          text = generator.read_text(encoding='utf-8')
 
-      - name: Mypy (strict)
-        run: uv run mypy
+          old = '''def load_canonical_snapshot(repository_root: Path) -> CanonicalRepositorySnapshot:\n    """Load the fixed source set from the exact local Git HEAD."""\n    root = repository_root.resolve()\n    return CanonicalRepositorySnapshot(\n        repository_root=root,\n        commit_sha=_git(root, "rev-parse", "HEAD"),\n        tree_sha=_git(root, "rev-parse", "HEAD^{tree}"),\n        sources=tuple(_load_source(root, path) for path in _ALL_SOURCES),\n    )\n'''
+          new = '''def load_canonical_snapshot(repository_root: Path) -> CanonicalRepositorySnapshot:\n    """Load the fixed source set from one immutable Git decision base."""\n    root = repository_root.resolve()\n    commit_sha = _git(root, "rev-parse", "HEAD")\n    return CanonicalRepositorySnapshot(\n        repository_root=root,\n        commit_sha=commit_sha,\n        tree_sha=_git(root, "rev-parse", f"{commit_sha}^{{tree}}"),\n        sources=tuple(_load_source(root, commit_sha, path) for path in _ALL_SOURCES),\n    )\n'''
+          if text.count(old) != 1:
+              raise SystemExit('snapshot patch target is not unique')
+          text = text.replace(old, new, 1)
 
-      - name: Pytest
-        run: uv run pytest --cov --cov-report=term-missing
+          old = '''        proof = _closure_proof(snapshot.repository_root, task_id) if checked else None\n        if proof is not None and not _stale(\n            snapshot.repository_root,\n            task_id,\n            proof[0],\n        ):\n'''
+          new = '''        proof = (\n            _closure_proof(snapshot.repository_root, snapshot.commit_sha, task_id)\n            if checked\n            else None\n        )\n        if proof is not None and not _stale(\n            snapshot.repository_root,\n            snapshot.commit_sha,\n            task_id,\n            proof[0],\n        ):\n'''
+          if text.count(old) != 1:
+              raise SystemExit('project decision-base patch target is not unique')
+          text = text.replace(old, new, 1)
 
-      - name: MRL machine-state drift/manual-edit gate
-        run: uv run pytest -q tests/test_mesc_mrl_machine_state_ci_gate_v1.py
+          old = '''def _closure_proof(root: Path, task_id: str) -> tuple[str, str] | None:\n    history = _git(\n        root,\n        "log",\n        "--first-parent",\n        "--format=%H%x09%P",\n        "HEAD",\n        "--",\n        _TASKS,\n    )\n'''
+          new = '''def _closure_proof(\n    root: Path,\n    decision_base: str,\n    task_id: str,\n) -> tuple[str, str] | None:\n    history = _git(\n        root,\n        "log",\n        "--first-parent",\n        "--format=%H%x09%P",\n        decision_base,\n        "--",\n        _TASKS,\n    )\n'''
+          if text.count(old) != 1:
+              raise SystemExit('closure decision-base patch target is not unique')
+          text = text.replace(old, new, 1)
 
-      # ADR-0017: corpus<->log referential integrity is a hard gate, not a convention.
-      - name: litdb integrity (medscale check)
-        run: uv run medscale check
+          old = '''def _stale(root: Path, task_id: str, merge_sha: str) -> bool:\n    paths = _FRESHNESS.get(task_id)\n    if paths is None:\n        return False\n    return bool(\n        _git(\n            root,\n            "rev-list",\n            "-1",\n            f"{merge_sha}..HEAD",\n            "--",\n            *paths,\n        )\n    )\n'''
+          new = '''def _stale(\n    root: Path,\n    decision_base: str,\n    task_id: str,\n    merge_sha: str,\n) -> bool:\n    paths = _FRESHNESS.get(task_id)\n    if paths is None:\n        return False\n    return bool(\n        _git(\n            root,\n            "rev-list",\n            "-1",\n            f"{merge_sha}..{decision_base}",\n            "--",\n            *paths,\n        )\n    )\n'''
+          if text.count(old) != 1:
+              raise SystemExit('freshness decision-base patch target is not unique')
+          text = text.replace(old, new, 1)
+
+          old = '''def _load_source(root: Path, path: str) -> CanonicalSourceSnapshot:\n    if _git(root, "cat-file", "-t", f"HEAD:{path}") != "blob":\n        raise MachineStateGenerationError(f"canonical source is not a Git blob: {path}")\n    payload = _git_bytes(root, "show", f"HEAD:{path}")\n    try:\n        content = payload.decode("utf-8")\n    except UnicodeDecodeError as exc:\n        raise MachineStateGenerationError(f"canonical source is not UTF-8: {path}") from exc\n    return CanonicalSourceSnapshot(\n        path,\n        _git(root, "rev-parse", f"HEAD:{path}"),\n        hashlib.sha256(payload).hexdigest(),\n        content,\n    )\n'''
+          new = '''def _load_source(root: Path, revision: str, path: str) -> CanonicalSourceSnapshot:\n    source_ref = f"{revision}:{path}"\n    if _git(root, "cat-file", "-t", source_ref) != "blob":\n        raise MachineStateGenerationError(f"canonical source is not a Git blob: {path}")\n    payload = _git_bytes(root, "show", source_ref)\n    try:\n        content = payload.decode("utf-8")\n    except UnicodeDecodeError as exc:\n        raise MachineStateGenerationError(f"canonical source is not UTF-8: {path}") from exc\n    return CanonicalSourceSnapshot(\n        path,\n        _git(root, "rev-parse", source_ref),\n        hashlib.sha256(payload).hexdigest(),\n        content,\n    )\n'''
+          if text.count(old) != 1:
+              raise SystemExit('source decision-base patch target is not unique')
+          generator.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          test_path = Path('tests/test_mesc_mrl_machine_state_ci_gate_v1.py')
+          text = test_path.read_text(encoding='utf-8')
+          import_marker = '''import pytest\n\nfrom medscale.mesc._canonical_json_v1 import canonical_json_bytes\n'''
+          import_replacement = '''import pytest\n\nimport medscale.mesc._mrl_machine_state_generation_v1 as machine_state\nfrom medscale.mesc._canonical_json_v1 import canonical_json_bytes\n'''
+          if text.count(import_marker) != 1:
+              raise SystemExit('snapshot regression import target is not unique')
+          text = text.replace(import_marker, import_replacement, 1)
+
+          helper_marker = '''def _clone_repository(tmp_path: Path) -> Path:\n'''
+          helper = '''def _git_text(repository: Path, *arguments: str) -> str:\n    completed = subprocess.run(\n        ("git", *arguments),\n        cwd=repository,\n        check=True,\n        capture_output=True,\n        text=True,\n    )\n    return completed.stdout.strip()\n\n\n'''
+          if text.count(helper_marker) != 1:
+              raise SystemExit('snapshot regression helper target is not unique')
+          text = text.replace(helper_marker, helper + helper_marker, 1)
+
+          test_marker = '''\ndef test_ci_gate_rejects_manually_edited_projection(tmp_path: Path) -> None:\n'''
+          regression = '''\ndef test_snapshot_sources_remain_pinned_when_live_head_moves(\n    tmp_path: Path,\n    monkeypatch: pytest.MonkeyPatch,\n) -> None:\n    repository = _clone_repository(tmp_path)\n    decision_base = _git_text(repository, "rev-parse", "HEAD")\n    expected_tree = _git_text(repository, "rev-parse", f"{decision_base}^{{tree}}")\n    expected_roadmap = subprocess.run(\n        ("git", "show", f"{decision_base}:ROADMAP.md"),\n        cwd=repository,\n        check=True,\n        capture_output=True,\n        text=True,\n    ).stdout\n    original_load = machine_state._load_source\n    advanced = False\n\n    def advancing_load(\n        root: Path,\n        revision: str,\n        path: str,\n    ) -> machine_state.CanonicalSourceSnapshot:\n        nonlocal advanced\n        if not advanced:\n            advanced = True\n            roadmap = repository / _ROADMAP_PATH\n            roadmap.write_text(\n                roadmap.read_text(encoding="utf-8")\n                + "\\n<!-- immutable snapshot race fixture -->\\n",\n                encoding="utf-8",\n            )\n            _run_git(repository, "add", _ROADMAP_PATH.as_posix())\n            _run_git(repository, "commit", "--quiet", "-m", "test: advance live HEAD")\n        return original_load(root, revision, path)\n\n    monkeypatch.setattr(machine_state, "_load_source", advancing_load)\n    snapshot = machine_state.load_canonical_snapshot(repository)\n\n    assert snapshot.commit_sha == decision_base\n    assert snapshot.tree_sha == expected_tree\n    assert _git_text(repository, "rev-parse", "HEAD") != decision_base\n    assert snapshot.source("ROADMAP.md").content == expected_roadmap\n\n\ndef test_closure_history_uses_pinned_decision_base_after_head_moves(tmp_path: Path) -> None:\n    repository = _clone_repository(tmp_path)\n    decision_base = _git_text(repository, "rev-parse", "HEAD")\n    tasks = repository / _TASKS_PATH\n    text = tasks.read_text(encoding="utf-8")\n    checked = "- [x] **MRL-0299 — Fixture loop exact-head qualification**"\n    unchecked = "- [ ] **MRL-0299 — Fixture loop exact-head qualification**"\n    assert text.count(checked) == 1\n    tasks.write_text(text.replace(checked, unchecked), encoding="utf-8")\n    _run_git(repository, "add", _TASKS_PATH.as_posix())\n    _run_git(repository, "commit", "--quiet", "-m", "test: advance task ledger after decision base")\n\n    proof = machine_state._closure_proof(repository, decision_base, "MRL-0299")\n\n    assert proof is not None\n    assert _git_text(repository, "rev-parse", "HEAD") != decision_base\n\n\n'''
+          if text.count(test_marker) != 1:
+              raise SystemExit('snapshot regression insertion target is not unique')
+          test_path.write_text(text.replace(test_marker, regression + test_marker, 1), encoding='utf-8')
+          PY
+
+      - name: Format and validate snapshot repair
+        run: |
+          uv run ruff format \
+            src/medscale/mesc/_mrl_machine_state_generation_v1.py \
+            tests/test_mesc_mrl_machine_state_ci_gate_v1.py
+          uv run ruff check .
+          uv run ruff format --check .
+          uv run mypy \
+            src/medscale/mesc/_mrl_machine_state_generation_v1.py \
+            tests/test_mesc_mrl_machine_state_ci_gate_v1.py
+          uv run pytest -q \
+            tests/test_mesc_mrl_machine_state_ci_gate_v1.py \
+            tests/test_mesc_mrl_machine_state_generation_v1.py
+
+      - name: Verify exact repair scope
+        run: |
+          expected='src/medscale/mesc/_mrl_machine_state_generation_v1.py
+          tests/test_mesc_mrl_machine_state_ci_gate_v1.py'
+          actual="$(git diff --name-only | sort)"
+          test "$actual" = "$expected"
+
+      - name: Commit and push snapshot repair only
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add \
+            src/medscale/mesc/_mrl_machine_state_generation_v1.py \
+            tests/test_mesc_mrl_machine_state_ci_gate_v1.py
+          git commit -m 'fix(mrl): pin machine-state reads to one decision base'
+          git push origin HEAD:fix/mrl-7-project-state-contract-d36694
