@@ -45,6 +45,7 @@ _RECORD_FIELDS: Final = frozenset(
         "canonical_merge_sha",
         "coderabbit_success_status_ids",
         "evidence_profile",
+        "independent_exact_head_review_ids",
         "owner_exact_head_review_ids",
         "pr_number",
         "qodo_exact_head_comment_ids",
@@ -64,6 +65,7 @@ class _CloseoutEvidence:
     evidence_profile: str
     successful_ci_run_ids: tuple[int, ...]
     successful_codeql_run_ids: tuple[int, ...]
+    independent_exact_head_review_ids: tuple[int, ...]
     qodo_exact_head_comment_ids: tuple[int, ...]
     owner_exact_head_review_ids: tuple[int, ...]
     coderabbit_success_status_ids: tuple[int, ...]
@@ -78,8 +80,8 @@ _merge_shape_closure = _legacy._closure_proof
 
 _project_sources = tuple(sorted(set(_legacy._PROJECT_SOURCES) | {_CLOSEOUT_EVIDENCE}))
 _all_sources = tuple(sorted(set(_legacy._ALL_SOURCES) | {_CLOSEOUT_EVIDENCE}))
-setattr(_legacy, "_PROJECT_SOURCES", _project_sources)
-setattr(_legacy, "_ALL_SOURCES", _all_sources)
+vars(_legacy)["_PROJECT_SOURCES"] = _project_sources
+vars(_legacy)["_ALL_SOURCES"] = _all_sources
 
 
 def _closure_proof(
@@ -194,6 +196,11 @@ def _parse_record(value: object) -> _CloseoutEvidence:
     task_ids = _task_ids(row["task_ids"])
     ci = _positive_ids(row["successful_ci_run_ids"], "CI run IDs")
     codeql = _positive_ids(row["successful_codeql_run_ids"], "CodeQL run IDs")
+    independent = _positive_ids(
+        row["independent_exact_head_review_ids"],
+        "independent exact-head review IDs",
+        allow_empty=True,
+    )
     qodo = _positive_ids(
         row["qodo_exact_head_comment_ids"],
         "Qodo exact-head comment IDs",
@@ -218,16 +225,28 @@ def _parse_record(value: object) -> _CloseoutEvidence:
     contains_constitution_gate = "MRL-0099" in task_ids
     contains_review_gate = bool(_REVIEW_REQUIRED_TASKS.intersection(task_ids))
     if contains_constitution_gate:
-        if profile != _CONSTITUTION_PROFILE or not qodo or not owner or not coderabbit:
+        if (
+            profile != _CONSTITUTION_PROFILE
+            or not independent
+            or not qodo
+            or not owner
+            or not coderabbit
+        ):
             raise MachineStateGenerationError(
                 "MRL-0099 evidence does not satisfy the constitution exact-head profile"
             )
     elif contains_review_gate:
-        if profile != _REVIEWED_PROFILE or not qodo or owner or coderabbit:
+        if (
+            profile != _REVIEWED_PROFILE
+            or not independent
+            or qodo
+            or owner
+            or coderabbit
+        ):
             raise MachineStateGenerationError(
                 "review-required MRL closeout evidence has the wrong profile"
             )
-    elif profile != _REPOSITORY_PROFILE or qodo or owner or coderabbit:
+    elif profile != _REPOSITORY_PROFILE or independent or qodo or owner or coderabbit:
         raise MachineStateGenerationError(
             "repository-only MRL closeout evidence has the wrong profile"
         )
@@ -239,6 +258,7 @@ def _parse_record(value: object) -> _CloseoutEvidence:
         evidence_profile=profile,
         successful_ci_run_ids=ci,
         successful_codeql_run_ids=codeql,
+        independent_exact_head_review_ids=independent,
         qodo_exact_head_comment_ids=qodo,
         owner_exact_head_review_ids=owner,
         coderabbit_success_status_ids=coderabbit,
@@ -321,7 +341,7 @@ def _unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
     return result
 
 
-setattr(_legacy, "_closure_proof", _closure_proof)
+vars(_legacy)["_closure_proof"] = _closure_proof
 
 admit_project_state_projection = _legacy.admit_project_state_projection
 generate_machine_state = _legacy.generate_machine_state
