@@ -1,103 +1,59 @@
 name: CI
 
 on:
+  push:
+    branches: [main]
   pull_request:
     branches: [main]
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  review-repair:
-    if: github.repository == 'TheHalfMoon/MESC' && github.head_ref == 'fix/mrl-7-project-state-contract-d36694' && github.actor == 'TheHalfMoon'
+  quality:
+    name: quality (py${{ matrix.python-version }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: fix/mrl-7-project-state-contract-d36694
+          persist-credentials: false
           fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Install uv
         uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          enable-cache: true
 
-      - name: Install Python 3.11
-        run: uv python install 3.11
+      - name: Install Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
 
-      - name: Sync locked environment
+      - name: Sync (locked)
         run: uv sync --frozen
 
-      - name: Apply validated review repairs
-        run: |
-          python - <<'PY'
-          from pathlib import Path
+      - name: Ruff (lint)
+        run: uv run ruff check .
 
-          generator = Path('src/medscale/mesc/_mrl_machine_state_generation_v1.py')
-          text = generator.read_text(encoding='utf-8')
-          old = '''        if current and not previous and len(parents) == 2:\n            return commit, parents[1]\n'''
-          new = '''        if (\n            current\n            and not previous\n            and len(parents) == 2\n            and _task_checked_at(root, parents[1], task_id)\n        ):\n            return commit, parents[1]\n'''
-          if old not in text:
-              raise SystemExit('qualifying-parent patch target missing')
-          generator.write_text(text.replace(old, new, 1), encoding='utf-8')
+      - name: Ruff (format)
+        run: uv run ruff format --check .
 
-          project_state = Path('src/medscale/mesc/_mrl_project_state_v1.py')
-          text = project_state.read_text(encoding='utf-8')
-          old = '''    if type(path) is not str or not path or not path.isascii():\n        raise ProjectStateProjectionError("source path must be non-empty ASCII text")\n    if path.startswith("/") or "\\\\" in path:\n'''
-          new = '''    if type(path) is not str or not path or not path.isascii():\n        raise ProjectStateProjectionError("source path must be non-empty ASCII text")\n    if len(path) > 4096:\n        raise ProjectStateProjectionError("source path exceeds frozen schema limit")\n    if path.startswith("/") or "\\\\" in path:\n'''
-          if old not in text:
-              raise SystemExit('source-path limit patch target missing')
-          project_state.write_text(text.replace(old, new, 1), encoding='utf-8')
+      - name: Mypy (strict)
+        run: uv run mypy
 
-          ci_test = Path('tests/test_mesc_mrl_machine_state_ci_gate_v1.py')
-          text = ci_test.read_text(encoding='utf-8')
-          marker = '''\ndef test_projection_precedence_rejects_narrative_and_projected_authority_claims(\n'''
-          regression = '''\ndef test_merge_commit_cannot_invent_checked_qualified_parent(tmp_path: Path) -> None:\n    repository = _clone_repository(tmp_path)\n    _run_git(repository, "switch", "-c", "unchecked-side-parent")\n    roadmap = repository / _ROADMAP_PATH\n    roadmap.write_text(\n        roadmap.read_text(encoding="utf-8")\n        + "\\n<!-- MRL qualifying-parent adversarial fixture -->\\n",\n        encoding="utf-8",\n    )\n    _run_git(repository, "add", _ROADMAP_PATH.as_posix())\n    _run_git(repository, "commit", "--quiet", "-m", "test: create unchecked side parent")\n    _run_git(repository, "switch", "-")\n    _run_git(repository, "merge", "--no-ff", "--no-commit", "unchecked-side-parent")\n\n    tasks = repository / _TASKS_PATH\n    original = tasks.read_text(encoding="utf-8")\n    unchecked = "- [ ] **MRL-0800 — Enter real autonomous research preflight**"\n    checked = "- [x] **MRL-0800 — Enter real autonomous research preflight**"\n    assert original.count(unchecked) == 1\n    tasks.write_text(original.replace(unchecked, checked), encoding="utf-8")\n    _run_git(repository, "add", _TASKS_PATH.as_posix())\n    _run_git(repository, "commit", "--quiet", "-m", "test: forge checked state only in merge")\n\n    output_dir = tmp_path / "machine-state-merge-parent"\n    rendered = generate_machine_state(repository, output_dir)\n    payload = admit_project_state_projection(repository, rendered.project_state)\n    task = _project_state_task(payload, "MRL-0800")\n    assert task["state"] != "CLOSED_CANONICAL"\n    assert task["evidence_refs"] == []\n\n\n'''
-          if marker not in text:
-              raise SystemExit('CI regression insertion point missing')
-          ci_test.write_text(text.replace(marker, regression + marker, 1), encoding='utf-8')
+      - name: Pytest
+        run: uv run pytest --cov --cov-report=term-missing
 
-          state_test = Path('tests/test_mesc_mrl_project_state_v1.py')
-          text = state_test.read_text(encoding='utf-8')
-          regression = '''\n\ndef test_source_path_rejects_values_beyond_frozen_schema_limit() -> None:\n    with pytest.raises(ProjectStateProjectionError, match="frozen schema limit"):\n        ProjectStateSourceBinding(\n            path="a" * 4097,\n            git_blob_sha="1" * 40,\n            sha256="2" * 64,\n        )\n'''
-          if 'test_source_path_rejects_values_beyond_frozen_schema_limit' in text:
-              raise SystemExit('project-state regression already exists unexpectedly')
-          state_test.write_text(text.rstrip() + regression + '\n', encoding='utf-8')
-          PY
+      - name: MRL machine-state drift/manual-edit gate
+        run: uv run pytest -q tests/test_mesc_mrl_machine_state_ci_gate_v1.py
 
-      - name: Format and validate review repairs
-        run: |
-          uv run ruff format \
-            src/medscale/mesc/_mrl_machine_state_generation_v1.py \
-            src/medscale/mesc/_mrl_project_state_v1.py \
-            tests/test_mesc_mrl_machine_state_ci_gate_v1.py \
-            tests/test_mesc_mrl_project_state_v1.py
-          uv run ruff check .
-          uv run ruff format --check .
-          uv run mypy \
-            src/medscale/mesc/_mrl_machine_state_generation_v1.py \
-            src/medscale/mesc/_mrl_project_state_v1.py \
-            tests/test_mesc_mrl_machine_state_ci_gate_v1.py \
-            tests/test_mesc_mrl_project_state_v1.py
-          uv run pytest -q \
-            tests/test_mesc_mrl_machine_state_ci_gate_v1.py \
-            tests/test_mesc_mrl_project_state_v1.py
-
-      - name: Verify exact repair scope
-        run: |
-          expected='src/medscale/mesc/_mrl_machine_state_generation_v1.py
-          src/medscale/mesc/_mrl_project_state_v1.py
-          tests/test_mesc_mrl_machine_state_ci_gate_v1.py
-          tests/test_mesc_mrl_project_state_v1.py'
-          actual="$(git diff --name-only | sort)"
-          test "$actual" = "$expected"
-
-      - name: Commit and push review repairs only
-        run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add \
-            src/medscale/mesc/_mrl_machine_state_generation_v1.py \
-            src/medscale/mesc/_mrl_project_state_v1.py \
-            tests/test_mesc_mrl_machine_state_ci_gate_v1.py \
-            tests/test_mesc_mrl_project_state_v1.py
-          git commit -m 'fix(mrl): harden closure and schema boundaries'
-          git push origin HEAD:fix/mrl-7-project-state-contract-d36694
+      # ADR-0017: corpus<->log referential integrity is a hard gate, not a convention.
+      - name: litdb integrity (medscale check)
+        run: uv run medscale check
