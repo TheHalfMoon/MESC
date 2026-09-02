@@ -6,22 +6,52 @@ on:
       - diag/mrl-real-preflight-ruff-format-404b8d
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  format-diff:
+  format-and-push:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout exact diagnostic head
+      - name: Checkout target PR branch
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          persist-credentials: false
+          ref: feat/mrl-real-preflight-evidence-admission-262ee5
+          fetch-depth: 0
+      - name: Guard expected target head
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "404b8d7d619e0f51df8d3e9145859a71a0f11be7"
       - name: Install uv
         uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
       - name: Sync locked environment
         run: uv sync --frozen
-      - name: Emit Ruff formatter diff
+      - name: Apply exact Ruff formatter
         run: >-
-          uv run ruff format --diff
+          uv run ruff format
           src/medscale/mesc/_mrl_real_preflight_evidence_v1.py
           tests/test_mesc_mrl_real_preflight_evidence_v1.py
+      - name: Guard formatter scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual="$(git diff --name-only | sort)"
+          expected="$(printf '%s\n' \
+            src/medscale/mesc/_mrl_real_preflight_evidence_v1.py \
+            tests/test_mesc_mrl_real_preflight_evidence_v1.py | sort)"
+          test "$actual" = "$expected"
+          git diff --check
+          uv run ruff format --check \
+            src/medscale/mesc/_mrl_real_preflight_evidence_v1.py \
+            tests/test_mesc_mrl_real_preflight_evidence_v1.py
+      - name: Commit and push formatter-only result
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            src/medscale/mesc/_mrl_real_preflight_evidence_v1.py \
+            tests/test_mesc_mrl_real_preflight_evidence_v1.py
+          git commit -m "style(mrl): apply Ruff formatting"
+          git push origin HEAD:refs/heads/feat/mrl-real-preflight-evidence-admission-262ee5
