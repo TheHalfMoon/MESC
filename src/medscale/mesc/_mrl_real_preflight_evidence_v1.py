@@ -93,7 +93,9 @@ class MRLRealPreflightEvidence:
                 "real-preflight evidence must contain the exact canonical top-level key set"
             )
         if document["schema_version"] != _SCHEMA_VERSION:
-            raise MRLRealPreflightEvidenceError("real-preflight evidence schema_version is invalid")
+            raise MRLRealPreflightEvidenceError(
+                "real-preflight evidence schema_version is invalid"
+            )
         task_id = _require_task_id(document["task_id"])
         kind = _require_text(document["kind"], field="kind")
         if kind != _TASK_KIND[task_id]:
@@ -104,10 +106,15 @@ class MRLRealPreflightEvidence:
             raise MRLRealPreflightEvidenceError(
                 "real-preflight evidence disposition must be exactly PASS"
             )
-        subject_sha256 = _require_sha256(document["subject_sha256"], field="subject_sha256")
+        subject_sha256 = _require_sha256(
+            document["subject_sha256"],
+            field="subject_sha256",
+        )
         payload = document["payload"]
         if type(payload) is not dict:
-            raise MRLRealPreflightEvidenceError("real-preflight evidence payload must be an object")
+            raise MRLRealPreflightEvidenceError(
+                "real-preflight evidence payload must be an object"
+            )
         _validate_payload(task_id, cast(dict[str, object], payload))
 
         object.__setattr__(self, "task_id", cast(MRLRealPreflightTask, task_id))
@@ -153,7 +160,9 @@ def admit_mrl_real_preflight_evidence(
 ) -> MRLRealPreflightEvidence:
     """Admit one exact evidence envelope only under the current trust snapshot."""
     if expected_task_id not in _TASK_KIND:
-        raise MRLRealPreflightEvidenceError("expected_task_id is not an MRL-8 real-evidence task")
+        raise MRLRealPreflightEvidenceError(
+            "expected_task_id is not an MRL-8 real-evidence task"
+        )
     evidence = MRLRealPreflightEvidence(raw)
     if evidence.task_id != expected_task_id:
         raise MRLRealPreflightEvidenceError(
@@ -371,8 +380,16 @@ def _validate_objective_budgets(payload: dict[str, object]) -> None:
         label="MRL-0806 payload",
     )
     _require_true(payload["frozen_externally"], field="frozen_externally")
-    _require_sha256(payload["research_objective_sha256"], field="research_objective_sha256")
-    for field_name in ("compute_units", "storage_bytes", "token_budget", "wall_clock_seconds"):
+    _require_sha256(
+        payload["research_objective_sha256"],
+        field="research_objective_sha256",
+    )
+    for field_name in (
+        "compute_units",
+        "storage_bytes",
+        "token_budget",
+        "wall_clock_seconds",
+    ):
         _require_positive_int(payload[field_name], field=field_name)
     for field_name in (
         "adaptive_query_budget",
@@ -395,7 +412,10 @@ def _validate_evaluators(payload: dict[str, object]) -> None:
         label="MRL-0807 payload",
     )
     _require_true(payload["non_promotional"], field="non_promotional")
-    _require_false(payload["promotion_authority_present"], field="promotion_authority_present")
+    _require_false(
+        payload["promotion_authority_present"],
+        field="promotion_authority_present",
+    )
     for field_name in (
         "evaluation_contract_sha256",
         "evaluator_identity_sha256",
@@ -443,7 +463,9 @@ def _validate_sandbox(payload: dict[str, object]) -> None:
 
 def _require_keys(payload: dict[str, object], expected: set[str], *, label: str) -> None:
     if set(payload) != expected:
-        raise MRLRealPreflightEvidenceError(f"{label} must contain the exact canonical key set")
+        raise MRLRealPreflightEvidenceError(
+            f"{label} must contain the exact canonical key set"
+        )
 
 
 def _require_task_id(value: object) -> str:
