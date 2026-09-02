@@ -60,6 +60,29 @@ def test_same_identity_with_different_persisted_payload_fails_closed(tmp_path: P
             write_evidence(tmp_path / "objects.jsonl", objects)
 
 
+def test_loader_rejects_same_identity_conflicts_in_both_line_orders(tmp_path: Path) -> None:
+    first = _evidence("1")
+    second = dataclasses.replace(first, schema_version="2")
+    first_line = canonical_json(evidence_to_dict(first))
+    second_line = canonical_json(evidence_to_dict(second))
+
+    for index, lines in enumerate(((first_line, second_line), (second_line, first_line))):
+        path = tmp_path / f"conflicting-{index}.jsonl"
+        path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        with pytest.raises(ValueError, match="order-dependent load"):
+            load_evidence(path)
+
+
+def test_loader_accepts_exact_duplicate_payloads(tmp_path: Path) -> None:
+    obj = _evidence()
+    line = canonical_json(evidence_to_dict(obj))
+    path = tmp_path / "exact-duplicates.jsonl"
+    path.write_text(f"{line}\n{line}\n", encoding="utf-8")
+
+    loaded = load_evidence(path)
+    assert loaded == (obj, obj)
+
+
 def test_reader_requires_explicit_migration_for_recognized_legacy_id() -> None:
     obj = _evidence()
     payload = evidence_to_dict(obj)

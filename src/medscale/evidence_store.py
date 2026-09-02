@@ -184,11 +184,25 @@ def migrate_legacy_evidence_file(source: Path, destination: Path) -> dict[str, s
 
 
 def load_evidence(path: Path) -> tuple[EvidenceObject, ...]:
-    """Load an evidence file, re-running every object validation. Missing file -> ()."""
+    """Load and validate evidence, rejecting order-dependent same-id conflicts."""
     if not path.exists():
         return ()
-    return tuple(
-        evidence_from_dict(json.loads(line))
-        for line in path.read_text(encoding="utf-8").splitlines()
-        if line.strip()
-    )
+
+    objects: list[EvidenceObject] = []
+    serialized_by_id: dict[str, str] = {}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        data = json.loads(line)
+        if not isinstance(data, dict):
+            raise ValueError("evidence line must be a JSON object")
+        obj = evidence_from_dict(data)
+        serialized = canonical_json(evidence_to_dict(obj))
+        previous = serialized_by_id.get(obj.evidence_id)
+        if previous is not None and previous != serialized:
+            raise ValueError(
+                "conflicting persisted payloads share evidence_id; refusing order-dependent load"
+            )
+        serialized_by_id.setdefault(obj.evidence_id, serialized)
+        objects.append(obj)
+    return tuple(objects)
