@@ -117,6 +117,12 @@ INFERENCE_EXECUTED = FALSE
 TRAINING_EXECUTED = FALSE
 ```
 
+## Qualification transport boundary
+
+Ruff formatting was applied only to the two Python files in this package under an
+expected-head and exact-path guard. That formatter transport is not evidence, authority,
+or task closure; only fresh qualification on the final user-authored PR head may count.
+
 ## Authority boundary
 
 This package does not:
