@@ -1,7 +1,7 @@
 # Public Repository Alignment — Specification
 
 ## Goal
-Make `https://github.com/IamShehri/MedScale` the canonical truthful source for MedScale's
+Make `https://github.com/TheHalfMoon/MESC` the canonical truthful source for MedScale's
 current state, capabilities, and quality evidence. This spec covers alignment, packaging,
 distribution, and open-source readiness only. It does not add architecture, models,
 datasets, or training execution.
@@ -60,5 +60,5 @@ datasets, or training execution.
 - Skipping a non-applicable phase requires recorded evidence and an explicit sequencing amendment before the next governed capability PR is opened.
 
 ## Assumptions
-- Public origin is `https://github.com/IamShehri/MedScale` on `main`.
+- Public origin is `https://github.com/TheHalfMoon/MESC` on `main`.
 - No uncommitted implementation or governance material will be silently incorporated; every capability PR is reviewed against the canonical acceptance criteria before merge.
