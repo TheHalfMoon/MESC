@@ -1,10 +1,10 @@
 # MedScale v0.2.0 Release Notes
 
-**Release date:** 2026-07-13  
-**Tag:** `v0.2.0` (existing annotated tag)  
-**Tagged commit:** `d2e651a55c92f2218aca49acaa5b7bd18a75f096`  
-**Python:** 3.11, 3.12  
-**Historical release qualification:** ruff PASS · mypy PASS · pytest 340/340 PASS
+- **Release date:** 2026-07-13
+- **Tag:** `v0.2.0` (existing annotated tag)
+- **Tagged commit:** `d2e651a55c92f2218aca49acaa5b7bd18a75f096`
+- **Python:** 3.11, 3.12
+- **Historical release qualification:** ruff PASS · mypy PASS · pytest 340/340 PASS
 
 These notes describe the v0.2.0 release baseline. Later repository hardening is not retroactively presented as evidence that it ran on the tag.
 
