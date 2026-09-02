@@ -93,9 +93,7 @@ class MRLRealPreflightEvidence:
                 "real-preflight evidence must contain the exact canonical top-level key set"
             )
         if document["schema_version"] != _SCHEMA_VERSION:
-            raise MRLRealPreflightEvidenceError(
-                "real-preflight evidence schema_version is invalid"
-            )
+            raise MRLRealPreflightEvidenceError("real-preflight evidence schema_version is invalid")
         task_id = _require_task_id(document["task_id"])
         kind = _require_text(document["kind"], field="kind")
         if kind != _TASK_KIND[task_id]:
@@ -112,9 +110,7 @@ class MRLRealPreflightEvidence:
         )
         payload = document["payload"]
         if type(payload) is not dict:
-            raise MRLRealPreflightEvidenceError(
-                "real-preflight evidence payload must be an object"
-            )
+            raise MRLRealPreflightEvidenceError("real-preflight evidence payload must be an object")
         _validate_payload(task_id, cast(dict[str, object], payload))
 
         object.__setattr__(self, "task_id", cast(MRLRealPreflightTask, task_id))
@@ -160,9 +156,7 @@ def admit_mrl_real_preflight_evidence(
 ) -> MRLRealPreflightEvidence:
     """Admit one exact evidence envelope only under the current trust snapshot."""
     if expected_task_id not in _TASK_KIND:
-        raise MRLRealPreflightEvidenceError(
-            "expected_task_id is not an MRL-8 real-evidence task"
-        )
+        raise MRLRealPreflightEvidenceError("expected_task_id is not an MRL-8 real-evidence task")
     evidence = MRLRealPreflightEvidence(raw)
     if evidence.task_id != expected_task_id:
         raise MRLRealPreflightEvidenceError(
@@ -178,9 +172,7 @@ def admit_mrl_real_preflight_evidence(
 
 def _parse_canonical_object(raw: bytes) -> dict[str, object]:
     if type(raw) is not bytes or not raw:
-        raise MRLRealPreflightEvidenceError(
-            "real-preflight evidence must be non-empty exact bytes"
-        )
+        raise MRLRealPreflightEvidenceError("real-preflight evidence must be non-empty exact bytes")
     try:
         parsed = json.loads(
             raw.decode("utf-8"),
@@ -188,9 +180,7 @@ def _parse_canonical_object(raw: bytes) -> dict[str, object]:
             parse_constant=_reject_nonstandard_json_constant,
         )
         if type(parsed) is not dict:
-            raise MRLRealPreflightEvidenceError(
-                "real-preflight evidence must be a JSON object"
-            )
+            raise MRLRealPreflightEvidenceError("real-preflight evidence must be a JSON object")
         document = cast(dict[str, object], parsed)
         canonical = canonical_json_bytes(document)
     except MRLRealPreflightEvidenceError:
@@ -200,9 +190,7 @@ def _parse_canonical_object(raw: bytes) -> dict[str, object]:
             "real-preflight evidence must be valid canonical UTF-8 JSON"
         ) from exc
     if canonical != raw:
-        raise MRLRealPreflightEvidenceError(
-            "real-preflight evidence bytes are not canonical JSON"
-        )
+        raise MRLRealPreflightEvidenceError("real-preflight evidence bytes are not canonical JSON")
     return document
 
 
@@ -296,9 +284,7 @@ def _validate_isolation(payload: dict[str, object]) -> None:
         label="MRL-0803 payload",
     )
     if payload["contamination_disposition"] != "PASS":
-        raise MRLRealPreflightEvidenceError(
-            "contamination_disposition must be exactly PASS"
-        )
+        raise MRLRealPreflightEvidenceError("contamination_disposition must be exactly PASS")
     _require_true(
         payload["sealed_evaluation_excluded_from_training"],
         field="sealed_evaluation_excluded_from_training",
@@ -350,9 +336,7 @@ def _validate_training_authorization(payload: dict[str, object]) -> None:
         label="MRL-0805 payload",
     )
     if payload["authorization_disposition"] != "AUTHORIZED":
-        raise MRLRealPreflightEvidenceError(
-            "authorization_disposition must be exactly AUTHORIZED"
-        )
+        raise MRLRealPreflightEvidenceError("authorization_disposition must be exactly AUTHORIZED")
     _require_true(payload["real_training_authorized"], field="real_training_authorized")
     for field_name in (
         "authorization_artifact_sha256",
@@ -463,9 +447,7 @@ def _validate_sandbox(payload: dict[str, object]) -> None:
 
 def _require_keys(payload: dict[str, object], expected: set[str], *, label: str) -> None:
     if set(payload) != expected:
-        raise MRLRealPreflightEvidenceError(
-            f"{label} must contain the exact canonical key set"
-        )
+        raise MRLRealPreflightEvidenceError(f"{label} must contain the exact canonical key set")
 
 
 def _require_task_id(value: object) -> str:
@@ -484,17 +466,13 @@ def _require_text(value: object, *, field: str) -> str:
 
 def _require_sha256(value: object, *, field: str) -> str:
     if type(value) is not str or _SHA256.fullmatch(value) is None:
-        raise MRLRealPreflightEvidenceError(
-            f"{field} must be exactly 64 lowercase hex characters"
-        )
+        raise MRLRealPreflightEvidenceError(f"{field} must be exactly 64 lowercase hex characters")
     return value
 
 
 def _require_git_sha(value: object, *, field: str) -> str:
     if type(value) is not str or _GIT_SHA.fullmatch(value) is None:
-        raise MRLRealPreflightEvidenceError(
-            f"{field} must be exactly 40 lowercase hex characters"
-        )
+        raise MRLRealPreflightEvidenceError(f"{field} must be exactly 40 lowercase hex characters")
     return value
 
 
@@ -532,9 +510,7 @@ def _unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
 
 
 def _reject_nonstandard_json_constant(value: str) -> None:
-    raise MRLRealPreflightEvidenceError(
-        f"non-standard JSON constant is prohibited: {value}"
-    )
+    raise MRLRealPreflightEvidenceError(f"non-standard JSON constant is prohibited: {value}")
 
 
 __all__ = [

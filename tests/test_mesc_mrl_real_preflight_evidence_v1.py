@@ -332,9 +332,7 @@ def test_extra_payload_field_is_rejected() -> None:
         evidence.MRLRealPreflightEvidenceError,
         match="exact canonical key set",
     ):
-        evidence.parse_mrl_real_preflight_evidence(
-            _raw("MRL-0801", _PAYLOADS[0][1], payload)
-        )
+        evidence.parse_mrl_real_preflight_evidence(_raw("MRL-0801", _PAYLOADS[0][1], payload))
 
 
 def test_malformed_trust_registry_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
