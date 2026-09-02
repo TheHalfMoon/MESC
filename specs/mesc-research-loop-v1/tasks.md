@@ -447,7 +447,7 @@ All MRL repository-side gates below are mandatory. There is no optional MRL-6 by
 No task that reads, verifies, or accesses real model, corpus, runtime, GPU, sandbox, or
 training-authorization evidence may begin before MRL-0800 is `CLOSED_CANONICAL`.
 
-- [ ] **MRL-0800 — Enter real autonomous research preflight**
+- [x] **MRL-0800 — Enter real autonomous research preflight**
   - Depends on: MRL-0299, MRL-0399, MRL-0499, MRL-0599, MRL-0699, MRL-0799, and current
     training/runtime governance.
   - Acceptance: `MRL_FIXTURE_LOOP_PROVEN`, `MRL_EVALUATION_CONTROL_READY`,
