@@ -1,47 +1,59 @@
-# Release CI/CD — Future Automation Design
+# Release CI/CD
 
-- **Status:** Design only (no workflow implemented beyond the existing quality gate;
-  ADR-0010, Proposed)
-- **Date:** 2026-07-10
+- **Status:** Partial implementation; package build/GitHub Release workflow exists, external publication remains gated
+- **Original design date:** 2026-07-10
+- **Related:** ADR-0010 remains Proposed unless and until separately ratified
 
-**Current state (implemented):** `ci.yml` — quality gate on push/PR, Python 3.11/3.12
-matrix, `uv sync --frozen`, ruff + format + mypy strict + pytest with coverage;
-`codeql.yml` — code scanning. Everything below is future design, GitHub Actions only,
-built **when its first consumer release exists** — automation without an artifact to
-release is speculative implementation.
+## Current implemented state
 
-## Design principles
+The repository currently contains these release-related automation surfaces:
 
-1. **CI is the only publisher.** PyPI via trusted publishing (OIDC); HF via an org
-   token stored as a repo secret, used only in release workflows. No local uploads.
-2. **Human gate at the edge.** Distribution jobs run in a GitHub *environment*
-   (`release`) requiring operator approval — automation executes, the operator decides.
-3. **Validation before distribution, always.** A release job that cannot verify a
-   manifest does not upload.
+- `.github/workflows/ci.yml` — Python 3.11/3.12 quality gate with locked sync, Ruff, Ruff format, strict Mypy, Pytest with coverage, machine-state integrity checks where applicable, and `medscale check`.
+- `.github/workflows/codeql.yml` — code scanning.
+- `.github/workflows/release.yml` — SHA-pinned package-release workflow.
 
-## Planned workflows (in adoption order)
+`release.yml` currently provides:
 
-| Workflow | Trigger | Jobs | Build when |
-|---|---|---|---|
-| `release-package.yml` | Tag `v*` | Quality gate → build wheel/sdist → install-smoke-test → manifest validation → GitHub Release → [approval] → PyPI | First PyPI release (v0.2) |
-| `validate-docs.yml` | PR touching `docs/` | Internal-link check; ADR header lint (Status/Date/Deciders); archive-banner check for `docs/archive/` | With litdb v1 docs churn |
-| `validate-data.yml` | PR touching `data/` | R3 licence-file presence; manifest hash re-verification; screening-log replay (legality of the whole log) | End of T1 |
-| `release-dataset.yml` | Tag `*-v*` (dataset) | Dataset checklist automation: schema check → licence check → content hash → card lint → GitHub Release → [approval] → HF mirror | litdb v1 export |
-| `release-model.yml` | Tag `mesc-*` | Manifest + card lint (mandatory statements present, verbatim) → eval-artifact presence check → GitHub Release → [approval] → HF mirror | MESC-v0 (T6/T7) |
-| `validate-reproducibility.yml` | Manual / pre-release | Re-run headline scores from the replication package on a clean runner; byte-compare result artifacts | First paper submission |
+1. **Tag path (`v*`)** — quality gate → wheel/sdist build → artifact upload → GitHub Release creation.
+2. **PR-safe workflow qualification** when `release.yml` changes — build wheel/sdist, compute SHA-256 checksums, upload the qualification artifact, download it in a dependent job, and verify byte identity.
+3. Third-party Actions referenced by immutable commit SHA.
 
-## Validation jobs — what "lint" means here
+The existence of this workflow does **not** authorize creating a tag, publishing a release, or uploading to PyPI/TestPyPI/Hugging Face. It describes available automation only.
 
-- **Card lint:** mandatory sections present; the two verbatim statements
-  ([model_cards.md §2](model_cards.md)) byte-exact; version/tag/licence fields
-  consistent with the manifest.
-- **Licence validation:** every `data/` dir has `LICENSE.md`; SPDX ids from the
-  allowed set; composite datasets have field tables.
-- **Manifest validation:** required fields present; `git_sha` matches the tag;
-  dataset hashes resolve to known releases.
+## Design principles that remain binding
+
+1. **CI is the publication mechanism when publication is authorized.** Do not substitute ad-hoc local uploads for an approved CI path.
+2. **Human/governance gate at the distribution edge.** Publication remains an explicit decision even when automation exists.
+3. **Validate before distribution.** Artifact identity, package validity, release semantics, and required evidence must be established before external publication.
+4. **No runtime CD.** MedScale ships research artifacts/packages; this workflow does not deploy a clinical or hosted runtime.
+
+## Current vs future work
+
+| Capability | Current status | Boundary |
+|---|---|---|
+| Python quality gate | Implemented | CI |
+| Coverage floor | Implemented in test configuration/CI | Quality only |
+| Wheel + sdist build | Implemented | Tag path and PR-safe qualification |
+| Artifact upload/download byte-identity qualification | Implemented | PR-safe workflow self-qualification |
+| GitHub Release creation from `v*` tags | Implemented workflow path | Requires an authorized tag push; workflow existence is not release authority |
+| Clean installed-wheel CLI smoke (`medscale --version`) | Not yet established as a dedicated release-workflow gate | Phase 7 hardening candidate |
+| TestPyPI publication/dry-run path | Not implemented | Must use trusted publishing/OIDC and an explicitly gated environment if authorized |
+| PyPI publication | Not implemented | Separate publication authority required |
+| Hugging Face dataset/model publication | Not implemented by this package workflow | Separate artifact-specific governance required |
+| Docs/data/reproducibility specialized validation workflows | Directional / separate work | Add only with a concrete consumer and scoped authority |
+
+## Future publication design constraints
+
+A future TestPyPI/PyPI path should prefer GitHub trusted publishing (OIDC), least privilege, environment protection, and exact artifact reuse. A qualification job must never silently rebuild a different wheel for publication; the published artifact should be the exact artifact that passed qualification.
+
+Dataset/model publication requires its own contract, licence checks, manifest/card validation, provenance, and applicable scientific/governance evidence. Package release automation must not be treated as model or dataset release authority.
 
 ## Non-goals
 
-No CD to any runtime (MedScale ships artifacts, not services); no auto-merge; no
-scheduled retraining; no HF sync outside tagged releases. The pipeline's job is to make
-the *approved* path effortless and every other path impossible.
+- No automatic model training or retraining.
+- No deployment to clinical or product runtimes.
+- No hidden credentials or local publishing path.
+- No auto-merge.
+- No claim that an old tag ran workflow revisions added later.
+
+The pipeline's purpose is to make an **approved and qualified** path reproducible, not to turn repository automation into approval.
