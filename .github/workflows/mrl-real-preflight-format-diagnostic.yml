@@ -1,0 +1,27 @@
+name: MRL real-preflight Ruff format diagnostic
+
+on:
+  push:
+    branches:
+      - diag/mrl-real-preflight-ruff-format-404b8d
+
+permissions:
+  contents: read
+
+jobs:
+  format-diff:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact diagnostic head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+      - name: Sync locked environment
+        run: uv sync --frozen
+      - name: Emit Ruff formatter diff
+        run: >-
+          uv run ruff format --diff
+          src/medscale/mesc/_mrl_real_preflight_evidence_v1.py
+          tests/test_mesc_mrl_real_preflight_evidence_v1.py
