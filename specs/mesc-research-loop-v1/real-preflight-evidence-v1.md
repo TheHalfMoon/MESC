@@ -125,8 +125,11 @@ TRAINING_EXECUTED = FALSE
 ## Qualification transport boundary
 
 Ruff formatting was applied only to the two Python files in this package under an
-expected-head and exact-path guard. That formatter transport is not evidence, authority,
-or task closure; only fresh qualification on the final user-authored PR head may count.
+expected-head and exact-path guard. The subsequent `MRL-0805` trust-binding review repair
+was also applied under an expected-head guard, qualified with focused Ruff, Mypy, and pytest,
+and constrained to these same three package files. Those transport checks are not evidence,
+authority, or task closure; only fresh qualification on the final user-authored PR head may
+count.
 
 ## Authority boundary
 
