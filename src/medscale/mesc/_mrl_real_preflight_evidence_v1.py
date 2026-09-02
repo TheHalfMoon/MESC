@@ -18,6 +18,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Final, Literal, cast
 
+from medscale.mesc import _training_authorization_trust_v1 as authorization_trust
 from medscale.mesc._canonical_json_v1 import CanonicalContractError, canonical_json_bytes
 
 MRLRealPreflightTask = Literal[
@@ -167,6 +168,18 @@ def admit_mrl_real_preflight_evidence(
         raise MRLRealPreflightEvidenceError(
             "real-preflight evidence digest is not trusted by the canonical registry"
         )
+    if evidence.task_id == "MRL-0805":
+        document = _parse_canonical_object(raw)
+        payload = cast(dict[str, object], document["payload"])
+        try:
+            authorization_trust.validate_training_authorization_trust(
+                expected_registry_sha256=cast(str, payload["authorization_trust_registry_sha256"]),
+                artifact_sha256=cast(str, payload["authorization_artifact_sha256"]),
+            )
+        except authorization_trust.TrainingAuthorizationTrustError as exc:
+            raise MRLRealPreflightEvidenceError(
+                "MRL-0805 training authorization trust validation failed"
+            ) from exc
     return evidence
 
 

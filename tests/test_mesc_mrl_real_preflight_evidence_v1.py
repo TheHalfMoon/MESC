@@ -8,7 +8,9 @@ from collections.abc import Callable
 
 import pytest
 
+from _training_authorization_test_support import install_training_authorization_test_trust
 from medscale.mesc import _mrl_real_preflight_evidence_v1 as evidence
+from medscale.mesc import _training_authorization_trust_v1 as authorization_trust
 from medscale.mesc._canonical_json_v1 import canonical_json_bytes
 
 _SHA_A = "a" * 64
@@ -364,3 +366,71 @@ def test_trust_registry_identity_is_deterministic(monkeypatch: pytest.MonkeyPatc
         }
     )
     assert snapshot.registry_sha256 == hashlib.sha256(expected).hexdigest()
+
+
+def test_mrl_0805_rejects_untrusted_training_authorization_artifact(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payload = _training_authorization()
+    payload["authorization_trust_registry_sha256"] = (
+        authorization_trust.training_authorization_trust_registry_sha256()
+    )
+    raw = _raw("MRL-0805", _PAYLOADS[4][1], payload)
+    monkeypatch.setattr(
+        evidence,
+        "TRUSTED_MRL_REAL_PREFLIGHT_EVIDENCE_SHA256",
+        frozenset({hashlib.sha256(raw).hexdigest()}),
+    )
+
+    with pytest.raises(
+        evidence.MRLRealPreflightEvidenceError,
+        match="training authorization trust validation failed",
+    ):
+        evidence.admit_mrl_real_preflight_evidence(raw, expected_task_id="MRL-0805")
+
+
+def test_mrl_0805_rejects_stale_training_authorization_registry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    artifact = b"synthetic MRL-0805 authorization artifact"
+    install_training_authorization_test_trust(artifact)
+    current_registry = authorization_trust.training_authorization_trust_registry_sha256()
+    replacement = "0" if current_registry[0] != "0" else "1"
+    stale_registry = replacement + current_registry[1:]
+    payload = _training_authorization()
+    payload["authorization_artifact_sha256"] = hashlib.sha256(artifact).hexdigest()
+    payload["authorization_trust_registry_sha256"] = stale_registry
+    raw = _raw("MRL-0805", _PAYLOADS[4][1], payload)
+    monkeypatch.setattr(
+        evidence,
+        "TRUSTED_MRL_REAL_PREFLIGHT_EVIDENCE_SHA256",
+        frozenset({hashlib.sha256(raw).hexdigest()}),
+    )
+
+    with pytest.raises(
+        evidence.MRLRealPreflightEvidenceError,
+        match="training authorization trust validation failed",
+    ):
+        evidence.admit_mrl_real_preflight_evidence(raw, expected_task_id="MRL-0805")
+
+
+def test_mrl_0805_admits_only_when_both_trust_layers_match(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    artifact = b"synthetic MRL-0805 trusted authorization artifact"
+    install_training_authorization_test_trust(artifact)
+    payload = _training_authorization()
+    payload["authorization_artifact_sha256"] = hashlib.sha256(artifact).hexdigest()
+    payload["authorization_trust_registry_sha256"] = (
+        authorization_trust.training_authorization_trust_registry_sha256()
+    )
+    raw = _raw("MRL-0805", _PAYLOADS[4][1], payload)
+    digest = hashlib.sha256(raw).hexdigest()
+    monkeypatch.setattr(
+        evidence,
+        "TRUSTED_MRL_REAL_PREFLIGHT_EVIDENCE_SHA256",
+        frozenset({digest}),
+    )
+
+    admitted = evidence.admit_mrl_real_preflight_evidence(raw, expected_task_id="MRL-0805")
+    assert admitted.evidence_sha256 == digest

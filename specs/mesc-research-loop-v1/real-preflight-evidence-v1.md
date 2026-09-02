@@ -96,6 +96,11 @@ authorization receipt, exact authorization artifact, exact authorization subject
 exact current training-authorization trust-registry identity. This package does not add a
 training-authorization trust root.
 
+At `MRL-0805` admission time, the outer MRL evidence digest is necessary but not sufficient.
+The admission path also invokes the canonical training-authorization trust validator so the
+claimed authorization artifact must be trusted by the exact current registry snapshot.
+Parsing remains independent of that authority check.
+
 ## Current disposition
 
 ```text
