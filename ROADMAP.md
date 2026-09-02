@@ -49,7 +49,7 @@ Language policy remains [ADR-0013](docs/adr/0013-language-strategy.md) (Python-f
 
 ## Horizons
 
-- **Horizon 1 — Foundations (2026–2027) · committed.** The legacy T-phase goals above, now implemented and governed through more granular canonical specifications.
+- **Horizon 1 — Foundations (2026–2027) · committed.** Legacy T-phase goals are partially implemented through more granular canonical work; open objectives and evidence gates remain as shown above.
 - **Horizon 2 — Breadth & rigor (2027–2029) · directional.** More FHIR resources/profiles, terminology grounding under licence, and broader benchmark work.
 - **Horizon 3 — Platform (2029–2032) · directional.** Community-used open benchmark/toolkit and reproducibility infrastructure others can run.
 - **Horizon 4 — Ambition, gated on evidence (2032–2036) · aspirational.** Broader verified clinical reasoning and interoperability where evidence justifies it.
