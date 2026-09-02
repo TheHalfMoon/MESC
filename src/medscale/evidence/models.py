@@ -120,8 +120,8 @@ class EvidenceObject:
     evidence_level: str = ""
     extraction_method: ExtractionMethod = ExtractionMethod.HUMAN
     verification: VerificationState = VerificationState.UNVERIFIED
-    identity_version: int = 1
     schema_version: str = SCHEMA_VERSION
+    identity_version: int = 1
 
     def __post_init__(self) -> None:
         if not self.claim.strip():
