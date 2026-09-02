@@ -6,6 +6,7 @@
 - **Deciders:** Founder
 - **Amends:** [ADR-0009](0009-evidence-model.md) (identity-field list)
 - **Related:** [ADR-0017](0017-identifier-stability-contract.md) (identifier stability),
+  [ADR-0020](0020-public-api-stability.md) (public/data-contract compatibility),
   [ADR-0030](0030-dataset-versioning-and-training-artifact-contract.md) (frozen Dataset v1
   schema), [stress test F2](../architecture/reviews/2026-07-10-stress-test.md)
 
@@ -18,10 +19,12 @@ the id of **every** evidence object simultaneously — at millions of objects, e
 knowledge-graph edge, benchmark citation, and cross-corpus reference breaks in one
 release. That is the ADR-0017 orphaning hazard, ecosystem-wide.
 
-The window to change the identity derivation is **now**: zero evidence objects exist as
-committed data, so the amendment requires no evidence-object data migration. Dataset v1,
-however, is already a public-frozen artifact schema under ADR-0030 and must not be silently
-expanded by this amendment.
+The window to change the canonical repository identity derivation is **now**: zero evidence
+objects exist as committed repository data, so the canonical tree needs no evidence-object
+data migration. `EvidenceObject` and identifier derivation are nevertheless public/data
+contracts under ADR-0020, so local artifacts created from an earlier release must not be
+silently reminted when read. Dataset v1 is also public-frozen under ADR-0030 and must not
+be silently expanded by this amendment.
 
 ## Decision
 
@@ -35,25 +38,41 @@ expanded by this amendment.
    conservative intent exactly where it matters, and only there.
 3. `schema_version` remains on the object (container format marker, per the F1
    format-versioning convention) — it simply no longer participates in identity.
-4. ADR-0017's contract extends unchanged: any `identity_version` bump is a breaking
-   change requiring an ADR + lineage-based migration.
+4. ADR-0017's contract extends unchanged: any future `identity_version` bump is a
+   breaking change requiring an ADR + lineage-based migration.
 5. **Dataset v1 and evidence format 1 remain unchanged on disk.** The current writer
    supports only `identity_version == 1` and does not serialize an additional
    `identity_version` member into format-1 artifacts. A non-v1 identity version must fail
    closed at the persistence boundary until a separately governed container/dataset
    version admits and persists that identity version.
+6. **Same semantic identity may not hide persisted-content disagreement.** If two objects
+   share an `evidence_id` but serialize to different format-1 payloads (for example,
+   different `schema_version`, verification state, timestamps, or other non-identity
+   fields), persistence fails closed rather than selecting the first input. Exact duplicate
+   payloads still deduplicate. This preserves order-independent deterministic bytes.
+7. **Recognized pre-ADR-0018 identifiers require explicit migration.** The ordinary reader
+   detects the historical schema-coupled identifier formula and refuses to silently return
+   a reminted id. `migrate_legacy_evidence_file(source, destination)` writes a distinct new
+   artifact, never edits the source, and returns the exact old→new id mapping needed to
+   update downstream references explicitly.
+8. **Preserve the public constructor slot.** `schema_version` retains its historical
+   positional argument position; `identity_version` is appended after it. The public API
+   change is recorded in `CHANGELOG.md` as required by ADR-0020.
 
 ## Consequences
 
 **Positive:** schema evolution (the *common* case: new optional fields) no longer changes
 semantic evidence identity; identity discontinuity is reserved for genuine semantic
 change (the *rare* case), made explicit by `identity_version`. Existing Dataset v1 and
-format-1 artifact schemas are not silently mutated.
+format-1 artifact schemas are not silently mutated. Legacy local artifacts have an
+explicit, auditable migration path, and same-id conflicts cannot make output depend on
+input order.
 
 **Negative:** two version concepts must be understood. While Dataset v1 remains current,
 non-default identity versions cannot be persisted; that is deliberate fail-closed behavior,
-not an implicit schema upgrade. A future identity-version bump must coordinate its new
-container/dataset format under ADR-0030.
+not an implicit schema upgrade. Previously created local evidence files whose stored ids
+match the historical formula require an explicit migration step and downstream reference
+remapping before normal loading.
 
 ## Alternatives considered
 
@@ -65,6 +84,12 @@ container/dataset format under ADR-0030.
 - **Add `identity_version` to Dataset v1 immediately.** Rejected: ADR-0030 freezes that
   public schema and requires a new dataset version/ADR for schema changes. ADR-0018 does
   not bypass that later governance boundary.
+- **Silently recompute historical ids on load.** Rejected: downstream references would be
+  stranded without an auditable mapping and the caller could not distinguish migration
+  from ordinary deserialization.
+- **Keep first-occurrence-wins deduplication.** Rejected: once non-identity persisted
+  fields may differ, input order would select bytes and violate the deterministic store
+  contract.
 
 ## Compliance
 
@@ -76,12 +101,18 @@ Acceptance requires a bounded mechanical implementation plus regression coverage
   `evidence_id`;
 - changing only `schema_version` preserves `evidence_id`;
 - changing `identity_version` re-mints `evidence_id` in memory;
-- legacy format-1 evidence artifacts load with `identity_version = 1`;
+- the historical positional `schema_version` constructor slot remains stable;
+- legacy format-1 evidence artifacts semantically default to `identity_version = 1`;
+- recognized historical ids fail closed under ordinary loading and migrate only through
+  the explicit distinct-destination migration tool;
+- the migration tool returns deterministic old→new identity mappings;
 - the format-1 writer emits no new field and rejects `identity_version != 1`;
-- the current reader rejects a non-v1 identity version presented to the format-1
-  persistence layer;
-- Dataset v1 schema is unchanged.
+- same-id/non-identical persisted payloads fail closed instead of deduplicating by input
+  order;
+- exact duplicate payloads remain deterministically deduplicated;
+- Dataset v1 schema is unchanged;
+- the public change is recorded under `CHANGELOG.md` `[Unreleased]`.
 
-No committed evidence-object data migration is required at this decision point. This ADR
-grants no model, corpus, runtime, training, promotion, deployment, release, or clinical
-authority.
+No committed canonical evidence-object data migration is required at this decision point.
+This ADR grants no model, corpus, runtime, training, promotion, deployment, release, or
+clinical authority.
