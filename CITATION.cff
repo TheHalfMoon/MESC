@@ -9,8 +9,8 @@ type: software
 authors:
   - family-names: Alshehri
     given-names: Abdulaziz
-repository-code: "https://github.com/IamShehri/MedScale"
-url: "https://github.com/IamShehri/MedScale"
+repository-code: "https://github.com/TheHalfMoon/MESC"
+url: "https://github.com/TheHalfMoon/MESC"
 license: Apache-2.0
 version: 0.2.0
 date-released: "2026-07-13"

@@ -27,7 +27,7 @@ A change that violates any invariant will not be merged, regardless of quality.
 MedScale uses [uv](https://docs.astral.sh/uv/) and Python 3.11.
 
 ```bash
-git clone https://github.com/IamShehri/MedScale
+git clone https://github.com/TheHalfMoon/MESC MedScale
 cd MedScale
 uv sync
 uv run pre-commit install
