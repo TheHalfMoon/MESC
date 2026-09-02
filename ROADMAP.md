@@ -24,7 +24,7 @@ The T0–T7 vocabulary predates the larger governed MRL implementation now prese
 
 | Phase | Title | Current repository truth | Depends on |
 |---|---|---|---|
-| **T0** | Repository & engineering foundation | ✅ foundation complete | — |
+| **T0** | Repository & engineering foundation | ✅ complete | — |
 | **T1** | Literature database & evidence foundation | 🟡 infrastructure implemented; Mission Zero screening/snapshot completion remains evidence-governed and is not asserted here | T0 |
 | **T2** | `fhirkit`: validation + grammar | 🟡 validation boundary implemented; grammar-constrained generation objective remains open | T0, local validator/runtime requirements where applicable |
 | **T3** | MedScale-Bench | 🟡 benchmark contracts, engine, scoring, artifacts, and replay surfaces implemented; full research-phase completion is not asserted here | T2 research gates |
