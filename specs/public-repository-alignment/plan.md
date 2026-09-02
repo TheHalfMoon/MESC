@@ -2,7 +2,7 @@
 
 ## Current verified baseline
 
-- ALIGN-19 authorization base: `1f27f4128229f1c3c973355c5a14bcac2cec0dfe` (PR #341 / ALIGN-18 merge).
+- ALIGN-20 authorization base: `a5df6403e9087f1c63f95eccbad9d0e2b61a96e1` (PR #343 / ALIGN-19 merge).
 - Canonical repository: `TheHalfMoon/MESC` on `main`.
 - Package version: `0.2.0`.
 - Existing release tag: `v0.2.0` → commit `d2e651a55c92f2218aca49acaa5b7bd18a75f096`.
@@ -40,35 +40,36 @@ Completed through ALIGN-16 and ALIGN-17, including ADR-0033 history. Those docum
 
 ## Phase 5 — Public documentation truth sync
 
-- Status: **in progress under ALIGN-19 / issue #342**.
-- Authorization base: `1f27f4128229f1c3c973355c5a14bcac2cec0dfe`.
-- Scope: documentation/status reconciliation only.
+- Status: **complete through ALIGN-19**.
+- Issue: #342.
+- PR: #343.
+- Merge: `a5df6403e9087f1c63f95eccbad9d0e2b61a96e1`.
+- Result: README/ROADMAP/release/execution/ecosystem/alignment-control status reconciled without creating model, training, publication, deployment, or clinical authority.
 
-### Audit result
-
-`CHANGELOG.md` and `CITATION.cff` were inspected and require no Phase 5 mutation. The exact implementation allowlist is therefore limited to the nine files named in issue #342.
-
-### Required Phase 5 outcomes
-
-1. README status distinguishes implemented capability from research-phase completion and removes any present-tense claim that FHIR grammar-constrained generation is already a release capability.
-2. ROADMAP distinguishes legacy T-phase objectives from current granular governance and records `fhirkit` validation / benchmark surfaces as implemented-but-not-equivalent-to-phase-complete.
-3. RELEASES records the existing v0.2.0 tag truth and no longer claims release workflow/coverage are absent.
-4. Execution/release/ecosystem docs reflect the actual current repository surfaces without manufacturing execution or publication authority.
-5. This spec/plan/task ledger records ALIGN-18 complete and ALIGN-19 as the only active alignment ticket.
-6. Exact-head CI, CodeQL, substantive independent semantic review, and review-thread reconciliation pass before guarded merge.
-
-Phase 5 is not complete until ALIGN-19 merges and post-merge truth is verified.
+`CHANGELOG.md` and `CITATION.cff` were inspected during Phase 5 and intentionally excluded from its implementation allowlist because no Phase 5 mutation was required.
 
 ## Phase 6 — Executable golden path
 
-- Status: **not authorized / not started**.
-- Opens only after Phase 5 canonical completion under a new ticket.
-- Intended bounded goal: deterministic offline fixture-only smoke path proving a truthful end-to-end research artifact flow without external data, model download, GPU, credentials, or fabricated result evidence.
-- Exact command, files, expected output, and acceptance evidence must be defined by the successor ticket before implementation.
+- Status: **in progress under ALIGN-20 / issue #344**.
+- Authorization base: `a5df6403e9087f1c63f95eccbad9d0e2b61a96e1`.
+- Exact implementation allowlist: the eight files recorded in #344.
+
+### Required Phase 6 outcomes
+
+1. Add `medscale mesc-fixture-smoke` as an additive research command without changing existing CLI-stable command semantics.
+2. Reuse the existing canonical MRL `complete_fixture_loop()` contracts instead of introducing a parallel evaluator/receipt/decision engine.
+3. Run one fixed in-memory non-perfect fixture candidate that deterministically produces `REJECT`.
+4. Emit canonical JSON content identities for the proposal, observation, receipt, decision, and loop result with explicit fixture-only/non-evidence and false authority flags.
+5. Prove byte-identical repeated stdout and no filesystem writes in focused tests.
+6. Keep the path offline: no external data, network, model/tokenizer download, inference, GPU/provider, credentials, training, campaign-state mutation, promotion, release, deployment, or clinical action.
+7. Document that this path qualifies repository plumbing only and is not research evidence or real-experiment readiness.
+8. Require exact-head Ruff/Mypy/full CI/CodeQL, substantive independent semantic review, diff-check verification, and resolved review threads before guarded merge.
+
+Phase 6 is not complete until ALIGN-20 merges and post-merge truth is verified.
 
 ## Phase 7 — CI, packaging, contributor hardening
 
-- Status: **partially implemented; remaining work not yet authorized by ALIGN-19**.
+- Status: **partially implemented; remaining work not yet authorized by ALIGN-20**.
 
 | Planned item | Current audit status |
 |---|---|
@@ -91,7 +92,7 @@ A future Phase 7 ticket must target only the remaining verified gaps; it must no
 
 ## Release boundary
 
-Documentation alignment, release automation, package build capability, an existing historical tag, and passing CI are distinct facts. None of them alone authorizes a new tag, external publication, model promotion, training run, dataset publication, or deployment.
+Documentation alignment, release automation, package build capability, an existing historical tag, fixture-only plumbing qualification, and passing CI are distinct facts. None of them alone authorizes a new tag, external publication, model promotion, training run, dataset publication, or deployment.
 
 ## Deliverables
 
