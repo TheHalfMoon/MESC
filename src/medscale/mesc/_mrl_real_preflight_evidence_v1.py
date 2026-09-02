@@ -538,11 +538,11 @@ def _reject_nonstandard_json_constant(value: str) -> None:
 
 
 __all__ = [
+    "TRUSTED_MRL_REAL_PREFLIGHT_EVIDENCE_SHA256",
     "MRLRealPreflightEvidence",
     "MRLRealPreflightEvidenceError",
     "MRLRealPreflightTask",
     "MRLRealPreflightTrustSnapshot",
-    "TRUSTED_MRL_REAL_PREFLIGHT_EVIDENCE_SHA256",
     "admit_mrl_real_preflight_evidence",
     "mrl_real_preflight_trust_snapshot",
     "parse_mrl_real_preflight_evidence",
