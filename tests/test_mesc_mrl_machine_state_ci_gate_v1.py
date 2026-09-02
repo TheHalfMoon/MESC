@@ -42,6 +42,30 @@ def _git_text(repository: Path, *arguments: str) -> str:
     return completed.stdout.strip()
 
 
+def _normalize_mrl_0800_fixture_baseline(repository: Path) -> None:
+    tasks = repository / _TASKS_PATH
+    text = tasks.read_text(encoding="utf-8")
+    unchecked = "- [ ] **MRL-0800 — Enter real autonomous research preflight**"
+    checked = "- [x] **MRL-0800 — Enter real autonomous research preflight**"
+    unchecked_count = text.count(unchecked)
+    checked_count = text.count(checked)
+
+    if unchecked_count == 1 and checked_count == 0:
+        return
+
+    assert unchecked_count == 0
+    assert checked_count == 1
+    tasks.write_text(text.replace(checked, unchecked), encoding="utf-8")
+    _run_git(repository, "add", _TASKS_PATH.as_posix())
+    _run_git(
+        repository,
+        "commit",
+        "--quiet",
+        "-m",
+        "test: normalize MRL-0800 fixture baseline",
+    )
+
+
 def _clone_repository(tmp_path: Path) -> Path:
     clone = tmp_path / "repository"
     subprocess.run(
@@ -58,6 +82,7 @@ def _clone_repository(tmp_path: Path) -> Path:
     )
     _run_git(clone, "config", "user.name", "MRL CI Fixture")
     _run_git(clone, "config", "user.email", "mrl-ci-fixture@example.invalid")
+    _normalize_mrl_0800_fixture_baseline(clone)
     _run_git(
         clone,
         "update-ref",
