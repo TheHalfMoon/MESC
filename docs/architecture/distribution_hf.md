@@ -12,7 +12,7 @@
 | HF user | `MedScale` |
 | HF organization | `MedScaleAI` |
 | Space (placeholder) | https://huggingface.co/spaces/MedScale/MedScale |
-| GitHub (source of truth) | https://github.com/IamShehri/MedScale |
+| GitHub (source of truth) | https://github.com/TheHalfMoon/MESC |
 
 ## Role
 

@@ -18,7 +18,7 @@ How to work in the MedScale repository.
 ## Setup
 
 ```bash
-git clone https://github.com/IamShehri/MedScale
+git clone https://github.com/TheHalfMoon/MESC MedScale
 cd MedScale
 uv sync
 uv run pre-commit install

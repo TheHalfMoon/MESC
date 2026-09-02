@@ -10,7 +10,7 @@ software security and data-boundary integrity seriously.
 
 Please report suspected vulnerabilities **privately**, not via public issues:
 
-- Use GitHub's [private vulnerability reporting](https://github.com/IamShehri/MedScale/security/advisories/new), or
+- Use GitHub's [private vulnerability reporting](https://github.com/TheHalfMoon/MESC/security/advisories/new), or
 - Email **alshehriofficial@gmail.com** with the details and reproduction steps.
 
 We aim to acknowledge reports within **7 days** and to provide a remediation timeline

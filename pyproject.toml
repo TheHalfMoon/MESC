@@ -36,10 +36,10 @@ dependencies = []
 medscale = "medscale.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/IamShehri/MedScale"
-Repository = "https://github.com/IamShehri/MedScale"
-Documentation = "https://github.com/IamShehri/MedScale/tree/main/docs"
-Issues = "https://github.com/IamShehri/MedScale/issues"
+Homepage = "https://github.com/TheHalfMoon/MESC"
+Repository = "https://github.com/TheHalfMoon/MESC"
+Documentation = "https://github.com/TheHalfMoon/MESC/tree/main/docs"
+Issues = "https://github.com/TheHalfMoon/MESC/issues"
 
 [project.optional-dependencies]
 backends-transformers = [

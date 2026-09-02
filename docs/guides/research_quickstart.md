@@ -6,7 +6,7 @@ code reading required.*
 ## 1. Install (once)
 
 ```bash
-git clone https://github.com/IamShehri/MedScale
+git clone https://github.com/TheHalfMoon/MESC MedScale
 cd MedScale
 uv sync          # Python 3.11+, no runtime dependencies
 ```

@@ -7,7 +7,7 @@
 
 *Verifiable clinical AI and verified evidence — FHIR-native · grammar-constrained · validator-grounded · deterministic · reproducible*
 
-[![CI](https://github.com/IamShehri/MedScale/actions/workflows/ci.yml/badge.svg)](https://github.com/IamShehri/MedScale/actions/workflows/ci.yml)
+[![CI](https://github.com/TheHalfMoon/MESC/actions/workflows/ci.yml/badge.svg)](https://github.com/TheHalfMoon/MESC/actions/workflows/ci.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](pyproject.toml)
 [![Status: Foundation](https://img.shields.io/badge/status-foundation%20(T0)-orange.svg)](docs/vision/MEDSCALE_STRATEGIC_BLUEPRINT_V1.md)
@@ -90,7 +90,7 @@ Start with the [Documentation Index](docs/README.md) and the
 MedScale uses [uv](https://docs.astral.sh/uv/) and Python 3.11.
 
 ```bash
-git clone https://github.com/IamShehri/MedScale
+git clone https://github.com/TheHalfMoon/MESC MedScale
 cd MedScale
 uv sync                        # create .venv and install dev tooling
 uv run pytest                  # run the test suite

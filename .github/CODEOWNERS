@@ -7,21 +7,21 @@
 # not retrofitted later.
 
 # Default owner for everything.
-*                       @IamShehri
+*                       @TheHalfMoon
 
 # Governance, architecture decisions, and scientific policy.
 # Changes here alter how MedScale is run or what it claims — maintainer review always.
-/docs/governance/       @IamShehri
-/docs/adr/              @IamShehri
-/docs/research/         @IamShehri
-/docs/vision/           @IamShehri
+/docs/governance/       @TheHalfMoon
+/docs/adr/              @TheHalfMoon
+/docs/research/         @TheHalfMoon
+/docs/vision/           @TheHalfMoon
 
 # Data provenance and licensing (Rule R3). Licence-sensitive; never rubber-stamped.
-/data/                  @IamShehri
+/data/                  @TheHalfMoon
 
 # Public API surface and reproducibility spine — stability-critical.
-/src/medscale/          @IamShehri
+/src/medscale/          @TheHalfMoon
 
 # Packaging, release, and CI/CD surface.
-/pyproject.toml         @IamShehri
-/.github/               @IamShehri
+/pyproject.toml         @TheHalfMoon
+/.github/               @TheHalfMoon
