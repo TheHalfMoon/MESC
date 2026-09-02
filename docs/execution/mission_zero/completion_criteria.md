@@ -6,7 +6,9 @@ minimum) belong to the founder; finishing below the minimum is not completion.*
 
 ## Screening
 
-- [ ] All **16 uncertain-duplicate groups** resolved (`screen status` shows 0 unresolved).
+- [x] All **16 uncertain-duplicate groups** resolved (`screen status` shows 0 unresolved;
+  repository evidence: Session 002 / `6c678b4`, with 16 canonical rows in
+  `data/litdb/screening/uncertain_resolutions.jsonl`).
 - [ ] **Q2 (148 records) and Q6 (143 records) fully screened** — 0 pending in both;
   UNCERTAINs from the first pass resolved by a second pass (final UNCERTAIN count
   for these queries: 0).
