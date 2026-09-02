@@ -1,4 +1,4 @@
-name: MRL real-preflight Ruff format diagnostic
+name: MRL real-preflight trust-binding repair
 
 on:
   push:
@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 jobs:
-  format-and-push:
+  repair-and-push:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout target PR branch
@@ -21,37 +21,96 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "404b8d7d619e0f51df8d3e9145859a71a0f11be7"
+          test "$(git rev-parse HEAD)" = "7f9821fd950eb97d9b34f674cb143a13db1de97d"
+      - name: Apply exact review repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          module = Path("src/medscale/mesc/_mrl_real_preflight_evidence_v1.py")
+          text = module.read_text(encoding="utf-8")
+          old_import = "from medscale.mesc._canonical_json_v1 import CanonicalContractError, canonical_json_bytes\n"
+          new_import = (
+              "from medscale.mesc import _training_authorization_trust_v1 as authorization_trust\n"
+              + old_import
+          )
+          if text.count(old_import) != 1:
+              raise SystemExit("module import anchor mismatch")
+          text = text.replace(old_import, new_import, 1)
+
+          old_admit = '''    snapshot = mrl_real_preflight_trust_snapshot()\n    if not snapshot.admits(evidence.evidence_sha256):\n        raise MRLRealPreflightEvidenceError(\n            "real-preflight evidence digest is not trusted by the canonical registry"\n        )\n    return evidence\n'''
+          new_admit = '''    snapshot = mrl_real_preflight_trust_snapshot()\n    if not snapshot.admits(evidence.evidence_sha256):\n        raise MRLRealPreflightEvidenceError(\n            "real-preflight evidence digest is not trusted by the canonical registry"\n        )\n    if evidence.task_id == "MRL-0805":\n        document = _parse_canonical_object(raw)\n        payload = cast(dict[str, object], document["payload"])\n        try:\n            authorization_trust.validate_training_authorization_trust(\n                expected_registry_sha256=cast(\n                    str, payload["authorization_trust_registry_sha256"]\n                ),\n                artifact_sha256=cast(str, payload["authorization_artifact_sha256"]),\n            )\n        except authorization_trust.TrainingAuthorizationTrustError as exc:\n            raise MRLRealPreflightEvidenceError(\n                "MRL-0805 training authorization trust validation failed"\n            ) from exc\n    return evidence\n'''
+          if text.count(old_admit) != 1:
+              raise SystemExit("admission anchor mismatch")
+          module.write_text(text.replace(old_admit, new_admit, 1), encoding="utf-8")
+
+          tests = Path("tests/test_mesc_mrl_real_preflight_evidence_v1.py")
+          text = tests.read_text(encoding="utf-8")
+          old_test_import = "import pytest\n\nfrom medscale.mesc import _mrl_real_preflight_evidence_v1 as evidence\n"
+          new_test_import = '''import pytest\n\nfrom _training_authorization_test_support import install_training_authorization_test_trust\nfrom medscale.mesc import _mrl_real_preflight_evidence_v1 as evidence\nfrom medscale.mesc import _training_authorization_trust_v1 as authorization_trust\n'''
+          if text.count(old_test_import) != 1:
+              raise SystemExit("test import anchor mismatch")
+          text = text.replace(old_test_import, new_test_import, 1)
+
+          append = '''\n\ndef test_mrl_0805_rejects_untrusted_training_authorization_artifact(\n    monkeypatch: pytest.MonkeyPatch,\n) -> None:\n    payload = _training_authorization()\n    payload["authorization_trust_registry_sha256"] = (\n        authorization_trust.training_authorization_trust_registry_sha256()\n    )\n    raw = _raw("MRL-0805", _PAYLOADS[4][1], payload)\n    monkeypatch.setattr(\n        evidence,\n        "TRUSTED_MRL_REAL_PREFLIGHT_EVIDENCE_SHA256",\n        frozenset({hashlib.sha256(raw).hexdigest()}),\n    )\n\n    with pytest.raises(\n        evidence.MRLRealPreflightEvidenceError,\n        match="training authorization trust validation failed",\n    ):\n        evidence.admit_mrl_real_preflight_evidence(raw, expected_task_id="MRL-0805")\n\n\ndef test_mrl_0805_rejects_stale_training_authorization_registry(\n    monkeypatch: pytest.MonkeyPatch,\n) -> None:\n    artifact = b"synthetic MRL-0805 authorization artifact"\n    install_training_authorization_test_trust(artifact)\n    current_registry = authorization_trust.training_authorization_trust_registry_sha256()\n    replacement = "0" if current_registry[0] != "0" else "1"\n    stale_registry = replacement + current_registry[1:]\n    payload = _training_authorization()\n    payload["authorization_artifact_sha256"] = hashlib.sha256(artifact).hexdigest()\n    payload["authorization_trust_registry_sha256"] = stale_registry\n    raw = _raw("MRL-0805", _PAYLOADS[4][1], payload)\n    monkeypatch.setattr(\n        evidence,\n        "TRUSTED_MRL_REAL_PREFLIGHT_EVIDENCE_SHA256",\n        frozenset({hashlib.sha256(raw).hexdigest()}),\n    )\n\n    with pytest.raises(\n        evidence.MRLRealPreflightEvidenceError,\n        match="training authorization trust validation failed",\n    ):\n        evidence.admit_mrl_real_preflight_evidence(raw, expected_task_id="MRL-0805")\n\n\ndef test_mrl_0805_admits_only_when_both_trust_layers_match(\n    monkeypatch: pytest.MonkeyPatch,\n) -> None:\n    artifact = b"synthetic MRL-0805 trusted authorization artifact"\n    install_training_authorization_test_trust(artifact)\n    payload = _training_authorization()\n    payload["authorization_artifact_sha256"] = hashlib.sha256(artifact).hexdigest()\n    payload["authorization_trust_registry_sha256"] = (\n        authorization_trust.training_authorization_trust_registry_sha256()\n    )\n    raw = _raw("MRL-0805", _PAYLOADS[4][1], payload)\n    digest = hashlib.sha256(raw).hexdigest()\n    monkeypatch.setattr(\n        evidence,\n        "TRUSTED_MRL_REAL_PREFLIGHT_EVIDENCE_SHA256",\n        frozenset({digest}),\n    )\n\n    admitted = evidence.admit_mrl_real_preflight_evidence(\n        raw, expected_task_id="MRL-0805"\n    )\n    assert admitted.evidence_sha256 == digest\n'''
+          if "def test_mrl_0805_rejects_untrusted_training_authorization_artifact(" in text:
+              raise SystemExit("review tests already present")
+          tests.write_text(text.rstrip() + append + "\n", encoding="utf-8")
+
+          docs = Path("specs/mesc-research-loop-v1/real-preflight-evidence-v1.md")
+          text = docs.read_text(encoding="utf-8")
+          anchor = '''authorization receipt, exact authorization artifact, exact authorization subject, and the\nexact current training-authorization trust-registry identity. This package does not add a\ntraining-authorization trust root.\n'''
+          replacement = anchor + '''\nAt `MRL-0805` admission time, the outer MRL evidence digest is necessary but not sufficient.\nThe admission path also invokes the canonical training-authorization trust validator so the\nclaimed authorization artifact must be trusted by the exact current registry snapshot.\nParsing remains independent of that authority check.\n'''
+          if text.count(anchor) != 1:
+              raise SystemExit("documentation anchor mismatch")
+          docs.write_text(text.replace(anchor, replacement, 1), encoding="utf-8")
+          PY
       - name: Install uv
         uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
       - name: Sync locked environment
         run: uv sync --frozen
-      - name: Apply exact Ruff formatter
-        run: >-
-          uv run ruff format
-          src/medscale/mesc/_mrl_real_preflight_evidence_v1.py
-          tests/test_mesc_mrl_real_preflight_evidence_v1.py
-      - name: Guard formatter scope
+      - name: Normalize and qualify repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run ruff check --fix \
+            src/medscale/mesc/_mrl_real_preflight_evidence_v1.py \
+            tests/test_mesc_mrl_real_preflight_evidence_v1.py
+          uv run ruff format \
+            src/medscale/mesc/_mrl_real_preflight_evidence_v1.py \
+            tests/test_mesc_mrl_real_preflight_evidence_v1.py
+          uv run ruff check \
+            src/medscale/mesc/_mrl_real_preflight_evidence_v1.py \
+            tests/test_mesc_mrl_real_preflight_evidence_v1.py
+          uv run ruff format --check \
+            src/medscale/mesc/_mrl_real_preflight_evidence_v1.py \
+            tests/test_mesc_mrl_real_preflight_evidence_v1.py
+          uv run mypy \
+            src/medscale/mesc/_mrl_real_preflight_evidence_v1.py \
+            tests/test_mesc_mrl_real_preflight_evidence_v1.py
+          uv run pytest -q tests/test_mesc_mrl_real_preflight_evidence_v1.py
+      - name: Guard repair scope
         shell: bash
         run: |
           set -euo pipefail
           actual="$(git diff --name-only | sort)"
           expected="$(printf '%s\n' \
+            specs/mesc-research-loop-v1/real-preflight-evidence-v1.md \
             src/medscale/mesc/_mrl_real_preflight_evidence_v1.py \
             tests/test_mesc_mrl_real_preflight_evidence_v1.py | sort)"
           test "$actual" = "$expected"
           git diff --check
-          uv run ruff format --check \
-            src/medscale/mesc/_mrl_real_preflight_evidence_v1.py \
-            tests/test_mesc_mrl_real_preflight_evidence_v1.py
-      - name: Commit and push formatter-only result
+      - name: Commit and push exact repair
         shell: bash
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add \
+            specs/mesc-research-loop-v1/real-preflight-evidence-v1.md \
             src/medscale/mesc/_mrl_real_preflight_evidence_v1.py \
             tests/test_mesc_mrl_real_preflight_evidence_v1.py
-          git commit -m "style(mrl): apply Ruff formatting"
+          git commit -m "fix(mrl): bind MRL-0805 to authorization trust"
           git push origin HEAD:refs/heads/feat/mrl-real-preflight-evidence-admission-262ee5
