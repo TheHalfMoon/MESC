@@ -1,51 +1,41 @@
 # Execution
 
-- **Status:** Active (v0.1.0 release; T0 complete, T1 in progress)
+- **Status:** Active repository execution index (`medscale` package version v0.2.0)
 
-This directory holds MedScale's execution and phase-planning documents — the concrete
-tickets and specifications that translate the strategic foundation into work. T0 is
-complete; T1 has produced the literature database, screening workflow, and AI triage
-module, and new execution artifacts are authored as phases proceed.
+This directory contains MedScale execution and phase-planning documents. It is not an authority source by itself: eligibility and completion come from canonical specifications, governance, exact gate evidence, and accepted decisions on canonical `main`.
 
-## Intended contents (to be authored when each phase begins; not yet present)
+The original T0–T7 phase vocabulary remains useful as historical planning context, but the repository now contains more granular governed MESC/MRL work. Module existence must not be read as proof that a legacy research phase is complete.
 
-| Document | Phase | Purpose | Status |
-|---|---|---|---|
-| [`search_strategy.md`](search_strategy.md) | T1 | Per-source queries, PRISMA workflow, and reproducible ingestion design | ✅ Authored (v1) |
-| `benchmark_spec.md` | T3 | Task and metric definitions for MedScale-Bench | Missing — to author |
-| `constrained_decoding_hypothesis.md` | T2 | The form-vs-content experiment design (referenced by the vision) | Missing — to author |
-| Phase tickets (T0–T7) | all | One-ticket-per-session execution records | Missing — to author |
+## Current phase map
 
-## Phase map (see the Strategic Blueprint §6–§8 and §17)
+- **T0 — Repository foundation:** foundation complete.
+- **T1 — Literature database & evidence:** implementation surfaces exist across `medscale.litdb`, evidence, screening/review, integrity, and collaboration. Human Mission Zero screening/snapshot completion remains separately evidence-governed.
+- **T2 — FHIR toolkit:** `medscale.fhirkit` validation/report/storage surfaces exist. Grammar-constrained generation remains open and is not claimed as complete here.
+- **T3 — MedScale-Bench:** deterministic benchmark contracts, engine, scoring, artifacts, and replay surfaces exist. Full research-phase completion is not inferred from those surfaces.
+- **T4–T7 — Model/training/evaluation work:** governed implementation infrastructure exists in the repository, but execution, promotion, training, evaluation conclusions, and publication remain subject to their own canonical gates.
 
-- **T0** — Repository foundation *(✅ complete — ADR-0003/0004)*
-- **T1** — Literature database & evidence foundation *(🟡 in progress — `medscale.litdb`, ADR-0009)*
+For current task ordering, consult the applicable canonical specification/task ledger rather than this summary.
+
+## Legacy T1 search and screening artifacts
+
+| Document | Purpose | Status |
+|---|---|---|
+| [`search_strategy.md`](search_strategy.md) | Per-source queries, PRISMA workflow, and reproducible ingestion design | Authored |
+| `benchmark_spec.md` | Legacy proposed T3 task/metric document | Not the current benchmark authority; use canonical benchmark/MESC specs |
+| `constrained_decoding_hypothesis.md` | Legacy proposed T2 form-vs-content experiment design | Not present; grammar work remains separately gated |
 
 ### Screening the corpus (`medscale screen`)
 
-Human title/abstract screening turns the deduplicated corpus into a validated evidence
-foundation. No model is involved — decisions are the operator's, recorded in an
-append-only audit trail (`data/litdb/screening/review_log.jsonl`).
+Human title/abstract screening turns the deduplicated corpus into evidence records under an append-only audit trail. No model becomes the decision-maker of record.
 
-```
-uv run medscale screen status                    # PRISMA counts (reproducible from the log)
-uv run medscale screen duplicates --reviewer <you>  # FIRST: resolve uncertain duplicate groups
-uv run medscale screen next --reviewer <you>     # then screen the pending queue; q to stop
-uv run medscale screen resume --reviewer <you>   # same as next; picks up where you left off
-uv run medscale screen next --query Q2 --limit 50   # topic-batched, capped session
+```text
+uv run medscale screen status
+uv run medscale screen duplicates --reviewer <you>
+uv run medscale screen next --reviewer <you>
+uv run medscale screen resume --reviewer <you>
+uv run medscale screen next --query Q2 --limit 50
 ```
 
-**Order matters:** resolve the uncertain-duplicate groups *before* title/abstract
-screening (ADR-0017 ordering discipline; `screen status` gates on this). Recommended
-topic order: Q2 → Q6 → Q4 (serves the novelty verdicts first).
+Legacy ordering remains: resolve uncertain duplicate groups before title/abstract screening where the applicable screening protocol requires it. Corrections are append-only events; history is not rewritten.
 
-Per record: `[1] Include  [2] Exclude  [3] Maybe  [4] Duplicate  [5] Skip  [q] Quit`.
-Exclude prompts for a machine-readable reason. Decisions map to PRISMA stages
-(include→screened, exclude/duplicate→excluded); corrections are new events (history is
-never edited). Interrupt any time — progress is saved after every decision.
-- **T2** — FHIR toolkit (`fhirkit`)
-- **T3** — MedScale-Bench
-- **T4–T7** — Model landscape, training pipeline, MESC-v0 adapter, evaluation
-
-> This is a documentation placeholder. No engineering content lives here. Nothing in this
-> directory authorizes starting a phase; phases begin only under explicit operator approval.
+> This directory does not authorize starting a phase, running external data acquisition, using PHI, executing models/GPUs, training, promotion, publication, or release. Those actions require the applicable canonical authority and evidence.
