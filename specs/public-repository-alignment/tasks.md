@@ -20,13 +20,15 @@
 | ALIGN-16 | Model runtime/governance boundary audit | owner | ALIGN-15 | done | PR #15 / ADR-0033 history |
 | ALIGN-17 | ModelKit public surface/runtime governance decision | owner | ALIGN-16 | done | PR #16 / ADR-0033 / `specs/align-17/` |
 | ALIGN-18 | Reconcile live repository identity, ownership, and ADR index | owner | ALIGN-17 and current-main audit | done | issue #340; PR #341; merge `1f27f4128229f1c3c973355c5a14bcac2cec0dfe` |
-| ALIGN-19 | Reconcile current public status, release truth, execution docs, and alignment control docs | owner | ALIGN-18 | in progress | issue #342; exact base `1f27f4128229f1c3c973355c5a14bcac2cec0dfe` |
+| ALIGN-19 | Reconcile current public status, release truth, execution docs, and alignment control docs | owner | ALIGN-18 | done | issue #342; PR #343; merge `a5df6403e9087f1c63f95eccbad9d0e2b61a96e1` |
+| ALIGN-20 | Add deterministic offline fixture-only executable golden path | owner | ALIGN-19 | in progress | issue #344; exact base `a5df6403e9087f1c63f95eccbad9d0e2b61a96e1` |
 
 ## Successor ordering
 
-- Do not open ALIGN-20 until ALIGN-19 is finished, exact-head qualified, merged, and post-merge verified.
-- Intended next subject after ALIGN-19, if the canonical post-merge audit still supports it: Phase 6 deterministic offline fixture-only golden path.
+- ALIGN-20 is the only active alignment ticket.
+- Do not open Phase 7 work until ALIGN-20 is finished, exact-head qualified, merged, and post-merge verified.
 - Phase 7 hardening follows only through separately scoped tickets for **remaining** gaps. Current audit already finds action SHA pinning, coverage enforcement, package build/roundtrip qualification, CODEOWNERS, and issue/PR templates implemented.
+- Remaining Phase 7 candidates are clean installed-wheel + `medscale --version` workflow smoke and TestPyPI trusted-publishing qualification; exact scope must be reverified after ALIGN-20.
 - ALIGN-10 remains the final evidence synthesis and does not itself publish anything.
 
 No task in this ledger grants external-data, model/GPU execution, training, promotion, publication, release, or deployment authority unless its own canonical scope explicitly does so.
