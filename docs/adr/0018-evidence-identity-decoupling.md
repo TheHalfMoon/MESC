@@ -6,7 +6,8 @@
 - **Deciders:** Founder
 - **Amends:** [ADR-0009](0009-evidence-model.md) (identity-field list)
 - **Related:** [ADR-0017](0017-identifier-stability-contract.md) (identifier stability),
-  [stress test F2](../architecture/reviews/2026-07-10-stress-test.md)
+  [ADR-0030](0030-dataset-versioning-and-training-artifact-contract.md) (frozen Dataset v1
+  schema), [stress test F2](../architecture/reviews/2026-07-10-stress-test.md)
 
 ## Context
 
@@ -17,8 +18,10 @@ the id of **every** evidence object simultaneously — at millions of objects, e
 knowledge-graph edge, benchmark citation, and cross-corpus reference breaks in one
 release. That is the ADR-0017 orphaning hazard, ecosystem-wide.
 
-The window to change this is **now**: zero evidence objects exist as committed data, so
-the amendment costs nothing today and avoids a coordinated mass migration later.
+The window to change the identity derivation is **now**: zero evidence objects exist as
+committed data, so the amendment requires no evidence-object data migration. Dataset v1,
+however, is already a public-frozen artifact schema under ADR-0030 and must not be silently
+expanded by this amendment.
 
 ## Decision
 
@@ -34,15 +37,23 @@ the amendment costs nothing today and avoids a coordinated mass migration later.
    format-versioning convention) — it simply no longer participates in identity.
 4. ADR-0017's contract extends unchanged: any `identity_version` bump is a breaking
    change requiring an ADR + lineage-based migration.
+5. **Dataset v1 and evidence format 1 remain unchanged on disk.** The current writer
+   supports only `identity_version == 1` and does not serialize an additional
+   `identity_version` member into format-1 artifacts. A non-v1 identity version must fail
+   closed at the persistence boundary until a separately governed container/dataset
+   version admits and persists that identity version.
 
 ## Consequences
 
-**Positive:** schema evolution (the *common* case: new optional fields) becomes free —
-no migrations, no orphaned references; identity discontinuity is reserved for genuine
-semantic change (the *rare* case), made explicit by `identity_version`.
-**Negative:** two version fields to understand (mitigated: glossary + docstrings state
-the rule in one line — *schema versions the container, identity_version versions the
-meaning*).
+**Positive:** schema evolution (the *common* case: new optional fields) no longer changes
+semantic evidence identity; identity discontinuity is reserved for genuine semantic
+change (the *rare* case), made explicit by `identity_version`. Existing Dataset v1 and
+format-1 artifact schemas are not silently mutated.
+
+**Negative:** two version concepts must be understood. While Dataset v1 remains current,
+non-default identity versions cannot be persisted; that is deliberate fail-closed behavior,
+not an implicit schema upgrade. A future identity-version bump must coordinate its new
+container/dataset format under ADR-0030.
 
 ## Alternatives considered
 
@@ -51,19 +62,26 @@ meaning*).
 - **No version in identity at all.** Rejected: silently carrying identity across a
   semantic redefinition of PICO fields would be scientifically wrong — the conservative
   guard must survive, just scoped correctly.
+- **Add `identity_version` to Dataset v1 immediately.** Rejected: ADR-0030 freezes that
+  public schema and requires a new dataset version/ADR for schema changes. ADR-0018 does
+  not bypass that later governance boundary.
 
 ## Compliance
 
-Acceptance requires one mechanical change to `medscale.evidence` plus persistence and
-regression coverage:
+Acceptance requires a bounded mechanical implementation plus regression coverage:
 
-- `schema_version` remains serialized but no longer participates in `evidence_id`;
-- `identity_version` is an exact positive integer, defaults to `1`, is serialized, and
+- `schema_version` remains part of the object and persisted format but no longer
   participates in `evidence_id`;
-- legacy format-1 evidence artifacts without `identity_version` load as version `1`;
+- `identity_version` is an exact positive integer, defaults to `1`, and participates in
+  `evidence_id`;
 - changing only `schema_version` preserves `evidence_id`;
-- changing `identity_version` re-mints `evidence_id`.
+- changing `identity_version` re-mints `evidence_id` in memory;
+- legacy format-1 evidence artifacts load with `identity_version = 1`;
+- the format-1 writer emits no new field and rejects `identity_version != 1`;
+- the current reader rejects a non-v1 identity version presented to the format-1
+  persistence layer;
+- Dataset v1 schema is unchanged.
 
-No data migration is required because no committed evidence objects exist at the decision
-point. This ADR grants no model, corpus, runtime, training, promotion, deployment, release,
-or clinical authority.
+No committed evidence-object data migration is required at this decision point. This ADR
+grants no model, corpus, runtime, training, promotion, deployment, release, or clinical
+authority.

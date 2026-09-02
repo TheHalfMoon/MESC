@@ -25,8 +25,12 @@ from medscale.reproducibility import canonical_json
 
 __all__ = ["evidence_from_dict", "evidence_to_dict", "load_evidence", "write_evidence"]
 
+_FORMAT_1_IDENTITY_VERSION = 1
+
 
 def evidence_to_dict(obj: EvidenceObject) -> dict[str, Any]:
+    if obj.identity_version != _FORMAT_1_IDENTITY_VERSION:
+        raise ValueError("format-1 evidence persistence supports only identity_version=1")
     return {
         "format": 1,
         "evidence_id": obj.evidence_id,
@@ -51,14 +55,13 @@ def evidence_to_dict(obj: EvidenceObject) -> dict[str, Any]:
         "evidence_level": obj.evidence_level,
         "extraction_method": obj.extraction_method.value,
         "verification": obj.verification.value,
-        "identity_version": obj.identity_version,
         "schema_version": obj.schema_version,
     }
 
 
 def evidence_from_dict(data: dict[str, Any]) -> EvidenceObject:
     provenance = data["provenance"]
-    return EvidenceObject(
+    obj = EvidenceObject(
         claim=data["claim"],
         study_type=StudyType(data["study_type"]),
         provenance=Provenance(
@@ -80,9 +83,12 @@ def evidence_from_dict(data: dict[str, Any]) -> EvidenceObject:
         evidence_level=data["evidence_level"],
         extraction_method=ExtractionMethod(data["extraction_method"]),
         verification=VerificationState(data["verification"]),
-        identity_version=data.get("identity_version", 1),
+        identity_version=data.get("identity_version", _FORMAT_1_IDENTITY_VERSION),
         schema_version=data["schema_version"],
     )
+    if obj.identity_version != _FORMAT_1_IDENTITY_VERSION:
+        raise ValueError("format-1 evidence persistence supports only identity_version=1")
+    return obj
 
 
 def write_evidence(path: Path, objects: Iterable[EvidenceObject]) -> int:
