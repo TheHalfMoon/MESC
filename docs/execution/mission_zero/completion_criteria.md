@@ -15,7 +15,7 @@ minimum) belong to the founder; finishing below the minimum is not completion.*
 
 ## Evidence
 
-- [ ] ADR-0018 decided **before** the first real evidence object (hard gate).
+- [x] ADR-0018 decided **before** the first real evidence object (hard gate).
 - [ ] Minimum **25 Evidence Objects** extracted from mission-INCLUDEd records.
 - [ ] **≥ 90% `source_verified`**; every unverified object has an MZ-issue
   explaining why (an honestly-unverified object with a documented cause counts as

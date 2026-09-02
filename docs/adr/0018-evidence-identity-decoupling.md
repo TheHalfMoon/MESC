@@ -1,8 +1,8 @@
 # ADR-0018 — Decouple Evidence Identity from Container Schema Version
 
-- **Status:** Proposed (awaiting founder approval — amends accepted ADR-0009 §1;
-  surfaced by the 2026-07-10 architectural stress test, finding F2)
+- **Status:** Accepted (founder approved 2026-09-02)
 - **Date:** 2026-07-10
+- **Decision date:** 2026-09-02
 - **Deciders:** Founder
 - **Amends:** [ADR-0009](0009-evidence-model.md) (identity-field list)
 - **Related:** [ADR-0017](0017-identifier-stability-contract.md) (identifier stability),
@@ -18,9 +18,9 @@ knowledge-graph edge, benchmark citation, and cross-corpus reference breaks in o
 release. That is the ADR-0017 orphaning hazard, ecosystem-wide.
 
 The window to change this is **now**: zero evidence objects exist as committed data, so
-the amendment costs nothing today and a coordinated mass migration later.
+the amendment costs nothing today and avoids a coordinated mass migration later.
 
-## Decision (proposed)
+## Decision
 
 1. **Remove `schema_version` from the `evidence_id` hash.** Identity = the claim's
    semantic content: claim text, study type, PICO slots, effect fields, source API +
@@ -54,7 +54,16 @@ meaning*).
 
 ## Compliance
 
-On acceptance: one mechanical change to `medscale/evidence.py` (hash-field list +
-`identity_version` field) + tests updated; no data migration (no objects exist). If
-rejected: the coupling is documented in the evidence docstring as a deliberate cost,
-and the first schema bump must budget for a full-reference migration.
+Acceptance requires one mechanical change to `medscale.evidence` plus persistence and
+regression coverage:
+
+- `schema_version` remains serialized but no longer participates in `evidence_id`;
+- `identity_version` is an exact positive integer, defaults to `1`, is serialized, and
+  participates in `evidence_id`;
+- legacy format-1 evidence artifacts without `identity_version` load as version `1`;
+- changing only `schema_version` preserves `evidence_id`;
+- changing `identity_version` re-mints `evidence_id`.
+
+No data migration is required because no committed evidence objects exist at the decision
+point. This ADR grants no model, corpus, runtime, training, promotion, deployment, release,
+or clinical authority.

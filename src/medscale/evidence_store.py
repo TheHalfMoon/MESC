@@ -51,6 +51,7 @@ def evidence_to_dict(obj: EvidenceObject) -> dict[str, Any]:
         "evidence_level": obj.evidence_level,
         "extraction_method": obj.extraction_method.value,
         "verification": obj.verification.value,
+        "identity_version": obj.identity_version,
         "schema_version": obj.schema_version,
     }
 
@@ -79,6 +80,7 @@ def evidence_from_dict(data: dict[str, Any]) -> EvidenceObject:
         evidence_level=data["evidence_level"],
         extraction_method=ExtractionMethod(data["extraction_method"]),
         verification=VerificationState(data["verification"]),
+        identity_version=data.get("identity_version", 1),
         schema_version=data["schema_version"],
     )
 
