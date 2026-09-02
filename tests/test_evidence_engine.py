@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import dataclasses
 import json
 from pathlib import Path
+from typing import cast
 
 import pytest
 
@@ -68,9 +70,12 @@ def test_store_roundtrip_and_format_marker(tmp_path: Path) -> None:
     path = tmp_path / "objects.jsonl"
     obj = _evidence()
     assert write_evidence(path, [obj]) == 1
-    assert '"format":1' in path.read_text(encoding="utf-8")
+    serialized = path.read_text(encoding="utf-8")
+    assert '"format":1' in serialized
+    assert '"identity_version"' not in serialized
     (loaded,) = load_evidence(path)
     assert loaded == obj
+    assert loaded.identity_version == 1
     assert loaded.evidence_id == obj.evidence_id
 
 
@@ -85,11 +90,43 @@ def test_store_dedupes_by_evidence_id_and_is_order_independent(tmp_path: Path) -
     assert a.read_bytes() == b.read_bytes()
 
 
-def test_legacy_dict_without_format_loads() -> None:
+def test_legacy_dict_without_format_loads_as_identity_version_one() -> None:
     legacy = evidence_to_dict(_evidence())
     del legacy["format"]
     restored = evidence_from_dict(legacy)
+    assert restored.identity_version == 1
     assert restored.evidence_id == _evidence().evidence_id
+
+
+def test_schema_version_change_does_not_remint_evidence_identity() -> None:
+    obj = _evidence()
+    changed = dataclasses.replace(obj, schema_version="2")
+    assert changed.schema_version == "2"
+    assert changed.evidence_id == obj.evidence_id
+
+
+def test_identity_version_change_remints_evidence_identity_in_memory() -> None:
+    obj = _evidence()
+    changed = dataclasses.replace(obj, identity_version=2)
+    assert changed.identity_version == 2
+    assert changed.evidence_id != obj.evidence_id
+
+
+def test_format_one_persistence_rejects_nondefault_identity_version() -> None:
+    changed = dataclasses.replace(_evidence(), identity_version=2)
+    with pytest.raises(ValueError, match="format-1 evidence persistence"):
+        evidence_to_dict(changed)
+
+    payload = evidence_to_dict(_evidence())
+    payload["identity_version"] = 2
+    with pytest.raises(ValueError, match="format-1 evidence persistence"):
+        evidence_from_dict(payload)
+
+
+@pytest.mark.parametrize("value", [0, -1, True, 1.0, "1"])
+def test_identity_version_requires_positive_exact_int(value: object) -> None:
+    with pytest.raises(ValueError, match="identity_version must be a positive int"):
+        dataclasses.replace(_evidence(), identity_version=cast(int, value))
 
 
 def test_missing_store_loads_empty(tmp_path: Path) -> None:

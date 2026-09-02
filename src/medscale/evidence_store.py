@@ -21,12 +21,22 @@ from medscale.evidence import (
     VerificationState,
 )
 from medscale.provenance import Provenance, RetrievalStatus, SourceAPI
-from medscale.reproducibility import canonical_json
+from medscale.reproducibility import canonical_json, content_hash
 
-__all__ = ["evidence_from_dict", "evidence_to_dict", "load_evidence", "write_evidence"]
+__all__ = [
+    "evidence_from_dict",
+    "evidence_to_dict",
+    "load_evidence",
+    "migrate_legacy_evidence_file",
+    "write_evidence",
+]
+
+_FORMAT_1_IDENTITY_VERSION = 1
 
 
 def evidence_to_dict(obj: EvidenceObject) -> dict[str, Any]:
+    if obj.identity_version != _FORMAT_1_IDENTITY_VERSION:
+        raise ValueError("format-1 evidence persistence supports only identity_version=1")
     return {
         "format": 1,
         "evidence_id": obj.evidence_id,
@@ -55,9 +65,9 @@ def evidence_to_dict(obj: EvidenceObject) -> dict[str, Any]:
     }
 
 
-def evidence_from_dict(data: dict[str, Any]) -> EvidenceObject:
+def _evidence_object_from_dict(data: dict[str, Any]) -> EvidenceObject:
     provenance = data["provenance"]
-    return EvidenceObject(
+    obj = EvidenceObject(
         claim=data["claim"],
         study_type=StudyType(data["study_type"]),
         provenance=Provenance(
@@ -79,34 +89,120 @@ def evidence_from_dict(data: dict[str, Any]) -> EvidenceObject:
         evidence_level=data["evidence_level"],
         extraction_method=ExtractionMethod(data["extraction_method"]),
         verification=VerificationState(data["verification"]),
+        identity_version=data.get("identity_version", _FORMAT_1_IDENTITY_VERSION),
         schema_version=data["schema_version"],
+    )
+    if obj.identity_version != _FORMAT_1_IDENTITY_VERSION:
+        raise ValueError("format-1 evidence persistence supports only identity_version=1")
+    return obj
+
+
+def _legacy_evidence_id_v0(obj: EvidenceObject) -> str:
+    """Return the pre-ADR-0018 identifier for explicit migration detection only."""
+    return content_hash(
+        {
+            "claim": obj.claim,
+            "study_type": obj.study_type.value,
+            "population": obj.population,
+            "intervention": obj.intervention,
+            "comparator": obj.comparator,
+            "outcome": obj.outcome,
+            "effect_measure": obj.effect_measure,
+            "effect_value": obj.effect_value,
+            "source_api": obj.provenance.source_api.value,
+            "source_identifier": obj.provenance.identifier,
+            "schema_version": obj.schema_version,
+        }
     )
 
 
-def write_evidence(path: Path, objects: Iterable[EvidenceObject]) -> int:
-    """Write objects deduplicated by ``evidence_id``, sorted, LF. Returns unique count.
+def evidence_from_dict(data: dict[str, Any]) -> EvidenceObject:
+    """Load one format-1 object without silently reminting a recognized legacy id."""
+    obj = _evidence_object_from_dict(data)
+    persisted_id = data.get("evidence_id")
+    if (
+        isinstance(persisted_id, str)
+        and persisted_id != obj.evidence_id
+        and persisted_id == _legacy_evidence_id_v0(obj)
+    ):
+        raise ValueError(
+            "legacy evidence_id requires explicit migration via migrate_legacy_evidence_file"
+        )
+    return obj
 
-    First occurrence wins on duplicate ids; identity is the claim's content, so a
-    duplicate means the same claim from the same source was extracted twice.
-    """
-    unique: dict[str, EvidenceObject] = {}
+
+def write_evidence(path: Path, objects: Iterable[EvidenceObject]) -> int:
+    """Write canonical unique evidence, rejecting same-id persisted-content conflicts."""
+    serialized_by_id: dict[str, str] = {}
     for obj in objects:
-        unique.setdefault(obj.evidence_id, obj)
+        evidence_id = obj.evidence_id
+        serialized = canonical_json(evidence_to_dict(obj))
+        previous = serialized_by_id.get(evidence_id)
+        if previous is not None and previous != serialized:
+            raise ValueError(
+                "conflicting persisted payloads share evidence_id; refusing order-dependent dedupe"
+            )
+        serialized_by_id.setdefault(evidence_id, serialized)
+
     path.parent.mkdir(parents=True, exist_ok=True)
-    lines = [canonical_json(evidence_to_dict(unique[eid])) for eid in sorted(unique)]
+    lines = [serialized_by_id[eid] for eid in sorted(serialized_by_id)]
     # Atomic replace: a crash mid-write must never leave a truncated evidence store.
     tmp = path.with_name(path.name + ".tmp")
     tmp.write_text("\n".join(lines) + ("\n" if lines else ""), encoding="utf-8", newline="\n")
     tmp.replace(path)
-    return len(unique)
+    return len(serialized_by_id)
+
+
+def migrate_legacy_evidence_file(source: Path, destination: Path) -> dict[str, str]:
+    """Rewrite recognized pre-ADR-0018 format-1 ids into a distinct new artifact.
+
+    The source is never modified. The returned mapping binds every persisted source id to
+    the emitted ADR-0018 id so downstream references can be migrated explicitly.
+    """
+    if source.resolve() == destination.resolve():
+        raise ValueError("legacy evidence migration requires a distinct destination path")
+
+    objects: list[EvidenceObject] = []
+    identity_map: dict[str, str] = {}
+    for line in source.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        data = json.loads(line)
+        if not isinstance(data, dict):
+            raise ValueError("evidence line must be a JSON object")
+        obj = _evidence_object_from_dict(data)
+        persisted_id = data.get("evidence_id")
+        if not isinstance(persisted_id, str):
+            raise ValueError("legacy evidence migration requires a persisted evidence_id")
+        if persisted_id not in {obj.evidence_id, _legacy_evidence_id_v0(obj)}:
+            raise ValueError("unrecognized evidence_id cannot be migrated automatically")
+        identity_map[persisted_id] = obj.evidence_id
+        objects.append(obj)
+
+    write_evidence(destination, objects)
+    return dict(sorted(identity_map.items()))
 
 
 def load_evidence(path: Path) -> tuple[EvidenceObject, ...]:
-    """Load an evidence file, re-running every object validation. Missing file -> ()."""
+    """Load and validate evidence, rejecting order-dependent same-id conflicts."""
     if not path.exists():
         return ()
-    return tuple(
-        evidence_from_dict(json.loads(line))
-        for line in path.read_text(encoding="utf-8").splitlines()
-        if line.strip()
-    )
+
+    objects: list[EvidenceObject] = []
+    serialized_by_id: dict[str, str] = {}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        data = json.loads(line)
+        if not isinstance(data, dict):
+            raise ValueError("evidence line must be a JSON object")
+        obj = evidence_from_dict(data)
+        serialized = canonical_json(evidence_to_dict(obj))
+        previous = serialized_by_id.get(obj.evidence_id)
+        if previous is not None and previous != serialized:
+            raise ValueError(
+                "conflicting persisted payloads share evidence_id; refusing order-dependent load"
+            )
+        serialized_by_id.setdefault(obj.evidence_id, serialized)
+        objects.append(obj)
+    return tuple(objects)

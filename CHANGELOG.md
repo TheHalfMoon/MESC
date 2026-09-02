@@ -6,6 +6,13 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Changed
+
+- **ADR-0018 evidence identity:** accepted and implemented explicit semantic
+  `identity_version = 1`; `schema_version` no longer participates in `evidence_id`.
+  Dataset v1 / evidence format 1 remain unchanged on disk, non-v1 persistence fails
+  closed, and the legacy positional `schema_version` constructor slot is preserved.
+
 ## [0.2.0] — 2026-07-13
 
 ### Added

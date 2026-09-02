@@ -12,6 +12,7 @@ provenance plus verification state.
 Invariants encoded here rather than in prose:
 
 - identity is content-derived (equal content, identical ``evidence_id``);
+- identity meaning is versioned explicitly and is independent of container schema version;
 - verification-state transitions follow the ADR-0009 state machine;
 - a model-extracted claim can never reach ``EXTRACTION_VERIFIED`` without an
   independent human or deterministic-rule check;
@@ -120,10 +121,13 @@ class EvidenceObject:
     extraction_method: ExtractionMethod = ExtractionMethod.HUMAN
     verification: VerificationState = VerificationState.UNVERIFIED
     schema_version: str = SCHEMA_VERSION
+    identity_version: int = 1
 
     def __post_init__(self) -> None:
         if not self.claim.strip():
             raise ValueError("claim must be a non-empty atomic assertion")
+        if type(self.identity_version) is not int or self.identity_version < 1:
+            raise ValueError("identity_version must be a positive int")
         validate_timestamp(self.created_at, "created_at")
         if not self.evidence_level:
             if self.grading_scheme != STUDY_DESIGN_LEVEL_SCHEME:
@@ -134,7 +138,7 @@ class EvidenceObject:
 
     @property
     def evidence_id(self) -> str:
-        """Content-derived identity (stable across verification-state changes)."""
+        """Content-derived identity, stable across schema and verification changes."""
         return content_hash(
             {
                 "claim": self.claim,
@@ -147,7 +151,7 @@ class EvidenceObject:
                 "effect_value": self.effect_value,
                 "source_api": self.provenance.source_api.value,
                 "source_identifier": self.provenance.identifier,
-                "schema_version": self.schema_version,
+                "identity_version": self.identity_version,
             }
         )
 
