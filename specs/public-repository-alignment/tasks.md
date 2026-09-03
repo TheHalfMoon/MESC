@@ -11,7 +11,7 @@
 | ALIGN-07 | Draft dependency-ordered public repository alignment sequence | owner | ALIGN-04, ALIGN-06 | done | plan/report history |
 | ALIGN-08 | Run quality/build verification and capture evidence | owner | — | done | historical verification |
 | ALIGN-09 | Install built wheel in a clean environment and run core smoke commands | owner | ALIGN-08 | done | historical clean-wheel smoke |
-| ALIGN-10 | Prepare final evidence-backed GO/NO-GO recommendation for publishing | owner | ALIGN-24 | done | issue #355; `final-publication-go-no-go.md`; final closeout PR |
+| ALIGN-10 | Prepare final evidence-backed GO/NO-GO recommendation for publishing | owner | ALIGN-24 | done | issue #355; PR #356; `final-publication-go-no-go.md` |
 | ALIGN-11 | Record hygiene NO-GO / zero eligible Group A files | owner | ALIGN-08 | done | historical disposition |
 | ALIGN-12 | Audit minimum dependency-complete Phase 2 evidence/dataset foundation | owner | ALIGN-11 | done | phase2 boundary audit |
 | ALIGN-13 | Capability foundation: public exports, benchmark run artifact, CLI entry, smoke tests | owner | ALIGN-12 | done | PR #10 / historical merge evidence |
@@ -32,10 +32,10 @@
 - ALIGN-24 is canonically complete through issue #353 / PR #354 / merge
   `b6f26b3dedce20e559b3936e9f85f962153e826e`.
 - ALIGN-10 is the final alignment task. Its evidence-backed result is recorded in
-  `specs/public-repository-alignment/final-publication-go-no-go.md` and becomes canonical only
-  through the final closeout PR's exact-head CI/CodeQL, substantive independent semantic
-  review, review-thread reconciliation, final main/base/head/ruleset verification, and
-  guarded expected-head merge.
+  `specs/public-repository-alignment/final-publication-go-no-go.md` under issue #355 / PR #356
+  and becomes canonical only through PR #356's exact-head CI/CodeQL, substantive independent
+  semantic review, review-thread reconciliation, final main/base/head/ruleset verification,
+  and guarded expected-head merge.
 - The Public Repository Alignment sequence has no automatic successor. Completion of this
   ledger creates no external publication, release, model/GPU execution, training, promotion,
   scientific publication, hosted-documentation deployment, product deployment, or clinical
