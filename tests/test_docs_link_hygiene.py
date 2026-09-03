@@ -101,13 +101,26 @@ def test_external_links_and_fenced_code_are_ignored(tmp_path: Path) -> None:
     assert check_repository(tmp_path) == ()
 
 
-def test_fence_like_content_with_info_text_does_not_close_fence(tmp_path: Path) -> None:
+def test_fence_like_content_does_not_close_fence(tmp_path: Path) -> None:
     _write(
         tmp_path / "README.md",
-        "```markdown\n```python\n[Ignored](missing.md)\n```\n",
+        "```markdown\n```python\n    ```\n[Ignored](missing.md)\n```\n",
     )
 
     assert check_repository(tmp_path) == ()
+
+
+def test_four_space_indented_fence_marker_does_not_hide_following_link(tmp_path: Path) -> None:
+    _write(
+        tmp_path / "README.md",
+        "    ```\n[Missing](docs/missing.md)\n",
+    )
+
+    problems = check_repository(tmp_path)
+
+    assert len(problems) == 1
+    assert problems[0].target == "docs/missing.md"
+    assert problems[0].reason == "local target does not exist"
 
 
 def test_reference_target_and_explicit_html_id_are_checked(tmp_path: Path) -> None:
