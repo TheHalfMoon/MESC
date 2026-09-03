@@ -68,7 +68,7 @@ Completed through ALIGN-16 and ALIGN-17, including ADR-0033 history. Those docum
 | Coverage enforcement | ✅ implemented (`pytest --cov`; configured floor) |
 | Build wheel/sdist | ✅ implemented |
 | PR-safe artifact upload/download byte-identity qualification | ✅ implemented in `release.yml` |
-| Clean installed-wheel + `medscale --version` smoke | ⏳ active under ALIGN-21; must qualify the exact built wheel without source checkout |
+| Clean installed-wheel + `medscale --version` smoke | ⏳ active under ALIGN-21; must qualify the exact built wheel without source checkout and bind installed metadata to CLI/tag version |
 | TestPyPI dry-run/trusted-publishing qualification | ⬜ remaining; must be OIDC/environment-gated and separately authorized |
 | CODEOWNERS | ✅ implemented |
 | Issue/PR templates | ✅ implemented |
@@ -76,10 +76,10 @@ Completed through ALIGN-16 and ALIGN-17, including ADR-0033 history. Those docum
 ### Required ALIGN-21 outcomes
 
 1. Reuse the exact built wheel for install qualification; do not rebuild a second candidate.
-2. Add a PR-safe clean Python 3.11 environment that does not check out repository source, installs the downloaded wheel with `--no-deps`, and requires `medscale --version` to equal `medscale 0.2.0`.
-3. Add the equivalent tag-path gate and require it before the existing GitHub Release job.
+2. Add a PR-safe clean Python 3.11 environment that does not check out repository source, installs the downloaded wheel with `--no-deps`, derives its installed version from `importlib.metadata`, requires the CLI to report that version, and for the current candidate requires `0.2.0`.
+3. Add the equivalent tag-path gate, derive the installed wheel version, require the CLI to match it, require the `vX.Y.Z` tag to equal `v<installed-version>`, and require that gate before the existing GitHub Release job. The tag path must remain future-version capable rather than hard-coded to `0.2.0`.
 4. Preserve SHA-pinned third-party Actions and least-privilege permissions.
-5. Keep publication, trusted publishing, versioning, model/data execution, and deployment out of scope.
+5. Keep publication, trusted publishing, versioning mutations, model/data execution, and deployment out of scope.
 6. Require exact-head full CI/CodeQL, release-workflow PR-safe build/roundtrip/install qualification, independent substantive semantic review, diff-check verification, and resolved review threads before guarded merge.
 
 After ALIGN-21, re-audit only the remaining verified gaps. TestPyPI trusted publishing and hosted-doc/link-hygiene readiness remain separately scoped; they must not be bundled into this unit.
@@ -92,7 +92,7 @@ After ALIGN-21, re-audit only the remaining verified gaps. TestPyPI trusted publ
 
 ## Release boundary
 
-Documentation alignment, release automation, package build capability, an existing historical tag, fixture-only plumbing qualification, clean-wheel qualification, and passing CI are distinct facts. None of them alone authorizes a new tag, external publication, model promotion, training run, dataset publication, or deployment.
+Documentation alignment, release automation, package build capability, an existing historical tag, fixture-only plumbing qualification, clean-wheel/version-binding qualification, and passing CI are distinct facts. None of them alone authorizes a new tag, external publication, model promotion, training run, dataset publication, or deployment.
 
 ## Deliverables
 
