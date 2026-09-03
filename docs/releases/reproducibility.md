@@ -19,8 +19,10 @@ version/tag binding, and GitHub Release creation for an authorized tag path. Bro
 manifest/card/licence enforcement remains class-specific future work and must be
 implemented and qualified before external publication relies on it.
 
-The historical `v0.2.0` tag/release predates later release-workflow hardening; no later
-check is projected backward as evidence that the historical tag passed it.
+The historical `v0.2.0` reference is an annotated tag. No corresponding GitHub Release
+is evidenced in the repository's current release records. The tag predates later
+release-workflow hardening; no later check is projected backward as evidence that the
+historical tag passed it.
 
 ## Required manifest fields by applicable release contract
 
