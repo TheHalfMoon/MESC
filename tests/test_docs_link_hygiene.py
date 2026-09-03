@@ -49,6 +49,20 @@ def test_valid_local_file_anchor_and_duplicate_anchor(tmp_path: Path) -> None:
     assert check_repository(tmp_path) == ()
 
 
+def test_github_slug_preserves_punctuation_gap_as_double_hyphen(tmp_path: Path) -> None:
+    _write(
+        tmp_path / "README.md",
+        "[Rule](docs/guide.md#r4--one-ticket-per-session)\n"
+        "[Canonical](docs/guide.md#canonical-sources--precedence)\n",
+    )
+    _write(
+        tmp_path / "docs/guide.md",
+        "# R4 — One ticket per session\n# Canonical sources & precedence\n",
+    )
+
+    assert check_repository(tmp_path) == ()
+
+
 def test_missing_local_file_is_reported(tmp_path: Path) -> None:
     _write(tmp_path / "README.md", "[Missing](docs/missing.md)\n")
 
