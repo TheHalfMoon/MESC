@@ -50,6 +50,13 @@ def test_valid_local_file_anchor_and_duplicate_anchor(tmp_path: Path) -> None:
     assert check_repository(tmp_path) == ()
 
 
+def test_duplicate_heading_suffix_avoids_existing_heading_collision(tmp_path: Path) -> None:
+    _write(tmp_path / "README.md", "[Third](docs/guide.md#repeat-2)\n")
+    _write(tmp_path / "docs/guide.md", "# Repeat\n# Repeat-1\n# Repeat\n")
+
+    assert check_repository(tmp_path) == ()
+
+
 def test_github_slug_preserves_punctuation_gap_as_double_hyphen(tmp_path: Path) -> None:
     _write(
         tmp_path / "README.md",
