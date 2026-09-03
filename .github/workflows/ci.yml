@@ -51,7 +51,11 @@ jobs:
         run: uv run ruff check .
 
       - name: Ruff (format)
-        run: uv run ruff format --check .
+        run: |
+          if ! uv run ruff format --check .; then
+            uv run ruff format --diff scripts/check_docs_links.py
+            exit 1
+          fi
 
       - name: Mypy (strict)
         run: uv run mypy
