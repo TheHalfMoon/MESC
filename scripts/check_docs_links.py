@@ -105,12 +105,20 @@ def _github_slug(text: str) -> str:
     return _WHITESPACE_RE.sub("-", value.strip())
 
 
+def _explicit_html_ids(line: str) -> tuple[str, ...]:
+    cleaned = _INLINE_CODE_RE.sub("", line)
+    ids: list[str] = []
+    for tag in _HTML_TAG_RE.findall(cleaned):
+        ids.extend(_EXPLICIT_ID_RE.findall(tag))
+    return tuple(ids)
+
+
 def _markdown_anchors(path: Path) -> frozenset[str]:
     anchors: set[str] = set()
     counts: dict[str, int] = {}
     text = path.read_text(encoding="utf-8")
     for _, line in _outside_fenced_code(text.splitlines()):
-        anchors.update(_EXPLICIT_ID_RE.findall(line))
+        anchors.update(_explicit_html_ids(line))
         heading = _HEADING_RE.match(line)
         if heading is None:
             continue
