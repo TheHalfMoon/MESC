@@ -92,7 +92,8 @@ def _outside_fenced_code(lines: Iterable[str]) -> Iterable[tuple[int, str]]:
             stripped = line.lstrip()
             if stripped.startswith(fence_char * fence_len):
                 run_len = len(stripped) - len(stripped.lstrip(fence_char))
-                if run_len >= fence_len:
+                suffix = stripped[run_len:]
+                if run_len >= fence_len and not suffix.strip(" \t"):
                     fence_char = None
                     fence_len = 0
             continue
