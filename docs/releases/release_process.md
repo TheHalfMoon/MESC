@@ -14,11 +14,13 @@ executed.
 2. Class checklist (below) executed; evidence recorded in the release PR/commit.
 3. Applicable reproduction/evidence record built ([reproducibility.md](reproducibility.md)).
 4. Tag pushed (`vX.Y.Z` or `<artifact>-vX.Y`) only under separately applicable release authority; GitHub Release created through the qualified workflow path where implemented.
-5. External distribution (PyPI / HF or another surface) runs **from CI only**, behind operator approval and only after its own distribution path is implemented and qualified ([ci_cd.md](ci_cd.md)). Until that path exists, external distribution waits.
+5. External distribution (PyPI / HF or another surface) runs **from CI only**, behind operator approval and only after its own distribution path is implemented, qualified, and externally configured as required ([ci_cd.md](ci_cd.md)). Until all applicable prerequisites exist, external distribution waits.
 
 The current `.github/workflows/release.yml` implements package build/GitHub Release
-automation and exact-artifact qualification. TestPyPI/PyPI/Hugging Face publication
-remains separately gated and is not created by ADR acceptance.
+automation, exact-artifact qualification, and an ALIGN-24 fail-closed TestPyPI
+repository path. The TestPyPI path remains disabled unless external Trusted Publisher
+and protected Environment evidence exists and the explicit enable guard is set true.
+Production PyPI and Hugging Face publication remain separately gated.
 
 ---
 
@@ -32,17 +34,20 @@ remains separately gated and is not created by ADR acceptance.
 - [ ] Installed package metadata version and `medscale --version` agree
 - [ ] Tag `vX.Y.Z` exactly matches the installed package version `X.Y.Z` before GitHub Release creation
 - [ ] GitHub Release contains the qualified artifacts plus the applicable release evidence
-- [ ] External PyPI/TestPyPI distribution occurs only after its separately governed trusted-publishing path exists and is authorized
+- [ ] Any TestPyPI distribution reuses the exact same-run qualified `dist-<tag>` artifact and performs no rebuild
+- [ ] TestPyPI Trusted Publisher identity and protected `testpypi` GitHub Environment are independently evidenced before enablement
+- [ ] `TESTPYPI_PUBLISH_ENABLED` is set true only by an explicit operator decision after those external prerequisites are verified
+- [ ] External PyPI distribution occurs only after its own separately governed trusted-publishing path exists and is authorized
 
 The PR-safe release-workflow qualification for the current baseline also requires the
 installed package version to remain `0.2.0`. The tag path is intentionally
 version-generic: it derives the wheel's installed metadata and rejects a tag whose
 `vX.Y.Z` value does not match that metadata.
 
-The clean-wheel gate is package qualification, not publication authority. It proves
-that the exact built wheel installs and exposes a version-consistent CLI; it does not
-create a tag, approve a release, or configure PyPI/TestPyPI credentials or trusted
-publishing.
+The clean-wheel gate and ALIGN-24 TestPyPI repository contract are qualification, not
+publication authority. They prove artifact and workflow invariants; they do not create
+a tag, approve a release, prove external Environment protection, create a Trusted
+Publisher, set the enable variable, or perform an upload.
 
 ## Checklist: HF model release
 
