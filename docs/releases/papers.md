@@ -13,7 +13,7 @@ or replication packages currently exist or are authorized.
 
 ## The pipeline
 
-```
+```text
 Research question (RQ, falsifiable, pre-registered criteria)
         ↓
 Authorized execution + code at an exact canonical revision
@@ -53,7 +53,7 @@ publication authority.
 
 ## Replication package requirements
 
-A qualified package should contain or deterministically reference the canonical source
+A qualified package must contain or deterministically reference the canonical source
 revision/tag, manifests of cited artifacts, governed data snapshot identities,
 environment specification, exact commands/seeds, expected committed outputs, and a
 README sufficient for an independent reproduction attempt. Required material must be
