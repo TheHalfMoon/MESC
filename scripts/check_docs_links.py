@@ -57,9 +57,8 @@ def iter_public_markdown(root: Path) -> tuple[Path, ...]:
 
 def _strip_html_comments(line: str, *, in_comment: bool) -> tuple[str, bool]:
     searchable = list(line)
-    if not in_comment:
-        for match in _INLINE_CODE_RE.finditer(line):
-            searchable[match.start() : match.end()] = "\0" * (match.end() - match.start())
+    for match in _INLINE_CODE_RE.finditer(line):
+        searchable[match.start() : match.end()] = "\0" * (match.end() - match.start())
     marker_line = "".join(searchable)
 
     visible: list[str] = []
