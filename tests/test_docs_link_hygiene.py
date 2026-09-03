@@ -105,3 +105,16 @@ def test_reference_target_and_explicit_html_id_are_checked(tmp_path: Path) -> No
     _write(tmp_path / "docs/guide.md", '<span id="stable-id"></span>\n')
 
     assert check_repository(tmp_path) == ()
+
+
+def test_inline_code_and_prose_ids_do_not_create_html_anchors(tmp_path: Path) -> None:
+    _write(tmp_path / "README.md", "[Guide](docs/guide.md#fake-id)\n")
+    _write(
+        tmp_path / "docs/guide.md",
+        '`id="fake-id"`\nplain id="fake-id" text\n',
+    )
+
+    problems = check_repository(tmp_path)
+
+    assert len(problems) == 1
+    assert problems[0].reason == "Markdown anchor 'fake-id' does not exist"
