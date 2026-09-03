@@ -26,8 +26,11 @@ metadata/CLI version binding, tag/version binding, and GitHub Release creation f
 authorized `v*` tag. The historical `v0.2.0` tag predates some of that later workflow
 hardening and must not be described as having run automation added afterward.
 
-TestPyPI, PyPI, and Hugging Face publication remain separately governed distribution
-edges. Their absence is a release-readiness gap, not permission for a manual upload.
+ALIGN-24 adds a repository-side TestPyPI Trusted Publishing job that remains disabled
+unless `TESTPYPI_PUBLISH_ENABLED == 'true'`. The repository path does not establish that
+a protected `testpypi` GitHub Environment or matching TestPyPI Trusted Publisher exists,
+and ALIGN-24 does not set the enable variable or perform an upload. Production PyPI and
+Hugging Face publication remain separately governed distribution edges.
 
 ## Decision
 
@@ -88,10 +91,14 @@ This ADR is binding from its accepted reconciliation on 2026-09-03.
 
 - `.github/workflows/release.yml` is the canonical implemented package/GitHub-Release
   automation surface at acceptance.
-- TestPyPI/PyPI/Hugging Face distribution automation is not created or authorized by
-  accepting this ADR; each path requires separately scoped implementation,
-  qualification, and distribution authority.
-- No credential, secret, OIDC trust relationship, environment, tag, release, upload,
-  model/data execution, or deployment authority is created by this decision alone.
+- ALIGN-24 implements the TestPyPI repository path with exact-artifact reuse, job-local
+  OIDC permission, a `testpypi` environment reference, and an explicit disabled-by-default
+  enable guard. Repository implementation does not prove or activate the external
+  Environment/Trusted Publisher relationship.
+- Production PyPI and Hugging Face distribution paths remain separately scoped and
+  require their own implementation, qualification, and distribution authority.
+- No credential, secret, externally verified OIDC trust relationship, protected
+  environment, tag, release, upload, model/data execution, or deployment authority is
+  created merely by the repository-side TestPyPI path.
 - Manual PyPI/Hugging Face uploads are integrity violations; any published integrity
   failure follows the retraction process.

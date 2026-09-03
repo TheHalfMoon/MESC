@@ -114,6 +114,35 @@ jobs:
           draft: false
           prerelease: false
 
+  testpypi-publish:
+    name: TestPyPI trusted publish
+    needs: github-release
+    if: >-
+      github.event_name == 'push' &&
+      startsWith(github.ref, 'refs/tags/v') &&
+      vars.TESTPYPI_PUBLISH_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    environment: testpypi
+    permissions:
+      id-token: write
+    steps:
+      - name: Download exact qualified build artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: dist-${{ github.ref_name }}
+          path: dist
+      - name: Verify exact distribution payload
+        shell: bash
+        run: |
+          test "$(find dist -maxdepth 1 -type f -name '*.whl' | wc -l)" -eq 1
+          test "$(find dist -maxdepth 1 -type f -name '*.tar.gz' | wc -l)" -eq 1
+      - name: Publish exact artifact to TestPyPI
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          packages-dir: dist
+          attestations: true
+
   pr-artifact-build:
     name: PR-safe build and upload qualification
     if: github.event_name == 'pull_request'

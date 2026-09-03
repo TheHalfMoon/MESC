@@ -2,7 +2,7 @@
 
 ## Current verified baseline
 
-- ALIGN-23 authorization base: `02b4ad0956aef613a792a1de853d31b4e1c41fda` (PR #349 / ALIGN-22 merge).
+- ALIGN-24 authorization base: `8a6c3bf6f51b2e6f72fcdc3ce3c14dfc5f1b4f5c` (PR #352 / ALIGN-23 merge).
 - Canonical repository: `TheHalfMoon/MESC` on `main`.
 - Package version: `0.2.0`.
 - Existing release tag: `v0.2.0` → commit `d2e651a55c92f2218aca49acaa5b7bd18a75f096`.
@@ -72,9 +72,17 @@ Completed through ALIGN-16 and ALIGN-17, including ADR-0033 history. Those docum
 - Issue: #348.
 - PR: #349.
 - Merge: `02b4ad0956aef613a792a1de853d31b4e1c41fda`.
-- Result: required CI now checks public repository Markdown links/anchors deterministically without network access or hosted-documentation authority.
+- Result: required CI checks public repository Markdown links/anchors deterministically without network access or hosted-documentation authority.
 
 The post-ALIGN-22 audit found no concrete hosted-documentation consumer/provider. A hosting/deployment unit is therefore **not currently justified**; this is a deliberate no-op avoidance decision, not a claim that a hosted site exists.
+
+### Release/version governance
+
+- Status: **complete through ALIGN-23**.
+- Issue: #351.
+- PR: #352.
+- Merge: `8a6c3bf6f51b2e6f72fcdc3ce3c14dfc5f1b4f5c`.
+- Result: ADR-0010/ADR-0011 and current release/version/licensing policy were reconciled and accepted without creating external publication authority.
 
 | Planned item | Current audit status |
 |---|---|
@@ -84,31 +92,36 @@ The post-ALIGN-22 audit found no concrete hosted-documentation consumer/provider
 | Build wheel/sdist | ✅ implemented |
 | PR-safe artifact upload/download byte-identity qualification | ✅ implemented in `release.yml` |
 | Clean installed-wheel + `medscale --version` smoke | ✅ implemented and canonical through ALIGN-21 |
-| Release/version/licensing governance | 🔄 ALIGN-23 active: reconcile and accept ADR-0010/0011 against current truth |
-| TestPyPI trusted-publishing qualification | ⬜ remaining after ALIGN-23; OIDC/environment/external publisher authority separately gated |
+| Release/version/licensing governance | ✅ reconciled and accepted through ALIGN-23 |
+| TestPyPI Trusted Publishing repository path | 🔄 ALIGN-24 active under issue #353; fail-closed implementation + PR qualification in progress |
+| TestPyPI external activation | ⏸ not verified by repository tooling; protected Environment + matching Trusted Publisher + operator enable decision required |
+| Production PyPI publication | ⬜ not implemented; separate future authority required if pursued |
 | CODEOWNERS | ✅ implemented |
 | Issue/PR templates | ✅ implemented |
 | Hosted documentation deployment | ⏸ not currently justified; requires a concrete consumer/provider |
 
-### Release/version governance — ALIGN-23
+### Fail-closed TestPyPI qualification — ALIGN-24
 
-- Status: **in progress under issue #351**.
-- Authorization base: `02b4ad0956aef613a792a1de853d31b4e1c41fda`.
-- Goal: reconcile ADR-0010/ADR-0011 and the current release/versioning/licensing docs to canonical implemented truth before recording acceptance.
-- Acceptance must not convert current package/GitHub-Release automation into TestPyPI/PyPI/Hugging Face publication authority.
-- Historical execution/audit records remain historical and are not rewritten merely because current governance is accepted later.
+- Status: **in progress under issue #353**.
+- Authorization base: `8a6c3bf6f51b2e6f72fcdc3ce3c14dfc5f1b4f5c`.
+- Goal: implement and machine-qualify a TestPyPI Trusted Publishing repository path that remains disabled until separately evidenced external trust/protection exists.
+- The distribution edge must follow successful GitHub Release creation, reuse the exact same-run qualified artifact, perform no rebuild, use job-local OIDC permission, reference the governed `testpypi` Environment, use the SHA-pinned official PyPA publisher, and require an explicit `TESTPYPI_PUBLISH_ENABLED == 'true'` guard.
+- Required repository tests must fail closed if the workflow contract drifts and PR qualification must perform no upload or OIDC publication.
+- Repository implementation must not be presented as proof that the protected Environment or TestPyPI Trusted Publisher exists. External activation remains separately evidence-dependent.
+- ALIGN-24 does not set the enable variable, create a tag/GitHub Release, upload to TestPyPI, or implement production PyPI.
 
-After ALIGN-23, re-audit the remaining verified gap. The currently evidenced package-distribution successor is TestPyPI trusted-publishing qualification, which must remain separately scoped and must use exact artifact reuse, OIDC trusted publishing, least privilege, an explicitly gated environment, and independently verified no-publication-by-qualification semantics.
+After ALIGN-24, re-audit the repository-readiness state and execute ALIGN-10 as the final evidence synthesis. If TestPyPI external trust/environment evidence remains unavailable, ALIGN-10 must carry that fact into its GO/NO-GO recommendation rather than manufacturing publication readiness.
 
 ## ALIGN-10 — Final publication recommendation
 
-- Status: **pending**.
+- Status: **pending after ALIGN-24**.
 - ALIGN-10 is a GO/NO-GO evidence synthesis, not automatic publication authority.
-- Do not tag, release, publish to PyPI/TestPyPI/Hugging Face, or claim publication readiness until all required predecessor work is canonically complete and the recommendation is supported by exact evidence.
+- It must distinguish repository implementation/qualification from external activation and from scientific evidence readiness.
+- Do not tag, release, publish to PyPI/TestPyPI/Hugging Face, or claim publication readiness unless the exact applicable evidence supports that conclusion.
 
 ## Release boundary
 
-Documentation alignment, release automation, package build capability, an existing historical tag, fixture-only plumbing qualification, clean-wheel/version-binding qualification, documentation-source qualification, accepted governance, and passing CI are distinct facts. None of them alone authorizes a new tag, external publication, model promotion, training run, dataset publication, hosted documentation deployment, or product deployment.
+Documentation alignment, release automation, package build capability, an existing historical tag, fixture-only plumbing qualification, clean-wheel/version-binding qualification, documentation-source qualification, accepted governance, a fail-closed TestPyPI repository path, and passing CI are distinct facts. None of them alone authorizes a new tag, external publication, model promotion, training run, dataset publication, hosted documentation deployment, or product deployment.
 
 ## Deliverables
 

@@ -2,7 +2,7 @@
 
 - **Status:** Strategy (ADR-0010, Accepted)
 - **Original strategy date:** 2026-07-10
-- **Reconciled:** 2026-09-03 under ALIGN-23
+- **Reconciled:** 2026-09-03 under ALIGN-24
 - **Related:** [reproducibility policy](../research/reproducibility_policy.md) (the
   binding science policy this operationalizes for published artifacts)
 
@@ -15,9 +15,17 @@ This policy does **not** claim that the current package release workflow already
 implements the complete cross-artifact manifest/card/licence validation described
 below. Canonical `.github/workflows/release.yml` currently implements package build,
 artifact round-trip/identity qualification, clean installed-wheel qualification,
-version/tag binding, and GitHub Release creation for an authorized tag path. Broader
-manifest/card/licence enforcement remains class-specific future work and must be
-implemented and qualified before external publication relies on it.
+version/tag binding, GitHub Release creation for an authorized tag path, and under
+ALIGN-24 a disabled-by-default repository-side TestPyPI Trusted Publishing edge that
+reuses the exact same-run qualified distribution artifact after GitHub Release
+creation. Broader manifest/card/licence enforcement remains class-specific work and
+must be implemented and qualified before an external publication path relies on it.
+
+The ALIGN-24 TestPyPI repository path is not external activation evidence. Repository
+code does not prove the `testpypi` GitHub Environment exists with the required
+protection, does not prove a matching TestPyPI Trusted Publisher exists, does not set
+`TESTPYPI_PUBLISH_ENABLED`, and does not perform or authorize an upload. Those external
+facts require separately verified evidence.
 
 The historical `v0.2.0` reference is an annotated tag. No corresponding GitHub Release
 is evidenced in the repository's current release records. The tag predates later
@@ -72,10 +80,14 @@ requirement is not considered mechanically enforced until the corresponding cano
 workflow/code exists and has passed its own exact-head qualification.
 
 Current package automation must therefore be described only by what it actually checks.
-Future TestPyPI/PyPI, Hugging Face, model, dataset, benchmark, paper, or replication
-publication paths must add the appropriate manifest/card/licensing/provenance checks in
-their own separately scoped units before those paths are eligible for use.
+The ALIGN-24 TestPyPI repository path is limited to exact-artifact reuse, tag/enable
+fail-closed gating, job-local OIDC permission, environment binding, and the pinned
+TestPyPI publisher contract. It does not add missing class-specific scientific,
+licensing, provenance, rights, or external trust evidence. Production PyPI, Hugging
+Face, model, dataset, benchmark, paper, and replication publication paths remain
+separately scoped and must add the appropriate checks before use.
 
-Missing external rights, credentials, trusted-publisher configuration, model/data
-access, compute evidence, scientific results, or publication approval cannot be
-manufactured by a release manifest or by accepting ADR-0010.
+Missing external rights, credentials, protected-environment evidence, trusted-publisher
+configuration, model/data access, compute evidence, scientific results, or publication
+approval cannot be manufactured by a release manifest, repository workflow, or by
+accepting ADR-0010.

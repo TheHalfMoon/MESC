@@ -26,24 +26,26 @@ Make `https://github.com/TheHalfMoon/MESC` the canonical truthful source for Med
 
 ## Current governed state
 
-- Canonical `main` at ALIGN-23 authorization is `02b4ad0956aef613a792a1de853d31b4e1c41fda`, the merge commit for PR #349 / ALIGN-22.
+- Canonical `main` at ALIGN-24 authorization is `8a6c3bf6f51b2e6f72fcdc3ce3c14dfc5f1b4f5c`, the merge commit for PR #352 / ALIGN-23.
 - ALIGN-18 is complete via PR #341 / issue #340 / merge `1f27f4128229f1c3c973355c5a14bcac2cec0dfe`.
 - ALIGN-19 is complete via PR #343 / issue #342 / merge `a5df6403e9087f1c63f95eccbad9d0e2b61a96e1`.
 - ALIGN-20 is complete via PR #345 / issue #344 / merge `3a632457d92bfd98075b6dc082324a9f92a89d97`.
 - ALIGN-21 is complete via PR #347 / issue #346 / merge `5e8ee576ff51301ac94eb4876e11d777120b193d`.
 - ALIGN-22 is complete via PR #349 / issue #348 / merge `02b4ad0956aef613a792a1de853d31b4e1c41fda`. It qualified the repository documentation-source/link graph without hosted publication authority.
-- ALIGN-23 is issue #351. It is the only active alignment unit and is limited to reconciling/accepting ADR-0010 and ADR-0011 plus the current release/versioning/licensing control surfaces under its exact allowlist.
-- Package version remains `0.2.0`; ALIGN-23 does not authorize a version bump, tag, release, or external publication.
+- ALIGN-23 is complete via PR #352 / issue #351 / merge `8a6c3bf6f51b2e6f72fcdc3ce3c14dfc5f1b4f5c`. It reconciled and accepted ADR-0010/ADR-0011 plus current release/version/licensing policy surfaces without external publication authority.
+- ALIGN-24 is issue #353. It is the only active alignment unit and is limited to a fail-closed repository-side TestPyPI Trusted Publishing path, focused workflow-contract tests, and current release/alignment truth under its exact allowlist.
+- Package version remains `0.2.0`; ALIGN-24 does not authorize a version bump, tag, GitHub Release, TestPyPI upload, or production PyPI publication.
 - `medscale.fhirkit` contains an implemented deterministic FHIR validation/report/storage boundary. Grammar-constrained FHIR generation remains an open objective and is not a current release capability claim.
 - `medscale.bench` contains deterministic benchmark contracts, scoring, artifacts, and replay/execution surfaces. Their existence does not by itself prove a research phase complete.
 - ModelKit/backends and governed MESC runtime/training/evaluation infrastructure exist in canonical code. Exact model execution, training, promotion, result, and publication eligibility are controlled by their applicable canonical specifications/evidence, not by this alignment spec.
-- MRL/Mission Zero canonical state outranks human-readable README/roadmap prose. ALIGN-23 must not alter MRL-0801..MRL-0808 or Mission Zero evidence state.
-- `.github/workflows/release.yml` implements SHA-pinned tag-driven package quality/build/GitHub-Release automation, PR-safe wheel/sdist byte-identity self-qualification, and clean installed-wheel metadata/CLI qualification over the exact built artifact.
+- MRL/Mission Zero canonical state outranks human-readable README/roadmap prose. ALIGN-24 must not alter MRL-0801..MRL-0808 or Mission Zero evidence state.
+- `.github/workflows/release.yml` implements SHA-pinned tag-driven package quality/build/GitHub-Release automation, PR-safe wheel/sdist byte-identity self-qualification, clean installed-wheel metadata/CLI qualification over the exact built artifact, and under ALIGN-24 a disabled-by-default TestPyPI Trusted Publishing job that reuses the same qualified artifact after GitHub Release creation.
+- The TestPyPI repository job references `environment: testpypi`, scopes `id-token: write` to that job, uses the SHA-pinned official PyPA publisher, and additionally requires `vars.TESTPYPI_PUBLISH_ENABLED == 'true'`. Repository code neither sets that variable nor proves the protected Environment or matching TestPyPI Trusted Publisher exists.
+- Production PyPI and Hugging Face publication remain separately unimplemented and unauthorized distribution paths.
 - Coverage enforcement, documentation source/link qualification, and SHA-pinned Actions are implemented in current audited workflows.
 - `v0.2.0` is an existing annotated tag pointing to commit `d2e651a55c92f2218aca49acaa5b7bd18a75f096`; later workflow hardening must not be projected backward onto that historical tag.
 - No standalone hosted documentation renderer/deployment is configured. The post-ALIGN-22 audit found no concrete consumer/provider, so hosted deployment is not currently justified.
-- TestPyPI/PyPI trusted publishing remains a separate future gate and is not implemented or authorized by ALIGN-23.
-- ALIGN-10 remains pending as the final evidence-backed publication GO/NO-GO recommendation.
+- ALIGN-10 remains pending as the final evidence-backed publication GO/NO-GO recommendation after ALIGN-24.
 
 ## Phase 6 executable golden-path contract
 
@@ -75,13 +77,23 @@ Make `https://github.com/TheHalfMoon/MESC` the canonical truthful source for Med
 
 ## ALIGN-23 release-governance reconciliation contract
 
-- ADR-0010/ADR-0011 may become Accepted only after their proposed 2026-07-10 wording is reconciled to canonical current implementation and historical release truth.
+- ADR-0010/ADR-0011 became Accepted only after their proposed 2026-07-10 wording was reconciled to canonical current implementation and historical release truth.
 - Acceptance makes GitHub-canonical, CI-only, immutable-artifact, versioning, and licensing policy binding; it does not create an external publisher, credential, trusted-publisher relationship, environment, tag, release, or upload.
-- Current `.github/workflows/release.yml` must be named as the implemented package/GitHub-Release automation surface; stale `release-package.yml` future-ticket wording must not become accepted history.
-- TestPyPI/PyPI/Hugging Face distribution remains unimplemented unless separately evidenced.
-- Mechanical licence/manifest enforcement must not be claimed merely because policy requires it; implementation and qualification are separate evidence.
+- Current `.github/workflows/release.yml` is the implemented package/GitHub-Release automation surface; stale `release-package.yml` future-ticket wording was not canonized as current truth.
+- Mechanical licence/manifest enforcement is not claimed merely because policy requires it; implementation and qualification remain separate evidence.
 - Historical execution/audit records remain historical and are not rewritten merely to remove proposed-state references.
-- Hosted documentation deployment is deferred as not currently justified absent a concrete consumer/provider.
+- Hosted documentation deployment remains deferred as not currently justified absent a concrete consumer/provider.
+
+## ALIGN-24 fail-closed TestPyPI contract
+
+- The TestPyPI job depends on successful `github-release` completion and downloads the exact same-run `dist-${{ github.ref_name }}` artifact; it must not check out source or rebuild a second candidate.
+- The job runs only on the governed `v*` tag path and only when `vars.TESTPYPI_PUBLISH_ENABLED == 'true'`.
+- `id-token: write` is scoped to the TestPyPI job only. Workflow-global permissions remain least-privilege and no username/password/API-token fallback is permitted.
+- The job references the governed `testpypi` GitHub Environment and uses `pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33` with the TestPyPI repository URL.
+- Required repository tests inspect these workflow invariants and fail closed if the publication contract drifts.
+- PR qualification invokes no TestPyPI upload and no OIDC publishing action; the TestPyPI job is excluded by its push/tag/enable guard.
+- Repository implementation and PR qualification do **not** prove external activation. A protected `testpypi` Environment, matching TestPyPI Trusted Publisher, and explicit operator enable decision require independent evidence not manufactured by this unit.
+- ALIGN-24 does not set `TESTPYPI_PUBLISH_ENABLED`, create a tag/release, perform an upload, or authorize production PyPI.
 
 ## Current success criteria
 
@@ -91,17 +103,18 @@ Make `https://github.com/TheHalfMoon/MESC` the canonical truthful source for Med
 - Phase 6 is complete and canonical through ALIGN-20.
 - Phase 7 clean-wheel/package qualification is complete and canonical through ALIGN-21.
 - Documentation source/link readiness is complete and canonical through ALIGN-22.
-- ALIGN-23 closes only after its exact allowlist, internally consistent accepted ADR text, current release/versioning/licensing reconciliation, full exact-head CI/CodeQL, substantive independent semantic review, diff-check verification, and review-thread reconciliation pass before guarded merge.
-- TestPyPI trusted-publishing qualification remains separately scoped successor work after ALIGN-23.
+- Release/version/licensing governance reconciliation is complete and canonical through ALIGN-23.
+- ALIGN-24 closes only after its exact allowlist, fail-closed workflow contract, focused repository tests, PR-safe release-workflow qualification, full exact-head CI/CodeQL, substantive independent semantic review, diff-check verification, and review-thread reconciliation pass before guarded merge.
+- Successful ALIGN-24 means the repository-side TestPyPI path is implemented and qualified while external Trusted Publisher/Environment activation remains evidence-dependent. It does not mean TestPyPI upload readiness is proven.
 - Hosted documentation deployment remains deferred unless a concrete consumer/provider justifies it.
-- Final publication recommendation remains blocked until the required later alignment/release-readiness work is itself complete and evidenced.
+- ALIGN-10 remains the final publication GO/NO-GO evidence synthesis after ALIGN-24 and must carry any unresolved external TestPyPI activation or scientific-evidence blockers truthfully.
 
 ## Constraints
 
 - Preserve the public `0.2.0` package/version baseline unless a separately authorized release task changes it.
 - No breaking change to the v0.2.0 public surface in alignment work without separate authority.
 - No hidden compute assumptions, no cloud/runtime authority, and no scientific result claims without committed executable evidence.
-- Current summaries must distinguish `implemented`, `qualified`, `authorized`, `executed`, `accepted`, `released`, and `published` rather than collapsing them.
+- Current summaries must distinguish `implemented`, `qualified`, `authorized`, `executed`, `accepted`, `released`, `published`, and `externally activated` rather than collapsing them.
 
 ## Phase skip rules
 

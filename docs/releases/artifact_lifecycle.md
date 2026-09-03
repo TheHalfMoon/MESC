@@ -6,7 +6,7 @@
 
 ## Lifecycle states (all artifact classes)
 
-```
+```text
 PLANNED ──► IN_DEVELOPMENT ──► RELEASE_CANDIDATE ──► RELEASED ──► DEPRECATED
                                                         │              │
                                                         └──► RETRACTED ◄┘
@@ -34,7 +34,7 @@ program exists to prevent.
 | Contents | The library: reproducibility primitives, evidence model, litdb; later fhirkit/bench per phase |
 | Release criteria | Quality gate green on CI matrix; CHANGELOG section written; version bumped in `__about__.py` when a new version is authorized; docs consistent; no unreleased schema change unnoted |
 | Versioning | SemVer, `0.x` until the separately governed 1.0 evidence criterion is met ([versioning.md](versioning.md)) |
-| Channels | GitHub Release through the qualified `vX.Y.Z` workflow path when a tag is separately authorized. TestPyPI/PyPI remain unimplemented external distribution paths and require separately qualified trusted publishing before use. |
+| Channels | GitHub Release through the qualified `vX.Y.Z` workflow path when a tag is separately authorized. ALIGN-24 implements a fail-closed TestPyPI repository path, but it remains disabled until the protected `testpypi` Environment and matching Trusted Publisher are independently evidenced and the enable variable is explicitly set. Production PyPI remains unimplemented. |
 | Changelog | Keep-a-Changelog style; every release has a section; "Unreleased" accumulates |
 
 ### 2. Models (future — gates in [ai_model_strategy](../architecture/ai_model_strategy.md))
