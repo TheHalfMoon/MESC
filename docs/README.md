@@ -2,6 +2,18 @@
 
 The canonical documentation for MedScale. Start here.
 
+## Source readiness
+
+Repository-local documentation link hygiene is mechanically checked by
+`scripts/check_docs_links.py` in required CI. The checker validates public root Markdown
+sources plus `docs/**/*.md`, including local file/image targets and Markdown anchors,
+without network access or a third-party documentation dependency.
+
+This is **documentation-source readiness only**. MedScale does not currently configure or
+authorize a standalone hosted documentation site, GitHub Pages deployment, Read the Docs,
+MkDocs/Sphinx/Jekyll deployment, DNS/domain routing, or documentation publication authority.
+Any hosted rendering/deployment decision remains separately scoped.
+
 ## Reading order
 
 1. [README](../README.md) — what MedScale is, in one page.

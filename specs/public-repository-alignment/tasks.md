@@ -22,14 +22,16 @@
 | ALIGN-18 | Reconcile live repository identity, ownership, and ADR index | owner | ALIGN-17 and current-main audit | done | issue #340; PR #341; merge `1f27f4128229f1c3c973355c5a14bcac2cec0dfe` |
 | ALIGN-19 | Reconcile current public status, release truth, execution docs, and alignment control docs | owner | ALIGN-18 | done | issue #342; PR #343; merge `a5df6403e9087f1c63f95eccbad9d0e2b61a96e1` |
 | ALIGN-20 | Add deterministic offline fixture-only executable golden path | owner | ALIGN-19 | done | issue #344; PR #345; merge `3a632457d92bfd98075b6dc082324a9f92a89d97` |
-| ALIGN-21 | Enforce clean installed-wheel release qualification | owner | ALIGN-20 | in progress | issue #346; exact base `3a632457d92bfd98075b6dc082324a9f92a89d97` |
+| ALIGN-21 | Enforce clean installed-wheel release qualification | owner | ALIGN-20 | done | issue #346; PR #347; merge `5e8ee576ff51301ac94eb4876e11d777120b193d` |
+| ALIGN-22 | Enforce documentation source/link hygiene readiness | owner | ALIGN-21 | in progress | issue #348; exact base `5e8ee576ff51301ac94eb4876e11d777120b193d` |
 
 ## Successor ordering
 
-- ALIGN-21 is the only active alignment ticket.
-- Do not open another alignment successor until ALIGN-21 is exact-head qualified, merged, and post-merge verified.
-- ALIGN-21 is limited to clean installed-wheel qualification over the exact release artifact; it does not authorize publication.
-- After ALIGN-21, re-audit the remaining verified gaps. TestPyPI trusted-publishing qualification and hosted-doc/link-hygiene readiness require separate successor scopes.
+- ALIGN-22 is the only active alignment ticket.
+- Do not open another alignment successor until ALIGN-22 is exact-head qualified, merged, and post-merge verified.
+- ALIGN-22 is limited to repository documentation-source/link readiness. It does not select, configure, authorize, or deploy a hosted documentation provider.
+- If the checker identifies an existing broken public-documentation target, refine issue #348 with the exact affected path before any repair outside its current allowlist.
+- After ALIGN-22, re-audit the remaining verified gaps. Hosted rendering/deployment, if a concrete consumer justifies it, and TestPyPI trusted-publishing qualification require separate successor scopes.
 - ALIGN-10 remains the final evidence synthesis and does not itself publish anything.
 
-No task in this ledger grants external-data, model/GPU execution, training, promotion, publication, release, or deployment authority unless its own canonical scope explicitly does so.
+No task in this ledger grants external-data, model/GPU execution, training, promotion, publication, release, hosted-documentation deployment, or product deployment authority unless its own canonical scope explicitly does so.

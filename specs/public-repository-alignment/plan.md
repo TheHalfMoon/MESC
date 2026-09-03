@@ -2,7 +2,7 @@
 
 ## Current verified baseline
 
-- ALIGN-21 authorization base: `3a632457d92bfd98075b6dc082324a9f92a89d97` (PR #345 / ALIGN-20 merge).
+- ALIGN-22 authorization base: `5e8ee576ff51301ac94eb4876e11d777120b193d` (PR #347 / ALIGN-21 merge).
 - Canonical repository: `TheHalfMoon/MESC` on `main`.
 - Package version: `0.2.0`.
 - Existing release tag: `v0.2.0` → commit `d2e651a55c92f2218aca49acaa5b7bd18a75f096`.
@@ -58,9 +58,13 @@ Completed through ALIGN-16 and ALIGN-17, including ADR-0033 history. Those docum
 
 ## Phase 7 — CI, packaging, contributor hardening
 
-- Status: **in progress under ALIGN-21 / issue #346**.
-- Authorization base: `3a632457d92bfd98075b6dc082324a9f92a89d97`.
-- Exact implementation allowlist: the six files recorded in #346.
+### Package/release qualification
+
+- Status: **complete through ALIGN-21**.
+- Issue: #346.
+- PR: #347.
+- Merge: `5e8ee576ff51301ac94eb4876e11d777120b193d`.
+- Result: the SHA-pinned release workflow reuses its exact built wheel for clean-install qualification, proves installed metadata/CLI consistency, and binds the tag path generically to `v<installed-version>` before GitHub Release creation without creating publication authority.
 
 | Planned item | Current audit status |
 |---|---|
@@ -68,21 +72,28 @@ Completed through ALIGN-16 and ALIGN-17, including ADR-0033 history. Those docum
 | Coverage enforcement | ✅ implemented (`pytest --cov`; configured floor) |
 | Build wheel/sdist | ✅ implemented |
 | PR-safe artifact upload/download byte-identity qualification | ✅ implemented in `release.yml` |
-| Clean installed-wheel + `medscale --version` smoke | ⏳ active under ALIGN-21; must qualify the exact built wheel without source checkout and bind installed metadata to CLI/tag version |
-| TestPyPI dry-run/trusted-publishing qualification | ⬜ remaining; must be OIDC/environment-gated and separately authorized |
+| Clean installed-wheel + `medscale --version` smoke | ✅ implemented and canonical through ALIGN-21 |
+| TestPyPI dry-run/trusted-publishing qualification | ⬜ remaining; OIDC/environment/external publisher authority remains separately gated |
 | CODEOWNERS | ✅ implemented |
 | Issue/PR templates | ✅ implemented |
 
-### Required ALIGN-21 outcomes
+### Documentation source readiness — ALIGN-22
 
-1. Reuse the exact built wheel for install qualification; do not rebuild a second candidate.
-2. Add a PR-safe clean Python 3.11 environment that does not check out repository source, installs the downloaded wheel with `--no-deps`, derives its installed version from `importlib.metadata`, requires the CLI to report that version, and for the current candidate requires `0.2.0`.
-3. Add the equivalent tag-path gate, derive the installed wheel version, require the CLI to match it, require the `vX.Y.Z` tag to equal `v<installed-version>`, and require that gate before the existing GitHub Release job. The tag path must remain future-version capable rather than hard-coded to `0.2.0`.
-4. Preserve SHA-pinned third-party Actions and least-privilege permissions.
-5. Keep publication, trusted publishing, versioning mutations, model/data execution, and deployment out of scope.
-6. Require exact-head full CI/CodeQL, release-workflow PR-safe build/roundtrip/install qualification, independent substantive semantic review, diff-check verification, and resolved review threads before guarded merge.
+- Status: **in progress under ALIGN-22 / issue #348**.
+- Authorization base: `5e8ee576ff51301ac94eb4876e11d777120b193d`.
+- Exact implementation allowlist: the paths recorded in #348, unless the issue is explicitly refined first for an evidence-discovered broken-link repair.
 
-After ALIGN-21, re-audit only the remaining verified gaps. TestPyPI trusted publishing and hosted-doc/link-hygiene readiness remain separately scoped; they must not be bundled into this unit.
+Required outcomes:
+
+1. Add a deterministic Python-stdlib link checker over public root Markdown plus `docs/**/*.md`.
+2. Validate repository-local inline links, images, reference-definition targets, and Markdown fragments without network access.
+3. Reject missing paths, repository-root escapes, and missing Markdown anchors; support deterministic duplicate-heading anchors and explicit HTML ids.
+4. Ignore external URI schemes and fenced-code examples rather than converting documentation examples into live dependencies.
+5. Add focused tests and execute the checker inside the existing required CI quality jobs with no dependency, lockfile, permission, or third-party Action addition.
+6. Record source/link readiness truth without claiming a hosted documentation site, renderer, deployment, DNS/domain route, or publication authority.
+7. Require exact-head full CI/CodeQL, focused tests, repository-wide source check, independent substantive semantic review, diff-check verification, and resolved review threads before guarded merge.
+
+After ALIGN-22, re-audit only the remaining verified gaps. A hosted renderer/deployment provider, if a concrete consumer justifies one, and TestPyPI trusted-publishing qualification remain separate scopes and must not be silently bundled into source readiness.
 
 ## ALIGN-10 — Final publication recommendation
 
@@ -92,7 +103,7 @@ After ALIGN-21, re-audit only the remaining verified gaps. TestPyPI trusted publ
 
 ## Release boundary
 
-Documentation alignment, release automation, package build capability, an existing historical tag, fixture-only plumbing qualification, clean-wheel/version-binding qualification, and passing CI are distinct facts. None of them alone authorizes a new tag, external publication, model promotion, training run, dataset publication, or deployment.
+Documentation alignment, release automation, package build capability, an existing historical tag, fixture-only plumbing qualification, clean-wheel/version-binding qualification, documentation-source qualification, and passing CI are distinct facts. None of them alone authorizes a new tag, external publication, model promotion, training run, dataset publication, hosted documentation deployment, or product deployment.
 
 ## Deliverables
 
