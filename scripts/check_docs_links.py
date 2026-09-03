@@ -154,7 +154,8 @@ def _explicit_html_ids(line: str) -> tuple[str, ...]:
 
 def _markdown_anchors(path: Path) -> frozenset[str]:
     anchors: set[str] = set()
-    counts: dict[str, int] = {}
+    heading_anchors: set[str] = set()
+    next_suffix: dict[str, int] = {}
     text = path.read_text(encoding="utf-8")
     for _, line in _outside_fenced_code(text.splitlines()):
         anchors.update(_explicit_html_ids(line))
@@ -164,9 +165,18 @@ def _markdown_anchors(path: Path) -> frozenset[str]:
         base = _github_slug(heading.group(2))
         if not base:
             continue
-        duplicate_index = counts.get(base, 0)
-        counts[base] = duplicate_index + 1
-        anchor = base if duplicate_index == 0 else f"{base}-{duplicate_index}"
+
+        anchor = base
+        if anchor in heading_anchors:
+            suffix = next_suffix.get(base, 1)
+            while f"{base}-{suffix}" in heading_anchors:
+                suffix += 1
+            anchor = f"{base}-{suffix}"
+            next_suffix[base] = suffix + 1
+        else:
+            next_suffix.setdefault(base, 1)
+
+        heading_anchors.add(anchor)
         anchors.add(anchor)
     return frozenset(anchors)
 
