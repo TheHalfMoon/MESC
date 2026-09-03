@@ -79,14 +79,17 @@ jobs:
         with:
           name: dist-${{ github.ref_name }}
           path: dist
-      - name: Install exact wheel in clean venv and verify CLI version
+      - name: Install exact wheel and bind CLI version to tag
         shell: bash
         run: |
           wheel="$(find dist -maxdepth 1 -type f -name '*.whl' -print -quit)"
           test -n "$wheel"
           uv venv --python 3.11 .venv
           uv pip install --python .venv/bin/python --no-deps "$wheel"
-          test "$(.venv/bin/medscale --version)" = "medscale 0.2.0"
+          installed_version="$(.venv/bin/python -c 'from importlib.metadata import version; print(version("medscale"))')"
+          test -n "$installed_version"
+          test "$(.venv/bin/medscale --version)" = "medscale ${installed_version}"
+          test "$GITHUB_REF_NAME" = "v${installed_version}"
 
   github-release:
     name: GitHub Release
@@ -179,11 +182,13 @@ jobs:
         with:
           name: release-action-roundtrip-${{ github.event.pull_request.number }}
           path: roundtrip
-      - name: Install exact wheel in clean venv and verify CLI version
+      - name: Install exact wheel and verify current CLI version
         shell: bash
         run: |
           wheel="$(find roundtrip -maxdepth 1 -type f -name '*.whl' -print -quit)"
           test -n "$wheel"
           uv venv --python 3.11 .venv
           uv pip install --python .venv/bin/python --no-deps "$wheel"
-          test "$(.venv/bin/medscale --version)" = "medscale 0.2.0"
+          installed_version="$(.venv/bin/python -c 'from importlib.metadata import version; print(version("medscale"))')"
+          test "$installed_version" = "0.2.0"
+          test "$(.venv/bin/medscale --version)" = "medscale ${installed_version}"
