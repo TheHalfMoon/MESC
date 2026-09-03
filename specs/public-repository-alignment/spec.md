@@ -9,7 +9,7 @@ Make `https://github.com/TheHalfMoon/MESC` the canonical truthful source for Med
 - No additional architecture layer merely for alignment.
 - No PHI or real-patient data.
 - No external-data acquisition, model download, inference, fine-tuning, GPU execution, publication, or deployment without the separately applicable authority/evidence.
-- No tag, GitHub Release, PyPI/TestPyPI/Hugging Face publication, or version bump merely because documentation is aligned.
+- No tag, GitHub Release, PyPI/TestPyPI/Hugging Face publication, or version bump merely because documentation/governance is aligned.
 - No conversion of module/code existence into research-phase completion or execution authority.
 
 ## Scope
@@ -19,30 +19,30 @@ Make `https://github.com/TheHalfMoon/MESC` the canonical truthful source for Med
 3. Release/version strategy — SemVer, artifact identity, provenance, changelog discipline, and qualified distribution paths.
 4. API stability classification — public / experimental / internal according to accepted governance and actual package exports.
 5. Executable golden path — one deterministic offline fixture path, separately scoped and gated.
-6. Documentation publishing — hosted-docs readiness and link hygiene, separately scoped.
+6. Documentation publishing — source readiness and any later hosted-doc decision are separately scoped.
 7. Package distribution — wheel/sdist readiness and publication-path hardening, separately scoped.
 8. CI and supply-chain hardening — reproducible CI, action pinning, coverage enforcement, install smoke, and provenance where applicable.
 9. Contributor readiness — ownership/templates/onboarding without inventing governance authority.
 
 ## Current governed state
 
-- Canonical `main` at ALIGN-22 authorization is `5e8ee576ff51301ac94eb4876e11d777120b193d`, the merge commit for PR #347 / ALIGN-21.
-- ALIGN-13 through ALIGN-17 historical capability/governance work is complete according to its merged records; later repository work has materially expanded the implementation beyond those early snapshots.
-- ALIGN-18 is complete via PR #341 / issue #340. It reconciled the live repository identity to `TheHalfMoon/MESC`, current review ownership, and the ADR index without rewriting historical evidence.
-- ALIGN-19 is complete via PR #343 / issue #342 / merge `a5df6403e9087f1c63f95eccbad9d0e2b61a96e1`. It reconciled current public status, roadmap, release, execution, ecosystem, and alignment-control documentation without creating execution or publication authority.
-- ALIGN-20 is complete via PR #345 / issue #344 / merge `3a632457d92bfd98075b6dc082324a9f92a89d97`. It added the deterministic offline fixture-only golden path and preserved explicit non-evidence/non-authority semantics.
-- ALIGN-21 is complete via PR #347 / issue #346 / merge `5e8ee576ff51301ac94eb4876e11d777120b193d`. It qualified clean installation of the exact release wheel and version-generic tag/package binding without creating publication authority.
-- ALIGN-22 is issue #348. It is the only active alignment unit and is limited to documentation-source/link readiness under its exact allowlist.
-- Package version remains `0.2.0`; ALIGN-22 does not authorize a version bump, tag, release, or external publication.
+- Canonical `main` at ALIGN-23 authorization is `02b4ad0956aef613a792a1de853d31b4e1c41fda`, the merge commit for PR #349 / ALIGN-22.
+- ALIGN-18 is complete via PR #341 / issue #340 / merge `1f27f4128229f1c3c973355c5a14bcac2cec0dfe`.
+- ALIGN-19 is complete via PR #343 / issue #342 / merge `a5df6403e9087f1c63f95eccbad9d0e2b61a96e1`.
+- ALIGN-20 is complete via PR #345 / issue #344 / merge `3a632457d92bfd98075b6dc082324a9f92a89d97`.
+- ALIGN-21 is complete via PR #347 / issue #346 / merge `5e8ee576ff51301ac94eb4876e11d777120b193d`.
+- ALIGN-22 is complete via PR #349 / issue #348 / merge `02b4ad0956aef613a792a1de853d31b4e1c41fda`. It qualified the repository documentation-source/link graph without hosted publication authority.
+- ALIGN-23 is issue #351. It is the only active alignment unit and is limited to reconciling/accepting ADR-0010 and ADR-0011 plus the current release/versioning/licensing control surfaces under its exact allowlist.
+- Package version remains `0.2.0`; ALIGN-23 does not authorize a version bump, tag, release, or external publication.
 - `medscale.fhirkit` contains an implemented deterministic FHIR validation/report/storage boundary. Grammar-constrained FHIR generation remains an open objective and is not a current release capability claim.
-- `medscale.bench` contains deterministic benchmark contracts, scoring, artifacts, and replay/execution surfaces. Their existence does not by itself prove the legacy T3 research phase complete.
+- `medscale.bench` contains deterministic benchmark contracts, scoring, artifacts, and replay/execution surfaces. Their existence does not by itself prove a research phase complete.
 - ModelKit/backends and governed MESC runtime/training/evaluation infrastructure exist in canonical code. Exact model execution, training, promotion, result, and publication eligibility are controlled by their applicable canonical specifications/evidence, not by this alignment spec.
-- MRL/Mission Zero canonical state outranks human-readable README/roadmap prose. ALIGN-22 must preserve that precedence and must not alter MRL-0801..MRL-0808 or Mission Zero evidence state.
+- MRL/Mission Zero canonical state outranks human-readable README/roadmap prose. ALIGN-23 must not alter MRL-0801..MRL-0808 or Mission Zero evidence state.
 - `.github/workflows/release.yml` implements SHA-pinned tag-driven package quality/build/GitHub-Release automation, PR-safe wheel/sdist byte-identity self-qualification, and clean installed-wheel metadata/CLI qualification over the exact built artifact.
-- Coverage enforcement and SHA-pinned Actions are already implemented; ALIGN-22 must not reimplement them.
-- `v0.2.0` is an existing annotated tag pointing to commit `d2e651a55c92f2218aca49acaa5b7bd18a75f096`. ALIGN-22 does not move or recreate it.
-- No standalone hosted documentation renderer/deployment is currently configured or authorized. ALIGN-22 qualifies repository documentation sources and local links only.
-- TestPyPI/PyPI trusted publishing remains a separate future gate and is not implemented or authorized by ALIGN-22.
+- Coverage enforcement, documentation source/link qualification, and SHA-pinned Actions are implemented in current audited workflows.
+- `v0.2.0` is an existing annotated tag pointing to commit `d2e651a55c92f2218aca49acaa5b7bd18a75f096`; later workflow hardening must not be projected backward onto that historical tag.
+- No standalone hosted documentation renderer/deployment is configured. The post-ALIGN-22 audit found no concrete consumer/provider, so hosted deployment is not currently justified.
+- TestPyPI/PyPI trusted publishing remains a separate future gate and is not implemented or authorized by ALIGN-23.
 - ALIGN-10 remains pending as the final evidence-backed publication GO/NO-GO recommendation.
 
 ## Phase 6 executable golden-path contract
@@ -60,7 +60,7 @@ Make `https://github.com/TheHalfMoon/MESC` the canonical truthful source for Med
 - The clean-install jobs do not check out repository source.
 - Both paths create a fresh Python 3.11 environment, install the downloaded wheel with no dependencies, derive the installed package version from `importlib.metadata`, and require `medscale --version` to report that exact installed version.
 - The PR-safe path self-qualifies this behavior without publishing anything and, for the current baseline, additionally requires the installed version to remain `0.2.0`.
-- The tag path is version-generic and requires `GITHUB_REF_NAME` to equal `v<installed-version>` before GitHub Release creation. It must not be permanently hard-coded to the current `0.2.0` baseline.
+- The tag path is version-generic and requires `GITHUB_REF_NAME` to equal `v<installed-version>` before GitHub Release creation.
 - This is package qualification only. It does not create tag, release, TestPyPI/PyPI/Hugging Face, credential, trusted-publisher, deployment, or clinical authority.
 
 ## ALIGN-22 documentation source-readiness contract
@@ -70,9 +70,18 @@ Make `https://github.com/TheHalfMoon/MESC` the canonical truthful source for Med
 - Repository-local inline links, image targets, and reference-definition targets must resolve inside the repository and must exist.
 - Links that escape the repository root fail closed.
 - Markdown fragments must resolve to deterministic GitHub-style heading anchors or explicit HTML `id` anchors, including duplicate-heading suffixes.
-- External URI schemes and content inside fenced code blocks are outside the repository-local target check.
-- The checker is executed in required CI and is covered by focused tests.
+- External URI schemes and fenced-code/comment examples are outside the repository-local target check according to the qualified checker semantics.
 - Passing this contract means the documentation **source/link graph is qualified**. It does not mean a hosted documentation site exists, has been deployed, or has publication authority.
+
+## ALIGN-23 release-governance reconciliation contract
+
+- ADR-0010/ADR-0011 may become Accepted only after their proposed 2026-07-10 wording is reconciled to canonical current implementation and historical release truth.
+- Acceptance makes GitHub-canonical, CI-only, immutable-artifact, versioning, and licensing policy binding; it does not create an external publisher, credential, trusted-publisher relationship, environment, tag, release, or upload.
+- Current `.github/workflows/release.yml` must be named as the implemented package/GitHub-Release automation surface; stale `release-package.yml` future-ticket wording must not become accepted history.
+- TestPyPI/PyPI/Hugging Face distribution remains unimplemented unless separately evidenced.
+- Mechanical licence/manifest enforcement must not be claimed merely because policy requires it; implementation and qualification are separate evidence.
+- Historical execution/audit records remain historical and are not rewritten merely to remove proposed-state references.
+- Hosted documentation deployment is deferred as not currently justified absent a concrete consumer/provider.
 
 ## Current success criteria
 
@@ -81,8 +90,10 @@ Make `https://github.com/TheHalfMoon/MESC` the canonical truthful source for Med
 - Phase 5 is complete and canonical through ALIGN-19.
 - Phase 6 is complete and canonical through ALIGN-20.
 - Phase 7 clean-wheel/package qualification is complete and canonical through ALIGN-21.
-- ALIGN-22 closes only after its exact allowlist, focused checker tests, repository-wide public-doc source check, full exact-head CI/CodeQL, substantive independent semantic review, diff-check verification, and review-thread reconciliation all pass before guarded merge.
-- Any hosted renderer/deployment provider and TestPyPI trusted-publishing qualification remain separately scoped successor work.
+- Documentation source/link readiness is complete and canonical through ALIGN-22.
+- ALIGN-23 closes only after its exact allowlist, internally consistent accepted ADR text, current release/versioning/licensing reconciliation, full exact-head CI/CodeQL, substantive independent semantic review, diff-check verification, and review-thread reconciliation pass before guarded merge.
+- TestPyPI trusted-publishing qualification remains separately scoped successor work after ALIGN-23.
+- Hosted documentation deployment remains deferred unless a concrete consumer/provider justifies it.
 - Final publication recommendation remains blocked until the required later alignment/release-readiness work is itself complete and evidenced.
 
 ## Constraints
@@ -94,8 +105,8 @@ Make `https://github.com/TheHalfMoon/MESC` the canonical truthful source for Med
 
 ## Phase skip rules
 
-- A planned hygiene or formatting phase may be recorded `Not Applicable` when a verified audit finds zero eligible candidates.
-- A file named by a historical plan may be excluded from a later implementation allowlist when audit proves no mutation is needed; no-op churn is not required.
+- A planned phase may be recorded `Not Applicable` or deferred when a verified audit finds no concrete eligible need; no-op churn is not required.
+- A file named by a historical plan may be excluded from a later implementation allowlist when audit proves no mutation is needed.
 - A no-op empty PR must not be created merely to satisfy sequence numbering.
 - Functional, contract, API, schema, CLI, workflow, or architectural changes move into separately scoped units unless explicitly admitted by the current issue.
 - Skipping or narrowing a phase requires recorded evidence and an explicit sequencing/scope amendment before the next governed capability PR is opened.

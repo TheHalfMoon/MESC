@@ -2,7 +2,7 @@
 
 ## Current verified baseline
 
-- ALIGN-22 authorization base: `5e8ee576ff51301ac94eb4876e11d777120b193d` (PR #347 / ALIGN-21 merge).
+- ALIGN-23 authorization base: `02b4ad0956aef613a792a1de853d31b4e1c41fda` (PR #349 / ALIGN-22 merge).
 - Canonical repository: `TheHalfMoon/MESC` on `main`.
 - Package version: `0.2.0`.
 - Existing release tag: `v0.2.0` → commit `d2e651a55c92f2218aca49acaa5b7bd18a75f096`.
@@ -66,34 +66,39 @@ Completed through ALIGN-16 and ALIGN-17, including ADR-0033 history. Those docum
 - Merge: `5e8ee576ff51301ac94eb4876e11d777120b193d`.
 - Result: the SHA-pinned release workflow reuses its exact built wheel for clean-install qualification, proves installed metadata/CLI consistency, and binds the tag path generically to `v<installed-version>` before GitHub Release creation without creating publication authority.
 
+### Documentation source readiness
+
+- Status: **complete through ALIGN-22**.
+- Issue: #348.
+- PR: #349.
+- Merge: `02b4ad0956aef613a792a1de853d31b4e1c41fda`.
+- Result: required CI now checks public repository Markdown links/anchors deterministically without network access or hosted-documentation authority.
+
+The post-ALIGN-22 audit found no concrete hosted-documentation consumer/provider. A hosting/deployment unit is therefore **not currently justified**; this is a deliberate no-op avoidance decision, not a claim that a hosted site exists.
+
 | Planned item | Current audit status |
 |---|---|
 | Pin GitHub Actions SHAs | ✅ implemented in current audited workflows |
 | Coverage enforcement | ✅ implemented (`pytest --cov`; configured floor) |
+| Documentation source/link hygiene | ✅ implemented through ALIGN-22 |
 | Build wheel/sdist | ✅ implemented |
 | PR-safe artifact upload/download byte-identity qualification | ✅ implemented in `release.yml` |
 | Clean installed-wheel + `medscale --version` smoke | ✅ implemented and canonical through ALIGN-21 |
-| TestPyPI dry-run/trusted-publishing qualification | ⬜ remaining; OIDC/environment/external publisher authority remains separately gated |
+| Release/version/licensing governance | 🔄 ALIGN-23 active: reconcile and accept ADR-0010/0011 against current truth |
+| TestPyPI trusted-publishing qualification | ⬜ remaining after ALIGN-23; OIDC/environment/external publisher authority separately gated |
 | CODEOWNERS | ✅ implemented |
 | Issue/PR templates | ✅ implemented |
+| Hosted documentation deployment | ⏸ not currently justified; requires a concrete consumer/provider |
 
-### Documentation source readiness — ALIGN-22
+### Release/version governance — ALIGN-23
 
-- Status: **in progress under ALIGN-22 / issue #348**.
-- Authorization base: `5e8ee576ff51301ac94eb4876e11d777120b193d`.
-- Exact implementation allowlist: the paths recorded in #348, unless the issue is explicitly refined first for an evidence-discovered broken-link repair.
+- Status: **in progress under issue #351**.
+- Authorization base: `02b4ad0956aef613a792a1de853d31b4e1c41fda`.
+- Goal: reconcile ADR-0010/ADR-0011 and the current release/versioning/licensing docs to canonical implemented truth before recording acceptance.
+- Acceptance must not convert current package/GitHub-Release automation into TestPyPI/PyPI/Hugging Face publication authority.
+- Historical execution/audit records remain historical and are not rewritten merely because current governance is accepted later.
 
-Required outcomes:
-
-1. Add a deterministic Python-stdlib link checker over public root Markdown plus `docs/**/*.md`.
-2. Validate repository-local inline links, images, reference-definition targets, and Markdown fragments without network access.
-3. Reject missing paths, repository-root escapes, and missing Markdown anchors; support deterministic duplicate-heading anchors and explicit HTML ids.
-4. Ignore external URI schemes and fenced-code examples rather than converting documentation examples into live dependencies.
-5. Add focused tests and execute the checker inside the existing required CI quality jobs with no dependency, lockfile, permission, or third-party Action addition.
-6. Record source/link readiness truth without claiming a hosted documentation site, renderer, deployment, DNS/domain route, or publication authority.
-7. Require exact-head full CI/CodeQL, focused tests, repository-wide source check, independent substantive semantic review, diff-check verification, and resolved review threads before guarded merge.
-
-After ALIGN-22, re-audit only the remaining verified gaps. A hosted renderer/deployment provider, if a concrete consumer justifies one, and TestPyPI trusted-publishing qualification remain separate scopes and must not be silently bundled into source readiness.
+After ALIGN-23, re-audit the remaining verified gap. The currently evidenced package-distribution successor is TestPyPI trusted-publishing qualification, which must remain separately scoped and must use exact artifact reuse, OIDC trusted publishing, least privilege, an explicitly gated environment, and independently verified no-publication-by-qualification semantics.
 
 ## ALIGN-10 — Final publication recommendation
 
@@ -103,7 +108,7 @@ After ALIGN-22, re-audit only the remaining verified gaps. A hosted renderer/dep
 
 ## Release boundary
 
-Documentation alignment, release automation, package build capability, an existing historical tag, fixture-only plumbing qualification, clean-wheel/version-binding qualification, documentation-source qualification, and passing CI are distinct facts. None of them alone authorizes a new tag, external publication, model promotion, training run, dataset publication, hosted documentation deployment, or product deployment.
+Documentation alignment, release automation, package build capability, an existing historical tag, fixture-only plumbing qualification, clean-wheel/version-binding qualification, documentation-source qualification, accepted governance, and passing CI are distinct facts. None of them alone authorizes a new tag, external publication, model promotion, training run, dataset publication, hosted documentation deployment, or product deployment.
 
 ## Deliverables
 

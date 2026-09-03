@@ -23,15 +23,16 @@
 | ALIGN-19 | Reconcile current public status, release truth, execution docs, and alignment control docs | owner | ALIGN-18 | done | issue #342; PR #343; merge `a5df6403e9087f1c63f95eccbad9d0e2b61a96e1` |
 | ALIGN-20 | Add deterministic offline fixture-only executable golden path | owner | ALIGN-19 | done | issue #344; PR #345; merge `3a632457d92bfd98075b6dc082324a9f92a89d97` |
 | ALIGN-21 | Enforce clean installed-wheel release qualification | owner | ALIGN-20 | done | issue #346; PR #347; merge `5e8ee576ff51301ac94eb4876e11d777120b193d` |
-| ALIGN-22 | Enforce documentation source/link hygiene readiness | owner | ALIGN-21 | in progress | issue #348; exact base `5e8ee576ff51301ac94eb4876e11d777120b193d` |
+| ALIGN-22 | Enforce documentation source/link hygiene readiness | owner | ALIGN-21 | done | issue #348; PR #349; merge `02b4ad0956aef613a792a1de853d31b4e1c41fda` |
+| ALIGN-23 | Reconcile and ratify release/version governance | owner | ALIGN-22 | in progress | issue #351; exact base `02b4ad0956aef613a792a1de853d31b4e1c41fda` |
 
 ## Successor ordering
 
-- ALIGN-22 is the only active alignment ticket.
-- Do not open another alignment successor until ALIGN-22 is exact-head qualified, merged, and post-merge verified.
-- ALIGN-22 is limited to repository documentation-source/link readiness. It does not select, configure, authorize, or deploy a hosted documentation provider.
-- If the checker identifies an existing broken public-documentation target, refine issue #348 with the exact affected path before any repair outside its current allowlist.
-- After ALIGN-22, re-audit the remaining verified gaps. Hosted rendering/deployment, if a concrete consumer justifies it, and TestPyPI trusted-publishing qualification require separate successor scopes.
+- ALIGN-23 is the only active alignment ticket.
+- ALIGN-22 is complete: repository documentation-source/link readiness is qualified through PR #349 / merge `02b4ad0956aef613a792a1de853d31b4e1c41fda`.
+- The post-ALIGN-22 audit found no concrete hosted-documentation consumer/provider. Hosted rendering/deployment is therefore not currently justified and must not be manufactured as a no-op project. It may be reconsidered only when a concrete consumer/provider creates a real requirement.
+- ALIGN-23 is limited to reconciling and accepting ADR-0010/ADR-0011 plus their current release/versioning/licensing control surfaces. It creates no external distribution implementation or authority.
+- TestPyPI trusted-publishing qualification remains the next verified package-distribution gap after ALIGN-23 and requires its own successor scope, exact artifact reuse, trusted publishing/OIDC, a gated environment, least privilege, and separately applicable external configuration/authority.
 - ALIGN-10 remains the final evidence synthesis and does not itself publish anything.
 
 No task in this ledger grants external-data, model/GPU execution, training, promotion, publication, release, hosted-documentation deployment, or product deployment authority unless its own canonical scope explicitly does so.
