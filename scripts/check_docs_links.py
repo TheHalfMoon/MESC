@@ -4,9 +4,9 @@ import argparse
 import html
 import re
 import sys
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, Sequence
 from urllib.parse import unquote, urlsplit
 
 PUBLIC_ROOT_MARKDOWN: tuple[str, ...] = (
