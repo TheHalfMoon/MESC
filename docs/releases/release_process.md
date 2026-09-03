@@ -25,9 +25,12 @@ executed.
 - [ ] Quality gate green locally **and** on CI matrix (3.11 + 3.12)
 - [ ] Version bumped in `__about__.py`; CHANGELOG section dated
 - [ ] Public API changes reflected in docs; new modules in `docs/README.md` map
-- [ ] `uv build` produces wheel + sdist; wheel installs into a fresh venv; `import medscale` works
+- [ ] `uv build` produces wheel + sdist
+- [ ] The release workflow downloads the exact built wheel, installs it into a fresh Python 3.11 venv without source checkout, and verifies `medscale --version` before GitHub Release creation
 - [ ] Tag `vX.Y.Z`; GitHub Release with CHANGELOG excerpt + manifest
-- [ ] (v0.2+) PyPI publish via CI job with operator approval
+- [ ] (v0.2+) PyPI publish via CI job with operator approval only after the separately governed publication path exists
+
+The clean-wheel gate is package qualification, not publication authority. It proves that the exact built wheel installs and exposes the expected CLI version; it does not create a tag, approve a release, or configure PyPI/TestPyPI credentials or trusted publishing.
 
 ## Checklist: HF model release
 
