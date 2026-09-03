@@ -153,7 +153,7 @@ def test_comment_close_then_inline_marker_does_not_hide_rendered_link(tmp_path: 
         tmp_path / "README.md",
         "<!--\n"
         "comment\n"
-        '--> `<!-- not a comment -->` [Missing](docs/missing.md)\n',
+        "--> `<!-- not a comment -->` [Missing](docs/missing.md)\n",
     )
 
     problems = check_repository(tmp_path)
