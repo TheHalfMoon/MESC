@@ -21,14 +21,15 @@
 | ALIGN-17 | ModelKit public surface/runtime governance decision | owner | ALIGN-16 | done | PR #16 / ADR-0033 / `specs/align-17/` |
 | ALIGN-18 | Reconcile live repository identity, ownership, and ADR index | owner | ALIGN-17 and current-main audit | done | issue #340; PR #341; merge `1f27f4128229f1c3c973355c5a14bcac2cec0dfe` |
 | ALIGN-19 | Reconcile current public status, release truth, execution docs, and alignment control docs | owner | ALIGN-18 | done | issue #342; PR #343; merge `a5df6403e9087f1c63f95eccbad9d0e2b61a96e1` |
-| ALIGN-20 | Add deterministic offline fixture-only executable golden path | owner | ALIGN-19 | in progress | issue #344; exact base `a5df6403e9087f1c63f95eccbad9d0e2b61a96e1` |
+| ALIGN-20 | Add deterministic offline fixture-only executable golden path | owner | ALIGN-19 | done | issue #344; PR #345; merge `3a632457d92bfd98075b6dc082324a9f92a89d97` |
+| ALIGN-21 | Enforce clean installed-wheel release qualification | owner | ALIGN-20 | in progress | issue #346; exact base `3a632457d92bfd98075b6dc082324a9f92a89d97` |
 
 ## Successor ordering
 
-- ALIGN-20 is the only active alignment ticket.
-- Do not open Phase 7 work until ALIGN-20 is finished, exact-head qualified, merged, and post-merge verified.
-- Phase 7 hardening follows only through separately scoped tickets for **remaining** gaps. Current audit already finds action SHA pinning, coverage enforcement, package build/roundtrip qualification, CODEOWNERS, and issue/PR templates implemented.
-- Remaining Phase 7 candidates are clean installed-wheel + `medscale --version` workflow smoke and TestPyPI trusted-publishing qualification; exact scope must be reverified after ALIGN-20.
+- ALIGN-21 is the only active alignment ticket.
+- Do not open another alignment successor until ALIGN-21 is exact-head qualified, merged, and post-merge verified.
+- ALIGN-21 is limited to clean installed-wheel qualification over the exact release artifact; it does not authorize publication.
+- After ALIGN-21, re-audit the remaining verified gaps. TestPyPI trusted-publishing qualification and hosted-doc/link-hygiene readiness require separate successor scopes.
 - ALIGN-10 remains the final evidence synthesis and does not itself publish anything.
 
 No task in this ledger grants external-data, model/GPU execution, training, promotion, publication, release, or deployment authority unless its own canonical scope explicitly does so.
