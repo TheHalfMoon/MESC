@@ -55,24 +55,56 @@ def iter_public_markdown(root: Path) -> tuple[Path, ...]:
     return tuple(sorted(files, key=lambda path: path.as_posix()))
 
 
+def _strip_html_comments(line: str, *, in_comment: bool) -> tuple[str, bool]:
+    searchable = list(line)
+    if not in_comment:
+        for match in _INLINE_CODE_RE.finditer(line):
+            searchable[match.start() : match.end()] = "\0" * (match.end() - match.start())
+    marker_line = "".join(searchable)
+
+    visible: list[str] = []
+    cursor = 0
+    while cursor < len(line):
+        if in_comment:
+            end = line.find("-->", cursor)
+            if end < 0:
+                return "".join(visible), True
+            cursor = end + 3
+            in_comment = False
+            continue
+
+        start = marker_line.find("<!--", cursor)
+        if start < 0:
+            visible.append(line[cursor:])
+            break
+        visible.append(line[cursor:start])
+        cursor = start + 4
+        in_comment = True
+
+    return "".join(visible), in_comment
+
+
 def _outside_fenced_code(lines: Iterable[str]) -> Iterable[tuple[int, str]]:
     fence_char: str | None = None
     fence_len = 0
+    in_html_comment = False
     for line_number, line in enumerate(lines, start=1):
-        stripped = line.lstrip()
+        if fence_char is not None:
+            stripped = line.lstrip()
+            if stripped.startswith(fence_char * fence_len):
+                run_len = len(stripped) - len(stripped.lstrip(fence_char))
+                if run_len >= fence_len:
+                    fence_char = None
+                    fence_len = 0
+            continue
+
+        visible, in_html_comment = _strip_html_comments(line, in_comment=in_html_comment)
+        stripped = visible.lstrip()
         if stripped.startswith("```") or stripped.startswith("~~~"):
-            char = stripped[0]
-            run_len = len(stripped) - len(stripped.lstrip(char))
-            if fence_char is None:
-                fence_char = char
-                fence_len = run_len
-                continue
-            if char == fence_char and run_len >= fence_len:
-                fence_char = None
-                fence_len = 0
-                continue
-        if fence_char is None:
-            yield line_number, line
+            fence_char = stripped[0]
+            fence_len = len(stripped) - len(stripped.lstrip(fence_char))
+            continue
+        yield line_number, visible
 
 
 def _destination(raw: str) -> str:
