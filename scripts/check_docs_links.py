@@ -83,14 +83,21 @@ def _strip_html_comments(line: str, *, in_comment: bool) -> tuple[str, bool]:
     return "".join(visible), in_comment
 
 
+def _fence_line(line: str) -> str | None:
+    indent = len(line) - len(line.lstrip(" "))
+    if indent > 3:
+        return None
+    return line[indent:]
+
+
 def _outside_fenced_code(lines: Iterable[str]) -> Iterable[tuple[int, str]]:
     fence_char: str | None = None
     fence_len = 0
     in_html_comment = False
     for line_number, line in enumerate(lines, start=1):
         if fence_char is not None:
-            stripped = line.lstrip()
-            if stripped.startswith(fence_char * fence_len):
+            stripped = _fence_line(line)
+            if stripped is not None and stripped.startswith(fence_char * fence_len):
                 run_len = len(stripped) - len(stripped.lstrip(fence_char))
                 suffix = stripped[run_len:]
                 if run_len >= fence_len and not suffix.strip(" \t"):
@@ -99,8 +106,8 @@ def _outside_fenced_code(lines: Iterable[str]) -> Iterable[tuple[int, str]]:
             continue
 
         visible, in_html_comment = _strip_html_comments(line, in_comment=in_html_comment)
-        stripped = visible.lstrip()
-        if stripped.startswith("```") or stripped.startswith("~~~"):
+        stripped = _fence_line(visible)
+        if stripped is not None and (stripped.startswith("```") or stripped.startswith("~~~")):
             fence_char = stripped[0]
             fence_len = len(stripped) - len(stripped.lstrip(fence_char))
             continue
