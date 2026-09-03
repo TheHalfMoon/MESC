@@ -146,3 +146,18 @@ def test_single_and_multiline_html_comments_are_excluded(tmp_path: Path) -> None
         "docs/guide.md#hidden-two",
     )
     assert all("does not exist" in problem.reason for problem in problems)
+
+
+def test_comment_close_then_inline_marker_does_not_hide_rendered_link(tmp_path: Path) -> None:
+    _write(
+        tmp_path / "README.md",
+        "<!--\n"
+        "comment\n"
+        '--> `<!-- not a comment -->` [Missing](docs/missing.md)\n',
+    )
+
+    problems = check_repository(tmp_path)
+
+    assert len(problems) == 1
+    assert problems[0].target == "docs/missing.md"
+    assert problems[0].reason == "local target does not exist"
