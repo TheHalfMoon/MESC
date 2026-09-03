@@ -14,9 +14,11 @@ The repository currently contains these release-related automation surfaces:
 
 `release.yml` currently provides:
 
-1. **Tag path (`v*`)** — quality gate → wheel/sdist build → artifact upload → GitHub Release creation.
-2. **PR-safe workflow qualification** when `release.yml` changes — build wheel/sdist, compute SHA-256 checksums, upload the qualification artifact, download it in a dependent job, and verify byte identity.
+1. **Tag path (`v*`)** — quality gate → wheel/sdist build → exact artifact download → clean installed-wheel `medscale --version` smoke → GitHub Release creation.
+2. **PR-safe workflow qualification** when `release.yml` changes — build wheel/sdist, compute SHA-256 checksums, upload the qualification artifact, download it in dependent jobs, verify byte identity, and install the exact wheel into a fresh Python 3.11 environment without a source checkout before checking `medscale --version`.
 3. Third-party Actions referenced by immutable commit SHA.
+
+The clean-install jobs intentionally do not check out repository source. Their `medscale --version` success therefore comes from the downloaded wheel installed into the fresh environment rather than an in-tree `src/` import.
 
 The existence of this workflow does **not** authorize creating a tag, publishing a release, or uploading to PyPI/TestPyPI/Hugging Face. It describes available automation only.
 
@@ -35,8 +37,8 @@ The existence of this workflow does **not** authorize creating a tag, publishing
 | Coverage floor | Implemented in test configuration/CI | Quality only |
 | Wheel + sdist build | Implemented | Tag path and PR-safe qualification |
 | Artifact upload/download byte-identity qualification | Implemented | PR-safe workflow self-qualification |
-| GitHub Release creation from `v*` tags | Implemented workflow path | Requires an authorized tag push; workflow existence is not release authority |
-| Clean installed-wheel CLI smoke (`medscale --version`) | Not yet established as a dedicated release-workflow gate | Phase 7 hardening candidate |
+| Clean installed-wheel CLI smoke (`medscale --version`) | Implemented in tag and PR-safe workflow paths | Installs the exact built wheel into a fresh venv without source checkout |
+| GitHub Release creation from `v*` tags | Implemented workflow path | Requires quality, build, and clean-wheel smoke plus an authorized tag push; workflow existence is not release authority |
 | TestPyPI publication/dry-run path | Not implemented | Must use trusted publishing/OIDC and an explicitly gated environment if authorized |
 | PyPI publication | Not implemented | Separate publication authority required |
 | Hugging Face dataset/model publication | Not implemented by this package workflow | Separate artifact-specific governance required |
@@ -44,7 +46,7 @@ The existence of this workflow does **not** authorize creating a tag, publishing
 
 ## Future publication design constraints
 
-A future TestPyPI/PyPI path should prefer GitHub trusted publishing (OIDC), least privilege, environment protection, and exact artifact reuse. A qualification job must never silently rebuild a different wheel for publication; the published artifact should be the exact artifact that passed qualification.
+A future TestPyPI/PyPI path should prefer GitHub trusted publishing (OIDC), least privilege, environment protection, and exact artifact reuse. A qualification job must never silently rebuild a different wheel for publication; the published artifact should be the exact artifact that passed build, byte-identity, and clean-install qualification.
 
 Dataset/model publication requires its own contract, licence checks, manifest/card validation, provenance, and applicable scientific/governance evidence. Package release automation must not be treated as model or dataset release authority.
 
