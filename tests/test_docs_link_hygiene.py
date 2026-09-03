@@ -3,7 +3,6 @@ from __future__ import annotations
 import importlib.util
 import sys
 from pathlib import Path
-from types import ModuleType
 from typing import Protocol, cast
 
 
@@ -13,6 +12,10 @@ class _Problem(Protocol):
 
 class _RepositoryChecker(Protocol):
     def __call__(self, root: Path) -> tuple[_Problem, ...]: ...
+
+
+class _CheckerModule(Protocol):
+    check_repository: _RepositoryChecker
 
 
 def _load_checker() -> _RepositoryChecker:
@@ -25,7 +28,7 @@ def _load_checker() -> _RepositoryChecker:
     module = importlib.util.module_from_spec(spec)
     sys.modules[module_name] = module
     spec.loader.exec_module(module)
-    return cast(_RepositoryChecker, getattr(module, "check_repository"))
+    return cast(_CheckerModule, module).check_repository
 
 
 check_repository = _load_checker()
