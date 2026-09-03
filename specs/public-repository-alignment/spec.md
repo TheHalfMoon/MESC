@@ -30,7 +30,7 @@ Make `https://github.com/TheHalfMoon/MESC` the canonical truthful source for Med
 - ALIGN-18 is complete via PR #341 / issue #340 / merge `1f27f4128229f1c3c973355c5a14bcac2cec0dfe`.
 - ALIGN-19 is complete via PR #343 / issue #342 / merge `a5df6403e9087f1c63f95eccbad9d0e2b61a96e1`.
 - ALIGN-20 is complete via PR #345 / issue #344 / merge `3a632457d92bfd98075b6dc082324a9f92a89d97`.
-- ALIGN-21 is complete via PR #347 / issue #346 / merge `5e8ee576ff51301ac94eb8298d7b885338dbb5f2`.
+- ALIGN-21 is complete via PR #347 / issue #346 / merge `5e8ee576ff51301ac94eb4876e11d777120b193d`.
 - ALIGN-22 is complete via PR #349 / issue #348 / merge `02b4ad0956aef613a792a1de853d31b4e1c41fda`. It qualified the repository documentation-source/link graph without hosted publication authority.
 - ALIGN-23 is complete via PR #352 / issue #351 / merge `8a6c3bf6f51b2e6f72fcdc3ce3c14dfc5f1b4f5c`. It reconciled and accepted ADR-0010/ADR-0011 plus current release/version/licensing policy surfaces without external publication authority.
 - ALIGN-24 is issue #353. It is the only active alignment unit and is limited to a fail-closed repository-side TestPyPI Trusted Publishing path, focused workflow-contract tests, and current release/alignment truth under its exact allowlist.
