@@ -8,6 +8,7 @@ from typing import Protocol, cast
 
 class _Problem(Protocol):
     reason: str
+    target: str
 
 
 class _RepositoryChecker(Protocol):
@@ -118,3 +119,30 @@ def test_inline_code_and_prose_ids_do_not_create_html_anchors(tmp_path: Path) ->
 
     assert len(problems) == 1
     assert problems[0].reason == "Markdown anchor 'fake-id' does not exist"
+
+
+def test_single_and_multiline_html_comments_are_excluded(tmp_path: Path) -> None:
+    _write(
+        tmp_path / "README.md",
+        "[Hidden one](docs/guide.md#hidden-one)\n"
+        "[Hidden two](docs/guide.md#hidden-two)\n"
+        "<!-- [Ignored single](docs/missing-single.md) -->\n"
+        "<!--\n"
+        "[Ignored multi](docs/missing-multi.md)\n"
+        "-->\n",
+    )
+    _write(
+        tmp_path / "docs/guide.md",
+        '<!-- <span id="hidden-one"></span> -->\n'
+        "<!--\n"
+        '<span id="hidden-two"></span>\n'
+        "-->\n",
+    )
+
+    problems = check_repository(tmp_path)
+
+    assert tuple(problem.target for problem in problems) == (
+        "docs/guide.md#hidden-one",
+        "docs/guide.md#hidden-two",
+    )
+    assert all("does not exist" in problem.reason for problem in problems)
