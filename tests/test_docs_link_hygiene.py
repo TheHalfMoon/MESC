@@ -101,6 +101,15 @@ def test_external_links_and_fenced_code_are_ignored(tmp_path: Path) -> None:
     assert check_repository(tmp_path) == ()
 
 
+def test_fence_like_content_with_info_text_does_not_close_fence(tmp_path: Path) -> None:
+    _write(
+        tmp_path / "README.md",
+        "```markdown\n```python\n[Ignored](missing.md)\n```\n",
+    )
+
+    assert check_repository(tmp_path) == ()
+
+
 def test_reference_target_and_explicit_html_id_are_checked(tmp_path: Path) -> None:
     _write(tmp_path / "README.md", "[Guide][guide]\n[guide]: docs/guide.md#stable-id\n")
     _write(tmp_path / "docs/guide.md", '<span id="stable-id"></span>\n')
