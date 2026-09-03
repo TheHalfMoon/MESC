@@ -55,10 +55,10 @@ Make `https://github.com/TheHalfMoon/MESC` the canonical truthful source for Med
 ## Phase 7 clean-wheel qualification contract
 
 - The exact wheel produced by the existing release build is the wheel installed for qualification; the install gate must not rebuild a second candidate.
-- The clean-install job does not check out repository source.
-- It creates a fresh Python 3.11 environment, installs the downloaded wheel with no dependencies, and requires the installed CLI to report exactly `medscale 0.2.0`.
-- The PR-safe path self-qualifies this behavior without publishing anything.
-- The tag path requires the clean-install gate before GitHub Release creation.
+- The clean-install jobs do not check out repository source.
+- Both paths create a fresh Python 3.11 environment, install the downloaded wheel with no dependencies, derive the installed package version from `importlib.metadata`, and require `medscale --version` to report that exact installed version.
+- The PR-safe path self-qualifies this behavior without publishing anything and, for the current baseline, additionally requires the installed version to remain `0.2.0`.
+- The tag path is version-generic and requires `GITHUB_REF_NAME` to equal `v<installed-version>` before GitHub Release creation. It must not be permanently hard-coded to the current `0.2.0` baseline.
 - This is package qualification only. It does not create tag, release, TestPyPI/PyPI/Hugging Face, credential, trusted-publisher, deployment, or clinical authority.
 
 ## Current success criteria
@@ -67,7 +67,7 @@ Make `https://github.com/TheHalfMoon/MESC` the canonical truthful source for Med
 - Historical records remain historical; current summaries are reconciled rather than rewriting old acceptance/evidence.
 - Phase 5 is complete and canonical through ALIGN-19.
 - Phase 6 is complete and canonical through ALIGN-20.
-- ALIGN-21 closes only after its exact allowlist, PR-safe build/byte-identity/clean-wheel workflow qualification, full exact-head CI/CodeQL, substantive independent semantic review, diff-check verification, and review-thread reconciliation all pass before guarded merge.
+- ALIGN-21 closes only after its exact allowlist, PR-safe build/byte-identity/clean-wheel workflow qualification, installed-metadata/CLI/tag version binding, full exact-head CI/CodeQL, substantive independent semantic review, diff-check verification, and review-thread reconciliation all pass before guarded merge.
 - TestPyPI trusted-publishing qualification and hosted-doc readiness remain separately scoped successor work.
 - Final publication recommendation remains blocked until the required later alignment/release-readiness work is itself complete and evidenced.
 
