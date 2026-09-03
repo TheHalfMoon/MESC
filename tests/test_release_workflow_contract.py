@@ -37,6 +37,7 @@ def test_testpypi_publish_job_is_fail_closed_and_least_privilege() -> None:
     workflow_prefix = text.split("jobs:", maxsplit=1)[0]
     assert "permissions:\n  contents: read" in workflow_prefix
     assert "id-token:" not in workflow_prefix
+    assert text.count("id-token:") == block.count("id-token:") == 1
 
 
 def test_testpypi_publish_job_reuses_exact_artifact_without_rebuild_or_secret() -> None:
