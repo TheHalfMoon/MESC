@@ -88,7 +88,9 @@ def _destination(raw: str) -> str:
 
 def _targets_from_line(line: str) -> tuple[str, ...]:
     cleaned = _INLINE_CODE_RE.sub("", line)
-    targets = [_destination(match.group(1)) for match in _INLINE_LINK_RE.finditer(cleaned)]
+    targets = [
+        _destination(match.group(1)) for match in _INLINE_LINK_RE.finditer(cleaned)
+    ]
     reference = _REFERENCE_DEF_RE.match(cleaned)
     if reference is not None:
         targets.append(_destination(reference.group(1)))
