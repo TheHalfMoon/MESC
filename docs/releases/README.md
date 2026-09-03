@@ -27,10 +27,12 @@ flowchart LR
 - **CI is the only publisher.** Manual external uploads are prohibited; each external
   distribution path must have its own qualified CI automation and operator gate
   ([ci_cd.md](ci_cd.md)).
-- **Current implementation is partial.** `.github/workflows/release.yml` implements
-  package build/GitHub Release automation and exact-artifact qualification. TestPyPI,
-  PyPI, and Hugging Face publication remain separately gated and are not implemented
-  by accepting the release ADRs.
+- **Current implementation is partial and fail-closed.** `.github/workflows/release.yml`
+  implements package build/GitHub Release automation, exact-artifact qualification, and
+  an ALIGN-24 TestPyPI Trusted Publishing job. The TestPyPI edge remains disabled unless
+  `TESTPYPI_PUBLISH_ENABLED == 'true'`; repository code does not prove that the required
+  protected Environment or matching TestPyPI Trusted Publisher exists. Production PyPI
+  and Hugging Face publication remain separately gated and unimplemented.
 
 ## Principles
 
@@ -60,4 +62,4 @@ flowchart LR
 | [benchmark_publication.md](benchmark_publication.md) | Benchmark spec, immutability, leaderboard policy |
 | [papers.md](papers.md) | Research → paper → replication-package workflow |
 | [reproducibility.md](reproducibility.md) | Release reproducibility/evidence requirements |
-| [ci_cd.md](ci_cd.md) | Current package/GitHub-Release automation and separately gated future distribution paths |
+| [ci_cd.md](ci_cd.md) | Current package/GitHub-Release automation, fail-closed TestPyPI path, and external activation boundary |
