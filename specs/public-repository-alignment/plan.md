@@ -2,7 +2,7 @@
 
 ## Current verified baseline
 
-- ALIGN-20 authorization base: `a5df6403e9087f1c63f95eccbad9d0e2b61a96e1` (PR #343 / ALIGN-19 merge).
+- ALIGN-21 authorization base: `3a632457d92bfd98075b6dc082324a9f92a89d97` (PR #345 / ALIGN-20 merge).
 - Canonical repository: `TheHalfMoon/MESC` on `main`.
 - Package version: `0.2.0`.
 - Existing release tag: `v0.2.0` → commit `d2e651a55c92f2218aca49acaa5b7bd18a75f096`.
@@ -50,26 +50,17 @@ Completed through ALIGN-16 and ALIGN-17, including ADR-0033 history. Those docum
 
 ## Phase 6 — Executable golden path
 
-- Status: **in progress under ALIGN-20 / issue #344**.
-- Authorization base: `a5df6403e9087f1c63f95eccbad9d0e2b61a96e1`.
-- Exact implementation allowlist: the eight files recorded in #344.
-
-### Required Phase 6 outcomes
-
-1. Add `medscale mesc-fixture-smoke` as an additive research command without changing existing CLI-stable command semantics.
-2. Reuse the existing canonical MRL `complete_fixture_loop()` contracts instead of introducing a parallel evaluator/receipt/decision engine.
-3. Run one fixed in-memory non-perfect fixture candidate that deterministically produces `REJECT`.
-4. Emit canonical JSON content identities for the proposal, observation, receipt, decision, and loop result with explicit fixture-only/non-evidence and false authority flags.
-5. Prove byte-identical repeated stdout and no filesystem writes in focused tests.
-6. Keep the path offline: no external data, network, model/tokenizer download, inference, GPU/provider, credentials, training, campaign-state mutation, promotion, release, deployment, or clinical action.
-7. Document that this path qualifies repository plumbing only and is not research evidence or real-experiment readiness.
-8. Require exact-head Ruff/Mypy/full CI/CodeQL, substantive independent semantic review, diff-check verification, and resolved review threads before guarded merge.
-
-Phase 6 is not complete until ALIGN-20 merges and post-merge truth is verified.
+- Status: **complete through ALIGN-20**.
+- Issue: #344.
+- PR: #345.
+- Merge: `3a632457d92bfd98075b6dc082324a9f92a89d97`.
+- Result: `medscale mesc-fixture-smoke` provides a deterministic offline fixture-only non-evidence path over the canonical MRL fixture contracts, with exact-head CI/CodeQL and independent semantic review completed before guarded merge.
 
 ## Phase 7 — CI, packaging, contributor hardening
 
-- Status: **partially implemented; remaining work not yet authorized by ALIGN-20**.
+- Status: **in progress under ALIGN-21 / issue #346**.
+- Authorization base: `3a632457d92bfd98075b6dc082324a9f92a89d97`.
+- Exact implementation allowlist: the six files recorded in #346.
 
 | Planned item | Current audit status |
 |---|---|
@@ -77,12 +68,21 @@ Phase 6 is not complete until ALIGN-20 merges and post-merge truth is verified.
 | Coverage enforcement | ✅ implemented (`pytest --cov`; configured floor) |
 | Build wheel/sdist | ✅ implemented |
 | PR-safe artifact upload/download byte-identity qualification | ✅ implemented in `release.yml` |
-| Clean installed-wheel + `medscale --version` smoke | ⬜ remaining hardening candidate |
+| Clean installed-wheel + `medscale --version` smoke | ⏳ active under ALIGN-21; must qualify the exact built wheel without source checkout and bind installed metadata to CLI/tag version |
 | TestPyPI dry-run/trusted-publishing qualification | ⬜ remaining; must be OIDC/environment-gated and separately authorized |
 | CODEOWNERS | ✅ implemented |
 | Issue/PR templates | ✅ implemented |
 
-A future Phase 7 ticket must target only the remaining verified gaps; it must not reimplement completed controls merely because this historical plan once listed them as pending.
+### Required ALIGN-21 outcomes
+
+1. Reuse the exact built wheel for install qualification; do not rebuild a second candidate.
+2. Add a PR-safe clean Python 3.11 environment that does not check out repository source, installs the downloaded wheel with `--no-deps`, derives its installed version from `importlib.metadata`, requires the CLI to report that version, and for the current candidate requires `0.2.0`.
+3. Add the equivalent tag-path gate, derive the installed wheel version, require the CLI to match it, require the `vX.Y.Z` tag to equal `v<installed-version>`, and require that gate before the existing GitHub Release job. The tag path must remain future-version capable rather than hard-coded to `0.2.0`.
+4. Preserve SHA-pinned third-party Actions and least-privilege permissions.
+5. Keep publication, trusted publishing, versioning mutations, model/data execution, and deployment out of scope.
+6. Require exact-head full CI/CodeQL, release-workflow PR-safe build/roundtrip/install qualification, independent substantive semantic review, diff-check verification, and resolved review threads before guarded merge.
+
+After ALIGN-21, re-audit only the remaining verified gaps. TestPyPI trusted publishing and hosted-doc/link-hygiene readiness remain separately scoped; they must not be bundled into this unit.
 
 ## ALIGN-10 — Final publication recommendation
 
@@ -92,7 +92,7 @@ A future Phase 7 ticket must target only the remaining verified gaps; it must no
 
 ## Release boundary
 
-Documentation alignment, release automation, package build capability, an existing historical tag, fixture-only plumbing qualification, and passing CI are distinct facts. None of them alone authorizes a new tag, external publication, model promotion, training run, dataset publication, or deployment.
+Documentation alignment, release automation, package build capability, an existing historical tag, fixture-only plumbing qualification, clean-wheel/version-binding qualification, and passing CI are distinct facts. None of them alone authorizes a new tag, external publication, model promotion, training run, dataset publication, or deployment.
 
 ## Deliverables
 
