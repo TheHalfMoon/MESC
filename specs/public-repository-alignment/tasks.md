@@ -11,7 +11,7 @@
 | ALIGN-07 | Draft dependency-ordered public repository alignment sequence | owner | ALIGN-04, ALIGN-06 | done | plan/report history |
 | ALIGN-08 | Run quality/build verification and capture evidence | owner | — | done | historical verification |
 | ALIGN-09 | Install built wheel in a clean environment and run core smoke commands | owner | ALIGN-08 | done | historical clean-wheel smoke |
-| ALIGN-10 | Prepare final evidence-backed GO/NO-GO recommendation for publishing | owner | ALIGN-24 | pending | final report not yet completed |
+| ALIGN-10 | Prepare final evidence-backed GO/NO-GO recommendation for publishing | owner | ALIGN-24 | done | issue #355; `final-publication-go-no-go.md`; final closeout PR |
 | ALIGN-11 | Record hygiene NO-GO / zero eligible Group A files | owner | ALIGN-08 | done | historical disposition |
 | ALIGN-12 | Audit minimum dependency-complete Phase 2 evidence/dataset foundation | owner | ALIGN-11 | done | phase2 boundary audit |
 | ALIGN-13 | Capability foundation: public exports, benchmark run artifact, CLI entry, smoke tests | owner | ALIGN-12 | done | PR #10 / historical merge evidence |
@@ -25,15 +25,31 @@
 | ALIGN-21 | Enforce clean installed-wheel release qualification | owner | ALIGN-20 | done | issue #346; PR #347; merge `5e8ee576ff51301ac94eb4876e11d777120b193d` |
 | ALIGN-22 | Enforce documentation source/link hygiene readiness | owner | ALIGN-21 | done | issue #348; PR #349; merge `02b4ad0956aef613a792a1de853d31b4e1c41fda` |
 | ALIGN-23 | Reconcile and ratify release/version governance | owner | ALIGN-22 | done | issue #351; PR #352; merge `8a6c3bf6f51b2e6f72fcdc3ce3c14dfc5f1b4f5c` |
-| ALIGN-24 | Qualify fail-closed TestPyPI Trusted Publishing repository path | owner | ALIGN-23 | in progress | issue #353; exact base `8a6c3bf6f51b2e6f72fcdc3ce3c14dfc5f1b4f5c`; PR #354 |
+| ALIGN-24 | Qualify fail-closed TestPyPI Trusted Publishing repository path | owner | ALIGN-23 | done | issue #353; PR #354; merge `b6f26b3dedce20e559b3936e9f85f962153e826e` |
 
-## Successor ordering
+## Final closeout
 
-- ALIGN-24 is the only active alignment ticket.
-- ALIGN-23 is complete through PR #352 / merge `8a6c3bf6f51b2e6f72fcdc3ce3c14dfc5f1b4f5c`; ADR-0010/ADR-0011 and current release/version/licensing policy are reconciled and accepted.
-- The post-ALIGN-22 audit found no concrete hosted-documentation consumer/provider. Hosted rendering/deployment is therefore not currently justified and must not be manufactured as a no-op project. It may be reconsidered only when a concrete consumer/provider creates a real requirement.
-- ALIGN-24 is limited to a fail-closed repository-side TestPyPI Trusted Publishing path, focused workflow-contract tests, and current release/alignment truth. It creates no TestPyPI upload, tag, GitHub Release, production PyPI path, or external trust evidence.
-- TestPyPI external activation remains separately evidence-dependent: the protected `testpypi` GitHub Environment, matching TestPyPI Trusted Publisher, and explicit enable decision must not be inferred from repository YAML.
-- ALIGN-10 is the next and final alignment task after ALIGN-24. It is an evidence synthesis and must report any unresolved external activation or scientific-evidence boundary as a NO-GO factor rather than manufacture readiness.
+- ALIGN-24 is canonically complete through issue #353 / PR #354 / merge
+  `b6f26b3dedce20e559b3936e9f85f962153e826e`.
+- ALIGN-10 is the final alignment task. Its evidence-backed result is recorded in
+  `specs/public-repository-alignment/final-publication-go-no-go.md` and becomes canonical only
+  through the final closeout PR's exact-head CI/CodeQL, substantive independent semantic
+  review, review-thread reconciliation, final main/base/head/ruleset verification, and
+  guarded expected-head merge.
+- The Public Repository Alignment sequence has no automatic successor. Completion of this
+  ledger creates no external publication, release, model/GPU execution, training, promotion,
+  scientific publication, hosted-documentation deployment, product deployment, or clinical
+  authority.
+- Repository/source alignment is a GO outcome, while unresolved independent axes remain
+  explicit NO-GO or UNVERIFIED outcomes in the final report.
+- TestPyPI external activation remains separately evidence-dependent: the protected
+  `testpypi` GitHub Environment, matching TestPyPI Trusted Publisher, and explicit enable
+  decision must not be inferred from repository YAML.
+- Production PyPI and Hugging Face publication remain separately unimplemented/unauthorized.
+- Hosted documentation deployment remains not currently justified absent a concrete
+  consumer/provider.
+- Canonical MRL real-evidence gates remain authoritative and are not changed by this closeout.
 
-No task in this ledger grants external-data, model/GPU execution, training, promotion, publication, release, hosted-documentation deployment, or product deployment authority unless its own canonical scope explicitly does so.
+No task in this ledger grants external-data, model/GPU execution, training, promotion,
+publication, release, hosted-documentation deployment, product deployment, or clinical-use
+authority unless its own separately governed scope explicitly does so.
