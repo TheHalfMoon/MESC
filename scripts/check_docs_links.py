@@ -124,7 +124,9 @@ def _markdown_anchors(path: Path) -> frozenset[str]:
     return frozenset(anchors)
 
 
-def _resolve_local_target(root: Path, source: Path, target: str) -> tuple[Path, str] | None:
+def _resolve_local_target(
+    root: Path, source: Path, target: str
+) -> tuple[Path, str] | None:
     parsed = urlsplit(target)
     if parsed.scheme or parsed.netloc or target.startswith("//"):
         return None
