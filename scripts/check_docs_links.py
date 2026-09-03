@@ -26,8 +26,8 @@ _EXPLICIT_ID_RE = re.compile(r"\bid\s*=\s*[\"']([^\"']+)[\"']", re.IGNORECASE)
 _INLINE_CODE_RE = re.compile(r"`+[^`\n]*`+")
 _LINK_TEXT_RE = re.compile(r"!?\[([^\]]*)\]\([^)]*\)")
 _HTML_TAG_RE = re.compile(r"<[^>]+>")
-_WHITESPACE_RE = re.compile(r"\s+")
-_NON_SLUG_RE = re.compile(r"[^\w\- ]", re.UNICODE)
+_WHITESPACE_RE = re.compile(r"\s")
+_NON_SLUG_RE = re.compile(r"[^\w\-\s]", re.UNICODE)
 
 
 @dataclass(frozen=True, slots=True)
