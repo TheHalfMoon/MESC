@@ -26,11 +26,15 @@ executed.
 - [ ] Version bumped in `__about__.py`; CHANGELOG section dated
 - [ ] Public API changes reflected in docs; new modules in `docs/README.md` map
 - [ ] `uv build` produces wheel + sdist
-- [ ] The release workflow downloads the exact built wheel, installs it into a fresh Python 3.11 venv without source checkout, and verifies `medscale --version` before GitHub Release creation
-- [ ] Tag `vX.Y.Z`; GitHub Release with CHANGELOG excerpt + manifest
+- [ ] The release workflow downloads the exact built wheel and installs it into a fresh Python 3.11 venv without source checkout
+- [ ] Installed package metadata version and `medscale --version` agree
+- [ ] Tag `vX.Y.Z` exactly matches the installed package version `X.Y.Z` before GitHub Release creation
+- [ ] GitHub Release contains the qualified artifacts plus the required CHANGELOG excerpt and manifest
 - [ ] (v0.2+) PyPI publish via CI job with operator approval only after the separately governed publication path exists
 
-The clean-wheel gate is package qualification, not publication authority. It proves that the exact built wheel installs and exposes the expected CLI version; it does not create a tag, approve a release, or configure PyPI/TestPyPI credentials or trusted publishing.
+The PR-safe release-workflow qualification for the current baseline also requires the installed package version to remain `0.2.0`. The tag path is intentionally version-generic: it derives the wheel's installed metadata and rejects a tag whose `vX.Y.Z` value does not match that metadata.
+
+The clean-wheel gate is package qualification, not publication authority. It proves that the exact built wheel installs and exposes a version-consistent CLI; it does not create a tag, approve a release, or configure PyPI/TestPyPI credentials or trusted publishing.
 
 ## Checklist: HF model release
 
