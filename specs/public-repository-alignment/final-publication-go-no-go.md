@@ -1,6 +1,6 @@
 # Public Repository Alignment — Final Publication GO/NO-GO Synthesis
 
-Status: **ALIGN-10 CLOSEOUT CANDIDATE / EVIDENCE SYNTHESIS / NO PUBLICATION AUTHORITY**
+Status: **FINAL EVIDENCE SYNTHESIS / PUBLIC REPOSITORY ALIGNMENT GO / NO PUBLICATION AUTHORITY**
 
 Authorization base:
 
@@ -11,6 +11,7 @@ ALIGN_24_PR = 354
 ALIGN_24_ISSUE = 353
 ALIGN_24 = CLOSED_CANONICAL
 ALIGN_10_ISSUE = 355
+ALIGN_10_PR = 356
 ```
 
 ## Purpose
@@ -155,10 +156,9 @@ authority.
 
 ## Closeout boundary
 
-When this ALIGN-10 closeout candidate passes exact-head qualification, fresh substantive
-independent semantic review, review-thread reconciliation, final main/base/head/ruleset
-verification, and guarded expected-head merge, the Public Repository Alignment task sequence
-is complete.
+When this ALIGN-10 closeout passes exact-head qualification, fresh substantive independent
+semantic review, review-thread reconciliation, final main/base/head/ruleset verification,
+and guarded expected-head merge, the Public Repository Alignment task sequence is complete.
 
 That completion must not be interpreted as successor authority. Any later TestPyPI
 activation, production package publication, Hugging Face publication, hosted documentation,
