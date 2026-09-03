@@ -2,33 +2,34 @@
 
 - **Status:** Strategy (ADR-0010, Accepted)
 - **Original strategy date:** 2026-07-10
-- **Reconciled:** 2026-09-03 under ALIGN-23
+- **Reconciled:** 2026-09-03 under ALIGN-23; TestPyPI repository path added under ALIGN-24
 - **Related:** [distribution_hf.md](../architecture/distribution_hf.md) (identity record),
   [ADR-0003](../adr/0003-repository-topology.md)
 
 ## Direction of truth
 
-```
-GitHub  ──►  CI  ──►  GitHub Releases  ──►  Hugging Face  ──►  Users
+```text
+GitHub  ──►  CI  ──►  GitHub Releases  ──►  Separately authorized distribution  ──►  Users
 ```
 
 This diagram is the accepted distribution direction, not a claim that every downstream
-publisher is currently implemented.
+publisher is currently activated.
 
 **Never the reverse.** Concretely:
 
-- No artifact may originate on HF; any future HF repo must mirror a governed GitHub
-  release.
-- No manual editing on HF: card fixes must originate in GitHub and be redistributed
-  through an authorized CI path.
-- Any future HF mirror must record the source tag and manifest/content identity needed
-  to detect drift.
-- If a downstream mirror disappeared, GitHub remains the canonical source of record.
+- No artifact may originate on HF or a package index; external distribution follows a
+  governed GitHub release and its exact qualified artifacts.
+- No manual editing/upload on downstream surfaces: fixes must originate in GitHub and
+  be redistributed through an authorized CI path.
+- Any future mirror must record the source tag and manifest/content identity needed to
+  detect drift.
+- If a downstream surface disappeared, GitHub remains the canonical source of record.
 
-Canonical `main` currently implements package build, exact-artifact qualification,
-version/tag binding, and a tag-driven GitHub Release path in
-`.github/workflows/release.yml`. It does **not** currently implement or authorize
-TestPyPI/PyPI or Hugging Face publication.
+Canonical `main` implements package build, exact-artifact qualification, version/tag
+binding, and a tag-driven GitHub Release path in `.github/workflows/release.yml`.
+ALIGN-24 adds a fail-closed TestPyPI repository path after GitHub Release creation. The
+path is not externally activated by repository code and does not authorize production
+PyPI or Hugging Face publication.
 
 ## GitHub Releases
 
@@ -75,12 +76,21 @@ canonical source.
 
 ## TestPyPI / PyPI
 
-TestPyPI and PyPI trusted-publishing paths are **not implemented** in canonical `main`.
-They remain separately gated successor work. A future implementation must use CI-only
-trusted publishing/OIDC, least privilege, an explicitly governed environment/approval
-boundary, and the exact artifact that already passed build, byte-identity,
-clean-install, and version-binding qualification. Local `twine` uploads and long-lived
-publishing tokens are not an approved substitute.
+ALIGN-24 implements a **repository-side TestPyPI Trusted Publishing path**. It runs only
+on the governed `v*` tag workflow after successful GitHub Release creation, downloads
+the exact same-run qualified distribution artifact, performs no rebuild, scopes
+`id-token: write` to the publishing job, references `environment: testpypi`, and uses
+the SHA-pinned official PyPA publishing action against TestPyPI.
 
-The current package version/tag baseline `0.2.0` is not evidence of PyPI publication and
-does not itself authorize one.
+The path remains **disabled by default** behind
+`vars.TESTPYPI_PUBLISH_ENABLED == 'true'`. Repository code neither sets that variable
+nor proves that the `testpypi` GitHub Environment is protected or that TestPyPI has the
+matching Trusted Publisher. Those external controls require independent evidence and
+operator approval before the enable guard may be set true. A workflow environment name
+alone is not evidence of protection.
+
+Production PyPI remains unimplemented and separately gated. Local `twine` uploads,
+long-lived publishing tokens, and manual web uploads are not approved substitutes.
+
+The current package version/tag baseline `0.2.0` is not evidence of TestPyPI/PyPI
+publication and does not itself authorize one.
