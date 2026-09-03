@@ -133,10 +133,7 @@ def test_single_and_multiline_html_comments_are_excluded(tmp_path: Path) -> None
     )
     _write(
         tmp_path / "docs/guide.md",
-        '<!-- <span id="hidden-one"></span> -->\n'
-        "<!--\n"
-        '<span id="hidden-two"></span>\n'
-        "-->\n",
+        '<!-- <span id="hidden-one"></span> -->\n<!--\n<span id="hidden-two"></span>\n-->\n',
     )
 
     problems = check_repository(tmp_path)
@@ -151,9 +148,7 @@ def test_single_and_multiline_html_comments_are_excluded(tmp_path: Path) -> None
 def test_comment_close_then_inline_marker_does_not_hide_rendered_link(tmp_path: Path) -> None:
     _write(
         tmp_path / "README.md",
-        "<!--\n"
-        "comment\n"
-        "--> `<!-- not a comment -->` [Missing](docs/missing.md)\n",
+        "<!--\ncomment\n--> `<!-- not a comment -->` [Missing](docs/missing.md)\n",
     )
 
     problems = check_repository(tmp_path)
