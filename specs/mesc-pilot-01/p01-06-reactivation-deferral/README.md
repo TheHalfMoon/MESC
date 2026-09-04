@@ -4,7 +4,16 @@ Status: **FOUNDER-DIRECTED GOVERNANCE REPAIR / INACTIVE UNTIL CANONICAL MERGE**
 
 Decision: `FD-P01-06-REACTIVATION-DEFER-1`
 
-Execution ledger: #362
+Issue roles:
+
+```text
+AUTHORIZATION_ISSUE = #360
+EXECUTION_LEDGER = #362
+DEFERRAL_GOVERNANCE_ISSUE = #364
+DEFERRAL_PR = #363
+```
+
+#360 governed the authorization adopted through PR #361. #362 is the execution ledger for the authorized smoke. #364 governs this proposed deferral package. These roles are intentionally distinct.
 
 ## Purpose
 
@@ -14,12 +23,13 @@ It does **not** rewrite or reopen the historical Pilot-01 closeout adopted throu
 
 ## Entry truth
 
-The package was prepared from verified canonical state:
+The package was prepared from verified canonical state immediately before the deferral branch/PR was created:
 
 ```text
 ENTRY_MAIN_SHA = 53207977904ba01c89cb72dfa90be534af0c0d79
 ENTRY_MAIN_TREE = 9693fe510e26a1505a117242968e9fc097fe28c6
 ENTRY_OPEN_PULL_REQUESTS = 0
+AUTHORIZATION_ISSUE = #360
 EXECUTION_LEDGER = #362
 P01_06_AUTHORIZATION = CANONICAL / ACTIVE
 P01_06_EXECUTION = NOT_STARTED
@@ -28,6 +38,8 @@ LIVE_COLAB_GPU_EVIDENCE = NOT_OBSERVED
 LIVE_HF_GATED_ACCESS = NOT_OBSERVED
 P01_07 = NOT_AUTHORIZED
 ```
+
+Governance issue #364 was created after that entry snapshot to make the deferral authority and acceptance criteria explicit.
 
 The connected operator surface used for this episode does not expose a Google Colab hosted GPU execution route. No externally produced P01-06 evidence ZIP was supplied. No replacement provider/runtime is authorized by the controlling decision.
 
@@ -42,6 +54,7 @@ P01_06_REACTIVATION_EPISODE = DEFERRED / NOT EXECUTED
 P01_06_EXECUTION_EVIDENCE = NOT PRODUCED
 FD_P01_06_COLAB_1 = SUPERSEDED FOR CURRENT AUTHORITY
 ISSUE_362 = ELIGIBLE FOR NOT_PLANNED CLOSURE AFTER POST_MERGE VERIFICATION
+ISSUE_364 = ELIGIBLE FOR COMPLETED CLOSURE AFTER #362 TERMINAL DISPOSITION IS RECORDED
 P01_07 = NOT AUTHORIZED
 QLORA = NOT AUTHORIZED
 UNSLOTH_TRAINING = NOT AUTHORIZED
@@ -83,4 +96,4 @@ Canonical effect is prohibited until this exact package passes:
 7. guarded merge;
 8. post-merge canonical SHA/tree/parent verification.
 
-Only after item 8 may Issue #362 be closed as `not_planned` on the basis of canonical deferral.
+Only after item 8 may execution ledger #362 be closed as `not_planned` on the basis of canonical deferral. Governance issue #364 may then be closed as `completed` after the #362 terminal disposition is recorded.
