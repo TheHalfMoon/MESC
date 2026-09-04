@@ -35,12 +35,12 @@ Its top-level packages are exact pins:
 
 ```text
 accelerate==1.14.0
-bitsandbytes==0.50.1
+bitsandbytes==0.50.2
 datasets==5.0.1
 peft==0.20.0
 torch==2.13.0
-transformers==5.15.1
-trl==1.10.0
+transformers==5.16.1
+trl==1.12.0
 ```
 
 The exact pins are intentional. `TrainingRunPlan.dependency_lock_sha256` is part of the
@@ -52,25 +52,20 @@ second hand-maintained manifest.
 
 ## Compatibility basis
 
-The selected versions were checked against current upstream package metadata before this
-gate was constructed:
+The selected versions are accepted as a repository dependency set only when the exact
+canonical `uv.lock` resolves them together and repository qualification remains green:
 
-- TRL 1.10.0 requires Accelerate >=1.4.0, Datasets >=4.7.0, and Transformers >=4.56.2;
-- TRL exposes PEFT and quantization integrations but does not make PEFT or bitsandbytes
-  mandatory, so this repository pins both explicitly because the backend imports them;
-- PEFT 0.20.0 requires Torch >=1.13.0 and accepts Transformers plus Accelerate >=0.21.0;
-- bitsandbytes 0.50.1 requires Torch >=2.4,<3 and publishes Linux x86-64 wheels for the
-  Python versions used by the repository;
-- Transformers 5.15.1 supports Python 3.10+ and PyTorch 2.5+; and
-- the selected Torch 2.13.0 publishes PyPI wheels through CPython 3.14 but no
-  source distribution, so the project metadata is explicitly bounded to Python
+- the lock co-resolves TRL 1.12.0, Accelerate 1.14.0, Datasets 5.0.1,
+  Transformers 5.16.1, PEFT 0.20.0, bitsandbytes 0.50.2, and Torch 2.13.0;
+- PEFT and bitsandbytes remain explicit top-level pins because the backend imports them;
+- the selected Torch 2.13.0 lock remains bounded by project metadata to Python
   `>=3.11,<3.15`; and
 - repository CI continues to qualify Python 3.11 and 3.12, while the dependency
   resolver gate separately proves the frozen training extra resolves at Python 3.14.
 
-Those upstream ranges are evidence for candidate compatibility, not the final authority.
-The final authority for this repository is successful `uv` resolution into the exact
-canonical lock plus repository CI.
+Package metadata is candidate evidence rather than final authority. The final authority
+for this repository dependency set is successful `uv` resolution into the exact canonical
+lock plus repository CI and the canonical dependency-lock regression gates.
 
 ## Default environment remains lean
 

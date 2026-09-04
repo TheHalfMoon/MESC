@@ -54,12 +54,12 @@ _REQUIRED_SPECS: Final = (
 )
 _EXPECTED_TRAINING_PINS: Final = (
     "accelerate==1.14.0",
-    "bitsandbytes==0.50.1",
+    "bitsandbytes==0.50.2",
     "datasets==5.0.1",
     "peft==0.20.0",
     "torch==2.13.0",
-    "transformers==5.15.1",
-    "trl==1.10.0",
+    "transformers==5.16.1",
+    "trl==1.12.0",
 )
 
 

@@ -50,12 +50,12 @@ backends-llamacpp = [
 ]
 training-hf-sft = [
   "accelerate==1.14.0",
-  "bitsandbytes==0.50.1",
+  "bitsandbytes==0.50.2",
   "datasets==5.0.1",
   "peft==0.20.0",
   "torch==2.13.0",
-  "transformers==5.15.1",
-  "trl==1.10.0",
+  "transformers==5.16.1",
+  "trl==1.12.0",
 ]
 
 [dependency-groups]
@@ -64,7 +64,7 @@ dev = [
   "mypy>=1.11",
   "pytest>=8.0",
   "pytest-cov>=5.0",
-  "pyarrow==25.0.0",
+  "pyarrow==25.0.1",
 ]
 
 [tool.hatch.version]
@@ -101,6 +101,10 @@ known-first-party = ["medscale"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/test_pubmedqa_source_transform.py" = ["E501"]
+# These frozen contract files are byte-identity evidence in independent qualification gates.
+# Keep their canonical bytes unchanged while newer Ruff versions enforce RUF036 elsewhere.
+"src/medscale/mesc/_bt_executor_core_fixture_v1.py" = ["RUF036"]
+"src/medscale/mesc/_canonical_json_v1.py" = ["RUF036"]
 
 # ---------------------------------------------------------------------------
 # Mypy — strict typing
