@@ -2,9 +2,28 @@
 
 Status: **CANDIDATE EVIDENCE BASIS / NO RUNTIME EVIDENCE**
 
+## Issue-role map
+
+The three governance roles are intentionally separate:
+
+```text
+AUTHORIZATION_ISSUE = #360
+AUTHORIZATION_PR = #361
+AUTHORIZATION_DECISION = FD-P01-06-COLAB-1
+
+EXECUTION_LEDGER = #362
+EXECUTION_PURPOSE = authorized P01-06 Colab feasibility smoke
+
+DEFERRAL_GOVERNANCE_ISSUE = #364
+DEFERRAL_PR = #363
+DEFERRAL_DECISION = FD-P01-06-REACTIVATION-DEFER-1
+```
+
+#360 authorized the bounded reactivation adopted through PR #361. #362 records whether that authorized execution actually occurred. #364 governs the proposed administrative deferral without execution. These roles must not be collapsed.
+
 ## Canonical repository identity
 
-Verified entry state:
+Verified entry state immediately before the deferral branch/PR was created:
 
 ```text
 repository = TheHalfMoon/MESC
@@ -12,9 +31,10 @@ main_sha = 53207977904ba01c89cb72dfa90be534af0c0d79
 main_tree = 9693fe510e26a1505a117242968e9fc097fe28c6
 open_pull_requests = 0
 execution_issue = #362 / OPEN
+deferral_governance_issue = #364 / CREATED AFTER ENTRY SNAPSHOT
 ```
 
-The entry main is the merge of PR #361, which adopted `FD-P01-06-COLAB-1`.
+The entry main is the merge of PR #361, which adopted `FD-P01-06-COLAB-1` under authorization issue #360.
 
 ## Historical Pilot-01 closeout
 
@@ -34,9 +54,11 @@ Later governance explicitly treated this closeout as adopted. The later P01-06 a
 
 ```text
 founder_decision = FD-P01-06-COLAB-1
+authorization_issue = #360
 authorization_pr = #361
 authorization_merge = 53207977904ba01c89cb72dfa90be534af0c0d79
 authorization_tree = 9693fe510e26a1505a117242968e9fc097fe28c6
+execution_ledger = #362
 authorized_runtime = GOOGLE_COLAB_HOSTED_GPU_RUNTIME
 primary_model = meta-llama/Llama-3.2-3B-Instruct
 primary_revision = 0cb88a4f764b7a12671c53f0838cd831a0843b95
@@ -56,9 +78,9 @@ OPTIONAL_EXTRAS_BACKENDS = 33889610685 / SUCCESS
 
 These runs qualify the authorization merge. They are not P01-06 runtime evidence.
 
-## Issue #362 ledger truth
+## Issue #362 execution-ledger truth
 
-At this package's entry, Issue #362 records:
+At this package's entry, execution ledger #362 records:
 
 ```text
 P01_06_AUTHORIZATION = CANONICAL / ACTIVE
@@ -84,11 +106,17 @@ execution_evidence = false
 
 This identity is recorded only to distinguish a prepared surface from a run result. This package does not adopt the notebook into Git and does not require it for deferral.
 
+## Issue #364 deferral-governance truth
+
+Issue #364 was created after the entry snapshot to make the proposed deferral authority and acceptance criteria explicit. It does not replace execution ledger #362 and does not retroactively claim that #362 reached a runtime terminal disposition.
+
+Its function is limited to governing candidate decision `FD-P01-06-REACTIVATION-DEFER-1` and PR #363.
+
 ## External-evidence search result
 
 No genuine file named `mesc-p01-06-colab-feasibility-1-evidence.zip`, and no equivalent verified P01-06 runtime evidence archive, was available to the connected operator surface at this decision entry.
 
-No evidence exists in the ledger of:
+No evidence exists in the execution ledger of:
 
 - an actual Google Colab hosted GPU allocation;
 - observed GPU model/count/memory;
@@ -119,7 +147,7 @@ RUNTIME_EVIDENCE_PRODUCED = FALSE
 FEASIBILITY_RESULT_ESTABLISHED = FALSE
 AUTHORIZED_RUNTIME_ROUTE_AVAILABLE_TO_CONNECTED_OPERATOR = FALSE
 SILENT_SUBSTITUTION_PERMITTED = FALSE
-REACTIVATION_DEFERRAL_ELIGIBLE = TRUE, SUBJECT TO CANONICAL ADOPTION
+REACTIVATION_DEFERRAL_ELIGIBLE = TRUE, SUBJECT TO CANONICAL ADOPTION VIA #364 / PR #363
 ```
 
 It does not support a scientific success or failure claim.
@@ -136,4 +164,4 @@ NO_RUNTIME_SUCCESSOR = AUTHORIZED_BY_THIS_PACKAGE
 FUTURE_REACTIVATION = REQUIRES_NEW_FOUNDER_DECISION
 ```
 
-The current authorized frontier is exhausted when this reactivation-deferral package is canonically adopted, Issue #362 is closed as `not_planned`, and post-merge verification confirms no new authority has appeared.
+The current authorized frontier is exhausted when this reactivation-deferral package is canonically adopted, execution ledger #362 is closed as `not_planned`, governance issue #364 is closed after recording that terminal disposition, and post-merge verification confirms no new authority has appeared.
