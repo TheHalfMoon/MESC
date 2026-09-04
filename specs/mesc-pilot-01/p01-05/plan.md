@@ -2,7 +2,7 @@
 
 Status: **baseline runner entry contract**
 
-Authorization: Entry *** defined — real execution not authorized
+Authorization: P01-05 entry defined; real B0/B1 execution remains separately governed; P01-06 is separately authorized only by `FD-P01-06-COLAB-1` after canonical merge
 
 ---
 
@@ -11,6 +11,8 @@ Authorization: Entry *** defined — real execution not authorized
 P01-05 is the documentation and governance phase that defines the B0/B1 baseline runner entry contract after P01-04 completion and MESC vNext architecture ratification.
 
 It does not execute inference. It does not download model weights. It does not implement B1. It does not modify B0 implementation. It does not start P01-06. It does not start MESC vNext implementation stages.
+
+The historical P01-05 entry package predates the later P01-06 authorization. After canonical merge of `FD-P01-06-COLAB-1`, that later decision controls P01-06 authorization status without retroactively changing what P01-05 itself authorized.
 
 ---
 
@@ -23,8 +25,8 @@ P01-01 — Foundation contracts — COMPLETED
 P01-02 — Dataset identity, rights, and immutable revision lock — COMPLETED
 P01-03 — Dataset transformation and validation — PLANNING AUTHORIZED / EXECUTION NOT AUTHORIZED
 P01-04 — Frozen split and leakage audit — CANONICALLY RATIFIED / CLOSED
-P01-05 — B0/B1 baseline runner — ENTRY CONTRACT DEFINED / EXECUTION NOT AUTHORIZED
-P01-06 — Colab feasibility smoke run — NOT AUTHORIZED
+P01-05 — B0/B1 baseline runner — ENTRY CONTRACT DEFINED / EXECUTION NOT AUTHORIZED BY P01-05 ITSELF
+P01-06 — Colab feasibility smoke run — AUTHORIZED ON CANONICAL MERGE OF FD-P01-06-COLAB-1 / NOT EXECUTED
 P01-07 — First QLoRA run — NOT AUTHORIZED
 P01-08 — B2/B3 evaluation — NOT AUTHORIZED
 P01-09 — Clinical and external comparators — NOT AUTHORIZED
@@ -81,12 +83,13 @@ See `acceptance.md`.
 
 ## Stop conditions
 
-- Any real model execution or weight download attempted.
+- Any real model execution or weight download attempted under P01-05 authority alone.
 - B1 evidence source fabricated rather than canonically determined.
 - Retrieval smuggled into B1.
 - Model authority reconciliation erases historical records instead of superseding them.
-- P01-06 or later phase authorized.
-- Any source, test, or script code changed.
+- Any source, test, or script code changed under the P01-05 entry-contract authority.
+
+The historical P01-05 statement that P01-06 was not authorized is superseded only by the later, separately scoped `FD-P01-06-COLAB-1` decision after that decision is canonically merged.
 
 ---
 
@@ -106,10 +109,12 @@ Complete human A/B annotation set: NOT PRODUCED
 
 B1 development evidence pack: NOT PRODUCED
 
-B0 execution: NOT AUTHORIZED
+B0 execution: HISTORICAL ACCEPTED EXECUTION EXISTS; NO NEW B0 RUN AUTHORIZED BY P01-05
 
 B1 real model execution: NOT PERFORMED / NOT AUTHORIZED
 
-P01-06: NOT AUTHORIZED
+P01-06: AUTHORIZED ON CANONICAL MERGE OF `FD-P01-06-COLAB-1` / NOT EXECUTED
+
+P01-07 / QLoRA / Unsloth training: NOT AUTHORIZED
 
 vNext Stage 1 implementation: NOT AUTHORIZED
