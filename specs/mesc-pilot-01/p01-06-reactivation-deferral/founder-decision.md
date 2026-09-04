@@ -2,7 +2,7 @@
 
 Status: **RECORDED ON CANDIDATE BRANCH / INACTIVE UNTIL CANONICAL MERGE**
 
-Date: 2026-09-05
+Decision date (Asia/Riyadh): 2026-09-05
 
 ## 1. Decision identity
 
@@ -10,14 +10,18 @@ Date: 2026-09-05
 FOUNDER_DECISION = FD-P01-06-REACTIVATION-DEFER-1
 DECISION_CLASS = REACTIVATION TERMINATION / EXPLICIT DEFERRAL
 GOVERNED_EPISODE = P01-06 COLAB FEASIBILITY REACTIVATION
-EXECUTION_LEDGER = #362
 PREDECESSOR_DECISION = FD-P01-06-COLAB-1
+AUTHORIZATION_ISSUE = #360
+EXECUTION_LEDGER = #362
+DEFERRAL_GOVERNANCE_ISSUE = #364
 ACTIVATION = ONLY_AFTER_CANONICAL_MERGE_AND_POST_MERGE_VERIFICATION
 ```
 
 This decision implements the founder's explicit direction to fix the current runtime-blocked frontier and continue without bypassing canonical governance. Because the P01-06 measurement is defined by its exact Google Colab GPU runtime and exact gated Llama identities, substituting another runtime/provider/model would change the authorized experiment rather than repair it.
 
 The controlling Pilot-01 status vocabulary already defines `DEFERRED` as an explicit decision to postpone with documented rationale. This decision uses that existing status rather than fabricating execution.
+
+Issue roles are intentionally distinct: #360 governed the authorization adopted through PR #361, #362 is the execution ledger for the authorized smoke, and #364 governs this proposed administrative deferral.
 
 ## 2. Bound entry truth
 
@@ -26,7 +30,9 @@ ENTRY_MAIN_SHA = 53207977904ba01c89cb72dfa90be534af0c0d79
 ENTRY_MAIN_TREE = 9693fe510e26a1505a117242968e9fc097fe28c6
 ENTRY_OPEN_PULL_REQUESTS = 0
 AUTHORIZATION_PR = #361
+AUTHORIZATION_ISSUE = #360
 EXECUTION_LEDGER = #362
+DEFERRAL_GOVERNANCE_ISSUE = #364
 P01_06_AUTHORIZATION = CANONICAL / ACTIVE
 P01_06_EXECUTION = NOT_STARTED
 P01_06_EVIDENCE = NOT_PRODUCED
@@ -34,6 +40,8 @@ LIVE_COLAB_GPU_EVIDENCE = NOT_OBSERVED
 LIVE_HF_GATED_ACCESS = NOT_OBSERVED
 FINAL_DISPOSITION = PENDING_EXTERNAL_RUNTIME
 ```
+
+`ENTRY_OPEN_PULL_REQUESTS = 0` records repository state immediately before the deferral branch/PR was created; it is not a claim about the later review state.
 
 Issue #362 records three execution-surface preparation/audit comments. All three explicitly state that notebook preparation/static qualification is not execution evidence. The latest v3 surface is external and conversation-only; it does not establish a runtime result.
 
@@ -121,13 +129,15 @@ Any future P01-06 reactivation requires a new founder decision that:
 5. passes exact-head CI/CodeQL and fresh substantive review;
 6. is adopted through a guarded expected-head merge.
 
-## 9. Issue #362 closure rule
+## 9. Issue closure rules
 
 Issue #362 must remain open while this decision is only a candidate.
 
 After canonical merge and post-merge verification, Issue #362 may be closed with GitHub state reason `not_planned`, because the authorized execution episode was explicitly deferred without execution.
 
 Closing #362 under this decision must not be described as successful P01-06 completion.
+
+Issue #364 is the governance ledger for this deferral package and may be closed as `completed` only after the package is canonically adopted, post-merge verification succeeds, and the #362 terminal disposition is recorded.
 
 ## 10. Adoption gates
 
@@ -143,4 +153,4 @@ This decision activates only after:
 - guarded merge succeeds without head drift;
 - post-merge verification proves canonical main, resulting tree, and ordered parents.
 
-Until all gates complete, `FD-P01-06-COLAB-1` remains the current canonical authority and #362 remains open.
+Until all gates complete, `FD-P01-06-COLAB-1` remains the current canonical authority, #362 remains open, and #364 remains an open governance proposal.
