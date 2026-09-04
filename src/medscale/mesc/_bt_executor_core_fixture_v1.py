@@ -37,7 +37,7 @@ AttemptDisposition: TypeAlias = Literal[
     "terminal_error",
 ]
 RetryableFailureKind: TypeAlias = Literal["timeout", "infrastructure_error"]
-JsonValue: TypeAlias = "bool | int | str | list[JsonValue] | dict[str, JsonValue] | None"
+JsonValue: TypeAlias = "None | bool | int | str | list[JsonValue] | dict[str, JsonValue]"
 
 _PATH_RE: Final = re.compile(r"^[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)*$")
 _MAX_ATTEMPTS: Final = 2
