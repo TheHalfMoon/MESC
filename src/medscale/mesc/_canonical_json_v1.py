@@ -22,7 +22,7 @@ from typing import ClassVar, TypeAlias
 
 #: The closed canonical value domain ratified by FD-B2A-2.
 CanonicalJsonValue: TypeAlias = (
-    "None | bool | int | str | Sequence[CanonicalJsonValue] | Mapping[str, CanonicalJsonValue]"
+    "bool | int | str | Sequence[CanonicalJsonValue] | Mapping[str, CanonicalJsonValue] | None"
 )
 
 #: LF is the only permitted line terminator, and the only permitted terminator byte.
