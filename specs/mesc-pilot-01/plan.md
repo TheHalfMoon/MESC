@@ -1,7 +1,7 @@
 # MESC Pilot-01 — Plan
 
 Status: **foundation plan**
-Authorization: Foundation authorized; execution not authorized
+Authorization: Foundation authorized; execution is phase-specific and separately gated
 Freeze date: 2026-07-17
 
 ---
@@ -99,7 +99,7 @@ Note: P01-04C acceptance accepts synthetic qualification only. It does not autho
 - Outputs: deterministic runner scaffold; run manifests; baseline result schema.
 - Acceptance criteria: runner does not download weights by default; missing metrics report `not_applicable`; abstention behavior preserved; no experimental results claimed in foundation contract.
 - Stop conditions: weights access attempted without explicit authorization; runner mutates scientific identity.
-- Authorization status: NOT AUTHORIZED.
+- Authorization status: HISTORICAL ROOT-PLAN STATUS; current P01-05 implementation/execution truth is governed by `specs/mesc-pilot-01/p01-05/` and its accepted successor packages.
 
 ## P01-06 — Colab feasibility smoke run
 
@@ -107,7 +107,9 @@ Note: P01-04C acceptance accepts synthetic qualification only. It does not autho
 - Outputs: feasibility report; memory usage record; fallback decision.
 - Acceptance criteria: run confined to authorized environment; fallback decision explicit; no persistent adapter or published output.
 - Stop conditions: Colab OOM or disconnection patterns ignored; fallback substituted without documented authorization.
-- Authorization status: NOT AUTHORIZED.
+- Authorization status: **AUTHORIZED ON CANONICAL MERGE OF `FD-P01-06-COLAB-1` — NOT EXECUTED**.
+- Controlling authorization package: `specs/mesc-pilot-01/p01-06-colab-feasibility-authorization/`.
+- Execution boundary: Google Colab feasibility only; exact primary/fallback model revisions; no scientific benchmark run, QLoRA, Unsloth training, adapter creation, retrieval, publication, or test-partition inspection.
 
 ## P01-07 — First QLoRA run
 
