@@ -110,11 +110,14 @@ authorized rented accelerator execution may be evaluated later under MRL-0804/MR
 
 ## Required package files
 
-This specification family owns:
+The canonical package index is `manifest.md`. It currently covers:
 
 ```text
 specs/mesc-experiment-0/README.md
+specs/mesc-experiment-0/STATUS.md
+specs/mesc-experiment-0/manifest.md
 specs/mesc-experiment-0/plan.md
+specs/mesc-experiment-0/tournament-contract.md
 specs/mesc-experiment-0/evidence-contract.md
 specs/mesc-experiment-0/decision-contract.md
 specs/mesc-experiment-0/runbook.md
@@ -122,6 +125,7 @@ specs/mesc-experiment-0/experiment-config.template.json
 notebooks/MESC_Experiment_0_Colab.ipynb
 tools/verify_mesc_experiment_0_evidence.py
 tests/test_verify_mesc_experiment_0_evidence.py
+tests/test_mesc_experiment_0_protocol.py
 ```
 
 The notebook is a protocol implementation template. Its existence is not runtime evidence.
