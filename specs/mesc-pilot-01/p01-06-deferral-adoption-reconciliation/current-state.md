@@ -4,6 +4,8 @@ Status: **CANDIDATE EVIDENCE BASIS / GOVERNANCE REPAIR ONLY**
 
 Governance ledger: **#365**
 
+Reconciliation PR: **#366**
+
 ## Canonical entry identity
 
 ```text
@@ -92,7 +94,7 @@ These successful post-merge workflows do not retroactively create the missing pr
 
 ## Reconciliation issue state
 
-Governance issue #365 is now the explicit reconciliation ledger.
+Governance issue #365 is the explicit reconciliation ledger and PR #366 is its candidate adoption vehicle.
 
 The original post-PR-#363 issue closures have been reopened for fail-closed administrative reconciliation:
 
