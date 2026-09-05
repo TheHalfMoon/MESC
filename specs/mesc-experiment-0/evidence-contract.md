@@ -264,7 +264,7 @@ The outer archive filename should be stable and include no secrets:
 mesc-experiment-0-evidence.zip
 ```
 
-`bundle-manifest.json` must list every archive member with:
+`bundle-manifest.json` must list every archive member **except itself** with:
 
 ```text
 path
@@ -273,7 +273,11 @@ sha256
 media_type
 ```
 
-and the bundle verifier must reject:
+The manifest cannot hash itself because that would create a self-referential digest. The
+outer ZIP hash is recorded separately after archive construction and is not an entry inside
+`bundle-manifest.json`.
+
+The bundle verifier must reject:
 
 - duplicate paths;
 - path traversal;
@@ -284,7 +288,8 @@ and the bundle verifier must reject:
 - missing mandatory files;
 - hash mismatches;
 - schema/version mismatch;
-- inconsistent experiment/repository/candidate identities.
+- inconsistent experiment/repository/candidate identities;
+- a manifest entry that attempts to list/hash `bundle-manifest.json` itself.
 
 ## 9. Repository evidence boundary
 
