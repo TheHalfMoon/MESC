@@ -1,23 +1,32 @@
-"""Evidence-bound admission facade for deterministic MRL machine-state projections.
+"""Trusted real-preflight binding for deterministic MRL machine-state projections.
 
-The implementation that existed before the closeout-evidence repair is preserved
-byte-for-byte in ``_mrl_machine_state_generation_legacy_v1``. This facade adds one
-canonical source and replaces merge-shape-only closure with fail-closed admission
-against independently harvested exact-head GitHub qualification evidence.
+The previously accepted closeout-evidence facade is preserved byte-for-byte in
+``_mrl_machine_state_generation_closeout_v1``. This module layers the MRL-8 real-evidence
+admission path over that implementation without weakening its historical closeout rules.
 
-The manifest is evidence, not authority: projections remain derived and
-non-authoritative, and no model/data/runtime/training/release authority is granted.
+Real-evidence plumbing is not authority. The production trust registry remains the
+admission boundary, projections remain derived/non-authoritative, and an empty admission
+index preserves MRL-0801..MRL-0808 as PLANNED.
 """
 
 from __future__ import annotations
 
+import ast
+import hashlib
 import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final, cast
 
+from medscale.mesc import _mrl_machine_state_generation_closeout_v1 as _closeout
 from medscale.mesc import _mrl_machine_state_generation_legacy_v1 as _legacy
+from medscale.mesc import _mrl_real_preflight_evidence_v1 as _real_preflight
+from medscale.mesc import _training_authorization_trust_v1 as _training_trust
+from medscale.mesc._canonical_json_v1 import canonical_json_bytes
+from medscale.mesc._mrl_capability_matrix_v1 import CapabilityMatrixProjection
+from medscale.mesc._mrl_project_state_v1 import ProjectStateEntry, ProjectStateProjection
+from medscale.mesc._mrl_research_program_index_v1 import ResearchProgramIndexProjection
 
 __all__ = [
     "MachineStateGenerationError",
@@ -27,163 +36,336 @@ __all__ = [
     "load_canonical_snapshot",
 ]
 
-_CLOSEOUT_EVIDENCE: Final = "specs/mesc-research-loop-v1/closeout-evidence-v1.json"
-_SCHEMA_VERSION: Final = "MRL-CLOSEOUT-EVIDENCE-V1"
-_REPOSITORY_PROFILE: Final = "MRL_REPOSITORY_EXACT_HEAD_V1"
-_REVIEWED_PROFILE: Final = "MRL_REVIEWED_EXACT_HEAD_V1"
-_CONSTITUTION_PROFILE: Final = "MRL_CONSTITUTION_EXACT_HEAD_V1"
-_PROFILES: Final = frozenset({_REPOSITORY_PROFILE, _REVIEWED_PROFILE, _CONSTITUTION_PROFILE})
-_REVIEW_REQUIRED_TASKS: Final = frozenset(
-    {"MRL-0100", "MRL-0101", "MRL-0102", "MRL-0103", "MRL-0109"}
-)
-_TASK_ID: Final = re.compile(r"^MRL-[0-9]{4}$")
-_SHA40: Final = re.compile(r"^[0-9a-f]{40}$")
-_INDEPENDENT_REF: Final = re.compile(r"^(?:comment|review):[1-9][0-9]*$")
-_RECORD_FIELDS: Final = frozenset(
-    {
-        "canonical_merge_sha",
-        "coderabbit_success_status_ids",
-        "evidence_profile",
-        "independent_exact_head_evidence_refs",
-        "owner_exact_head_review_ids",
-        "pr_number",
-        "qodo_exact_head_comment_ids",
-        "qualified_head_sha",
-        "successful_ci_run_ids",
-        "successful_codeql_run_ids",
-        "task_ids",
-    }
-)
+_REAL_EVIDENCE_INDEX: Final = "specs/mesc-research-loop-v1/real-preflight-evidence-index-v1.json"
+_REAL_EVIDENCE_SOURCE: Final = "src/medscale/mesc/_mrl_real_preflight_evidence_v1.py"
+_TRAINING_TRUST_SOURCE: Final = "src/medscale/mesc/_training_authorization_trust_v1.py"
+_REAL_EVIDENCE_SLOT_DIR: Final = "specs/mesc-research-loop-v1/real-preflight-evidence"
+_REAL_INDEX_SCHEMA_VERSION: Final = "MRL-REAL-PREFLIGHT-EVIDENCE-INDEX-V1"
+_REAL_SLOT_SCHEMA_VERSION: Final = "MRL-REAL-PREFLIGHT-EVIDENCE-SLOT-V1"
+_REAL_INDEX_RECORD_FIELDS: Final = frozenset({"evidence_path", "evidence_sha256", "task_id"})
+_REAL_TRUST_REGISTRY_NAME: Final = "TRUSTED_MRL_REAL_PREFLIGHT_EVIDENCE_SHA256"
+_REAL_TRUST_VERSION_NAME: Final = "_TRUST_REGISTRY_VERSION"
+_TRAINING_TRUST_REGISTRY_NAME: Final = "TRUSTED_TRAINING_AUTHORIZATION_ARTIFACT_SHA256"
+_TRAINING_TRUST_VERSION_NAME: Final = "TRUST_REGISTRY_VERSION"
+_TRAINING_TRUST_KIND: Final = "mesc.training_authorization.trust_registry.v1"
+_SHA64: Final = re.compile(r"^[0-9a-f]{64}$")
 
 
 @dataclass(frozen=True, slots=True)
-class _CloseoutEvidence:
-    canonical_merge_sha: str
-    qualified_head_sha: str
-    pr_number: int
-    evidence_profile: str
-    successful_ci_run_ids: tuple[int, ...]
-    successful_codeql_run_ids: tuple[int, ...]
-    independent_exact_head_evidence_refs: tuple[str, ...]
-    qodo_exact_head_comment_ids: tuple[int, ...]
-    owner_exact_head_review_ids: tuple[int, ...]
-    coderabbit_success_status_ids: tuple[int, ...]
-    task_ids: tuple[str, ...]
+class _RealEvidenceIndexRecord:
+    task_id: str
+    evidence_path: str
+    evidence_sha256: str
 
 
-MachineStateGenerationError = _legacy.MachineStateGenerationError
-MachineStateRenderSet = _legacy.MachineStateRenderSet
-_REAL_EVIDENCE = _legacy._REAL_EVIDENCE
-_EXTERNAL_DEPENDENCY_TEXT: Final[dict[str, frozenset[str]]] = {
-    "MRL-0001": frozenset({"planning package acceptance"}),
-    "MRL-0800": frozenset({"current training/runtime governance"}),
-    "MRL-0801": frozenset({"separate real-asset authorization/evidence"}),
-    "MRL-0802": frozenset({"separate real-asset authorization/evidence"}),
-    "MRL-0803": frozenset({"actual corpus/evaluation evidence"}),
-    "MRL-0804": frozenset({"real runtime evidence"}),
-    "MRL-0805": frozenset(
-        {"independent authority artifact/trust path and current training governance"}
-    ),
-    "MRL-0806": frozenset({"selected real experiment"}),
-    "MRL-0807": frozenset({"real evaluation assets"}),
-    "MRL-0808": frozenset({"real runtime/sandbox evidence"}),
-}
+MachineStateGenerationError = _closeout.MachineStateGenerationError
+MachineStateRenderSet = _closeout.MachineStateRenderSet
+_REAL_EVIDENCE = _closeout._REAL_EVIDENCE
+_REAL_EVIDENCE_SLOT_PATHS: Final = tuple(
+    f"{_REAL_EVIDENCE_SLOT_DIR}/{task_id}.json" for task_id in sorted(_REAL_EVIDENCE)
+)
 
-_merge_shape_closure = _legacy._closure_proof
-_legacy_dependencies = _legacy._dependencies
+# Keep historical/private compatibility used by the accepted closeout regression suite.
+_CloseoutEvidence = _closeout._CloseoutEvidence
+_dependencies = _closeout._dependencies
+_task_records = _closeout._task_records
+_parse_closeout_evidence = _closeout._parse_closeout_evidence
+_evidence_by_task = _closeout._evidence_by_task
+_merge_shape_closure = _closeout._merge_shape_closure
 
-_project_sources = tuple(sorted(set(_legacy._PROJECT_SOURCES) | {_CLOSEOUT_EVIDENCE}))
-_all_sources = tuple(sorted(set(_legacy._ALL_SOURCES) | {_CLOSEOUT_EVIDENCE}))
+_closeout_project = _legacy._project
+_project_sources = tuple(
+    sorted(
+        set(_legacy._PROJECT_SOURCES)
+        | {
+            _REAL_EVIDENCE_INDEX,
+            _REAL_EVIDENCE_SOURCE,
+            *_REAL_EVIDENCE_SLOT_PATHS,
+        }
+    )
+)
+_all_sources = tuple(
+    sorted(
+        set(_legacy._ALL_SOURCES)
+        | {
+            _REAL_EVIDENCE_INDEX,
+            _REAL_EVIDENCE_SOURCE,
+            *_REAL_EVIDENCE_SLOT_PATHS,
+        }
+    )
+)
 vars(_legacy)["_PROJECT_SOURCES"] = _project_sources
 vars(_legacy)["_ALL_SOURCES"] = _all_sources
 
 
-def _dependency_clauses(lines: list[str]) -> tuple[str, ...]:
-    clauses: list[str] = []
-    for index, line in enumerate(lines):
-        if "Depends on:" in line:
-            marker = "Depends on:"
-        elif "Requires:" in line:
-            marker = "Requires:"
-        else:
+def _slot_path(task_id: str) -> str:
+    if task_id not in _REAL_EVIDENCE:
+        raise MachineStateGenerationError(f"unsupported MRL real-evidence task: {task_id}")
+    return f"{_REAL_EVIDENCE_SLOT_DIR}/{task_id}.json"
+
+
+def _absent_slot_bytes(task_id: str) -> bytes:
+    return canonical_json_bytes(
+        {
+            "schema_version": _REAL_SLOT_SCHEMA_VERSION,
+            "state": "ABSENT",
+            "task_id": task_id,
+        }
+    )
+
+
+def _top_level_assignment(
+    raw: bytes,
+    *,
+    variable: str,
+    label: str,
+) -> ast.expr:
+    try:
+        source = raw.decode("utf-8")
+        module = ast.parse(source)
+    except (UnicodeDecodeError, SyntaxError) as exc:
+        raise MachineStateGenerationError(f"{label} source is not valid UTF-8 Python") from exc
+
+    values: list[ast.expr] = []
+    for statement in module.body:
+        if (
+            isinstance(statement, ast.AnnAssign)
+            and isinstance(statement.target, ast.Name)
+            and statement.target.id == variable
+            and statement.value is not None
+        ):
+            values.append(statement.value)
             continue
+        if isinstance(statement, ast.Assign) and any(
+            isinstance(target, ast.Name) and target.id == variable for target in statement.targets
+        ):
+            values.append(statement.value)
 
-        parts = [line.split(marker, 1)[1].strip()]
-        cursor = index + 1
-        while cursor < len(lines):
-            continuation = lines[cursor]
-            if continuation.startswith("    ") and not continuation.lstrip().startswith("- "):
-                parts.append(continuation.strip())
-                cursor += 1
-                continue
-            break
-
-        clause = " ".join(part for part in parts if part)
-        if not clause:
-            raise MachineStateGenerationError("MRL dependency clause must not be empty")
-        clauses.append(clause)
-    return tuple(clauses)
-
-
-def _external_dependency_text(clause: str) -> str:
-    residual = _legacy._DEP_RE.sub(" ", clause)
-    residual = residual.replace(",", " ").replace(".", " ")
-    words = residual.split()
-    while words and words[0] in {"and", "plus"}:
-        words.pop(0)
-    return " ".join(words)
-
-
-def _dependencies(lines: list[str], task_id: str) -> tuple[str, ...]:
-    clauses = _dependency_clauses(lines)
-    synthetic = [f"  - Depends on: {clause}" for clause in clauses]
-    dependencies = _legacy_dependencies(synthetic, task_id)
-
-    allowed_external = _EXTERNAL_DEPENDENCY_TEXT.get(task_id, frozenset())
-    for clause in clauses:
-        external = _external_dependency_text(clause)
-        if external and external not in allowed_external:
-            raise MachineStateGenerationError(
-                f"MRL task {task_id} contains unmodeled external dependency: {external}"
-            )
-    return dependencies
-
-
-def _task_records(text: str) -> tuple[tuple[str, bool, tuple[str, ...]], ...]:
-    lines = text.splitlines()
-    rows: list[tuple[str, bool, tuple[str, ...]]] = []
-    for index, line in enumerate(lines):
-        match = _legacy._TASK_RE.match(line)
-        if match is None:
-            if line.startswith("- [") and "MRL-" in line:
-                raise MachineStateGenerationError("MRL task ledger contains malformed task record")
-            continue
-        block: list[str] = []
-        cursor = index + 1
-        while cursor < len(lines) and _legacy._TASK_RE.match(lines[cursor]) is None:
-            if lines[cursor].startswith(("## ", "### ")):
-                break
-            block.append(lines[cursor])
-            cursor += 1
-        task_id = match.group(2)
-        rows.append(
-            (
-                task_id,
-                match.group(1) == "x",
-                _dependencies(block, task_id),
-            )
+    if len(values) != 1:
+        raise MachineStateGenerationError(
+            f"{label} source must define exactly one top-level {variable}"
         )
-    ids = tuple(row[0] for row in rows)
-    if not ids or len(set(ids)) != len(ids):
-        raise MachineStateGenerationError("MRL task ledger has missing or duplicate task IDs")
-    known = set(ids)
-    for task_id, _checked, dependencies in rows:
-        missing = tuple(item for item in dependencies if item not in known)
-        if missing:
+    return values[0]
+
+
+def _bound_registry(
+    raw: bytes,
+    *,
+    variable: str,
+    label: str,
+) -> frozenset[str]:
+    value = _top_level_assignment(raw, variable=variable, label=label)
+    if (
+        not isinstance(value, ast.Call)
+        or not isinstance(value.func, ast.Name)
+        or value.func.id != "frozenset"
+        or value.keywords
+        or len(value.args) > 1
+    ):
+        raise MachineStateGenerationError(
+            f"{label} registry must be a literal frozenset declaration"
+        )
+
+    if not value.args:
+        return frozenset()
+
+    container = value.args[0]
+    if not isinstance(container, (ast.Set, ast.List, ast.Tuple)):
+        raise MachineStateGenerationError(
+            f"{label} registry must contain a literal digest collection"
+        )
+
+    entries: list[str] = []
+    for element in container.elts:
+        if (
+            not isinstance(element, ast.Constant)
+            or type(element.value) is not str
+            or _SHA64.fullmatch(element.value) is None
+        ):
             raise MachineStateGenerationError(
-                f"MRL task {task_id} references unknown dependency {missing[0]}"
+                f"{label} registry entries must be 64 lowercase hex characters"
             )
-    return tuple(sorted(rows, key=lambda row: row[0]))
+        entries.append(element.value)
+
+    if len(entries) != len(set(entries)):
+        raise MachineStateGenerationError(f"{label} registry contains duplicate digests")
+    return frozenset(entries)
+
+
+def _bound_string_constant(
+    raw: bytes,
+    *,
+    variable: str,
+    label: str,
+) -> str:
+    value = _top_level_assignment(raw, variable=variable, label=label)
+    if not isinstance(value, ast.Constant) or type(value.value) is not str or not value.value:
+        raise MachineStateGenerationError(f"{label} version must be a non-empty string literal")
+    return value.value
+
+
+def _assert_runtime_trust_matches_bound_commit(
+    root: Path,
+    decision_base: str,
+) -> None:
+    real_source = _legacy._git_bytes(root, "show", f"{decision_base}:{_REAL_EVIDENCE_SOURCE}")
+    real_registry = _bound_registry(
+        real_source,
+        variable=_REAL_TRUST_REGISTRY_NAME,
+        label="MRL real-preflight trust",
+    )
+    real_version = _bound_string_constant(
+        real_source,
+        variable=_REAL_TRUST_VERSION_NAME,
+        label="MRL real-preflight trust",
+    )
+    real_registry_sha256 = hashlib.sha256(
+        canonical_json_bytes(
+            {
+                "registry_version": real_version,
+                "trusted_evidence_sha256": sorted(real_registry),
+            }
+        )
+    ).hexdigest()
+    runtime_real = _real_preflight.mrl_real_preflight_trust_snapshot()
+    if (
+        runtime_real.registry_version != real_version
+        or runtime_real.trusted_evidence_sha256 != real_registry
+        or runtime_real.registry_sha256 != real_registry_sha256
+    ):
+        raise MachineStateGenerationError(
+            "runtime MRL real-preflight trust registry does not match the bound Git source"
+        )
+
+    training_source = _legacy._git_bytes(
+        root,
+        "show",
+        f"{decision_base}:{_TRAINING_TRUST_SOURCE}",
+    )
+    training_registry = _bound_registry(
+        training_source,
+        variable=_TRAINING_TRUST_REGISTRY_NAME,
+        label="training authorization trust",
+    )
+    training_version = _bound_string_constant(
+        training_source,
+        variable=_TRAINING_TRUST_VERSION_NAME,
+        label="training authorization trust",
+    )
+    training_registry_sha256 = hashlib.sha256(
+        canonical_json_bytes(
+            {
+                "kind": _TRAINING_TRUST_KIND,
+                "registry_version": training_version,
+                "trusted_authorization_artifact_sha256": sorted(training_registry),
+            }
+        )
+    ).hexdigest()
+    runtime_training = _training_trust.training_authorization_trust_snapshot()
+    if (
+        runtime_training.registry_version != training_version
+        or runtime_training.trusted_authorization_artifact_sha256 != training_registry
+        or runtime_training.registry_sha256 != training_registry_sha256
+    ):
+        raise MachineStateGenerationError(
+            "runtime training authorization trust registry does not match the bound Git source"
+        )
+
+
+def _parse_real_evidence_index(raw: bytes) -> dict[str, _RealEvidenceIndexRecord]:
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise MachineStateGenerationError("MRL real-evidence index is not UTF-8") from exc
+    try:
+        loaded: object = json.loads(text, object_pairs_hook=_unique_object)
+    except json.JSONDecodeError as exc:
+        raise MachineStateGenerationError("MRL real-evidence index is not valid JSON") from exc
+    if type(loaded) is not dict:
+        raise MachineStateGenerationError("MRL real-evidence index must be a JSON object")
+    document = cast(dict[str, object], loaded)
+    if set(document) != {"records", "schema_version"}:
+        raise MachineStateGenerationError("MRL real-evidence index top-level schema is invalid")
+    if document["schema_version"] != _REAL_INDEX_SCHEMA_VERSION:
+        raise MachineStateGenerationError("MRL real-evidence index schema version is invalid")
+    if raw != canonical_json_bytes(document):
+        raise MachineStateGenerationError(
+            "MRL real-evidence index must use exact canonical JSON bytes"
+        )
+    rows = document["records"]
+    if type(rows) is not list:
+        raise MachineStateGenerationError("MRL real-evidence index records must be an array")
+
+    records: list[_RealEvidenceIndexRecord] = []
+    for value in cast(list[object], rows):
+        if type(value) is not dict or set(value) != _REAL_INDEX_RECORD_FIELDS:
+            raise MachineStateGenerationError("MRL real-evidence index record schema is invalid")
+        row = cast(dict[str, object], value)
+        task_id = row["task_id"]
+        evidence_path = row["evidence_path"]
+        evidence_sha256 = row["evidence_sha256"]
+        if type(task_id) is not str or task_id not in _REAL_EVIDENCE:
+            raise MachineStateGenerationError("MRL real-evidence index task identity is invalid")
+        if type(evidence_path) is not str or evidence_path != _slot_path(task_id):
+            raise MachineStateGenerationError(
+                "MRL real-evidence index path must equal the fixed canonical task slot"
+            )
+        if type(evidence_sha256) is not str or _SHA64.fullmatch(evidence_sha256) is None:
+            raise MachineStateGenerationError("MRL real-evidence index SHA-256 is invalid")
+        records.append(_RealEvidenceIndexRecord(task_id, evidence_path, evidence_sha256))
+
+    task_ids = tuple(record.task_id for record in records)
+    paths = tuple(record.evidence_path for record in records)
+    if task_ids != tuple(sorted(task_ids)) or len(task_ids) != len(set(task_ids)):
+        raise MachineStateGenerationError(
+            "MRL real-evidence index records must be task-sorted and task-unique"
+        )
+    if len(paths) != len(set(paths)):
+        raise MachineStateGenerationError("MRL real-evidence index paths must be unique")
+    return {record.task_id: record for record in records}
+
+
+def _admitted_real_evidence_by_task(
+    root: Path,
+    decision_base: str,
+) -> dict[str, _RealEvidenceIndexRecord]:
+    _assert_runtime_trust_matches_bound_commit(root, decision_base)
+    index_raw = _legacy._git_bytes(root, "show", f"{decision_base}:{_REAL_EVIDENCE_INDEX}")
+    indexed = _parse_real_evidence_index(index_raw)
+    admitted: dict[str, _RealEvidenceIndexRecord] = {}
+
+    for task_id in sorted(_REAL_EVIDENCE):
+        path = _slot_path(task_id)
+        slot_raw = _legacy._git_bytes(root, "show", f"{decision_base}:{path}")
+        record = indexed.get(task_id)
+        if record is None:
+            if slot_raw != _absent_slot_bytes(task_id):
+                raise MachineStateGenerationError(
+                    f"MRL real-evidence slot {task_id} is non-empty but absent "
+                    "from the admission index"
+                )
+            continue
+
+        digest = hashlib.sha256(slot_raw).hexdigest()
+        if digest != record.evidence_sha256:
+            raise MachineStateGenerationError(
+                f"MRL real-evidence slot digest mismatch for {task_id}"
+            )
+        try:
+            parsed = _real_preflight.admit_mrl_real_preflight_evidence(
+                slot_raw,
+                expected_task_id=cast(_real_preflight.MRLRealPreflightTask, task_id),
+            )
+        except _real_preflight.MRLRealPreflightEvidenceError as exc:
+            raise MachineStateGenerationError(
+                f"MRL real-evidence admission failed for {task_id}: {exc}"
+            ) from exc
+        if parsed.task_id != task_id or parsed.evidence_sha256 != record.evidence_sha256:
+            raise MachineStateGenerationError(
+                f"MRL real-evidence admitted identity mismatch for {task_id}"
+            )
+        admitted[task_id] = record
+    return admitted
 
 
 def _closure_proof(
@@ -192,9 +374,24 @@ def _closure_proof(
     canonical_main_sha: str,
     task_id: str,
 ) -> tuple[str, str] | None:
-    """Return closure only when Git transition and admitted evidence agree exactly."""
+    """Return closure only when canonical transition and required evidence agree exactly."""
     if task_id in _REAL_EVIDENCE:
-        return None
+        if decision_base != canonical_main_sha:
+            return None
+
+        # Historical repository-only closeout evidence can never close a real-evidence task.
+        if _evidence_by_task(root, decision_base).get(task_id) is not None:
+            return None
+
+        real_record = _admitted_real_evidence_by_task(root, decision_base).get(task_id)
+        if real_record is None:
+            raise MachineStateGenerationError(
+                f"checked real-evidence task {task_id} lacks a canonical admitted evidence record"
+            )
+        # Legacy assembly expects a commit-shaped closure tuple. _project replaces these
+        # temporary refs with the exact real-evidence digest/path refs below.
+        return (decision_base, decision_base)
+
     transition = _merge_shape_closure(
         root,
         decision_base,
@@ -203,215 +400,64 @@ def _closure_proof(
     )
     if transition is None:
         return None
-    record = _evidence_by_task(root, decision_base).get(task_id)
-    if record is None:
+    closeout_record = _evidence_by_task(root, decision_base).get(task_id)
+    if closeout_record is None:
         return None
-    if record.canonical_merge_sha != transition[0] or record.qualified_head_sha != transition[1]:
+    if (
+        closeout_record.canonical_merge_sha != transition[0]
+        or closeout_record.qualified_head_sha != transition[1]
+    ):
         return None
     return transition
 
 
-def _evidence_by_task(
-    root: Path,
-    decision_base: str,
-) -> dict[str, _CloseoutEvidence]:
-    try:
-        payload = _legacy._git_bytes(
-            root,
-            "show",
-            f"{decision_base}:{_CLOSEOUT_EVIDENCE}",
-        )
-    except MachineStateGenerationError:
-        return {}
-    try:
-        text = payload.decode("utf-8")
-    except UnicodeDecodeError as exc:
-        raise MachineStateGenerationError("MRL closeout evidence manifest is not UTF-8") from exc
-    return _parse_closeout_evidence(text)
+def _project(
+    snapshot: _legacy.CanonicalRepositorySnapshot,
+    research: ResearchProgramIndexProjection,
+    capability: CapabilityMatrixProjection,
+) -> ProjectStateProjection:
+    """Derive project state after validating every claimed real-evidence admission."""
+    admitted = _admitted_real_evidence_by_task(
+        snapshot.repository_root,
+        snapshot.commit_sha,
+    )
+    projected = _closeout_project(snapshot, research, capability)
 
-
-def _parse_closeout_evidence(text: str) -> dict[str, _CloseoutEvidence]:
-    try:
-        loaded: object = json.loads(text, object_pairs_hook=_unique_object)
-    except json.JSONDecodeError as exc:
-        raise MachineStateGenerationError(
-            "MRL closeout evidence manifest is not valid JSON"
-        ) from exc
-    if type(loaded) is not dict:
-        raise MachineStateGenerationError("MRL closeout evidence manifest must be a JSON object")
-    document = cast(dict[str, object], loaded)
-    if set(document) != {"records", "schema_version"}:
-        raise MachineStateGenerationError("MRL closeout evidence top-level schema is invalid")
-    if document["schema_version"] != _SCHEMA_VERSION:
-        raise MachineStateGenerationError("MRL closeout evidence schema version is invalid")
-    rows = document["records"]
-    if type(rows) is not list or not rows:
-        raise MachineStateGenerationError("MRL closeout evidence records must be a non-empty array")
-
-    records: list[_CloseoutEvidence] = []
-    for row in cast(list[object], rows):
-        records.append(_parse_record(row))
-
-    first_ids = tuple(record.task_ids[0] for record in records)
-    if first_ids != tuple(sorted(first_ids)):
-        raise MachineStateGenerationError(
-            "MRL closeout evidence records must be sorted by first task_id"
-        )
-
-    result: dict[str, _CloseoutEvidence] = {}
-    for record in records:
-        for task_id in record.task_ids:
-            if task_id in result:
-                raise MachineStateGenerationError(
-                    f"MRL closeout evidence duplicates task: {task_id}"
+    entries: list[ProjectStateEntry] = []
+    for entry in projected.entries:
+        if entry.state_id not in _REAL_EVIDENCE or entry.lifecycle_state != "CLOSED_CANONICAL":
+            entries.append(entry)
+            continue
+        record = admitted.get(entry.state_id)
+        if record is None:
+            raise MachineStateGenerationError(
+                f"closed real-evidence task {entry.state_id} lacks admitted evidence"
+            )
+        refs = tuple(
+            sorted(
+                (
+                    f"canonical-main:{snapshot.canonical_main_sha}",
+                    f"real-preflight-evidence:{record.evidence_sha256}",
+                    f"real-preflight-path:{record.evidence_path}",
                 )
-            result[task_id] = record
-    return result
-
-
-def _parse_record(value: object) -> _CloseoutEvidence:
-    if type(value) is not dict or set(value) != _RECORD_FIELDS:
-        raise MachineStateGenerationError("MRL closeout evidence record schema is invalid")
-    row = cast(dict[str, object], value)
-    canonical_merge_sha = _sha40(row["canonical_merge_sha"], "canonical merge")
-    qualified_head_sha = _sha40(row["qualified_head_sha"], "qualified head")
-    pr_number = _positive_int(row["pr_number"], "PR number")
-    evidence_profile = row["evidence_profile"]
-    if type(evidence_profile) is not str or evidence_profile not in _PROFILES:
-        raise MachineStateGenerationError("MRL closeout evidence profile is invalid")
-    profile = evidence_profile
-    task_ids = _task_ids(row["task_ids"])
-    ci = _positive_ids(row["successful_ci_run_ids"], "CI run IDs")
-    codeql = _positive_ids(row["successful_codeql_run_ids"], "CodeQL run IDs")
-    independent = _independent_refs(row["independent_exact_head_evidence_refs"])
-    qodo = _positive_ids(
-        row["qodo_exact_head_comment_ids"],
-        "Qodo exact-head comment IDs",
-        allow_empty=True,
-    )
-    owner = _positive_ids(
-        row["owner_exact_head_review_ids"],
-        "owner exact-head review IDs",
-        allow_empty=True,
-    )
-    coderabbit = _positive_ids(
-        row["coderabbit_success_status_ids"],
-        "CodeRabbit success status IDs",
-        allow_empty=True,
-    )
-
-    if not ci or not codeql:
-        raise MachineStateGenerationError(
-            "MRL closeout evidence requires successful exact-head CI and CodeQL"
-        )
-
-    contains_constitution_gate = "MRL-0099" in task_ids
-    contains_review_gate = bool(_REVIEW_REQUIRED_TASKS.intersection(task_ids))
-    if contains_constitution_gate:
-        if (
-            profile != _CONSTITUTION_PROFILE
-            or independent
-            or not qodo
-            or not owner
-            or not coderabbit
-        ):
-            raise MachineStateGenerationError(
-                "MRL-0099 evidence does not satisfy the constitution exact-head profile"
             )
-    elif contains_review_gate:
-        if profile != _REVIEWED_PROFILE or not independent or qodo or owner or coderabbit:
-            raise MachineStateGenerationError(
-                "review-required MRL closeout evidence has the wrong profile"
+        )
+        entries.append(
+            ProjectStateEntry(
+                entry.state_id,
+                entry.lifecycle_state,
+                entry.canonical_source_paths,
+                entry.dependency_ids,
+                refs,
             )
-    elif profile != _REPOSITORY_PROFILE or independent or qodo or owner or coderabbit:
-        raise MachineStateGenerationError(
-            "repository-only MRL closeout evidence has the wrong profile"
         )
 
-    return _CloseoutEvidence(
-        canonical_merge_sha=canonical_merge_sha,
-        qualified_head_sha=qualified_head_sha,
-        pr_number=pr_number,
-        evidence_profile=profile,
-        successful_ci_run_ids=ci,
-        successful_codeql_run_ids=codeql,
-        independent_exact_head_evidence_refs=independent,
-        qodo_exact_head_comment_ids=qodo,
-        owner_exact_head_review_ids=owner,
-        coderabbit_success_status_ids=coderabbit,
-        task_ids=task_ids,
+    return ProjectStateProjection(
+        projected.research_program_index,
+        projected.capability_matrix,
+        projected.sources,
+        tuple(entries),
     )
-
-
-def _sha40(value: object, label: str) -> str:
-    if type(value) is not str or _SHA40.fullmatch(value) is None:
-        raise MachineStateGenerationError(f"MRL closeout evidence {label} SHA is invalid")
-    return value
-
-
-def _positive_int(value: object, label: str) -> int:
-    if type(value) is not int or value <= 0:
-        raise MachineStateGenerationError(f"MRL closeout evidence {label} is invalid")
-    return value
-
-
-def _positive_ids(
-    value: object,
-    label: str,
-    *,
-    allow_empty: bool = False,
-) -> tuple[int, ...]:
-    if type(value) is not list:
-        raise MachineStateGenerationError(f"MRL closeout evidence {label} must be an array")
-    raw = cast(list[object], value)
-    result = tuple(_positive_int(item, label) for item in raw)
-    if not allow_empty and not result:
-        raise MachineStateGenerationError(f"MRL closeout evidence {label} must not be empty")
-    if result != tuple(sorted(result)) or len(result) != len(set(result)):
-        raise MachineStateGenerationError(
-            f"MRL closeout evidence {label} must be sorted and unique"
-        )
-    return result
-
-
-def _independent_refs(value: object) -> tuple[str, ...]:
-    if type(value) is not list:
-        raise MachineStateGenerationError(
-            "MRL closeout evidence independent exact-head evidence refs must be an array"
-        )
-    raw = cast(list[object], value)
-    result: list[str] = []
-    for item in raw:
-        if type(item) is not str or _INDEPENDENT_REF.fullmatch(item) is None:
-            raise MachineStateGenerationError(
-                "MRL closeout evidence independent exact-head evidence ref is invalid"
-            )
-        result.append(item)
-    refs = tuple(result)
-    if refs != tuple(sorted(refs)) or len(refs) != len(set(refs)):
-        raise MachineStateGenerationError(
-            "MRL closeout evidence independent exact-head evidence refs must be sorted and unique"
-        )
-    return refs
-
-
-def _task_ids(value: object) -> tuple[str, ...]:
-    if type(value) is not list:
-        raise MachineStateGenerationError("MRL closeout evidence task_ids must be an array")
-    raw = cast(list[object], value)
-    if not raw:
-        raise MachineStateGenerationError("MRL closeout evidence task_ids must not be empty")
-    result: list[str] = []
-    for item in raw:
-        if type(item) is not str or _TASK_ID.fullmatch(item) is None:
-            raise MachineStateGenerationError("MRL closeout evidence task identity is invalid")
-        result.append(item)
-    task_ids = tuple(result)
-    if task_ids != tuple(sorted(task_ids)) or len(task_ids) != len(set(task_ids)):
-        raise MachineStateGenerationError(
-            "MRL closeout evidence task_ids must be sorted and unique"
-        )
-    return task_ids
 
 
 def _unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
@@ -419,15 +465,14 @@ def _unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
     for key, value in pairs:
         if key in result:
             raise MachineStateGenerationError(
-                f"duplicate MRL closeout evidence JSON member rejected: {key}"
+                f"duplicate MRL real-evidence JSON member rejected: {key}"
             )
         result[key] = value
     return result
 
 
-vars(_legacy)["_dependencies"] = _dependencies
-vars(_legacy)["_task_records"] = _task_records
 vars(_legacy)["_closure_proof"] = _closure_proof
+vars(_legacy)["_project"] = _project
 
 admit_project_state_projection = _legacy.admit_project_state_projection
 generate_machine_state = _legacy.generate_machine_state

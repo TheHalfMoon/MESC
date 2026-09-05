@@ -10,6 +10,9 @@ import pytest
 
 from medscale.mesc._mrl_machine_state_generation_v1 import (
     _REAL_EVIDENCE,
+    _REAL_EVIDENCE_INDEX,
+    _REAL_EVIDENCE_SLOT_PATHS,
+    _REAL_EVIDENCE_SOURCE,
     MachineStateGenerationError,
     admit_project_state_projection,
     generate_machine_state,
@@ -34,6 +37,9 @@ _REQUIRED_PROJECT_SOURCES = {
     "specs/mesc-training-readiness-v1/README.md",
     "src/medscale/mesc/_training_authorization_trust_v1.py",
     "src/medscale/mesc/_training_runtime_qualification_v1.py",
+    _REAL_EVIDENCE_INDEX,
+    _REAL_EVIDENCE_SOURCE,
+    *_REAL_EVIDENCE_SLOT_PATHS,
 }
 
 
