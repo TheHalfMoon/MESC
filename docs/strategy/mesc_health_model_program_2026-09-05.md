@@ -722,6 +722,25 @@ Current state remains `PLANNED / evidence absent`.
 
 Must bind every admitted data source and the exact transformed training corpus.
 
+For medical imaging, admission additionally requires exact evidence for all applicable
+privacy and custody surfaces, including:
+
+- source, patient-grouping, study, series, and object identities sufficient to audit
+  provenance without exposing PHI;
+- data-custody chain from acquisition/receipt through every transformation and export;
+- DICOM metadata inventory and disposition, including private tags where DICOM is used;
+- burned-in text, overlays, annotations, screenshots, and pixel-region PHI inspection;
+- the exact de-identification method/configuration plus evidence that it was applied to
+  the admitted bytes;
+- residual-PHI assessment after transformation, including any modality-specific risk;
+- exact rights/license/consent or other applicable use authority for the admitted source
+  and transformed corpus.
+
+If any required medical-image identity, privacy, de-identification, rights, or custody
+evidence is missing, ambiguous, stale, or cannot be bound to the exact bytes, the image
+source is rejected from training/evaluation admission under this program. A dataset label
+such as "de-identified" is not sufficient evidence by itself.
+
 Current state remains `PLANNED / evidence absent`.
 
 ### MRL-0803 — Contamination and held-out isolation
@@ -733,6 +752,23 @@ Must prove:
 - teacher-generation prompt/source lineage;
 - sealed-evaluation isolation;
 - temporal/hand-authored canaries where applicable.
+
+For medical imaging, the proof must also bind patient/study-aware isolation rather than
+file-level splitting alone. It must include, where applicable:
+
+- patient-level and study-level split identities and grouping rules;
+- series/view/instance grouping so related images cannot cross train/search/replication/
+  sealed boundaries unintentionally;
+- exact/perceptual near-duplicate detection across images and derived renditions;
+- report-image, crop/patch, frame/clip, slice/volume, and augmentation lineage checks;
+- explicit protection against the same patient, study, or derived clinical episode
+  leaking across adaptive and sealed evaluation surfaces;
+- evidence that teacher prompts, captions, reports, or generated supervision did not
+  import held-out image content or labels into training.
+
+If patient/study grouping, image-lineage, duplicate, or held-out evidence is unavailable or
+ambiguous, the affected medical-image material is not admitted to a scientific training or
+evaluation claim.
 
 Current state remains `PLANNED / evidence absent`.
 
