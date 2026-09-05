@@ -9,6 +9,7 @@
   "candidate_roster": [],
   "dataset_identities": [],
   "evaluator_identities": [],
+  "scoring_policy_identities": [],
   "prompt_template_identities": [],
   "generation_configs": [],
   "runtime_policy": {
