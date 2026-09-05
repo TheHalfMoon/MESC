@@ -43,9 +43,19 @@ The available PR and issue audit trail does not contain a later record exercisin
 
 Therefore this package does **not** claim that PR #363 satisfied every acceptance item before merge. It records a governance-record gap and repairs current canonical authority prospectively from the present canonical repository state.
 
-## Repair rule
+## Authority while this package is a candidate
 
-The founder now explicitly ratifies only the administrative terminal state that PR #363 intended to establish:
+The Founder has authorized preparation, review, qualification, and guarded adoption of this bounded governance-repair package. That preparation authority does not itself activate the proposed terminal P01-06 ratification.
+
+```text
+RECONCILIATION_PREPARATION = AUTHORIZED
+TERMINAL_RATIFICATION = INACTIVE UNTIL CANONICAL ADOPTION
+P01_07 = NOT AUTHORIZED
+```
+
+## Proposed terminal ratification
+
+If and only if every adoption gate below succeeds and this package is canonically adopted, the administrative terminal state becomes:
 
 ```text
 P01_06_REACTIVATION_EPISODE = DEFERRED / NOT EXECUTED
@@ -60,7 +70,7 @@ UNSLOTH_TRAINING = NOT AUTHORIZED
 TRAINING = NOT AUTHORIZED
 ```
 
-This ratification is prospective governance reconciliation. It does not rewrite the historical fact that PR #363 merged before the required Ready/Merge dispositions were recorded, and it does not claim an execution result, Colab feasibility, model access, GPU allocation, memory result, benchmark result, or scientific completion.
+This prospective ratification does not rewrite the historical fact that PR #363 merged before the required Ready/Merge dispositions were recorded, and it does not claim an execution result, Colab feasibility, model access, GPU allocation, memory result, benchmark result, or scientific completion.
 
 ## Scope
 
