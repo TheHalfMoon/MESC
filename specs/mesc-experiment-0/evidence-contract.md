@@ -8,6 +8,7 @@ Schema family:
 MESC-EXPERIMENT-0-CONFIG-V1
 MESC-EXPERIMENT-0-RUNTIME-V1
 MESC-EXPERIMENT-0-CANDIDATE-RESULT-V1
+MESC-EXPERIMENT-0-DECISION-V1
 MESC-EXPERIMENT-0-BUNDLE-V1
 ```
 
@@ -202,6 +203,12 @@ INVALID_RESULT
 A missing result is never serialized as zero.
 
 ## 7. Decision record
+
+Schema:
+
+```text
+MESC-EXPERIMENT-0-DECISION-V1
+```
 
 Allowed decision dispositions:
 
