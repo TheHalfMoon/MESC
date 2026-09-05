@@ -6,6 +6,8 @@ Decision: `FD-P01-06-DEFERRAL-ADOPTION-RECONCILE-1`
 
 Governance ledger: **#365**
 
+Reconciliation PR: **#366**
+
 ## Purpose
 
 Reconcile the canonical post-merge truth of PR #363 without fabricating pre-merge compliance.
