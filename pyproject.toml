@@ -101,6 +101,12 @@ known-first-party = ["medscale"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/test_pubmedqa_source_transform.py" = ["E501"]
+# Experiment-0 preparation artifacts intentionally preserve explicit/auditable contract
+# spellings and Colab cell layout; these exceptions are style-only and do not suppress
+# correctness, import, security, typing, or test execution gates.
+"notebooks/MESC_Experiment_0_Colab.ipynb" = ["E501", "UP017"]
+"tools/verify_mesc_experiment_0_evidence.py" = ["RUF005", "SIM905"]
+"tests/test_verify_mesc_experiment_0_evidence.py" = ["RUF043"]
 # These frozen contract files are byte-identity evidence in independent qualification gates.
 # Keep their canonical bytes unchanged while newer Ruff versions enforce RUF036 elsewhere.
 "src/medscale/mesc/_bt_executor_core_fixture_v1.py" = ["RUF036"]
