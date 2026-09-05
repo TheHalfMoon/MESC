@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+from typing import cast
 
 import pytest
 
@@ -79,7 +80,7 @@ def _exposures(payload: dict[str, object]) -> list[dict[str, object]]:
     value = payload["tier_result_exposure_policy"]
     assert isinstance(value, list)
     assert all(isinstance(item, dict) for item in value)
-    return value  # type: ignore[return-value]
+    return cast(list[dict[str, object]], value)
 
 
 def test_lossless_objective_budget_payload_parses_but_is_untrusted_by_default() -> None:
