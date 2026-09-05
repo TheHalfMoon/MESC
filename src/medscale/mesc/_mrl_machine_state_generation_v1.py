@@ -139,12 +139,11 @@ def _top_level_assignment(
         ):
             values.append(statement.value)
             continue
-        if isinstance(statement, ast.Assign):
-            if any(
-                isinstance(target, ast.Name) and target.id == variable
-                for target in statement.targets
-            ):
-                values.append(statement.value)
+        if isinstance(statement, ast.Assign) and any(
+            isinstance(target, ast.Name) and target.id == variable
+            for target in statement.targets
+        ):
+            values.append(statement.value)
 
     if len(values) != 1:
         raise MachineStateGenerationError(
