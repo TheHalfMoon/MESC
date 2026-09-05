@@ -7,6 +7,7 @@ Schema family:
 ```text
 MESC-EXPERIMENT-0-CONFIG-V1
 MESC-EXPERIMENT-0-RUNTIME-V1
+MESC-EXPERIMENT-0-CANDIDATE-SNAPSHOT-V1
 MESC-EXPERIMENT-0-CANDIDATE-RESULT-V1
 MESC-EXPERIMENT-0-DECISION-V1
 MESC-EXPERIMENT-0-BUNDLE-V1
@@ -40,9 +41,6 @@ repository_sha
 repository_tree
 strategy_decision_id
 candidate_roster
-candidate_revisions
-candidate_processor_identities
-candidate_license_identities
 dataset_identities
 evaluator_identities
 prompt_template_identities
@@ -57,7 +55,29 @@ result_exposure_budget
 hard_floor_policy
 decision_rule
 sealed_evaluation_policy
+authority_bindings
 ```
+
+Each `candidate_roster` entry must include:
+
+```text
+candidate_id
+candidate_revision
+candidate_class
+evidence_key
+supported_input_modalities
+```
+
+Allowed candidate classes:
+
+```text
+SELECTABLE_FOUNDATION
+REFERENCE_ONLY
+```
+
+A selectable foundation must satisfy the frozen flagship-suitability requirements in
+`tournament-contract.md`. A reference-only candidate may establish a specialist/control
+ceiling but cannot be selected as the MESC foundation.
 
 The config must have a SHA-256 over canonical UTF-8 JSON bytes. Any mutation after freeze
 creates a new config identity and invalidates prior results for combined decision use.
@@ -106,11 +126,27 @@ BLOCKED_OTHER
 
 ## 4. Candidate snapshot receipt
 
-Every active candidate requires:
+Every frozen roster entry requires exactly one metadata snapshot receipt at:
 
 ```text
+candidate-snapshots/<evidence_key>.json
+```
+
+Schema:
+
+```text
+MESC-EXPERIMENT-0-CANDIDATE-SNAPSHOT-V1
+```
+
+Required identity fields:
+
+```text
+schema_version
+experiment_config_sha256
 candidate_id
 candidate_revision
+candidate_class
+evidence_key
 resolved_revision
 processor_or_tokenizer_identity
 model_config_sha256
@@ -132,8 +168,16 @@ peak_allocated_memory_bytes
 peak_reserved_memory_bytes
 ```
 
-`resolved_revision` must equal the frozen candidate revision. A moving branch such as
-`main`, `master`, or `latest` is not an admissible execution identity.
+`candidate_id`, `candidate_revision`, `candidate_class`, and `evidence_key` must match the
+frozen roster exactly.
+
+If a revision is resolved, `resolved_revision` must equal the frozen `candidate_revision`.
+A moving branch such as `main`, `master`, or `latest` is not an admissible execution
+identity.
+
+The receipt exists even when acquisition/load is blocked. Blocked fields remain explicit
+nulls rather than being fabricated. A selectable candidate cannot be selected by the final
+decision unless its snapshot/load path reached the predeclared successful state.
 
 ## 5. Dataset/evaluator binding
 
@@ -166,14 +210,22 @@ Schema:
 MESC-EXPERIMENT-0-CANDIDATE-RESULT-V1
 ```
 
+Each emitted result must live under:
+
+```text
+lane-results/<evidence_key>/<lane>.json
+```
+
 Required fields:
 
 ```text
+schema_version
 experiment_config_sha256
 runtime_receipt_sha256
 candidate_snapshot_receipt_sha256
 candidate_id
 candidate_revision
+evidence_key
 lane
 metric_vector
 hard_floor_vector
@@ -198,9 +250,15 @@ BLOCKED_RIGHTS
 BLOCKED_CONTAMINATION
 BLOCKED_EVALUATOR
 INVALID_RESULT
+NOT_SUPPORTED_BY_CANDIDATE
 ```
 
-A missing result is never serialized as zero.
+A missing result is never serialized as zero. An unsupported modality is represented by the
+explicit unsupported disposition rather than a fabricated numeric metric.
+
+Every result must bind the exact frozen candidate identity and the SHA-256 of that
+candidate's snapshot receipt. Every result file hash must be represented exactly once in the
+final decision's `candidate_result_sha256s` list.
 
 ## 7. Decision record
 
@@ -222,6 +280,7 @@ INVALID_EXPERIMENT
 Required fields:
 
 ```text
+schema_version
 experiment_config_sha256
 candidate_result_sha256s
 hard_floor_summary
@@ -237,8 +296,21 @@ limitations
 decision_disposition
 ```
 
+`candidate_result_sha256s` must equal the set of actual candidate-result JSON byte hashes in
+the bundle. No result may be omitted from the decision and no nonexistent result hash may be
+invented.
+
 `selected_candidate_id` and `selected_candidate_revision` must be null unless disposition is
 `RETAIN_PREFERRED_CANDIDATE` or `SELECT_CHALLENGER`.
+
+A positive selection additionally requires:
+
+- the selected identity exists exactly once in the frozen roster;
+- its class is `SELECTABLE_FOUNDATION`;
+- its exact snapshot receipt is present and successfully bound;
+- the selected candidate has actual result evidence;
+- the decision carries the required sealed-evaluation receipt identity;
+- no predeclared hard floor is represented as failed in the accepted decision evidence.
 
 This decision is research evidence only. It is not model promotion and not training
 authority.
@@ -256,9 +328,9 @@ mesc-experiment-0-evidence/
   runtime-receipt.json
   environment-manifest.json
   candidate-snapshots/
-    <candidate-safe-id>.json
+    <evidence_key>.json
   lane-results/
-    <candidate-safe-id>/<lane>.json
+    <evidence_key>/<lane>.json
   decision/
     foundation-decision.json
   manifests/
@@ -286,17 +358,26 @@ outer ZIP hash is recorded separately after archive construction and is not an e
 
 The bundle verifier must reject:
 
-- duplicate paths;
-- path traversal;
+- duplicate or case-colliding member paths;
+- path traversal, absolute paths, backslash paths, or NUL-bearing names;
+- encrypted ZIP members or symbolic-link members;
+- an excessive member count, per-member uncompressed size, or total uncompressed size;
 - unexpected executable/binary payloads;
-- credentials/tokens by explicit forbidden-field checks;
+- credentials/tokens by explicit forbidden-field and value-pattern checks;
 - model weights/tokenizer snapshot bytes;
 - raw PHI or unapproved medical-image bytes;
 - missing mandatory files;
+- missing candidate snapshot receipts for frozen roster entries;
+- result hashes not exactly reconciled into the final decision;
 - hash mismatches;
 - schema/version mismatch;
 - inconsistent experiment/repository/candidate identities;
+- a reference-only candidate being selected as the foundation;
 - a manifest entry that attempts to list/hash `bundle-manifest.json` itself.
+
+The verifier's resource ceilings are evidence-format safety limits, not Experiment-0 compute
+budgets. If future legitimate metadata exceeds them, the contract must be amended and
+reviewed before accepting a larger artifact.
 
 ## 9. Repository evidence boundary
 
@@ -323,7 +404,7 @@ Canonical Git must not store by default:
 
 ## 10. Fail-closed rule
 
-If an evidence field required to establish identity, rights, contamination, evaluator state,
-runtime state, or sealed isolation is absent or ambiguous, the affected candidate/lane is
-`BLOCKED` or the experiment is `INVALID_EXPERIMENT`. Missing evidence cannot be filled with
-assumptions after execution.
+If evidence required to establish identity, rights, contamination, evaluator state, runtime
+state, roster/result reconciliation, or sealed isolation is absent or ambiguous, the
+affected candidate/lane is `BLOCKED` or the experiment is `INVALID_EXPERIMENT`. Missing
+evidence cannot be filled with assumptions after execution.
