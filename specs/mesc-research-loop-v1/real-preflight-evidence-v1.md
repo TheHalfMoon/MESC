@@ -61,6 +61,60 @@ task_id
 `MRL-REAL-PREFLIGHT-EVIDENCE-V1`. The task and evidence kind must occupy the exact matching
 role. Every task payload has a closed field set and fail-closed semantic checks.
 
+### MRL-0806 objective-budget payload
+
+`mesc.mrl.real_preflight.objective_budgets.v1` preserves the existing
+`ResearchObjectiveContract` budget semantics without collapsing distinct ceilings into
+ambiguous aggregate counters. Its payload is exactly:
+
+```text
+adaptive_query_budget
+budget_exhaustion_disposition
+evaluation_tier_policy
+frozen_externally
+research_objective_sha256
+resource_budget
+tier_result_exposure_policy
+```
+
+`resource_budget` reproduces the canonical `ResourceBudget` field set exactly:
+
+```text
+compute_seconds
+evaluator_invocations
+generated_tokens
+input_tokens
+known_failure_retries
+max_experiments
+monetary_cost_microunits
+retries
+storage_bytes
+wall_clock_seconds
+```
+
+The nullable resource ceilings retain the canonical meaning of `None`: the resource is not
+applicable to that objective; it never means unlimited. Retry relationships and all integer
+semantics are validated through the canonical `ResourceBudget` contract.
+
+`evaluation_tier_policy` contains only `allowed_tiers`. `adaptive_query_budget` contains
+exactly `tier_1_queries` and `tier_2_queries`. `tier_result_exposure_policy` contains one
+strictly ascending entry for every and only allowed tier, with each entry containing exactly
+`tier`, `max_exposures`, and `allowed_result_fields`. Tier 3 and Tier 4 remain non-iterative:
+they cannot expose result fields or a positive exposure count. A nonzero Tier-1 or Tier-2
+query budget is invalid when the corresponding SEARCH or REPLICATION tier is absent.
+`budget_exhaustion_disposition` must be exactly `BLOCKED`.
+
+Legacy aggregate fields such as `compute_units`, `token_budget`, scalar
+`adaptive_query_budget`, or scalar `result_exposure_budget` are not canonical MRL-0806
+semantics and are rejected.
+
+Parsing an MRL-0806 envelope proves only that its declared budget subset is internally valid.
+Before a genuine envelope can be admitted as MRL-0806 evidence, independent verification must
+also establish that `research_objective_sha256` identifies the exact frozen
+`ResearchObjectiveContract` artifact and that every budget field in this payload exactly
+reproduces that objective's resource, tier, adaptive-query, result-exposure, and exhaustion
+semantics. This repository-side contract does not manufacture or infer that external binding.
+
 ## Trust boundary
 
 Two operations are deliberately distinct:
