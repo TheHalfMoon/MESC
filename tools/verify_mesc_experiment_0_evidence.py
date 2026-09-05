@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import re
 import stat
 import sys
@@ -23,59 +24,133 @@ MAX_MEMBER_COUNT = 500
 MAX_MEMBER_UNCOMPRESSED_BYTES = 10 * 1024 * 1024
 MAX_TOTAL_UNCOMPRESSED_BYTES = 50 * 1024 * 1024
 
-REQUIRED_AUTHORITY_KEYS = tuple(
-    f"mrl_0{number}_{suffix}"
-    for number, suffix in (
-        (801, "evidence_id"),
-        (802, "evidence_id"),
-        (803, "evidence_id"),
-        (804, "evidence_id"),
-        (805, "authority_id"),
-        (806, "objective_id"),
-        (807, "evaluator_freeze_id"),
-        (808, "sandbox_id"),
-        (809, "preflight_id"),
-    )
-) + ("mrl_0899_readiness_id",)
+REQUIRED_AUTHORITY_KEYS = (
+    "mrl_0801_evidence_id",
+    "mrl_0802_evidence_id",
+    "mrl_0803_evidence_id",
+    "mrl_0804_evidence_id",
+    "mrl_0805_authority_id",
+    "mrl_0806_objective_id",
+    "mrl_0807_evaluator_freeze_id",
+    "mrl_0808_sandbox_id",
+    "mrl_0809_preflight_id",
+    "mrl_0899_readiness_id",
+)
 
-CONFIG_FIELDS = set(
-    """schema_version experiment_id status objective_id repository_sha repository_tree
-    strategy_decision_id candidate_roster dataset_identities evaluator_identities
-    prompt_template_identities generation_configs runtime_policy network_policy
-    filesystem_policy credential_policy resource_budget query_budget result_exposure_budget
-    hard_floor_policy decision_rule sealed_evaluation_policy authority_bindings""".split()
-)
-RUNTIME_FIELDS = set(
-    """schema_version experiment_config_sha256 repository_sha repository_tree
-    execution_started_at_utc execution_completed_at_utc runtime_provider runtime_class
-    python_version platform_string torch_version transformers_version cuda_available
-    cuda_version gpu_count gpu_models gpu_total_memory_bytes
-    colab_release_tag_or_image_identity_if_observable installed_environment_manifest_sha256
-    network_policy_observation credential_surface_observation final_runtime_disposition
-    stop_reason""".split()
-)
-SNAPSHOT_FIELDS = set(
-    """schema_version experiment_config_sha256 candidate_id candidate_revision candidate_class
-    evidence_key resolved_revision processor_or_tokenizer_identity model_config_sha256
-    snapshot_manifest_sha256 snapshot_file_count snapshot_total_bytes license_identity
-    notice_identity usage_policy_identity trust_remote_code remote_code_exception_identity
-    load_disposition failure_stage failure_class failure_message_sha256
-    allocated_memory_after_load_bytes reserved_memory_after_load_bytes
-    peak_allocated_memory_bytes peak_reserved_memory_bytes""".split()
-)
-RESULT_FIELDS = set(
-    """schema_version experiment_config_sha256 runtime_receipt_sha256
-    candidate_snapshot_receipt_sha256 candidate_id candidate_revision evidence_key lane
-    metric_vector hard_floor_vector item_count invalid_item_count abstention_count resource_usage
-    query_budget_used result_exposure_used result_manifest_sha256 candidate_disposition
-    limitations""".split()
-)
-DECISION_FIELDS = set(
-    """schema_version experiment_config_sha256 candidate_result_sha256s hard_floor_summary
-    metric_vector_summary resource_summary rights_summary contamination_summary
-    sealed_evaluation_receipt_identity selected_candidate_id selected_candidate_revision
-    rationale limitations decision_disposition""".split()
-)
+CONFIG_FIELDS = {
+    "schema_version",
+    "experiment_id",
+    "status",
+    "objective_id",
+    "repository_sha",
+    "repository_tree",
+    "strategy_decision_id",
+    "candidate_roster",
+    "dataset_identities",
+    "evaluator_identities",
+    "prompt_template_identities",
+    "generation_configs",
+    "runtime_policy",
+    "network_policy",
+    "filesystem_policy",
+    "credential_policy",
+    "resource_budget",
+    "query_budget",
+    "result_exposure_budget",
+    "hard_floor_policy",
+    "decision_rule",
+    "sealed_evaluation_policy",
+    "authority_bindings",
+}
+RUNTIME_FIELDS = {
+    "schema_version",
+    "experiment_config_sha256",
+    "repository_sha",
+    "repository_tree",
+    "execution_started_at_utc",
+    "execution_completed_at_utc",
+    "runtime_provider",
+    "runtime_class",
+    "python_version",
+    "platform_string",
+    "torch_version",
+    "transformers_version",
+    "cuda_available",
+    "cuda_version",
+    "gpu_count",
+    "gpu_models",
+    "gpu_total_memory_bytes",
+    "colab_release_tag_or_image_identity_if_observable",
+    "installed_environment_manifest_sha256",
+    "network_policy_observation",
+    "credential_surface_observation",
+    "final_runtime_disposition",
+    "stop_reason",
+}
+SNAPSHOT_FIELDS = {
+    "schema_version",
+    "experiment_config_sha256",
+    "candidate_id",
+    "candidate_revision",
+    "candidate_class",
+    "evidence_key",
+    "resolved_revision",
+    "processor_or_tokenizer_identity",
+    "model_config_sha256",
+    "snapshot_manifest_sha256",
+    "snapshot_file_count",
+    "snapshot_total_bytes",
+    "license_identity",
+    "notice_identity",
+    "usage_policy_identity",
+    "trust_remote_code",
+    "remote_code_exception_identity",
+    "load_disposition",
+    "failure_stage",
+    "failure_class",
+    "failure_message_sha256",
+    "allocated_memory_after_load_bytes",
+    "reserved_memory_after_load_bytes",
+    "peak_allocated_memory_bytes",
+    "peak_reserved_memory_bytes",
+}
+RESULT_FIELDS = {
+    "schema_version",
+    "experiment_config_sha256",
+    "runtime_receipt_sha256",
+    "candidate_snapshot_receipt_sha256",
+    "candidate_id",
+    "candidate_revision",
+    "evidence_key",
+    "lane",
+    "metric_vector",
+    "hard_floor_vector",
+    "item_count",
+    "invalid_item_count",
+    "abstention_count",
+    "resource_usage",
+    "query_budget_used",
+    "result_exposure_used",
+    "result_manifest_sha256",
+    "candidate_disposition",
+    "limitations",
+}
+DECISION_FIELDS = {
+    "schema_version",
+    "experiment_config_sha256",
+    "candidate_result_sha256s",
+    "hard_floor_summary",
+    "metric_vector_summary",
+    "resource_summary",
+    "rights_summary",
+    "contamination_summary",
+    "sealed_evaluation_receipt_identity",
+    "selected_candidate_id",
+    "selected_candidate_revision",
+    "rationale",
+    "limitations",
+    "decision_disposition",
+}
 
 SCHEMAS = {
     CONFIG: "MESC-EXPERIMENT-0-CONFIG-V1",
@@ -180,22 +255,52 @@ def require_hash(
 
 def require_number(value: Any, label: str) -> None:
     """Require a non-negative finite numeric budget."""
-    if isinstance(value, bool) or not isinstance(value, (int, float)) or value < 0:
-        raise EvidenceError(f"{label}: expected non-negative number")
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not math.isfinite(value)
+        or value < 0
+    ):
+        raise EvidenceError(f"{label}: expected non-negative finite number")
+
+
+def require_non_negative_int(value: Any, label: str) -> int:
+    """Require an integer count or byte quantity that is zero or greater."""
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise EvidenceError(f"{label}: expected non-negative integer")
+    return value
 
 
 def load_json(data: bytes, path: str) -> Any:
-    """Decode UTF-8 JSON after rejecting common serialized secrets."""
+    """Decode strict UTF-8 JSON after rejecting ambiguity and common serialized secrets."""
     try:
         text = data.decode("utf-8")
     except UnicodeDecodeError as exc:
         raise EvidenceError(f"{path}: not UTF-8 JSON") from exc
     if any(pattern.search(text) for pattern in SECRET_PATTERNS):
         raise EvidenceError(f"{path}: possible secret-bearing value detected")
+
+    def reject_pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        value: dict[str, Any] = {}
+        for key, child in pairs:
+            if key in value:
+                raise EvidenceError(f"{path}: duplicate JSON key {key!r}")
+            value[key] = child
+        return value
+
+    def reject_constant(value: str) -> None:
+        raise EvidenceError(f"{path}: non-finite JSON constant {value!r}")
+
     try:
-        return json.loads(text)
+        return json.loads(
+            text,
+            object_pairs_hook=reject_pairs,
+            parse_constant=reject_constant,
+        )
     except json.JSONDecodeError as exc:
         raise EvidenceError(f"{path}: invalid JSON") from exc
+    except RecursionError as exc:
+        raise EvidenceError(f"{path}: JSON nesting exceeds safety limit") from exc
 
 
 def scan_fields(value: Any, path: str) -> None:
@@ -334,18 +439,27 @@ def validate_config(config: Any) -> list[dict[str, Any]]:
         if not isinstance(config.get(field), dict) or not config[field]:
             raise EvidenceError(f"experiment-config.{field}: must be an object")
     runtime_policy = config["runtime_policy"]
+    require_text(runtime_policy.get("provider"), "runtime_policy.provider")
     if runtime_policy.get("require_hosted_gpu") is not True:
         raise EvidenceError("runtime_policy.require_hosted_gpu must be true")
-    require_number(
+    allowed_gpu_count = require_non_negative_int(
         runtime_policy.get("allowed_gpu_count"),
         "runtime_policy.allowed_gpu_count",
     )
-    if runtime_policy["allowed_gpu_count"] < 1:
+    if allowed_gpu_count < 1:
         raise EvidenceError("runtime_policy.allowed_gpu_count must be positive")
-    if not isinstance(runtime_policy.get("allowed_gpu_models"), list):
-        raise EvidenceError("runtime_policy.allowed_gpu_models must be a list")
-    if not isinstance(runtime_policy.get("allow_unlisted_gpu_model"), bool):
+    allowed_gpu_models = runtime_policy.get("allowed_gpu_models")
+    if not isinstance(allowed_gpu_models, list) or any(
+        not isinstance(model, str) or not model.strip() for model in allowed_gpu_models
+    ):
+        raise EvidenceError("runtime_policy.allowed_gpu_models must be a list of model names")
+    if len(allowed_gpu_models) != len(set(allowed_gpu_models)):
+        raise EvidenceError("runtime_policy.allowed_gpu_models must be unique")
+    allow_unlisted = runtime_policy.get("allow_unlisted_gpu_model")
+    if not isinstance(allow_unlisted, bool):
         raise EvidenceError("runtime_policy.allow_unlisted_gpu_model must be boolean")
+    if not allow_unlisted and not allowed_gpu_models:
+        raise EvidenceError("runtime_policy.allowed_gpu_models cannot be empty when unlisted GPUs are blocked")
     for key in (
         "max_gpu_hours",
         "max_wall_hours",
@@ -396,7 +510,7 @@ def validate_runtime(
     config: dict[str, Any],
     environment_hash: str,
 ) -> None:
-    """Validate complete runtime identity and environment hash binding."""
+    """Validate complete runtime identity, policy consistency, and environment binding."""
     if not isinstance(runtime, dict):
         raise EvidenceError("runtime-receipt.json: expected object")
     require_fields(runtime, RUNTIME_FIELDS, "runtime-receipt.json")
@@ -412,15 +526,51 @@ def validate_runtime(
     )
     if observed != environment_hash:
         raise EvidenceError("runtime receipt environment-manifest hash mismatch")
-    if runtime.get("final_runtime_disposition") not in RUNTIME_DISPOSITIONS:
+    disposition = runtime.get("final_runtime_disposition")
+    if disposition not in RUNTIME_DISPOSITIONS:
         raise EvidenceError("invalid final_runtime_disposition")
-    require_number(runtime.get("gpu_count"), "runtime.gpu_count")
+    require_text(runtime.get("runtime_provider"), "runtime.runtime_provider")
+    require_text(runtime.get("runtime_class"), "runtime.runtime_class")
+    require_text(runtime.get("python_version"), "runtime.python_version")
+    require_text(runtime.get("platform_string"), "runtime.platform_string")
+    if not isinstance(runtime.get("cuda_available"), bool):
+        raise EvidenceError("runtime.cuda_available must be boolean")
+    gpu_count = require_non_negative_int(runtime.get("gpu_count"), "runtime.gpu_count")
     models = runtime.get("gpu_models")
     memory = runtime.get("gpu_total_memory_bytes")
     if not isinstance(models, list) or not isinstance(memory, list):
         raise EvidenceError("runtime GPU fields must be lists")
-    if len(models) != runtime["gpu_count"] or len(memory) != runtime["gpu_count"]:
+    if len(models) != gpu_count or len(memory) != gpu_count:
         raise EvidenceError("runtime GPU cardinality mismatch")
+    for index, model in enumerate(models):
+        require_text(model, f"runtime.gpu_models[{index}]")
+    for index, total_bytes in enumerate(memory):
+        require_non_negative_int(total_bytes, f"runtime.gpu_total_memory_bytes[{index}]")
+
+    if disposition != "PASS_RUNTIME_PREFLIGHT":
+        return
+
+    policy = config["runtime_policy"]
+    if runtime["runtime_provider"] != policy["provider"]:
+        raise EvidenceError("PASS_RUNTIME_PREFLIGHT provider violates frozen runtime policy")
+    if (
+        policy["require_hosted_gpu"]
+        and policy["provider"] == "GOOGLE_COLAB"
+        and runtime["runtime_class"] != "GOOGLE_COLAB_HOSTED_GPU_RUNTIME"
+    ):
+        raise EvidenceError("PASS_RUNTIME_PREFLIGHT is not a Google Colab hosted GPU runtime")
+    if runtime["cuda_available"] is not True:
+        raise EvidenceError("PASS_RUNTIME_PREFLIGHT requires CUDA availability")
+    if gpu_count != policy["allowed_gpu_count"]:
+        raise EvidenceError("PASS_RUNTIME_PREFLIGHT GPU count violates frozen runtime policy")
+    if not policy["allow_unlisted_gpu_model"]:
+        disallowed = sorted(set(models) - set(policy["allowed_gpu_models"]))
+        if disallowed:
+            raise EvidenceError(
+                f"PASS_RUNTIME_PREFLIGHT GPU model violates frozen runtime policy: {disallowed}"
+            )
+    if runtime.get("stop_reason") is not None:
+        raise EvidenceError("PASS_RUNTIME_PREFLIGHT cannot carry a stop_reason")
 
 
 def validate_snapshots(
@@ -509,6 +659,8 @@ def validate_results(
             raise EvidenceError(f"{path}: candidate identity mismatch")
         if result.get("candidate_revision") != candidate["candidate_revision"]:
             raise EvidenceError(f"{path}: candidate revision mismatch")
+        if result.get("evidence_key") != key:
+            raise EvidenceError(f"{path}: evidence_key/path mismatch")
         if (
             result.get("lane") != lane
             or result.get("candidate_disposition") not in RESULT_DISPOSITIONS
