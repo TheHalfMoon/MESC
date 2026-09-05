@@ -1,8 +1,8 @@
 # MedScale / MESC Research Program Registry
 
 - **Status:** Canonical registry candidate for MRL-0
-- **Date:** 2026-08-27
-- **Related:** `research_questions.md`, ADR-0035, MESC strategy documents, MRL V1
+- **Date:** 2026-09-05
+- **Related:** `research_questions.md`, ADR-0035, ADR-0036, MESC strategy documents, MRL V1
 
 ## Purpose
 
@@ -52,11 +52,11 @@ the full question text and falsification semantics.
 
 | Program | Reserved question namespace | Current program status | Current canonical/strategy source | Question-catalog status |
 |---|---|---|---|---|
-| Cross-cutting MESC research | `MESC-RQ-<NNNN>` | ACTIVE STRATEGY | `docs/strategy/mesc_strategic_model_roadmap_2026-08-18.md`, `docs/strategy/mesc_frontier_program_2026-08-18.md` | RESERVED — individual questions require separate canonicalization |
+| Cross-cutting MESC research | `MESC-RQ-<NNNN>` | PERFORMANCE-FIRST ACTIVE STRATEGY | `docs/adr/0036-performance-first-health-model-strategy.md`, `docs/strategy/mesc_health_model_program_2026-09-05.md`, `docs/strategy/mesc_frontier_program_2026-08-18.md` | RESERVED — individual questions require separate canonicalization |
 | MESC Capability Realization Layer | `MCRL-RQ-<NNNN>` | FOUNDER-DIRECTED STRATEGY DRAFT | `docs/strategy/mesc_capability_realization_layer_2026-08-18.md` | RESERVED — individual questions require separate canonicalization |
-| English + Arabic medical intelligence | `ARABIC-RQ-<NNNN>` | STRATEGIC ROADMAP — MESC 1.1 | `docs/strategy/mesc_strategic_model_roadmap_2026-08-18.md` | RESERVED — individual questions require separate canonicalization |
-| AMGE medical visual intelligence | `AMGE-RQ-<NNNN>` | STRATEGIC ROADMAP — MESC 2.0 | `docs/strategy/mesc_strategic_model_roadmap_2026-08-18.md` | RESERVED — individual questions require separate canonicalization |
-| Medical Omni | `OMNI-RQ-<NNNN>` | STRATEGIC ROADMAP — MESC 3.0 | `docs/strategy/mesc_strategic_model_roadmap_2026-08-18.md` | RESERVED — individual questions require separate canonicalization |
+| English + Arabic medical intelligence | `ARABIC-RQ-<NNNN>` | PERFORMANCE-FIRST MESC PROGRAM | `docs/strategy/mesc_health_model_program_2026-09-05.md` | RESERVED — individual questions require separate canonicalization |
+| AMGE medical visual intelligence | `AMGE-RQ-<NNNN>` | PERFORMANCE-FIRST MESC PROGRAM | `docs/strategy/mesc_health_model_program_2026-09-05.md` | RESERVED — individual questions require separate canonicalization |
+| Medical Omni | `OMNI-RQ-<NNNN>` | PERFORMANCE-FIRST MESC PROGRAM | `docs/strategy/mesc_health_model_program_2026-09-05.md` | RESERVED — individual questions require separate canonicalization |
 | MESC Research Loop | `MRL-RQ-<NNNN>` | GOVERNED PROGRAM — MRL V1 | `specs/mesc-research-loop-v1/` | RESERVED — individual meta-research questions require separate canonicalization |
 
 `<NNNN>` is four decimal digits starting at `0001` within each namespace. A namespace may

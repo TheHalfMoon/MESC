@@ -1,7 +1,16 @@
-# MESC Strategic Model Roadmap — Canonical Strategy Draft
+# MESC Strategic Model Roadmap — Historical Strategy Draft
+
+> **Supersession notice (2026-09-05):** The future-facing model-family selection,
+> public model naming, size-first/compact-first assumptions, and blanket Chinese-model
+> exclusion in this document are superseded by
+> `docs/adr/0036-performance-first-health-model-strategy.md` and
+> `docs/strategy/mesc_health_model_program_2026-09-05.md` once that exact package is
+> canonically merged. Historical Pilot-01 B0 facts and provenance in this file remain
+> preserved and are not rewritten by the new strategy. This file grants no execution
+> authority.
 
 Date: 2026-08-18
-Status: FOUNDER-DIRECTED STRATEGY DRAFT — RECONCILED AFTER B0 ACCEPTANCE
+Status: SUPERSEDED FOR FUTURE MODEL STRATEGY / HISTORICAL B0 CONTEXT PRESERVED
 Repository context: TheHalfMoon/MESC
 
 > **Canonical reconciliation (2026-08-19):** Pilot-01 B0 was subsequently
