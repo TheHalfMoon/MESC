@@ -55,6 +55,7 @@ strategy_decision_id
 candidate_roster
 dataset_identities
 evaluator_identities
+scoring_policy_identities
 prompt_template_identities
 generation_configs
 runtime_policy
@@ -70,10 +71,10 @@ sealed_evaluation_policy
 authority_bindings
 ```
 
-A frozen config must have non-empty dataset, evaluator, prompt-template, and generation
-identity lists; object-valued runtime/network/filesystem/credential policies; explicit
-non-null compute, wall-time, storage, retry, query, and result-exposure budgets; an explicit
-hard-floor policy; an explicit decision rule; and a sealed-evaluation policy.
+A frozen config must have non-empty dataset, evaluator, scoring-policy, prompt-template, and
+generation identity lists; object-valued runtime/network/filesystem/credential policies;
+explicit non-null compute, wall-time, storage, retry, query, and result-exposure budgets; an
+explicit hard-floor policy; an explicit decision rule; and a sealed-evaluation policy.
 
 Each `candidate_roster` entry requires:
 
@@ -245,6 +246,35 @@ successful frozen load disposition.
 Every lane result must bind exact dataset, split, held-out tier, evaluator, scoring policy,
 prompt-template, and generation-config identities.
 
+The frozen config identity lists use these minimum record shapes:
+
+```text
+dataset_identities[]:
+  dataset_id
+  split_id
+  held_out_tier
+
+evaluator_identities[]:
+  evaluator_id
+
+scoring_policy_identities[]:
+  scoring_policy_id
+
+prompt_template_identities[]:
+  prompt_template_id
+
+generation_configs[]:
+  generation_config_id
+```
+
+Each minimum identity tuple must be unique inside its frozen list. Additional provenance,
+rights, hash, or policy fields may be present, but the stable identity fields above are
+mandatory and non-empty in `FROZEN_EXECUTION_CONFIG`.
+
+A result is valid only when its `(dataset_id, split_id, held_out_tier)` tuple and its evaluator,
+scoring-policy, prompt-template, and generation-config IDs exactly match entries in the same
+frozen experiment config bound by `experiment_config_sha256`.
+
 For medical imaging, admission additionally binds the rights/custody,
 DICOM/private-tag/burned-in-text, de-identification, patient/study grouping, leakage, and
 held-out-isolation evidence required by the MESC strategy.
@@ -274,6 +304,13 @@ candidate_id
 candidate_revision
 evidence_key
 lane
+dataset_id
+split_id
+held_out_tier
+evaluator_id
+scoring_policy_id
+prompt_template_id
+generation_config_id
 metric_vector
 hard_floor_vector
 item_count
