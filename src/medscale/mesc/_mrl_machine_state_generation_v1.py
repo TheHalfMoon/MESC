@@ -36,17 +36,13 @@ __all__ = [
     "load_canonical_snapshot",
 ]
 
-_REAL_EVIDENCE_INDEX: Final = (
-    "specs/mesc-research-loop-v1/real-preflight-evidence-index-v1.json"
-)
+_REAL_EVIDENCE_INDEX: Final = "specs/mesc-research-loop-v1/real-preflight-evidence-index-v1.json"
 _REAL_EVIDENCE_SOURCE: Final = "src/medscale/mesc/_mrl_real_preflight_evidence_v1.py"
 _TRAINING_TRUST_SOURCE: Final = "src/medscale/mesc/_training_authorization_trust_v1.py"
 _REAL_EVIDENCE_SLOT_DIR: Final = "specs/mesc-research-loop-v1/real-preflight-evidence"
 _REAL_INDEX_SCHEMA_VERSION: Final = "MRL-REAL-PREFLIGHT-EVIDENCE-INDEX-V1"
 _REAL_SLOT_SCHEMA_VERSION: Final = "MRL-REAL-PREFLIGHT-EVIDENCE-SLOT-V1"
-_REAL_INDEX_RECORD_FIELDS: Final = frozenset(
-    {"evidence_path", "evidence_sha256", "task_id"}
-)
+_REAL_INDEX_RECORD_FIELDS: Final = frozenset({"evidence_path", "evidence_sha256", "task_id"})
 _REAL_TRUST_REGISTRY_NAME: Final = "TRUSTED_MRL_REAL_PREFLIGHT_EVIDENCE_SHA256"
 _REAL_TRUST_VERSION_NAME: Final = "_TRUST_REGISTRY_VERSION"
 _TRAINING_TRUST_REGISTRY_NAME: Final = "TRUSTED_TRAINING_AUTHORIZATION_ARTIFACT_SHA256"
@@ -140,8 +136,7 @@ def _top_level_assignment(
             values.append(statement.value)
             continue
         if isinstance(statement, ast.Assign) and any(
-            isinstance(target, ast.Name) and target.id == variable
-            for target in statement.targets
+            isinstance(target, ast.Name) and target.id == variable for target in statement.targets
         ):
             values.append(statement.value)
 

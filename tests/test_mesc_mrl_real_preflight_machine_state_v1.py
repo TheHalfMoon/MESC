@@ -106,8 +106,7 @@ def _bind_real_trust_source(repository: Path, digest: str) -> None:
     text = path.read_text(encoding="utf-8")
     empty = "TRUSTED_MRL_REAL_PREFLIGHT_EVIDENCE_SHA256: frozenset[str] = frozenset()"
     trusted = (
-        "TRUSTED_MRL_REAL_PREFLIGHT_EVIDENCE_SHA256: frozenset[str] = "
-        f'frozenset({{"{digest}"}})'
+        f'TRUSTED_MRL_REAL_PREFLIGHT_EVIDENCE_SHA256: frozenset[str] = frozenset({{"{digest}"}})'
     )
     assert text.count(empty) == 1
     assert trusted not in text
