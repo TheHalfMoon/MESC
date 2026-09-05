@@ -27,6 +27,19 @@ EXPECTED_SCHEMAS = {
     MANIFEST_PATH: "MESC-EXPERIMENT-0-BUNDLE-V1",
 }
 
+REQUIRED_AUTHORITY_KEYS = (
+    "mrl_0801_evidence_id",
+    "mrl_0802_evidence_id",
+    "mrl_0803_evidence_id",
+    "mrl_0804_evidence_id",
+    "mrl_0805_authority_id",
+    "mrl_0806_objective_id",
+    "mrl_0807_evaluator_freeze_id",
+    "mrl_0808_sandbox_id",
+    "mrl_0809_preflight_id",
+    "mrl_0899_readiness_id",
+)
+
 FORBIDDEN_FIELD_NAMES = {
     "token",
     "hf_token",
@@ -40,6 +53,15 @@ FORBIDDEN_FIELD_NAMES = {
     "client_secret",
     "authorization_header",
 }
+
+FORBIDDEN_SECRET_PATTERNS = (
+    re.compile(r"\bhf_[A-Za-z0-9]{20,}\b"),
+    re.compile(r"\bgh[pousr]_[A-Za-z0-9_]{20,}\b"),
+    re.compile(r"\bgithub_pat_[A-Za-z0-9_]{20,}\b"),
+    re.compile(r"\bsk-[A-Za-z0-9_-]{20,}\b"),
+    re.compile(r"(?i)\bauthorization\s*:\s*bearer\s+\S+"),
+    re.compile(r"https?://[^/\s:@]+:[^@\s/]+@"),
+)
 
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 HEX40_RE = re.compile(r"^[0-9a-f]{40}$")
@@ -58,6 +80,9 @@ def load_json(data: bytes, path: str) -> Any:
         text = data.decode("utf-8")
     except UnicodeDecodeError as exc:
         raise EvidenceError(f"{path}: not UTF-8 JSON") from exc
+    for pattern in FORBIDDEN_SECRET_PATTERNS:
+        if pattern.search(text):
+            raise EvidenceError(f"{path}: possible secret-bearing value detected")
     try:
         return json.loads(text)
     except json.JSONDecodeError as exc:
@@ -111,9 +136,39 @@ def validate_config(config: Any) -> None:
         raise EvidenceError("experiment-config.json: config is not frozen")
     require_git_sha(config.get("repository_sha"), "experiment-config.repository_sha")
     require_git_sha(config.get("repository_tree"), "experiment-config.repository_tree")
+
     roster = config.get("candidate_roster")
     if not isinstance(roster, list) or not roster:
         raise EvidenceError("experiment-config.json: candidate_roster must be non-empty")
+    seen_candidates: set[tuple[str, str]] = set()
+    for index, candidate in enumerate(roster):
+        if not isinstance(candidate, dict):
+            raise EvidenceError(f"candidate_roster[{index}]: expected object")
+        candidate_id = candidate.get("candidate_id")
+        revision = candidate.get("revision")
+        if not isinstance(candidate_id, str) or not candidate_id.strip():
+            raise EvidenceError(f"candidate_roster[{index}]: candidate_id missing")
+        require_git_sha(revision, f"candidate_roster[{index}].revision")
+        identity = (candidate_id, revision)
+        if identity in seen_candidates:
+            raise EvidenceError(f"candidate_roster[{index}]: duplicate candidate identity")
+        seen_candidates.add(identity)
+
+    bindings = config.get("authority_bindings")
+    if not isinstance(bindings, dict):
+        raise EvidenceError("experiment-config.json: authority_bindings missing")
+    missing = [key for key in REQUIRED_AUTHORITY_KEYS if not bindings.get(key)]
+    if missing:
+        raise EvidenceError(
+            "experiment-config.json: incomplete MRL authority/evidence bindings "
+            f"{sorted(missing)}"
+        )
+
+    sealed_policy = config.get("sealed_evaluation_policy")
+    if not isinstance(sealed_policy, dict):
+        raise EvidenceError("experiment-config.json: sealed_evaluation_policy missing")
+    if sealed_policy.get("tier3_item_access_by_research_process") is not False:
+        raise EvidenceError("experiment-config.json: Tier 3 research-process access must be false")
 
 
 def validate_runtime(runtime: Any, config: dict[str, Any]) -> None:
@@ -151,6 +206,7 @@ def validate_decision(decision: Any) -> None:
     if disposition in selection_dispositions:
         if not selected_id or not selected_revision:
             raise EvidenceError("foundation-decision.json: selected candidate identity missing")
+        require_git_sha(selected_revision, "foundation-decision.selected_candidate_revision")
     elif selected_id is not None or selected_revision is not None:
         raise EvidenceError(
             "foundation-decision.json: blocked/invalid decision cannot select a candidate"
