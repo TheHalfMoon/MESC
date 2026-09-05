@@ -52,7 +52,7 @@ the full question text and falsification semantics.
 
 | Program | Reserved question namespace | Current program status | Current canonical/strategy source | Question-catalog status |
 |---|---|---|---|---|
-| Cross-cutting MESC research | `MESC-RQ-<NNNN>` | PERFORMANCE-FIRST ACTIVE STRATEGY | `docs/adr/0036-performance-first-health-model-strategy.md`, `docs/strategy/mesc_health_model_program_2026-09-05.md`, `docs/strategy/mesc_frontier_program_2026-08-18.md` | RESERVED — individual questions require separate canonicalization |
+| Cross-cutting MESC research | `MESC-RQ-<NNNN>` | PERFORMANCE-FIRST ACTIVE STRATEGY | `docs/adr/0036-performance-first-health-model-strategy.md`, `docs/strategy/mesc_health_model_program_2026-09-05.md` | RESERVED — individual questions require separate canonicalization |
 | MESC Capability Realization Layer | `MCRL-RQ-<NNNN>` | FOUNDER-DIRECTED STRATEGY DRAFT | `docs/strategy/mesc_capability_realization_layer_2026-08-18.md` | RESERVED — individual questions require separate canonicalization |
 | English + Arabic medical intelligence | `ARABIC-RQ-<NNNN>` | PERFORMANCE-FIRST MESC PROGRAM | `docs/strategy/mesc_health_model_program_2026-09-05.md` | RESERVED — individual questions require separate canonicalization |
 | AMGE medical visual intelligence | `AMGE-RQ-<NNNN>` | PERFORMANCE-FIRST MESC PROGRAM | `docs/strategy/mesc_health_model_program_2026-09-05.md` | RESERVED — individual questions require separate canonicalization |
