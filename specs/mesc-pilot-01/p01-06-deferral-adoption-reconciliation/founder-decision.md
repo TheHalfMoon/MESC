@@ -6,6 +6,8 @@ Decision date (Asia/Riyadh): 2026-09-05
 
 Status: **CANDIDATE / INACTIVE UNTIL CANONICAL ADOPTION**
 
+Governance ledger: **#365**
+
 ## Finding
 
 The Founder recognizes the following exact canonical facts:
