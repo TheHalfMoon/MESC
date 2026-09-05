@@ -1,11 +1,12 @@
 # MESC Experiment-0 — Colab Foundation Tournament
 
-Status: **STACKED PREPARATION / NO REAL MODEL OR TRAINING EXECUTION AUTHORITY**
+Status: **PREPARATION / NO REAL MODEL OR TRAINING EXECUTION AUTHORITY**
 
-Dependency:
+Canonical dependency state:
 
-- strategy PR `#373` must first be merged to canonical `main`;
-- ADR-0036 and the 2026-09-05 performance-first MESC strategy must be canonical;
+- strategy PR `#373` is merged to canonical `main` at
+  `9e4ab03cf34f1e3a2ccb918fa9d9d861e2160177`;
+- ADR-0036 and the 2026-09-05 performance-first MESC strategy are canonical;
 - MRL-0801..MRL-0808 remain unsatisfied until genuine external evidence exists;
 - this package does not change `MRL_REAL_EXPERIMENT_READY`, `TRAINING_READY`, or any
   promotion/release state.
@@ -104,9 +105,23 @@ Google Colab remains the default development/runtime qualification surface when 
 candidate fits the available hosted GPU. Experiment-0 must record the **actual** allocated
 GPU and must not assume T4, L4, A100, H100, or another class.
 
-A candidate that cannot run on the observed Colab allocation may receive a runtime
-`BLOCKED_COLAB_CAPACITY` disposition without being scientifically rejected. Separately
-authorized rented accelerator execution may be evaluated later under MRL-0804/MRL-0808.
+A candidate that cannot run on the observed Colab allocation may receive the control-plane
+classification:
+
+```text
+COLAB_DISPOSITION = BLOCKED_COLAB_CAPACITY
+```
+
+That classification is distinct from `MESC-EXPERIMENT-0-RUNTIME-V1.final_runtime_disposition`.
+When a contract-complete runtime receipt is emitted for the same resource-policy failure, its
+runtime disposition is:
+
+```text
+final_runtime_disposition = BLOCKED_RESOURCE_POLICY
+```
+
+Neither disposition scientifically rejects the candidate. Separately authorized rented
+accelerator execution may be evaluated later under MRL-0804/MRL-0808 and the frozen budget.
 
 ## Required package files
 
@@ -125,6 +140,7 @@ specs/mesc-experiment-0/experiment-config.template.json
 notebooks/MESC_Experiment_0_Colab.ipynb
 tools/verify_mesc_experiment_0_evidence.py
 tests/test_verify_mesc_experiment_0_evidence.py
+tests/test_verify_mesc_experiment_0_evidence_integrity.py
 tests/test_mesc_experiment_0_protocol.py
 ```
 
@@ -153,9 +169,7 @@ This package does not satisfy any of those tasks by being authored or merged.
 
 ## Dependency/merge boundary
 
-This branch is intentionally stacked on PR `#373`.
-
-It must not merge to `main` before the strategy package is canonical. After `#373` merges,
-this change must be retargeted against the resulting canonical main without rewriting
-reviewed history, then receive its own exact-head CI, CodeQL, review, thread, ruleset, and
-guarded-merge qualification.
+PR `#373` is already canonical and PR `#374` has been retargeted to `main`. The Experiment-0
+package must receive its own exact-head CI, CodeQL, substantive review, thread-resolution,
+ruleset, guarded-merge, and post-merge qualification. No qualification result from the
+pre-retarget stacked state or an older PR head may be reused as final evidence.
