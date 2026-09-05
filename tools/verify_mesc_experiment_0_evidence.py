@@ -255,12 +255,9 @@ def require_hash(
 
 def require_number(value: Any, label: str) -> None:
     """Require a non-negative finite numeric budget."""
-    if (
-        isinstance(value, bool)
-        or not isinstance(value, (int, float))
-        or not math.isfinite(value)
-        or value < 0
-    ):
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or value < 0:
+        raise EvidenceError(f"{label}: expected non-negative finite number")
+    if isinstance(value, float) and not math.isfinite(value):
         raise EvidenceError(f"{label}: expected non-negative finite number")
 
 
