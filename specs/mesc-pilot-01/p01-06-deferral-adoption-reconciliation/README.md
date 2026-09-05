@@ -4,6 +4,8 @@ Status: **CANDIDATE / GOVERNANCE REPAIR ONLY**
 
 Decision: `FD-P01-06-DEFERRAL-ADOPTION-RECONCILE-1`
 
+Governance ledger: **#365**
+
 ## Purpose
 
 Reconcile the canonical post-merge truth of PR #363 without fabricating pre-merge compliance.
@@ -81,13 +83,19 @@ This reconciliation may be canonically adopted only after:
 
 ## Issue-state reconciliation
 
-Issue #362 was closed `not_planned` and issue #364 was closed `completed` immediately after PR #363 merged. Those terminal states are not treated as proof that the missing pre-merge dispositions existed.
+The original immediate post-PR-#363 closures have been reopened under governance ledger #365:
 
-During this repair, any reopened ledger state is **administrative reconciliation only** and grants no execution or successor authority. After canonical adoption of this package and post-merge verification:
+```text
+#362 = OPEN / ADMINISTRATIVE RECONCILIATION ONLY
+#364 = OPEN / ADMINISTRATIVE RECONCILIATION ONLY
+#365 = OPEN / RECONCILIATION GOVERNANCE LEDGER
+```
+
+The reopenings do not reactivate execution authority and grant no successor authority. After canonical adoption of this package and post-merge verification:
 
 - #362 may be closed `not_planned`, with the terminal meaning `DEFERRED / NOT EXECUTED` and no feasibility result established;
 - #364 may be closed `completed`, with an explicit pointer to this reconciliation record;
-- the reconciliation governance issue may be closed `completed`.
+- #365 may be closed `completed` only after #362 and #364 are reconciled in that order.
 
 ## Successor authority
 
