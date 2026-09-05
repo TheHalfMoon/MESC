@@ -7,6 +7,7 @@ This package intentionally separates protocol preparation from real execution ev
 - `README.md`
 - `STATUS.md`
 - `plan.md`
+- `tournament-contract.md`
 - `runbook.md`
 - `evidence-contract.md`
 - `decision-contract.md`
@@ -20,6 +21,7 @@ This package intentionally separates protocol preparation from real execution ev
 
 - `../../tools/verify_mesc_experiment_0_evidence.py`
 - `../../tests/test_verify_mesc_experiment_0_evidence.py`
+- `../../tests/test_mesc_experiment_0_protocol.py`
 
 No file in this package is a model checkpoint, dataset, runtime receipt, training artifact, or
 promotion record.
