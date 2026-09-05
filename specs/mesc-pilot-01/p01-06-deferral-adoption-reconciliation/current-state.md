@@ -2,6 +2,8 @@
 
 Status: **CANDIDATE EVIDENCE BASIS / GOVERNANCE REPAIR ONLY**
 
+Governance ledger: **#365**
+
 ## Canonical entry identity
 
 ```text
@@ -61,7 +63,7 @@ FOUNDER_READY = NOT_EXERCISED
 FOUNDER_MERGE = NOT_EXERCISED
 ```
 
-No later repository-visible record was found exercising those two dispositions before the merge. This evidence basis therefore does not claim that acceptance items 17 and 18 were satisfied.
+No later repository-visible record was found exercising those two dispositions before the merge. This evidence basis therefore does not claim that the corresponding PR #363 acceptance items were satisfied.
 
 ## PR #363 canonical merge
 
@@ -88,22 +90,27 @@ backends-llamacpp = SUCCESS
 
 These successful post-merge workflows do not retroactively create the missing pre-merge Founder dispositions.
 
-## Issue state
+## Reconciliation issue state
 
-At reconciliation start:
+Governance issue #365 is now the explicit reconciliation ledger.
+
+The original post-PR-#363 issue closures have been reopened for fail-closed administrative reconciliation:
 
 ```text
-#362 = CLOSED / not_planned
-#364 = CLOSED / completed
+#362 = OPEN / state reason reopened
+#364 = OPEN / state reason reopened
+#365 = OPEN / reconciliation governance ledger
 ```
 
-The #362 body still describes the earlier authorization-era state and has no terminal closeout comment after the three notebook-preparation comments. The sole #364 comment is the pre-merge qualification checkpoint that explicitly says Founder Ready and Founder Merge were not exercised at that time.
+Reopening comments on #362 and #364 explicitly state that reopening does not reactivate execution authority, does not establish runtime evidence, and does not authorize P01-07 or training.
+
+The #362 body still describes the earlier authorization-era execution state; the reconciliation comment controls the meaning of its current reopened status. The #364 pre-merge qualification checkpoint remains historical evidence that Founder Ready and Founder Merge had not yet been exercised at that checkpoint.
 
 Issue state alone is not treated as proof that the PR #363 acceptance contract was fully satisfied.
 
 ## Scientific and execution truth
 
-No genuine P01-06 runtime evidence is introduced by this reconciliation. No Colab/GPU/Hugging Face/model/memory execution result is inferred from PR #363, issue closure, CI, CodeQL, notebook preparation, or this repair.
+No genuine P01-06 runtime evidence is introduced by this reconciliation. No Colab/GPU/Hugging Face/model/memory execution result is inferred from PR #363, issue closure/reopening, CI, CodeQL, notebook preparation, or this repair.
 
 ```text
 P01_06_EXECUTION = NOT PERFORMED
