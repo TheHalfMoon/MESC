@@ -80,10 +80,8 @@ def test_experiment_0_notebook_requires_complete_mrl_binding_set() -> None:
 def test_runtime_policy_is_validated_before_gpu_policy_access() -> None:
     """Malformed runtime policy fails before GPU-policy values are used."""
     code = _notebook_code()
-    validation = code.index('if not isinstance(runtime_policy, dict):')
-    gpu_count_read = code.index(
-        'allowed_gpu_count = runtime_policy.get("allowed_gpu_count")'
-    )
+    validation = code.index("if not isinstance(runtime_policy, dict):")
+    gpu_count_read = code.index('allowed_gpu_count = runtime_policy.get("allowed_gpu_count")')
     runtime_use = code.index('expected_count = runtime_policy["allowed_gpu_count"]')
     assert validation < gpu_count_read < runtime_use
 
