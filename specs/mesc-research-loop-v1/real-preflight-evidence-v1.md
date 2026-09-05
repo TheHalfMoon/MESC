@@ -92,7 +92,7 @@ storage_bytes
 wall_clock_seconds
 ```
 
-The nullable resource ceilings retain the canonical meaning of `None`: the resource is not
+In this JSON payload, `null` maps to the canonical `None` meaning: the resource is not
 applicable to that objective; it never means unlimited. Retry relationships and all integer
 semantics are validated through the canonical `ResourceBudget` contract.
 
