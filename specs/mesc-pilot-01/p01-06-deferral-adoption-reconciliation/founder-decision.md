@@ -4,9 +4,11 @@ Decision: `FD-P01-06-DEFERRAL-ADOPTION-RECONCILE-1`
 
 Decision date (Asia/Riyadh): 2026-09-05
 
-Status: **CANDIDATE / INACTIVE UNTIL CANONICAL ADOPTION**
+Status: **PREPARATION AUTHORIZED / TERMINAL RATIFICATION INACTIVE UNTIL CANONICAL ADOPTION**
 
 Governance ledger: **#365**
+
+Reconciliation PR: **#366**
 
 ## Finding
 
@@ -24,9 +26,18 @@ PR #363 merged the intended P01-06 reactivation-deferral package. The objective 
 
 The Founder does not retroactively declare those missing records to have existed.
 
-## Decision
+## Preparation authority
 
-The Founder authorizes a bounded governance reconciliation package whose only purpose is to establish the intended administrative P01-06 terminal state prospectively from current canonical truth, after this reconciliation package itself satisfies its full exact-head adoption gates.
+The Founder authorizes preparation, review, qualification, and guarded adoption processing of this bounded governance-reconciliation package.
+
+This preparation authority permits only the documentation/governance work needed to reconcile the record. It does not activate the intended P01-06 terminal ratification and grants no runtime or successor authority.
+
+```text
+RECONCILIATION_PREPARATION = AUTHORIZED
+TERMINAL_RATIFICATION = INACTIVE UNTIL CANONICAL ADOPTION
+```
+
+## Proposed terminal decision
 
 If and only if this reconciliation package is independently reviewed, exactly qualified, explicitly Founder-Ready, explicitly Founder-Merge-authorized, guarded-merged, and mechanically verified on canonical `main`, the current authority becomes:
 
@@ -73,8 +84,8 @@ This decision does not authorize or establish:
 
 ## Future P01-06 rule
 
-After canonical adoption of this reconciliation, any later P01-06 execution attempt requires a new explicit Founder decision from then-current canonical repository truth. Neither `FD-P01-06-COLAB-1` nor this reconciliation decision is standing execution authority.
+After canonical adoption of the terminal reconciliation, any later P01-06 execution attempt requires a new explicit Founder decision from then-current canonical repository truth. Neither `FD-P01-06-COLAB-1` nor this reconciliation decision is standing execution authority.
 
 ## Fail-closed rule
 
-If the reconciliation package fails any required exact-head CI, CodeQL, substantive-review, thread-resolution, ruleset, Founder Ready, Founder Merge, guarded-merge, or post-merge verification gate, this decision remains inactive and no successor authority is inferred.
+If the reconciliation package fails any required exact-head CI, CodeQL, substantive-review, thread-resolution, ruleset, Founder Ready, Founder Merge, guarded-merge, or post-merge verification gate, the terminal ratification remains inactive and no successor authority is inferred.
