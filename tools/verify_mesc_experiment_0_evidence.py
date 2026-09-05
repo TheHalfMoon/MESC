@@ -40,6 +40,9 @@ REQUIRED_AUTHORITY_KEYS = (
     "mrl_0899_readiness_id",
 )
 
+CANDIDATE_CLASSES = {"SELECTABLE_FOUNDATION", "REFERENCE_ONLY"}
+EVIDENCE_KEY_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{0,63}$")
+
 FORBIDDEN_FIELD_NAMES = {
     "token",
     "hf_token",
@@ -127,7 +130,53 @@ def require_git_sha(value: Any, label: str) -> str:
     return value
 
 
-def validate_config(config: Any) -> None:
+def _validate_candidate_roster(roster: Any) -> list[dict[str, Any]]:
+    if not isinstance(roster, list) or not roster:
+        raise EvidenceError("experiment-config.json: candidate_roster must be non-empty")
+
+    candidates: list[dict[str, Any]] = []
+    identities: set[tuple[str, str]] = set()
+    evidence_keys: set[str] = set()
+    for index, candidate in enumerate(roster):
+        label = f"candidate_roster[{index}]"
+        if not isinstance(candidate, dict):
+            raise EvidenceError(f"{label}: expected object")
+        candidate_id = candidate.get("candidate_id")
+        revision = candidate.get("candidate_revision")
+        candidate_class = candidate.get("candidate_class")
+        evidence_key = candidate.get("evidence_key")
+        modalities = candidate.get("supported_input_modalities")
+
+        if not isinstance(candidate_id, str) or not candidate_id.strip():
+            raise EvidenceError(f"{label}: candidate_id missing")
+        require_git_sha(revision, f"{label}.candidate_revision")
+        if candidate_class not in CANDIDATE_CLASSES:
+            raise EvidenceError(f"{label}: invalid candidate_class {candidate_class!r}")
+        if not isinstance(evidence_key, str) or not EVIDENCE_KEY_RE.fullmatch(evidence_key):
+            raise EvidenceError(f"{label}: invalid evidence_key")
+        if not isinstance(modalities, list) or not modalities:
+            raise EvidenceError(f"{label}: supported_input_modalities must be non-empty")
+        if any(not isinstance(modality, str) or not modality for modality in modalities):
+            raise EvidenceError(f"{label}: invalid supported_input_modalities")
+        if len(modalities) != len(set(modalities)):
+            raise EvidenceError(f"{label}: duplicate supported_input_modalities")
+        if "text" not in modalities:
+            raise EvidenceError(f"{label}: text modality is required")
+        if candidate_class == "SELECTABLE_FOUNDATION" and "vision" not in modalities:
+            raise EvidenceError(f"{label}: selectable foundation requires vision modality")
+
+        identity = (candidate_id, revision)
+        if identity in identities:
+            raise EvidenceError(f"{label}: duplicate candidate identity")
+        if evidence_key in evidence_keys:
+            raise EvidenceError(f"{label}: duplicate evidence_key")
+        identities.add(identity)
+        evidence_keys.add(evidence_key)
+        candidates.append(candidate)
+    return candidates
+
+
+def validate_config(config: Any) -> list[dict[str, Any]]:
     if not isinstance(config, dict):
         raise EvidenceError("experiment-config.json: expected object")
     if config.get("schema_version") != "MESC-EXPERIMENT-0-CONFIG-V1":
@@ -137,22 +186,7 @@ def validate_config(config: Any) -> None:
     require_git_sha(config.get("repository_sha"), "experiment-config.repository_sha")
     require_git_sha(config.get("repository_tree"), "experiment-config.repository_tree")
 
-    roster = config.get("candidate_roster")
-    if not isinstance(roster, list) or not roster:
-        raise EvidenceError("experiment-config.json: candidate_roster must be non-empty")
-    seen_candidates: set[tuple[str, str]] = set()
-    for index, candidate in enumerate(roster):
-        if not isinstance(candidate, dict):
-            raise EvidenceError(f"candidate_roster[{index}]: expected object")
-        candidate_id = candidate.get("candidate_id")
-        revision = candidate.get("revision")
-        if not isinstance(candidate_id, str) or not candidate_id.strip():
-            raise EvidenceError(f"candidate_roster[{index}]: candidate_id missing")
-        require_git_sha(revision, f"candidate_roster[{index}].revision")
-        identity = (candidate_id, revision)
-        if identity in seen_candidates:
-            raise EvidenceError(f"candidate_roster[{index}]: duplicate candidate identity")
-        seen_candidates.add(identity)
+    candidates = _validate_candidate_roster(config.get("candidate_roster"))
 
     bindings = config.get("authority_bindings")
     if not isinstance(bindings, dict):
@@ -169,6 +203,7 @@ def validate_config(config: Any) -> None:
         raise EvidenceError("experiment-config.json: sealed_evaluation_policy missing")
     if sealed_policy.get("tier3_item_access_by_research_process") is not False:
         raise EvidenceError("experiment-config.json: Tier 3 research-process access must be false")
+    return candidates
 
 
 def validate_runtime(runtime: Any, config: dict[str, Any]) -> None:
@@ -186,7 +221,7 @@ def validate_runtime(runtime: Any, config: dict[str, Any]) -> None:
     )
 
 
-def validate_decision(decision: Any) -> None:
+def validate_decision(decision: Any, candidates: list[dict[str, Any]]) -> None:
     if not isinstance(decision, dict):
         raise EvidenceError("foundation-decision.json: expected object")
     if decision.get("schema_version") != "MESC-EXPERIMENT-0-DECISION-V1":
@@ -200,6 +235,7 @@ def validate_decision(decision: Any) -> None:
     }
     if disposition not in allowed:
         raise EvidenceError(f"foundation-decision.json: invalid disposition {disposition!r}")
+
     selected_id = decision.get("selected_candidate_id")
     selected_revision = decision.get("selected_candidate_revision")
     selection_dispositions = {"RETAIN_PREFERRED_CANDIDATE", "SELECT_CHALLENGER"}
@@ -207,6 +243,16 @@ def validate_decision(decision: Any) -> None:
         if not selected_id or not selected_revision:
             raise EvidenceError("foundation-decision.json: selected candidate identity missing")
         require_git_sha(selected_revision, "foundation-decision.selected_candidate_revision")
+        matching = [
+            candidate
+            for candidate in candidates
+            if candidate["candidate_id"] == selected_id
+            and candidate["candidate_revision"] == selected_revision
+        ]
+        if len(matching) != 1:
+            raise EvidenceError("foundation-decision.json: selected candidate is not in roster")
+        if matching[0]["candidate_class"] != "SELECTABLE_FOUNDATION":
+            raise EvidenceError("foundation-decision.json: reference-only candidate cannot be selected")
     elif selected_id is not None or selected_revision is not None:
         raise EvidenceError(
             "foundation-decision.json: blocked/invalid decision cannot select a candidate"
@@ -288,9 +334,9 @@ def verify(path: str) -> dict[str, Any]:
     decision = json_docs[f"{ROOT}/decision/foundation-decision.json"]
     manifest = json_docs[MANIFEST_PATH]
 
-    validate_config(config)
+    candidates = validate_config(config)
     validate_runtime(runtime, config)
-    validate_decision(decision)
+    validate_decision(decision, candidates)
     validate_manifest(manifest, members)
 
     config_bytes = json.dumps(
