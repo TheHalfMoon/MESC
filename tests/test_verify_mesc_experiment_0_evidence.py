@@ -15,11 +15,7 @@ ROOT = "mesc-experiment-0-evidence"
 
 def _load_verifier() -> ModuleType:
     """Load the verifier module from the repository tree."""
-    path = (
-        Path(__file__).resolve().parents[1]
-        / "tools"
-        / "verify_mesc_experiment_0_evidence.py"
-    )
+    path = Path(__file__).resolve().parents[1] / "tools" / "verify_mesc_experiment_0_evidence.py"
     spec = importlib.util.spec_from_file_location("mesc_exp0_verifier", path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
@@ -80,9 +76,7 @@ def _base_config() -> dict[str, Any]:
             "allow_unlisted_gpu_model": False,
         },
         "network_policy": {"allow_repository_clone": True},
-        "filesystem_policy": {
-            "allowed_write_roots": ["/content/mesc-experiment-0"]
-        },
+        "filesystem_policy": {"allowed_write_roots": ["/content/mesc-experiment-0"]},
         "credential_policy": {"forbid_secret_printing": True},
         "resource_budget": {
             "max_gpu_hours": 1,
@@ -210,9 +204,7 @@ def _base_docs() -> dict[str, bytes]:
         f"{ROOT}/experiment-config.json": config_bytes,
         f"{ROOT}/runtime-receipt.json": _json_bytes(runtime),
         f"{ROOT}/environment-manifest.json": environment_bytes,
-        f"{ROOT}/candidate-snapshots/{candidate['evidence_key']}.json": (
-            _json_bytes(snapshot)
-        ),
+        f"{ROOT}/candidate-snapshots/{candidate['evidence_key']}.json": (_json_bytes(snapshot)),
         f"{ROOT}/decision/foundation-decision.json": _json_bytes(decision),
     }
 
@@ -302,9 +294,7 @@ def test_verify_rejects_manifest_self_reference(tmp_path: Path) -> None:
 def test_verify_rejects_secret_bearing_field(tmp_path: Path) -> None:
     """Credential-like JSON field names are rejected."""
     docs = _base_docs()
-    docs[f"{ROOT}/environment-manifest.json"] = _json_bytes(
-        {"api_key": "do-not-store"}
-    )
+    docs[f"{ROOT}/environment-manifest.json"] = _json_bytes({"api_key": "do-not-store"})
     bundle = tmp_path / "secret.zip"
     _write_bundle(bundle, docs)
     with pytest.raises(VERIFIER.EvidenceError, match="forbidden secret-bearing field"):
@@ -357,9 +347,7 @@ def test_verify_rejects_environment_hash_mismatch(tmp_path: Path) -> None:
     """Runtime receipts must bind the exact environment-manifest bytes."""
     docs = _base_docs()
     environment = json.loads(docs[f"{ROOT}/environment-manifest.json"])
-    environment["packages"].append(
-        {"name": "transformers", "version": "changed"}
-    )
+    environment["packages"].append({"name": "transformers", "version": "changed"})
     docs[f"{ROOT}/environment-manifest.json"] = _json_bytes(environment)
     bundle = tmp_path / "environment-drift.zip"
     _write_bundle(bundle, docs)
@@ -379,9 +367,7 @@ def test_verify_rejects_reference_only_selection(tmp_path: Path) -> None:
     decision = json.loads(docs[f"{ROOT}/decision/foundation-decision.json"])
     decision["decision_disposition"] = "SELECT_CHALLENGER"
     decision["selected_candidate_id"] = config["candidate_roster"][0]["candidate_id"]
-    decision["selected_candidate_revision"] = config["candidate_roster"][0][
-        "candidate_revision"
-    ]
+    decision["selected_candidate_revision"] = config["candidate_roster"][0]["candidate_revision"]
     docs[f"{ROOT}/decision/foundation-decision.json"] = _json_bytes(decision)
     bundle = tmp_path / "reference-only.zip"
     _write_bundle(bundle, docs)
@@ -398,9 +384,7 @@ def test_verify_rejects_non_json_payload(tmp_path: Path) -> None:
     _write_bundle(
         bundle,
         _base_docs(),
-        extra_members={
-            f"{ROOT}/candidate-snapshots/model.safetensors": b"not-weights"
-        },
+        extra_members={f"{ROOT}/candidate-snapshots/model.safetensors": b"not-weights"},
     )
     with pytest.raises(VERIFIER.EvidenceError, match="unexpected non-JSON payload"):
         VERIFIER.verify(str(bundle))
