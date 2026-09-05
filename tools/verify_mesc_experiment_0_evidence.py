@@ -48,6 +48,7 @@ CONFIG_FIELDS = {
     "candidate_roster",
     "dataset_identities",
     "evaluator_identities",
+    "scoring_policy_identities",
     "prompt_template_identities",
     "generation_configs",
     "runtime_policy",
@@ -123,6 +124,13 @@ RESULT_FIELDS = {
     "candidate_revision",
     "evidence_key",
     "lane",
+    "dataset_id",
+    "split_id",
+    "held_out_tier",
+    "evaluator_id",
+    "scoring_policy_id",
+    "prompt_template_id",
+    "generation_config_id",
     "metric_vector",
     "hard_floor_vector",
     "item_count",
@@ -397,8 +405,33 @@ def validate_roster(roster: Any) -> list[dict[str, Any]]:
     return roster
 
 
+def validate_identity_records(
+    records: Any,
+    label: str,
+    key_fields: tuple[str, ...],
+) -> set[tuple[str, ...]]:
+    """Validate non-empty frozen identity records and reject duplicate identity tuples."""
+    if not isinstance(records, list) or not records:
+        raise EvidenceError(f"experiment-config.{label}: must be non-empty")
+    identities: set[tuple[str, ...]] = set()
+    for index, record in enumerate(records):
+        if not isinstance(record, dict):
+            raise EvidenceError(f"experiment-config.{label}[{index}]: expected object")
+        identity = tuple(
+            require_text(
+                record.get(field),
+                f"experiment-config.{label}[{index}].{field}",
+            )
+            for field in key_fields
+        )
+        if identity in identities:
+            raise EvidenceError(f"experiment-config.{label}: duplicate frozen identity")
+        identities.add(identity)
+    return identities
+
+
 def validate_config(config: Any) -> list[dict[str, Any]]:
-    """Validate frozen policies, budgets, candidates, and MRL bindings."""
+    """Validate frozen policies, budgets, candidates, evaluation IDs, and MRL bindings."""
     if not isinstance(config, dict):
         raise EvidenceError("experiment-config.json: expected object")
     require_fields(config, CONFIG_FIELDS, "experiment-config.json")
@@ -411,14 +444,31 @@ def validate_config(config: Any) -> list[dict[str, Any]]:
     require_hash(config.get("repository_sha"), "repository_sha", GIT_RE)
     require_hash(config.get("repository_tree"), "repository_tree", GIT_RE)
     candidates = validate_roster(config.get("candidate_roster"))
-    for field in (
+    validate_identity_records(
+        config.get("dataset_identities"),
         "dataset_identities",
+        ("dataset_id", "split_id", "held_out_tier"),
+    )
+    validate_identity_records(
+        config.get("evaluator_identities"),
         "evaluator_identities",
+        ("evaluator_id",),
+    )
+    validate_identity_records(
+        config.get("scoring_policy_identities"),
+        "scoring_policy_identities",
+        ("scoring_policy_id",),
+    )
+    validate_identity_records(
+        config.get("prompt_template_identities"),
         "prompt_template_identities",
+        ("prompt_template_id",),
+    )
+    validate_identity_records(
+        config.get("generation_configs"),
         "generation_configs",
-    ):
-        if not isinstance(config.get(field), list) or not config[field]:
-            raise EvidenceError(f"experiment-config.{field}: must be non-empty")
+        ("generation_config_id",),
+    )
     policy_fields = (
         "runtime_policy",
         "network_policy",
@@ -624,13 +674,28 @@ def validate_snapshots(
 def validate_results(
     docs: dict[str, Any],
     members: dict[str, bytes],
+    config: dict[str, Any],
     candidates: list[dict[str, Any]],
     snapshots: dict[str, dict[str, Any]],
     config_hash: str,
     runtime_hash: str,
 ) -> list[dict[str, Any]]:
-    """Validate result contracts and immutable candidate/runtime bindings."""
+    """Validate result contracts and frozen candidate/evaluation/runtime bindings."""
     by_key = {candidate["evidence_key"]: candidate for candidate in candidates}
+    dataset_ids = {
+        (record["dataset_id"], record["split_id"], record["held_out_tier"])
+        for record in config["dataset_identities"]
+    }
+    evaluator_ids = {record["evaluator_id"] for record in config["evaluator_identities"]}
+    scoring_ids = {
+        record["scoring_policy_id"] for record in config["scoring_policy_identities"]
+    }
+    prompt_ids = {
+        record["prompt_template_id"] for record in config["prompt_template_identities"]
+    }
+    generation_ids = {
+        record["generation_config_id"] for record in config["generation_configs"]
+    }
     results: list[dict[str, Any]] = []
     for path in sorted(name for name in members if name.startswith(RESULTS)):
         relative = path.removeprefix(RESULTS)
@@ -665,6 +730,34 @@ def validate_results(
             or result.get("candidate_disposition") not in RESULT_DISPOSITIONS
         ):
             raise EvidenceError(f"{path}: lane/disposition mismatch")
+        dataset_binding = (
+            require_text(result.get("dataset_id"), f"{path}.dataset_id"),
+            require_text(result.get("split_id"), f"{path}.split_id"),
+            require_text(result.get("held_out_tier"), f"{path}.held_out_tier"),
+        )
+        if dataset_binding not in dataset_ids:
+            raise EvidenceError(f"{path}: dataset/split/tier binding is not frozen")
+        evaluator_id = require_text(result.get("evaluator_id"), f"{path}.evaluator_id")
+        if evaluator_id not in evaluator_ids:
+            raise EvidenceError(f"{path}: evaluator binding is not frozen")
+        scoring_id = require_text(
+            result.get("scoring_policy_id"),
+            f"{path}.scoring_policy_id",
+        )
+        if scoring_id not in scoring_ids:
+            raise EvidenceError(f"{path}: scoring-policy binding is not frozen")
+        prompt_id = require_text(
+            result.get("prompt_template_id"),
+            f"{path}.prompt_template_id",
+        )
+        if prompt_id not in prompt_ids:
+            raise EvidenceError(f"{path}: prompt-template binding is not frozen")
+        generation_id = require_text(
+            result.get("generation_config_id"),
+            f"{path}.generation_config_id",
+        )
+        if generation_id not in generation_ids:
+            raise EvidenceError(f"{path}: generation-config binding is not frozen")
         results.append(
             {
                 "sha256": digest(members[path]),
@@ -806,6 +899,7 @@ def verify(path: str | Path) -> dict[str, Any]:
     results = validate_results(
         docs,
         members,
+        config,
         candidates,
         snapshots,
         config_hash,
