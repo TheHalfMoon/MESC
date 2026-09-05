@@ -37,6 +37,10 @@ def _json_bytes(value: Any) -> bytes:
     ).encode("utf-8")
 
 
+def _authority_bindings() -> dict[str, str]:
+    return {key: f"test-{key}" for key in VERIFIER.REQUIRED_AUTHORITY_KEYS}
+
+
 def _base_docs() -> dict[str, bytes]:
     config = {
         "schema_version": "MESC-EXPERIMENT-0-CONFIG-V1",
@@ -46,6 +50,11 @@ def _base_docs() -> dict[str, bytes]:
         "repository_sha": "a" * 40,
         "repository_tree": "b" * 40,
         "candidate_roster": [{"candidate_id": "example/model", "revision": "c" * 40}],
+        "authority_bindings": _authority_bindings(),
+        "sealed_evaluation_policy": {
+            "tier3_item_access_by_research_process": False,
+            "allowed_aggregate_fields": ["score"],
+        },
     }
     config_bytes = _json_bytes(config)
     config_sha = hashlib.sha256(config_bytes).hexdigest()
@@ -69,6 +78,22 @@ def _base_docs() -> dict[str, bytes]:
         f"{ROOT}/environment-manifest.json": _json_bytes({"packages": []}),
         f"{ROOT}/decision/foundation-decision.json": _json_bytes(decision),
     }
+
+
+def _replace_config(docs: dict[str, bytes], config: dict[str, Any]) -> None:
+    config_bytes = _json_bytes(config)
+    config_sha = hashlib.sha256(config_bytes).hexdigest()
+    docs[f"{ROOT}/experiment-config.json"] = config_bytes
+
+    runtime = json.loads(docs[f"{ROOT}/runtime-receipt.json"])
+    runtime["experiment_config_sha256"] = config_sha
+    runtime["repository_sha"] = config["repository_sha"]
+    runtime["repository_tree"] = config["repository_tree"]
+    docs[f"{ROOT}/runtime-receipt.json"] = _json_bytes(runtime)
+
+    decision = json.loads(docs[f"{ROOT}/decision/foundation-decision.json"])
+    decision["experiment_config_sha256"] = config_sha
+    docs[f"{ROOT}/decision/foundation-decision.json"] = _json_bytes(decision)
 
 
 def _write_bundle(
@@ -139,6 +164,30 @@ def test_verify_rejects_secret_bearing_field(tmp_path: Path) -> None:
     _write_bundle(bundle, docs)
 
     with pytest.raises(VERIFIER.EvidenceError, match="forbidden secret-bearing field"):
+        VERIFIER.verify(str(bundle))
+
+
+def test_verify_rejects_secret_like_value(tmp_path: Path) -> None:
+    docs = _base_docs()
+    docs[f"{ROOT}/environment-manifest.json"] = _json_bytes(
+        {"package_source": "https://user:password@example.invalid/package.whl"}
+    )
+    bundle = tmp_path / "secret-value.zip"
+    _write_bundle(bundle, docs)
+
+    with pytest.raises(VERIFIER.EvidenceError, match="possible secret-bearing value"):
+        VERIFIER.verify(str(bundle))
+
+
+def test_verify_rejects_missing_mrl_binding(tmp_path: Path) -> None:
+    docs = _base_docs()
+    config = json.loads(docs[f"{ROOT}/experiment-config.json"])
+    config["authority_bindings"]["mrl_0807_evaluator_freeze_id"] = None
+    _replace_config(docs, config)
+    bundle = tmp_path / "missing-binding.zip"
+    _write_bundle(bundle, docs)
+
+    with pytest.raises(VERIFIER.EvidenceError, match="incomplete MRL authority/evidence bindings"):
         VERIFIER.verify(str(bundle))
 
 
