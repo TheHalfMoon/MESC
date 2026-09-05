@@ -112,6 +112,10 @@ known-first-party = ["medscale"]
 "src/medscale/mesc/_bt_executor_core_fixture_v1.py" = ["RUF036"]
 "src/medscale/mesc/_canonical_json_v1.py" = ["RUF036"]
 
+[tool.ruff.format]
+# Preserve the notebook's explicit Colab cell layout while continuing to lint every code cell.
+exclude = ["notebooks/MESC_Experiment_0_Colab.ipynb"]
+
 # ---------------------------------------------------------------------------
 # Mypy — strict typing
 # ---------------------------------------------------------------------------
