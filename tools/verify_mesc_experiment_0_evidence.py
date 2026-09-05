@@ -253,9 +253,7 @@ def read_archive(path: Path) -> dict[str, bytes]:
                 raise EvidenceError(f"ZIP member exceeds size limit: {info.filename}")
             total += info.file_size
             if total > MAX_TOTAL_UNCOMPRESSED_BYTES:
-                raise EvidenceError(
-                    "evidence archive exceeds total uncompressed-size limit"
-                )
+                raise EvidenceError("evidence archive exceeds total uncompressed-size limit")
             readable.append(info)
         return {info.filename: archive.read(info) for info in readable}
 
@@ -370,9 +368,7 @@ def validate_config(config: Any) -> list[dict[str, Any]]:
     bindings = config["authority_bindings"]
     missing = [key for key in REQUIRED_AUTHORITY_KEYS if not bindings.get(key)]
     if missing:
-        raise EvidenceError(
-            f"incomplete MRL authority/evidence bindings {sorted(missing)}"
-        )
+        raise EvidenceError(f"incomplete MRL authority/evidence bindings {sorted(missing)}")
     return candidates
 
 
@@ -435,8 +431,7 @@ def validate_snapshots(
 ) -> dict[str, dict[str, Any]]:
     """Require one complete snapshot receipt for every candidate."""
     expected = {
-        f"{SNAPSHOTS}{candidate['evidence_key']}.json": candidate
-        for candidate in candidates
+        f"{SNAPSHOTS}{candidate['evidence_key']}.json": candidate for candidate in candidates
     }
     if {path for path in members if path.startswith(SNAPSHOTS)} != set(expected):
         raise EvidenceError("candidate snapshot coverage mismatch")
@@ -468,9 +463,7 @@ def validate_snapshots(
             raise EvidenceError(f"{path}: invalid load disposition")
         if not isinstance(receipt.get("trust_remote_code"), bool):
             raise EvidenceError(f"{path}: trust_remote_code must be boolean")
-        if receipt["trust_remote_code"] and not receipt.get(
-            "remote_code_exception_identity"
-        ):
+        if receipt["trust_remote_code"] and not receipt.get("remote_code_exception_identity"):
             raise EvidenceError(f"{path}: remote-code exception missing")
         receipts[candidate["evidence_key"]] = {
             "record": receipt,
@@ -551,26 +544,16 @@ def validate_decision(
     declared = decision.get("candidate_result_sha256s")
     if not isinstance(declared, list) or declared != sorted(set(declared)):
         raise EvidenceError("candidate_result_sha256s must be sorted and unique")
-    if any(
-        not isinstance(value, str) or not SHA_RE.fullmatch(value)
-        for value in declared
-    ):
+    if any(not isinstance(value, str) or not SHA_RE.fullmatch(value) for value in declared):
         raise EvidenceError("candidate_result_sha256s contains invalid digest")
     if declared != sorted(result["sha256"] for result in results):
-        raise EvidenceError(
-            "foundation-decision.json: candidate result hash set mismatch"
-        )
+        raise EvidenceError("foundation-decision.json: candidate result hash set mismatch")
     hard = decision.get("hard_floor_summary")
-    if (
-        not isinstance(hard, dict)
-        or not isinstance(hard.get("all_mandatory_passed"), bool)
-    ):
+    if not isinstance(hard, dict) or not isinstance(hard.get("all_mandatory_passed"), bool):
         raise EvidenceError("foundation-decision.json: malformed hard-floor summary")
     failed = hard.get("failed_floor_ids")
     if not isinstance(failed, list):
-        raise EvidenceError(
-            "foundation-decision.json: failed_floor_ids must be a list"
-        )
+        raise EvidenceError("foundation-decision.json: failed_floor_ids must be a list")
     for field in (
         "metric_vector_summary",
         "resource_summary",
@@ -578,9 +561,7 @@ def validate_decision(
         "contamination_summary",
     ):
         if not isinstance(decision.get(field), dict):
-            raise EvidenceError(
-                f"foundation-decision.json: {field} must be an object"
-            )
+            raise EvidenceError(f"foundation-decision.json: {field} must be an object")
     require_text(decision.get("rationale"), "foundation-decision.rationale")
     if not isinstance(decision.get("limitations"), list):
         raise EvidenceError("foundation-decision.json: limitations must be a list")
@@ -614,10 +595,7 @@ def validate_decision(
 
 def validate_manifest(manifest: Any, members: dict[str, bytes]) -> None:
     """Validate exact bundle coverage, sizes, hashes, and media types."""
-    if (
-        not isinstance(manifest, dict)
-        or manifest.get("schema_version") != SCHEMAS[MANIFEST]
-    ):
+    if not isinstance(manifest, dict) or manifest.get("schema_version") != SCHEMAS[MANIFEST]:
         raise EvidenceError("bundle-manifest.json: schema mismatch")
     entries = manifest.get("entries")
     if not isinstance(entries, list):
@@ -634,10 +612,7 @@ def validate_manifest(manifest: Any, members: dict[str, bytes]) -> None:
             raise EvidenceError("bundle-manifest.json: duplicate or missing path")
         seen.add(path)
         data = members[path]
-        if (
-            entry.get("size_bytes") != len(data)
-            or entry.get("sha256") != digest(data)
-        ):
+        if entry.get("size_bytes") != len(data) or entry.get("sha256") != digest(data):
             raise EvidenceError(f"bundle-manifest mismatch: {path}")
         if entry.get("media_type") != "application/json":
             raise EvidenceError(f"bundle-manifest media_type mismatch: {path}")
@@ -656,10 +631,7 @@ def verify(path: str | Path) -> dict[str, Any]:
     for name, value in docs.items():
         scan_fields(value, name)
     for name, schema in SCHEMAS.items():
-        if (
-            not isinstance(docs[name], dict)
-            or docs[name].get("schema_version") != schema
-        ):
+        if not isinstance(docs[name], dict) or docs[name].get("schema_version") != schema:
             raise EvidenceError(f"{name}: expected schema {schema}")
     config = docs[CONFIG]
     candidates = validate_config(config)
