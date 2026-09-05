@@ -456,7 +456,9 @@ def validate_config(config: Any) -> list[dict[str, Any]]:
     if not isinstance(allow_unlisted, bool):
         raise EvidenceError("runtime_policy.allow_unlisted_gpu_model must be boolean")
     if not allow_unlisted and not allowed_gpu_models:
-        raise EvidenceError("runtime_policy.allowed_gpu_models cannot be empty when unlisted GPUs are blocked")
+        raise EvidenceError(
+            "runtime_policy.allowed_gpu_models cannot be empty when unlisted GPUs are blocked"
+        )
     for key in (
         "max_gpu_hours",
         "max_wall_hours",
