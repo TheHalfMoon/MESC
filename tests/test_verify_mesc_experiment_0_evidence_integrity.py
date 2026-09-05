@@ -40,6 +40,11 @@ def test_load_json_rejects_non_finite_constants() -> None:
         VERIFIER.load_json(b'{"metric":NaN}', "non-finite.json")
 
 
+def test_require_number_handles_arbitrarily_large_nonnegative_int() -> None:
+    """Integer budgets do not overflow finite-number validation."""
+    VERIFIER.require_number(10**10_000, "resource_budget.synthetic")
+
+
 def test_verify_rejects_pass_runtime_with_unlisted_gpu(tmp_path: Path) -> None:
     """A PASS runtime receipt must satisfy the frozen GPU allowlist."""
     docs = FIXTURES._base_docs()
