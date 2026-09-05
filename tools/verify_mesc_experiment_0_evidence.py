@@ -687,15 +687,9 @@ def validate_results(
         for record in config["dataset_identities"]
     }
     evaluator_ids = {record["evaluator_id"] for record in config["evaluator_identities"]}
-    scoring_ids = {
-        record["scoring_policy_id"] for record in config["scoring_policy_identities"]
-    }
-    prompt_ids = {
-        record["prompt_template_id"] for record in config["prompt_template_identities"]
-    }
-    generation_ids = {
-        record["generation_config_id"] for record in config["generation_configs"]
-    }
+    scoring_ids = {record["scoring_policy_id"] for record in config["scoring_policy_identities"]}
+    prompt_ids = {record["prompt_template_id"] for record in config["prompt_template_identities"]}
+    generation_ids = {record["generation_config_id"] for record in config["generation_configs"]}
     results: list[dict[str, Any]] = []
     for path in sorted(name for name in members if name.startswith(RESULTS)):
         relative = path.removeprefix(RESULTS)
