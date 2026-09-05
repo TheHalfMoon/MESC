@@ -116,11 +116,17 @@ This specification family owns:
 specs/mesc-experiment-0/README.md
 specs/mesc-experiment-0/plan.md
 specs/mesc-experiment-0/evidence-contract.md
+specs/mesc-experiment-0/decision-contract.md
 specs/mesc-experiment-0/runbook.md
+specs/mesc-experiment-0/experiment-config.template.json
 notebooks/MESC_Experiment_0_Colab.ipynb
+tools/verify_mesc_experiment_0_evidence.py
+tests/test_verify_mesc_experiment_0_evidence.py
 ```
 
 The notebook is a protocol implementation template. Its existence is not runtime evidence.
+The verifier proves only structural/identity integrity of an evidence bundle; it does not
+independently establish medical correctness, rights, or canonical acceptance.
 
 ## MRL mapping
 
@@ -146,6 +152,6 @@ This package does not satisfy any of those tasks by being authored or merged.
 This branch is intentionally stacked on PR `#373`.
 
 It must not merge to `main` before the strategy package is canonical. After `#373` merges,
-this change must be rebased only by forward-safe repository procedure or retargeted against
-the resulting canonical main without rewriting reviewed history, then receive its own
-exact-head CI, CodeQL, review, thread, ruleset, and guarded-merge qualification.
+this change must be retargeted against the resulting canonical main without rewriting
+reviewed history, then receive its own exact-head CI, CodeQL, review, thread, ruleset, and
+guarded-merge qualification.
