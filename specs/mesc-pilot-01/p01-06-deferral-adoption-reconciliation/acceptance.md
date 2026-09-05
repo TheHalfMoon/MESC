@@ -4,6 +4,8 @@ Status: **CANDIDATE / GOVERNANCE ONLY**
 
 Decision: `FD-P01-06-DEFERRAL-ADOPTION-RECONCILE-1`
 
+Governance ledger: **#365**
+
 This acceptance contract governs only the reconciliation package under `p01-06-deferral-adoption-reconciliation/`.
 
 ## Required pre-merge gates
@@ -18,22 +20,24 @@ All of the following must be true on one exact candidate head:
 6. no alternate runtime/provider/model/revision is substituted;
 7. historical Pilot-01 closeout and accepted B0 evidence remain preserved;
 8. P01-07, QLoRA, Unsloth training, adapters, B1 scientific execution, retrieval, benchmark/test-partition execution, publication, clinical use, and production use remain unauthorized;
-9. exact-head `quality (py3.11)` passes;
-10. exact-head `quality (py3.12)` passes;
-11. exact-head `analyze (python)` passes;
-12. exact-head CodeQL passes;
-13. any applicable optional-backend qualification passes;
-14. a fresh independent substantive semantic/governance review of the exact candidate head reports no blocking finding;
-15. every material review finding and thread is resolved or explicitly dispositioned with evidence;
-16. current `main`, PR base, exact candidate head, and ruleset `20172239` are reverified immediately before Founder Ready;
-17. the Founder explicitly records `FOUNDER_READY = EXERCISED` for the exact reviewed reconciliation head;
-18. the candidate head remains unchanged after Founder Ready;
-19. current `main`, PR base, exact candidate head, required checks, review state, and ruleset are reverified again immediately before Founder Merge;
-20. the Founder explicitly records `FOUNDER_MERGE = EXERCISED` and `EXPECTED_HEAD = <exact head>`;
-21. merge uses method `merge` with the exact expected-head guard;
-22. post-merge mechanical verification proves canonical merge SHA, tree, and ordered parents;
-23. post-merge CI, CodeQL, and applicable optional-backend workflows are observed and recorded truthfully;
-24. only after item 22 may issue-state reconciliation be finalized.
+9. governance issue #365 remains open as the reconciliation ledger until post-merge and issue-state reconciliation complete;
+10. #362 and #364 remain open during reconciliation and their reopened state is treated as administrative only, not execution or successor authority;
+11. exact-head `quality (py3.11)` passes;
+12. exact-head `quality (py3.12)` passes;
+13. exact-head `analyze (python)` passes;
+14. exact-head CodeQL passes;
+15. any applicable optional-backend qualification passes;
+16. a fresh independent substantive semantic/governance review of the exact candidate head reports no blocking finding;
+17. every material review finding and thread is resolved or explicitly dispositioned with evidence;
+18. current `main`, PR base, exact candidate head, and ruleset `20172239` are reverified immediately before Founder Ready;
+19. the Founder explicitly records `FOUNDER_READY = EXERCISED` for the exact reviewed reconciliation head;
+20. the candidate head remains unchanged after Founder Ready;
+21. current `main`, PR base, exact candidate head, required checks, review state, and ruleset are reverified again immediately before Founder Merge;
+22. the Founder explicitly records `FOUNDER_MERGE = EXERCISED` and `EXPECTED_HEAD = <exact head>`;
+23. merge uses method `merge` with the exact expected-head guard;
+24. post-merge mechanical verification proves canonical merge SHA, tree, and ordered parents;
+25. post-merge CI, CodeQL, and applicable optional-backend workflows are observed and recorded truthfully;
+26. only after item 24 may issue-state reconciliation be finalized in this order: #362 `not_planned`, #364 `completed`, #365 `completed`.
 
 ## Accepted terminal meaning
 
