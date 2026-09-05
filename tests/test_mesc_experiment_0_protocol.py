@@ -6,6 +6,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG_PATH = ROOT / "specs" / "mesc-experiment-0" / "experiment-config.template.json"
 NOTEBOOK_PATH = ROOT / "notebooks" / "MESC_Experiment_0_Colab.ipynb"
+README_PATH = ROOT / "specs" / "mesc-experiment-0" / "README.md"
+MANIFEST_PATH = ROOT / "specs" / "mesc-experiment-0" / "manifest.md"
 
 
 def _notebook_code() -> str:
@@ -81,9 +83,18 @@ def test_runtime_policy_is_validated_before_gpu_policy_access() -> None:
     """Malformed runtime policy fails before GPU-policy values are used."""
     code = _notebook_code()
     validation = code.index("if not isinstance(runtime_policy, dict):")
+    provider_gate = code.index('runtime_policy.get("provider") != "GOOGLE_COLAB"')
     gpu_count_read = code.index('allowed_gpu_count = runtime_policy.get("allowed_gpu_count")')
     runtime_use = code.index('expected_count = runtime_policy["allowed_gpu_count"]')
-    assert validation < gpu_count_read < runtime_use
+    assert validation < provider_gate < gpu_count_read < runtime_use
+
+
+def test_network_host_policy_is_gated_before_repository_clone() -> None:
+    """Repository network access requires the frozen GitHub host allowlist."""
+    code = _notebook_code()
+    host_gate = code.index('"github.com" not in allowed_hosts')
+    clone = code.index('"git", "clone"')
+    assert host_gate < clone
 
 
 def test_environment_manifest_avoids_pip_freeze_and_direct_urls() -> None:
@@ -93,3 +104,16 @@ def test_environment_manifest_avoids_pip_freeze_and_direct_urls() -> None:
     assert '"packages": packages' in code
     assert 'distribution.metadata.get("Name")' in code
     assert "direct_url" not in code
+
+
+def test_package_manifest_lists_integrity_verifier_tests() -> None:
+    """The package manifest includes the adversarial integrity regression suite."""
+    manifest = MANIFEST_PATH.read_text(encoding="utf-8")
+    assert "../../tests/test_verify_mesc_experiment_0_evidence_integrity.py" in manifest
+
+
+def test_readme_distinguishes_colab_and_runtime_dispositions() -> None:
+    """Control-plane capacity blocking is not confused with runtime evidence disposition."""
+    readme = README_PATH.read_text(encoding="utf-8")
+    assert "COLAB_DISPOSITION = BLOCKED_COLAB_CAPACITY" in readme
+    assert "final_runtime_disposition = BLOCKED_RESOURCE_POLICY" in readme
