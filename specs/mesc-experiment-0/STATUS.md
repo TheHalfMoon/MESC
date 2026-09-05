@@ -25,6 +25,10 @@ TRAINING_READY = FALSE
 canonical `main`. `PARENT_STRATEGY_POSTMERGE_QUALIFICATION` must not become `SUCCESS` until
 the exact merge SHA has successful post-merge CI and CodeQL evidence.
 
+Repository-side formatting is enforced by the canonical Ruff qualification gate. Formatting
+success is code-quality evidence only and grants no execution, asset, evaluator, runtime,
+training, promotion, or readiness authority.
+
 This Experiment-0 package remains preparation-only and Draft. It does not satisfy or replace
 any real MRL model, data, rights, contamination, runtime/GPU, objective/budget, evaluator,
 sandbox, exact-head preflight, or readiness evidence. Live canonical repository truth and
