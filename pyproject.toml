@@ -105,7 +105,6 @@ known-first-party = ["medscale"]
 # spellings and Colab cell layout; these exceptions are style-only and do not suppress
 # correctness, import, security, typing, or test execution gates.
 "notebooks/MESC_Experiment_0_Colab.ipynb" = ["E501", "UP017"]
-"tools/verify_mesc_experiment_0_evidence.py" = ["RUF005", "SIM905"]
 "tests/test_verify_mesc_experiment_0_evidence.py" = ["RUF043"]
 # These frozen contract files are byte-identity evidence in independent qualification gates.
 # Keep their canonical bytes unchanged while newer Ruff versions enforce RUF036 elsewhere.
