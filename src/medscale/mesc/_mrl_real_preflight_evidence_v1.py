@@ -20,6 +20,14 @@ from typing import Final, Literal, cast
 
 from medscale.mesc import _training_authorization_trust_v1 as authorization_trust
 from medscale.mesc._canonical_json_v1 import CanonicalContractError, canonical_json_bytes
+from medscale.mesc._mrl_research_objective_v1 import (
+    AdaptiveQueryBudget,
+    EvaluationTier,
+    EvaluationTierPolicy,
+    ResearchObjectiveContractError,
+    ResourceBudget,
+    TierResultExposure,
+)
 
 MRLRealPreflightTask = Literal[
     "MRL-0801",
@@ -365,14 +373,12 @@ def _validate_objective_budgets(payload: dict[str, object]) -> None:
         payload,
         {
             "adaptive_query_budget",
-            "compute_units",
+            "budget_exhaustion_disposition",
+            "evaluation_tier_policy",
             "frozen_externally",
-            "monetary_budget_microunits",
             "research_objective_sha256",
-            "result_exposure_budget",
-            "storage_bytes",
-            "token_budget",
-            "wall_clock_seconds",
+            "resource_budget",
+            "tier_result_exposure_policy",
         },
         label="MRL-0806 payload",
     )
@@ -381,19 +387,170 @@ def _validate_objective_budgets(payload: dict[str, object]) -> None:
         payload["research_objective_sha256"],
         field="research_objective_sha256",
     )
-    for field_name in (
-        "compute_units",
-        "storage_bytes",
-        "token_budget",
-        "wall_clock_seconds",
-    ):
-        _require_positive_int(payload[field_name], field=field_name)
-    for field_name in (
-        "adaptive_query_budget",
-        "monetary_budget_microunits",
-        "result_exposure_budget",
-    ):
-        _require_nonnegative_int(payload[field_name], field=field_name)
+
+    resource_budget = _require_object(payload["resource_budget"], field="resource_budget")
+    _validate_resource_budget(resource_budget)
+
+    evaluation_tier_policy = _require_object(
+        payload["evaluation_tier_policy"],
+        field="evaluation_tier_policy",
+    )
+    allowed_tiers = _validate_evaluation_tier_policy(evaluation_tier_policy)
+
+    adaptive_query_budget = _require_object(
+        payload["adaptive_query_budget"],
+        field="adaptive_query_budget",
+    )
+    query_budget = _validate_adaptive_query_budget(adaptive_query_budget)
+
+    exposure_policy = _require_list(
+        payload["tier_result_exposure_policy"],
+        field="tier_result_exposure_policy",
+    )
+    exposure_tiers = _validate_tier_result_exposure_policy(exposure_policy)
+    if exposure_tiers != allowed_tiers:
+        raise MRLRealPreflightEvidenceError(
+            "tier_result_exposure_policy must define exactly every allowed evaluation tier"
+        )
+
+    if EvaluationTier.SEARCH not in allowed_tiers and query_budget.tier_1_queries:
+        raise MRLRealPreflightEvidenceError(
+            "tier_1_queries must be zero when Tier 1 SEARCH is not allowed"
+        )
+    if EvaluationTier.REPLICATION not in allowed_tiers and query_budget.tier_2_queries:
+        raise MRLRealPreflightEvidenceError(
+            "tier_2_queries must be zero when Tier 2 REPLICATION is not allowed"
+        )
+
+    if payload["budget_exhaustion_disposition"] != "BLOCKED":
+        raise MRLRealPreflightEvidenceError(
+            "budget_exhaustion_disposition must be exactly BLOCKED"
+        )
+
+
+def _validate_resource_budget(payload: dict[str, object]) -> ResourceBudget:
+    _require_keys(
+        payload,
+        {
+            "compute_seconds",
+            "evaluator_invocations",
+            "generated_tokens",
+            "input_tokens",
+            "known_failure_retries",
+            "max_experiments",
+            "monetary_cost_microunits",
+            "retries",
+            "storage_bytes",
+            "wall_clock_seconds",
+        },
+        label="MRL-0806 resource_budget",
+    )
+    try:
+        return ResourceBudget(
+            wall_clock_seconds=cast(int, payload["wall_clock_seconds"]),
+            compute_seconds=cast(int | None, payload["compute_seconds"]),
+            input_tokens=cast(int | None, payload["input_tokens"]),
+            generated_tokens=cast(int | None, payload["generated_tokens"]),
+            storage_bytes=cast(int, payload["storage_bytes"]),
+            monetary_cost_microunits=cast(int | None, payload["monetary_cost_microunits"]),
+            max_experiments=cast(int, payload["max_experiments"]),
+            retries=cast(int, payload["retries"]),
+            known_failure_retries=cast(int, payload["known_failure_retries"]),
+            evaluator_invocations=cast(int | None, payload["evaluator_invocations"]),
+        )
+    except ResearchObjectiveContractError as exc:
+        raise MRLRealPreflightEvidenceError(
+            "resource_budget does not match canonical ResearchObjectiveContract semantics"
+        ) from exc
+
+
+def _validate_evaluation_tier_policy(payload: dict[str, object]) -> tuple[EvaluationTier, ...]:
+    _require_keys(
+        payload,
+        {"allowed_tiers"},
+        label="MRL-0806 evaluation_tier_policy",
+    )
+    raw_tiers = _require_list(payload["allowed_tiers"], field="evaluation_tier_policy.allowed_tiers")
+    tiers = tuple(
+        _require_evaluation_tier(value, field="evaluation_tier_policy.allowed_tiers")
+        for value in raw_tiers
+    )
+    try:
+        policy = EvaluationTierPolicy(allowed_tiers=tiers)
+    except ResearchObjectiveContractError as exc:
+        raise MRLRealPreflightEvidenceError(
+            "evaluation_tier_policy does not match canonical ResearchObjectiveContract semantics"
+        ) from exc
+    return policy.allowed_tiers
+
+
+def _validate_adaptive_query_budget(payload: dict[str, object]) -> AdaptiveQueryBudget:
+    _require_keys(
+        payload,
+        {"tier_1_queries", "tier_2_queries"},
+        label="MRL-0806 adaptive_query_budget",
+    )
+    try:
+        return AdaptiveQueryBudget(
+            tier_1_queries=cast(int, payload["tier_1_queries"]),
+            tier_2_queries=cast(int, payload["tier_2_queries"]),
+        )
+    except ResearchObjectiveContractError as exc:
+        raise MRLRealPreflightEvidenceError(
+            "adaptive_query_budget does not match canonical ResearchObjectiveContract semantics"
+        ) from exc
+
+
+def _validate_tier_result_exposure_policy(
+    payload: list[object],
+) -> tuple[EvaluationTier, ...]:
+    exposures: list[TierResultExposure] = []
+    for index, raw_entry in enumerate(payload):
+        entry = _require_object(
+            raw_entry,
+            field=f"tier_result_exposure_policy[{index}]",
+        )
+        _require_keys(
+            entry,
+            {"allowed_result_fields", "max_exposures", "tier"},
+            label=f"MRL-0806 tier_result_exposure_policy[{index}]",
+        )
+        tier = _require_evaluation_tier(
+            entry["tier"],
+            field=f"tier_result_exposure_policy[{index}].tier",
+        )
+        raw_fields = _require_list(
+            entry["allowed_result_fields"],
+            field=f"tier_result_exposure_policy[{index}].allowed_result_fields",
+        )
+        allowed_result_fields = tuple(
+            _require_text(
+                value,
+                field=f"tier_result_exposure_policy[{index}].allowed_result_fields",
+            )
+            for value in raw_fields
+        )
+        try:
+            exposures.append(
+                TierResultExposure(
+                    tier=tier,
+                    max_exposures=cast(int, entry["max_exposures"]),
+                    allowed_result_fields=allowed_result_fields,
+                )
+            )
+        except ResearchObjectiveContractError as exc:
+            raise MRLRealPreflightEvidenceError(
+                "tier_result_exposure_policy does not match canonical "
+                "ResearchObjectiveContract semantics"
+            ) from exc
+
+    tiers = tuple(exposure.tier for exposure in exposures)
+    numeric_tiers = tuple(int(tier) for tier in tiers)
+    if numeric_tiers != tuple(sorted(set(numeric_tiers))):
+        raise MRLRealPreflightEvidenceError(
+            "tier_result_exposure_policy must be unique and strictly ascending by tier"
+        )
+    return tiers
 
 
 def _validate_evaluators(payload: dict[str, object]) -> None:
@@ -461,6 +618,29 @@ def _validate_sandbox(payload: dict[str, object]) -> None:
 def _require_keys(payload: dict[str, object], expected: set[str], *, label: str) -> None:
     if set(payload) != expected:
         raise MRLRealPreflightEvidenceError(f"{label} must contain the exact canonical key set")
+
+
+def _require_object(value: object, *, field: str) -> dict[str, object]:
+    if type(value) is not dict:
+        raise MRLRealPreflightEvidenceError(f"{field} must be an exact JSON object")
+    return cast(dict[str, object], value)
+
+
+def _require_list(value: object, *, field: str) -> list[object]:
+    if type(value) is not list:
+        raise MRLRealPreflightEvidenceError(f"{field} must be an exact JSON array")
+    return cast(list[object], value)
+
+
+def _require_evaluation_tier(value: object, *, field: str) -> EvaluationTier:
+    if type(value) is not int:
+        raise MRLRealPreflightEvidenceError(f"{field} must be an integer evaluation tier")
+    try:
+        return EvaluationTier(value)
+    except ValueError as exc:
+        raise MRLRealPreflightEvidenceError(
+            f"{field} must be one of evaluation tiers 0 through 4"
+        ) from exc
 
 
 def _require_task_id(value: object) -> str:
