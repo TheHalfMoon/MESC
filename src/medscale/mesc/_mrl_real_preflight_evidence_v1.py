@@ -470,7 +470,10 @@ def _validate_evaluation_tier_policy(payload: dict[str, object]) -> tuple[Evalua
         {"allowed_tiers"},
         label="MRL-0806 evaluation_tier_policy",
     )
-    raw_tiers = _require_list(payload["allowed_tiers"], field="evaluation_tier_policy.allowed_tiers")
+    raw_tiers = _require_list(
+        payload["allowed_tiers"],
+        field="evaluation_tier_policy.allowed_tiers",
+    )
     tiers = tuple(
         _require_evaluation_tier(value, field="evaluation_tier_policy.allowed_tiers")
         for value in raw_tiers
