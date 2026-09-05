@@ -73,15 +73,13 @@ def test_verify_rejects_pass_runtime_without_cuda(tmp_path: Path) -> None:
         VERIFIER.verify(str(bundle))
 
 
-def test_verify_rejects_result_evidence_key_path_mismatch(tmp_path: Path) -> None:
-    """Result evidence_key must bind the same candidate encoded by its archive path."""
-    docs = FIXTURES._base_docs()
+def _synthetic_bound_result(docs: dict[str, bytes]) -> tuple[str, dict[str, Any]]:
+    """Build one result bound to every frozen evaluation identity."""
     config = json.loads(docs[f"{ROOT}/experiment-config.json"])
     candidate = config["candidate_roster"][0]
     runtime_bytes = docs[f"{ROOT}/runtime-receipt.json"]
     snapshot_path = f"{ROOT}/candidate-snapshots/{candidate['evidence_key']}.json"
     snapshot_bytes = docs[snapshot_path]
-
     result = {
         "schema_version": "MESC-EXPERIMENT-0-CANDIDATE-RESULT-V1",
         "experiment_config_sha256": hashlib.sha256(
@@ -91,8 +89,15 @@ def test_verify_rejects_result_evidence_key_path_mismatch(tmp_path: Path) -> Non
         "candidate_snapshot_receipt_sha256": hashlib.sha256(snapshot_bytes).hexdigest(),
         "candidate_id": candidate["candidate_id"],
         "candidate_revision": candidate["candidate_revision"],
-        "evidence_key": "different-candidate-key",
+        "evidence_key": candidate["evidence_key"],
         "lane": "smoke",
+        "dataset_id": "dataset-test",
+        "split_id": "split-test",
+        "held_out_tier": "tier-test",
+        "evaluator_id": "evaluator-test",
+        "scoring_policy_id": "scoring-test",
+        "prompt_template_id": "prompt-test",
+        "generation_config_id": "generation-test",
         "metric_vector": {},
         "hard_floor_vector": {},
         "item_count": 0,
@@ -103,12 +108,46 @@ def test_verify_rejects_result_evidence_key_path_mismatch(tmp_path: Path) -> Non
         "result_exposure_used": {},
         "result_manifest_sha256": "4" * 64,
         "candidate_disposition": "BLOCKED_RUNTIME",
-        "limitations": ["Synthetic mismatch fixture."],
+        "limitations": ["Synthetic lane-binding fixture."],
     }
-    result_path = f"{ROOT}/lane-results/{candidate['evidence_key']}/smoke.json"
+    path = f"{ROOT}/lane-results/{candidate['evidence_key']}/smoke.json"
+    return path, result
+
+
+def test_verify_rejects_result_evidence_key_path_mismatch(tmp_path: Path) -> None:
+    """Result evidence_key must bind the same candidate encoded by its archive path."""
+    docs = FIXTURES._base_docs()
+    result_path, result = _synthetic_bound_result(docs)
+    result["evidence_key"] = "different-candidate-key"
     docs[result_path] = FIXTURES._json_bytes(result)
 
     bundle = tmp_path / "evidence-key-mismatch.zip"
     FIXTURES._write_bundle(bundle, docs)
     with pytest.raises(VERIFIER.EvidenceError, match="evidence_key/path mismatch"):
+        VERIFIER.verify(str(bundle))
+
+
+def test_verify_rejects_missing_result_lane_binding(tmp_path: Path) -> None:
+    """Every result must contain all frozen evaluation-lane identities."""
+    docs = FIXTURES._base_docs()
+    result_path, result = _synthetic_bound_result(docs)
+    result.pop("scoring_policy_id")
+    docs[result_path] = FIXTURES._json_bytes(result)
+
+    bundle = tmp_path / "missing-lane-binding.zip"
+    FIXTURES._write_bundle(bundle, docs)
+    with pytest.raises(VERIFIER.EvidenceError, match="field mismatch"):
+        VERIFIER.verify(str(bundle))
+
+
+def test_verify_rejects_mismatched_result_lane_binding(tmp_path: Path) -> None:
+    """A result cannot name an evaluation identity outside the frozen config."""
+    docs = FIXTURES._base_docs()
+    result_path, result = _synthetic_bound_result(docs)
+    result["evaluator_id"] = "unfrozen-evaluator"
+    docs[result_path] = FIXTURES._json_bytes(result)
+
+    bundle = tmp_path / "mismatched-lane-binding.zip"
+    FIXTURES._write_bundle(bundle, docs)
+    with pytest.raises(VERIFIER.EvidenceError, match="evaluator binding is not frozen"):
         VERIFIER.verify(str(bundle))
