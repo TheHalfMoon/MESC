@@ -64,8 +64,15 @@ def _base_config() -> dict[str, Any]:
         "repository_tree": "b" * 40,
         "strategy_decision_id": "ADR-0036",
         "candidate_roster": [_base_candidate()],
-        "dataset_identities": [{"dataset_id": "dataset-test"}],
+        "dataset_identities": [
+            {
+                "dataset_id": "dataset-test",
+                "split_id": "split-test",
+                "held_out_tier": "tier-test",
+            }
+        ],
         "evaluator_identities": [{"evaluator_id": "evaluator-test"}],
+        "scoring_policy_identities": [{"scoring_policy_id": "scoring-test"}],
         "prompt_template_identities": [{"prompt_template_id": "prompt-test"}],
         "generation_configs": [{"generation_config_id": "generation-test"}],
         "runtime_policy": {
