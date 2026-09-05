@@ -68,6 +68,7 @@ _REAL_EVIDENCE_SLOT_PATHS: Final = tuple(
 # Keep historical/private compatibility used by the accepted closeout regression suite.
 _CloseoutEvidence = _closeout._CloseoutEvidence
 _dependencies = _closeout._dependencies
+_task_records = _closeout._task_records
 _parse_closeout_evidence = _closeout._parse_closeout_evidence
 _evidence_by_task = _closeout._evidence_by_task
 _merge_shape_closure = _closeout._merge_shape_closure
@@ -382,8 +383,8 @@ def _closure_proof(
         if _evidence_by_task(root, decision_base).get(task_id) is not None:
             return None
 
-        record = _admitted_real_evidence_by_task(root, decision_base).get(task_id)
-        if record is None:
+        real_record = _admitted_real_evidence_by_task(root, decision_base).get(task_id)
+        if real_record is None:
             raise MachineStateGenerationError(
                 f"checked real-evidence task {task_id} lacks a canonical admitted evidence record"
             )
@@ -399,10 +400,13 @@ def _closure_proof(
     )
     if transition is None:
         return None
-    record = _evidence_by_task(root, decision_base).get(task_id)
-    if record is None:
+    closeout_record = _evidence_by_task(root, decision_base).get(task_id)
+    if closeout_record is None:
         return None
-    if record.canonical_merge_sha != transition[0] or record.qualified_head_sha != transition[1]:
+    if (
+        closeout_record.canonical_merge_sha != transition[0]
+        or closeout_record.qualified_head_sha != transition[1]
+    ):
         return None
     return transition
 
