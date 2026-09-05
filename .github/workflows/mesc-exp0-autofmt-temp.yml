@@ -1,0 +1,38 @@
+name: MESC Experiment-0 temporary Ruff formatter
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/mesc-exp0-autofmt-temp.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    if: github.event.pull_request.number == 374 && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: true
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+      - run: uv python install 3.11
+      - run: uv sync --frozen
+      - name: Apply exact Ruff formatting and remove helper
+        run: |
+          uv run ruff format tests/test_verify_mesc_experiment_0_evidence_integrity.py tools/verify_mesc_experiment_0_evidence.py
+          git rm .github/workflows/mesc-exp0-autofmt-temp.yml
+          git diff --check
+          if git diff --quiet; then
+            echo "No formatting delta produced" >&2
+            exit 1
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tests/test_verify_mesc_experiment_0_evidence_integrity.py tools/verify_mesc_experiment_0_evidence.py
+          git commit -m "style(mesc): apply Ruff formatting to Experiment-0 verifier"
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
