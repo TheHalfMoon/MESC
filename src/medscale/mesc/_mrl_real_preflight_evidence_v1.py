@@ -423,9 +423,7 @@ def _validate_objective_budgets(payload: dict[str, object]) -> None:
         )
 
     if payload["budget_exhaustion_disposition"] != "BLOCKED":
-        raise MRLRealPreflightEvidenceError(
-            "budget_exhaustion_disposition must be exactly BLOCKED"
-        )
+        raise MRLRealPreflightEvidenceError("budget_exhaustion_disposition must be exactly BLOCKED")
 
 
 def _validate_resource_budget(payload: dict[str, object]) -> ResourceBudget:
