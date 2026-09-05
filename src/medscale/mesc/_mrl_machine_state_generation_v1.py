@@ -11,6 +11,7 @@ index preserves MRL-0801..MRL-0808 as PLANNED.
 
 from __future__ import annotations
 
+import ast
 import hashlib
 import json
 import re
@@ -21,6 +22,7 @@ from typing import Final, cast
 from medscale.mesc import _mrl_machine_state_generation_closeout_v1 as _closeout
 from medscale.mesc import _mrl_machine_state_generation_legacy_v1 as _legacy
 from medscale.mesc import _mrl_real_preflight_evidence_v1 as _real_preflight
+from medscale.mesc import _training_authorization_trust_v1 as _training_trust
 from medscale.mesc._canonical_json_v1 import canonical_json_bytes
 from medscale.mesc._mrl_capability_matrix_v1 import CapabilityMatrixProjection
 from medscale.mesc._mrl_project_state_v1 import ProjectStateEntry, ProjectStateProjection
@@ -38,12 +40,18 @@ _REAL_EVIDENCE_INDEX: Final = (
     "specs/mesc-research-loop-v1/real-preflight-evidence-index-v1.json"
 )
 _REAL_EVIDENCE_SOURCE: Final = "src/medscale/mesc/_mrl_real_preflight_evidence_v1.py"
+_TRAINING_TRUST_SOURCE: Final = "src/medscale/mesc/_training_authorization_trust_v1.py"
 _REAL_EVIDENCE_SLOT_DIR: Final = "specs/mesc-research-loop-v1/real-preflight-evidence"
 _REAL_INDEX_SCHEMA_VERSION: Final = "MRL-REAL-PREFLIGHT-EVIDENCE-INDEX-V1"
 _REAL_SLOT_SCHEMA_VERSION: Final = "MRL-REAL-PREFLIGHT-EVIDENCE-SLOT-V1"
 _REAL_INDEX_RECORD_FIELDS: Final = frozenset(
     {"evidence_path", "evidence_sha256", "task_id"}
 )
+_REAL_TRUST_REGISTRY_NAME: Final = "TRUSTED_MRL_REAL_PREFLIGHT_EVIDENCE_SHA256"
+_REAL_TRUST_VERSION_NAME: Final = "_TRUST_REGISTRY_VERSION"
+_TRAINING_TRUST_REGISTRY_NAME: Final = "TRUSTED_TRAINING_AUTHORIZATION_ARTIFACT_SHA256"
+_TRAINING_TRUST_VERSION_NAME: Final = "TRUST_REGISTRY_VERSION"
+_TRAINING_TRUST_KIND: Final = "mesc.training_authorization.trust_registry.v1"
 _SHA64: Final = re.compile(r"^[0-9a-f]{64}$")
 
 
@@ -109,6 +117,166 @@ def _absent_slot_bytes(task_id: str) -> bytes:
     )
 
 
+def _top_level_assignment(
+    raw: bytes,
+    *,
+    variable: str,
+    label: str,
+) -> ast.expr:
+    try:
+        source = raw.decode("utf-8")
+        module = ast.parse(source)
+    except (UnicodeDecodeError, SyntaxError) as exc:
+        raise MachineStateGenerationError(f"{label} source is not valid UTF-8 Python") from exc
+
+    values: list[ast.expr] = []
+    for statement in module.body:
+        if (
+            isinstance(statement, ast.AnnAssign)
+            and isinstance(statement.target, ast.Name)
+            and statement.target.id == variable
+            and statement.value is not None
+        ):
+            values.append(statement.value)
+            continue
+        if isinstance(statement, ast.Assign):
+            if any(
+                isinstance(target, ast.Name) and target.id == variable
+                for target in statement.targets
+            ):
+                values.append(statement.value)
+
+    if len(values) != 1:
+        raise MachineStateGenerationError(
+            f"{label} source must define exactly one top-level {variable}"
+        )
+    return values[0]
+
+
+def _bound_registry(
+    raw: bytes,
+    *,
+    variable: str,
+    label: str,
+) -> frozenset[str]:
+    value = _top_level_assignment(raw, variable=variable, label=label)
+    if (
+        not isinstance(value, ast.Call)
+        or not isinstance(value.func, ast.Name)
+        or value.func.id != "frozenset"
+        or value.keywords
+        or len(value.args) > 1
+    ):
+        raise MachineStateGenerationError(
+            f"{label} registry must be a literal frozenset declaration"
+        )
+
+    if not value.args:
+        return frozenset()
+
+    container = value.args[0]
+    if not isinstance(container, (ast.Set, ast.List, ast.Tuple)):
+        raise MachineStateGenerationError(
+            f"{label} registry must contain a literal digest collection"
+        )
+
+    entries: list[str] = []
+    for element in container.elts:
+        if (
+            not isinstance(element, ast.Constant)
+            or type(element.value) is not str
+            or _SHA64.fullmatch(element.value) is None
+        ):
+            raise MachineStateGenerationError(
+                f"{label} registry entries must be 64 lowercase hex characters"
+            )
+        entries.append(element.value)
+
+    if len(entries) != len(set(entries)):
+        raise MachineStateGenerationError(f"{label} registry contains duplicate digests")
+    return frozenset(entries)
+
+
+def _bound_string_constant(
+    raw: bytes,
+    *,
+    variable: str,
+    label: str,
+) -> str:
+    value = _top_level_assignment(raw, variable=variable, label=label)
+    if not isinstance(value, ast.Constant) or type(value.value) is not str or not value.value:
+        raise MachineStateGenerationError(f"{label} version must be a non-empty string literal")
+    return value.value
+
+
+def _assert_runtime_trust_matches_bound_commit(
+    root: Path,
+    decision_base: str,
+) -> None:
+    real_source = _legacy._git_bytes(root, "show", f"{decision_base}:{_REAL_EVIDENCE_SOURCE}")
+    real_registry = _bound_registry(
+        real_source,
+        variable=_REAL_TRUST_REGISTRY_NAME,
+        label="MRL real-preflight trust",
+    )
+    real_version = _bound_string_constant(
+        real_source,
+        variable=_REAL_TRUST_VERSION_NAME,
+        label="MRL real-preflight trust",
+    )
+    real_registry_sha256 = hashlib.sha256(
+        canonical_json_bytes(
+            {
+                "registry_version": real_version,
+                "trusted_evidence_sha256": sorted(real_registry),
+            }
+        )
+    ).hexdigest()
+    runtime_real = _real_preflight.mrl_real_preflight_trust_snapshot()
+    if (
+        runtime_real.registry_version != real_version
+        or runtime_real.trusted_evidence_sha256 != real_registry
+        or runtime_real.registry_sha256 != real_registry_sha256
+    ):
+        raise MachineStateGenerationError(
+            "runtime MRL real-preflight trust registry does not match the bound Git source"
+        )
+
+    training_source = _legacy._git_bytes(
+        root,
+        "show",
+        f"{decision_base}:{_TRAINING_TRUST_SOURCE}",
+    )
+    training_registry = _bound_registry(
+        training_source,
+        variable=_TRAINING_TRUST_REGISTRY_NAME,
+        label="training authorization trust",
+    )
+    training_version = _bound_string_constant(
+        training_source,
+        variable=_TRAINING_TRUST_VERSION_NAME,
+        label="training authorization trust",
+    )
+    training_registry_sha256 = hashlib.sha256(
+        canonical_json_bytes(
+            {
+                "kind": _TRAINING_TRUST_KIND,
+                "registry_version": training_version,
+                "trusted_authorization_artifact_sha256": sorted(training_registry),
+            }
+        )
+    ).hexdigest()
+    runtime_training = _training_trust.training_authorization_trust_snapshot()
+    if (
+        runtime_training.registry_version != training_version
+        or runtime_training.trusted_authorization_artifact_sha256 != training_registry
+        or runtime_training.registry_sha256 != training_registry_sha256
+    ):
+        raise MachineStateGenerationError(
+            "runtime training authorization trust registry does not match the bound Git source"
+        )
+
+
 def _parse_real_evidence_index(raw: bytes) -> dict[str, _RealEvidenceIndexRecord]:
     try:
         text = raw.decode("utf-8")
@@ -166,6 +334,7 @@ def _admitted_real_evidence_by_task(
     root: Path,
     decision_base: str,
 ) -> dict[str, _RealEvidenceIndexRecord]:
+    _assert_runtime_trust_matches_bound_commit(root, decision_base)
     index_raw = _legacy._git_bytes(root, "show", f"{decision_base}:{_REAL_EVIDENCE_INDEX}")
     indexed = _parse_real_evidence_index(index_raw)
     admitted: dict[str, _RealEvidenceIndexRecord] = {}
