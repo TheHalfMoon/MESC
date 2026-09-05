@@ -11,44 +11,90 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 ROOT = "mesc-experiment-0-evidence"
-MANIFEST_PATH = f"{ROOT}/manifests/bundle-manifest.json"
-SNAPSHOT_PREFIX = f"{ROOT}/candidate-snapshots/"
-RESULT_PREFIX = f"{ROOT}/lane-results/"
+CONFIG = f"{ROOT}/experiment-config.json"
+RUNTIME = f"{ROOT}/runtime-receipt.json"
+ENVIRONMENT = f"{ROOT}/environment-manifest.json"
+DECISION = f"{ROOT}/decision/foundation-decision.json"
+MANIFEST = f"{ROOT}/manifests/bundle-manifest.json"
+SNAPSHOTS = f"{ROOT}/candidate-snapshots/"
+RESULTS = f"{ROOT}/lane-results/"
 
 MAX_MEMBER_COUNT = 500
 MAX_MEMBER_UNCOMPRESSED_BYTES = 10 * 1024 * 1024
 MAX_TOTAL_UNCOMPRESSED_BYTES = 50 * 1024 * 1024
 
-MANDATORY_PATHS = {
-    f"{ROOT}/experiment-config.json",
-    f"{ROOT}/runtime-receipt.json",
-    f"{ROOT}/environment-manifest.json",
-    f"{ROOT}/decision/foundation-decision.json",
-    MANIFEST_PATH,
-}
+REQUIRED_AUTHORITY_KEYS = tuple(
+    f"mrl_0{number}_{suffix}"
+    for number, suffix in (
+        (801, "evidence_id"),
+        (802, "evidence_id"),
+        (803, "evidence_id"),
+        (804, "evidence_id"),
+        (805, "authority_id"),
+        (806, "objective_id"),
+        (807, "evaluator_freeze_id"),
+        (808, "sandbox_id"),
+        (809, "preflight_id"),
+    )
+) + ("mrl_0899_readiness_id",)
 
-EXPECTED_SCHEMAS = {
-    f"{ROOT}/experiment-config.json": "MESC-EXPERIMENT-0-CONFIG-V1",
-    f"{ROOT}/runtime-receipt.json": "MESC-EXPERIMENT-0-RUNTIME-V1",
-    f"{ROOT}/decision/foundation-decision.json": "MESC-EXPERIMENT-0-DECISION-V1",
-    MANIFEST_PATH: "MESC-EXPERIMENT-0-BUNDLE-V1",
-}
-
-REQUIRED_AUTHORITY_KEYS = (
-    "mrl_0801_evidence_id",
-    "mrl_0802_evidence_id",
-    "mrl_0803_evidence_id",
-    "mrl_0804_evidence_id",
-    "mrl_0805_authority_id",
-    "mrl_0806_objective_id",
-    "mrl_0807_evaluator_freeze_id",
-    "mrl_0808_sandbox_id",
-    "mrl_0809_preflight_id",
-    "mrl_0899_readiness_id",
+CONFIG_FIELDS = set(
+    """schema_version experiment_id status objective_id repository_sha repository_tree
+    strategy_decision_id candidate_roster dataset_identities evaluator_identities
+    prompt_template_identities generation_configs runtime_policy network_policy
+    filesystem_policy credential_policy resource_budget query_budget result_exposure_budget
+    hard_floor_policy decision_rule sealed_evaluation_policy authority_bindings""".split()
+)
+RUNTIME_FIELDS = set(
+    """schema_version experiment_config_sha256 repository_sha repository_tree
+    execution_started_at_utc execution_completed_at_utc runtime_provider runtime_class
+    python_version platform_string torch_version transformers_version cuda_available
+    cuda_version gpu_count gpu_models gpu_total_memory_bytes
+    colab_release_tag_or_image_identity_if_observable installed_environment_manifest_sha256
+    network_policy_observation credential_surface_observation final_runtime_disposition
+    stop_reason""".split()
+)
+SNAPSHOT_FIELDS = set(
+    """schema_version experiment_config_sha256 candidate_id candidate_revision candidate_class
+    evidence_key resolved_revision processor_or_tokenizer_identity model_config_sha256
+    snapshot_manifest_sha256 snapshot_file_count snapshot_total_bytes license_identity
+    notice_identity usage_policy_identity trust_remote_code remote_code_exception_identity
+    load_disposition failure_stage failure_class failure_message_sha256
+    allocated_memory_after_load_bytes reserved_memory_after_load_bytes
+    peak_allocated_memory_bytes peak_reserved_memory_bytes""".split()
+)
+RESULT_FIELDS = set(
+    """schema_version experiment_config_sha256 runtime_receipt_sha256
+    candidate_snapshot_receipt_sha256 candidate_id candidate_revision evidence_key lane
+    metric_vector hard_floor_vector item_count invalid_item_count abstention_count resource_usage
+    query_budget_used result_exposure_used result_manifest_sha256 candidate_disposition
+    limitations""".split()
+)
+DECISION_FIELDS = set(
+    """schema_version experiment_config_sha256 candidate_result_sha256s hard_floor_summary
+    metric_vector_summary resource_summary rights_summary contamination_summary
+    sealed_evaluation_receipt_identity selected_candidate_id selected_candidate_revision
+    rationale limitations decision_disposition""".split()
 )
 
+SCHEMAS = {
+    CONFIG: "MESC-EXPERIMENT-0-CONFIG-V1",
+    RUNTIME: "MESC-EXPERIMENT-0-RUNTIME-V1",
+    ENVIRONMENT: "MESC-EXPERIMENT-0-ENVIRONMENT-V1",
+    DECISION: "MESC-EXPERIMENT-0-DECISION-V1",
+    MANIFEST: "MESC-EXPERIMENT-0-BUNDLE-V1",
+}
+MANDATORY = set(SCHEMAS)
 CANDIDATE_CLASSES = {"SELECTABLE_FOUNDATION", "REFERENCE_ONLY"}
-CANDIDATE_RESULT_DISPOSITIONS = {
+SNAPSHOT_DISPOSITIONS = {
+    "PASS_LOAD",
+    "BLOCKED_ACQUISITION",
+    "BLOCKED_RIGHTS",
+    "BLOCKED_RUNTIME",
+    "BLOCKED_REMOTE_CODE",
+    "LOAD_FAILED",
+}
+RESULT_DISPOSITIONS = {
     "PASS_LANE",
     "FAIL_HARD_FLOOR",
     "BLOCKED_RUNTIME",
@@ -58,22 +104,27 @@ CANDIDATE_RESULT_DISPOSITIONS = {
     "INVALID_RESULT",
     "NOT_SUPPORTED_BY_CANDIDATE",
 }
+RUNTIME_DISPOSITIONS = {
+    "PASS_RUNTIME_PREFLIGHT",
+    "BLOCKED_RUNTIME_IDENTITY",
+    "BLOCKED_CUDA_UNAVAILABLE",
+    "BLOCKED_RESOURCE_POLICY",
+    "BLOCKED_DEPENDENCY_DRIFT",
+    "BLOCKED_REPOSITORY_IDENTITY",
+    "BLOCKED_OTHER",
+}
 SELECTION_DISPOSITIONS = {"RETAIN_PREFERRED_CANDIDATE", "SELECT_CHALLENGER"}
 DECISION_DISPOSITIONS = SELECTION_DISPOSITIONS | {
     "INCONCLUSIVE_OR_BLOCKED",
     "INVALID_EXPERIMENT",
 }
-SUCCESSFUL_SNAPSHOT_DISPOSITION = "PASS_LOAD"
-
-EVIDENCE_KEY_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{0,63}$")
-LANE_KEY_RE = EVIDENCE_KEY_RE
-SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
-HEX40_RE = re.compile(r"^[0-9a-f]{40}$")
-
-FORBIDDEN_FIELD_NAMES = {
+KEY_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{0,63}$")
+SHA_RE = re.compile(r"^[0-9a-f]{64}$")
+GIT_RE = re.compile(r"^[0-9a-f]{40}$")
+SECRET_FIELDS = {
     "token",
     "hf_token",
- "access_token",
+    "access_token",
     "refresh_token",
     "password",
     "secret",
@@ -83,8 +134,7 @@ FORBIDDEN_FIELD_NAMES = {
     "client_secret",
     "authorization_header",
 }
-
-FORBIDDEN_SECRET_PATTERNS = (
+SECRET_PATTERNS = (
     re.compile(r"\bhf_[A-Za-z0-9]{20,}\b"),
     re.compile(r"\bgh[pousr]_[A-Za-z0-9_]{20,}\b"),
     re.compile(r"\bgithub_pat_[A-Za-z0-9_]{20,}\b"),
@@ -93,275 +143,387 @@ FORBIDDEN_SECRET_PATTERNS = (
     re.compile(r"https?://[^/\s:@]+:[^@\s/]+@"),
 )
 
-REQUIRED_DECISION_FIELDS = {
-    "schema_version",
-    "experiment_config_sha256",
-    "candidate_result_sha256s",
-    "hard_floor_summary",
-    "metric_vector_summary",
-    "resource_summary",
-    "rights_summary",
-    "contamination_summary",
-    "sealed_evaluation_receipt_identity",
-    "selected_candidate_id",
-    "selected_candidate_revision",
-    "rationale",
-    "limitations",
-    "decision_disposition",
-}
-
 
 class EvidenceError(ValueError):
-    pass
+    """Raised when Experiment-0 evidence fails closed."""
 
 
-def sha256_bytes(data: bytes) -> str:
+def digest(data: bytes) -> str:
+    """Return SHA-256 for exact bytes."""
     return hashlib.sha256(data).hexdigest()
 
 
+def require_fields(record: dict[str, Any], fields: set[str], label: str) -> None:
+    """Require all contract fields."""
+    missing = sorted(fields - set(record))
+    if missing:
+        raise EvidenceError(f"{label}: missing fields {missing}")
+
+
+def require_text(value: Any, label: str) -> str:
+    """Require a non-empty string."""
+    if not isinstance(value, str) or not value.strip():
+        raise EvidenceError(f"{label}: expected non-empty string")
+    return value
+
+
+def require_hash(
+    value: Any,
+    label: str,
+    pattern: re.Pattern[str] = SHA_RE,
+) -> str:
+    """Require an immutable lowercase hexadecimal identity."""
+    if not isinstance(value, str) or not pattern.fullmatch(value):
+        raise EvidenceError(f"{label}: invalid immutable digest")
+    return value
+
+
+def require_number(value: Any, label: str) -> None:
+    """Require a non-negative finite numeric budget."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or value < 0:
+        raise EvidenceError(f"{label}: expected non-negative number")
+
+
 def load_json(data: bytes, path: str) -> Any:
+    """Decode UTF-8 JSON after rejecting common serialized secrets."""
     try:
         text = data.decode("utf-8")
     except UnicodeDecodeError as exc:
         raise EvidenceError(f"{path}: not UTF-8 JSON") from exc
-    for pattern in FORBIDDEN_SECRET_PATTERNS:
-        if pattern.search(text):
-            raise EvidenceError(f"{path}: possible secret-bearing value detected")
+    if any(pattern.search(text) for pattern in SECRET_PATTERNS):
+        raise EvidenceError(f"{path}: possible secret-bearing value detected")
     try:
         return json.loads(text)
     except json.JSONDecodeError as exc:
-        raise EvidenceError(f"{path}: invalid JSON: {exc}") from exc
+        raise EvidenceError(f"{path}: invalid JSON") from exc
 
 
-def walk_forbidden_fields(value: Any, path: str = "$") -> None:
+def scan_fields(value: Any, path: str) -> None:
+    """Reject secret-like JSON field names recursively."""
     if isinstance(value, dict):
         for key, child in value.items():
-            normalized = str(key).strip().lower()
-            if normalized in FORBIDDEN_FIELD_NAMES:
+            if str(key).strip().lower() in SECRET_FIELDS:
                 raise EvidenceError(f"{path}: forbidden secret-bearing field {key!r}")
-            walk_forbidden_fields(child, f"{path}.{key}")
+            scan_fields(child, f"{path}.{key}")
     elif isinstance(value, list):
         for index, child in enumerate(value):
-            walk_forbidden_fields(child, f"{path}[{index}]")
+            scan_fields(child, f"{path}[{index}]")
 
 
-def validate_member_path(name: str) -> None:
-    if "\x00" in name:
-        raise EvidenceError("NUL byte in archive path")
-    if "\\" in name:
-        raise EvidenceError(f"invalid archive path separator: {name}")
-    normalized_name = name.rstrip("/")
-    parts = normalized_name.split("/")
-    if not normalized_name or any(part in {"", ".", ".."} for part in parts):
-        raise EvidenceError(f"invalid or ambiguous archive path: {name}")
-    path = PurePosixPath(normalized_name)
-    if path.is_absolute() or ".." in path.parts:
-        raise EvidenceError(f"path traversal or absolute path: {name}")
-    if not normalized_name.startswith(f"{ROOT}/"):
-        raise EvidenceError(f"member outside evidence root: {name}")
+def validate_path(name: str) -> None:
+    """Reject unsafe, ambiguous, external, or non-JSON ZIP paths."""
+    if "\x00" in name or "\\" in name:
+        raise EvidenceError(f"invalid archive path: {name}")
+    normalized = name.rstrip("/")
+    parts = normalized.split("/")
+    path = PurePosixPath(normalized)
+    if (
+        not normalized
+        or any(part in {"", ".", ".."} for part in parts)
+        or path.is_absolute()
+        or not normalized.startswith(f"{ROOT}/")
+    ):
+        raise EvidenceError(f"path traversal or ambiguous archive path: {name}")
     if not name.endswith("/") and not name.endswith(".json"):
         raise EvidenceError(f"unexpected non-JSON payload: {name}")
 
 
-def require_sha256(value: Any, label: str) -> str:
-    if not isinstance(value, str) or not SHA256_RE.fullmatch(value):
-        raise EvidenceError(f"{label}: expected lowercase SHA-256")
-    return value
+def read_archive(path: Path) -> dict[str, bytes]:
+    """Apply ZIP metadata and size checks before retaining member bytes."""
+    with zipfile.ZipFile(path, "r") as archive:
+        infos = archive.infolist()
+        if len(infos) > MAX_MEMBER_COUNT:
+            raise EvidenceError("evidence archive exceeds member-count safety limit")
+        names = [info.filename for info in infos]
+        if len(names) != len(set(names)):
+            raise EvidenceError("duplicate ZIP member paths")
+        folded = [name.rstrip("/").casefold() for name in names]
+        if len(folded) != len(set(folded)):
+            raise EvidenceError("case-colliding ZIP member paths")
+        total = 0
+        readable = []
+        for info in infos:
+            validate_path(info.filename)
+            mode = (info.external_attr >> 16) & 0xFFFF
+            if info.flag_bits & 0x1 or (mode and stat.S_ISLNK(mode)):
+                raise EvidenceError(f"unsafe ZIP member: {info.filename}")
+            if info.is_dir():
+                continue
+            if info.file_size > MAX_MEMBER_UNCOMPRESSED_BYTES:
+                raise EvidenceError(f"ZIP member exceeds size limit: {info.filename}")
+            total += info.file_size
+            if total > MAX_TOTAL_UNCOMPRESSED_BYTES:
+                raise EvidenceError(
+                    "evidence archive exceeds total uncompressed-size limit"
+                )
+            readable.append(info)
+        return {info.filename: archive.read(info) for info in readable}
 
 
-def require_git_sha(value: Any, label: str) -> str:
-    if not isinstance(value, str) or not HEX40_RE.fullmatch(value):
-        raise EvidenceError(f"{label}: expected lowercase 40-hex Git SHA")
-    return value
-
-
-def _validate_candidate_roster(roster: Any) -> list[dict[str, Any]]:
+def validate_roster(roster: Any) -> list[dict[str, Any]]:
+    """Validate candidate identity, class, key, revision, and modalities."""
     if not isinstance(roster, list) or not roster:
-        raise EvidenceError("experiment-config.json: candidate_roster must be non-empty")
-
-    candidates: list[dict[str, Any]] = []
+        raise EvidenceError("candidate_roster must be non-empty")
     identities: set[tuple[str, str]] = set()
-    evidence_keys: set[str] = set()
+    keys: set[str] = set()
     for index, candidate in enumerate(roster):
         label = f"candidate_roster[{index}]"
         if not isinstance(candidate, dict):
             raise EvidenceError(f"{label}: expected object")
-        candidate_id = candidate.get("candidate_id")
-        revision = candidate.get("candidate_revision")
+        candidate_id = require_text(
+            candidate.get("candidate_id"),
+            f"{label}.candidate_id",
+        )
+        revision = require_hash(
+            candidate.get("candidate_revision"),
+            f"{label}.candidate_revision",
+            GIT_RE,
+        )
         candidate_class = candidate.get("candidate_class")
-        evidence_key = candidate.get("evidence_key")
+        key = candidate.get("evidence_key")
         modalities = candidate.get("supported_input_modalities")
-
-        if not isinstance(candidate_id, str) or not candidate_id.strip():
-            raise EvidenceError(f"{label}: candidate_id missing")
-        require_git_sha(revision, f"{label}.candidate_revision")
         if candidate_class not in CANDIDATE_CLASSES:
-            raise EvidenceError(f"{label}: invalid candidate_class {candidate_class!r}")
-        if not isinstance(evidence_key, str) or not EVIDENCE_KEY_RE.fullmatch(evidence_key):
+            raise EvidenceError(f"{label}: invalid candidate_class")
+        if not isinstance(key, str) or not KEY_RE.fullmatch(key):
             raise EvidenceError(f"{label}: invalid evidence_key")
-        if not isinstance(modalities, list) or not modalities:
-            raise EvidenceError(f"{label}: supported_input_modalities must be non-empty")
-        if any(not isinstance(modality, str) or not modality for modality in modalities):
+        if not isinstance(modalities, list) or "text" not in modalities:
             raise EvidenceError(f"{label}: invalid supported_input_modalities")
-        if len(modalities) != len(set(modalities)):
-            raise EvidenceError(f"{label}: duplicate supported_input_modalities")
-        if "text" not in modalities:
-            raise EvidenceError(f"{label}: text modality is required")
         if candidate_class == "SELECTABLE_FOUNDATION" and "vision" not in modalities:
-            raise EvidenceError(f"{label}: selectable foundation requires vision modality")
-
-        identity = (candidate_id, revision)
-        if identity in identities:
+            raise EvidenceError(f"{label}: selectable foundation requires vision")
+        if (candidate_id, revision) in identities or key in keys:
             raise EvidenceError(f"{label}: duplicate candidate identity")
-        if evidence_key in evidence_keys:
-            raise EvidenceError(f"{label}: duplicate evidence_key")
-        identities.add(identity)
-        evidence_keys.add(evidence_key)
-        candidates.append(candidate)
-    return candidates
+        identities.add((candidate_id, revision))
+        keys.add(key)
+    return roster
 
 
 def validate_config(config: Any) -> list[dict[str, Any]]:
+    """Validate frozen policies, budgets, candidates, and MRL bindings."""
     if not isinstance(config, dict):
         raise EvidenceError("experiment-config.json: expected object")
-    if config.get("schema_version") != "MESC-EXPERIMENT-0-CONFIG-V1":
+    require_fields(config, CONFIG_FIELDS, "experiment-config.json")
+    if config.get("schema_version") != SCHEMAS[CONFIG]:
         raise EvidenceError("experiment-config.json: schema mismatch")
     if config.get("status") != "FROZEN_EXECUTION_CONFIG":
         raise EvidenceError("experiment-config.json: config is not frozen")
-    require_git_sha(config.get("repository_sha"), "experiment-config.repository_sha")
-    require_git_sha(config.get("repository_tree"), "experiment-config.repository_tree")
-
-    candidates = _validate_candidate_roster(config.get("candidate_roster"))
-
-    bindings = config.get("authority_bindings")
-    if not isinstance(bindings, dict):
-        raise EvidenceError("experiment-config.json: authority_bindings missing")
+    for field in ("experiment_id", "objective_id", "strategy_decision_id"):
+        require_text(config.get(field), f"experiment-config.{field}")
+    require_hash(config.get("repository_sha"), "repository_sha", GIT_RE)
+    require_hash(config.get("repository_tree"), "repository_tree", GIT_RE)
+    candidates = validate_roster(config.get("candidate_roster"))
+    for field in (
+        "dataset_identities",
+        "evaluator_identities",
+        "prompt_template_identities",
+        "generation_configs",
+    ):
+        if not isinstance(config.get(field), list) or not config[field]:
+            raise EvidenceError(f"experiment-config.{field}: must be non-empty")
+    policy_fields = (
+        "runtime_policy",
+        "network_policy",
+        "filesystem_policy",
+        "credential_policy",
+        "resource_budget",
+        "query_budget",
+        "result_exposure_budget",
+        "hard_floor_policy",
+        "decision_rule",
+        "sealed_evaluation_policy",
+        "authority_bindings",
+    )
+    for field in policy_fields:
+        if not isinstance(config.get(field), dict) or not config[field]:
+            raise EvidenceError(f"experiment-config.{field}: must be an object")
+    runtime_policy = config["runtime_policy"]
+    if runtime_policy.get("require_hosted_gpu") is not True:
+        raise EvidenceError("runtime_policy.require_hosted_gpu must be true")
+    require_number(
+        runtime_policy.get("allowed_gpu_count"),
+        "runtime_policy.allowed_gpu_count",
+    )
+    if runtime_policy["allowed_gpu_count"] < 1:
+        raise EvidenceError("runtime_policy.allowed_gpu_count must be positive")
+    if not isinstance(runtime_policy.get("allowed_gpu_models"), list):
+        raise EvidenceError("runtime_policy.allowed_gpu_models must be a list")
+    if not isinstance(runtime_policy.get("allow_unlisted_gpu_model"), bool):
+        raise EvidenceError("runtime_policy.allow_unlisted_gpu_model must be boolean")
+    for key in (
+        "max_gpu_hours",
+        "max_wall_hours",
+        "max_storage_bytes",
+        "max_retries",
+    ):
+        require_number(config["resource_budget"].get(key), f"resource_budget.{key}")
+    require_number(
+        config["query_budget"].get("max_adaptive_queries"),
+        "query_budget.max_adaptive_queries",
+    )
+    for key in ("tier1_max_exposures", "tier2_max_exposures"):
+        require_number(
+            config["result_exposure_budget"].get(key),
+            f"result_exposure_budget.{key}",
+        )
+    sealed = config["sealed_evaluation_policy"]
+    if sealed.get("tier3_item_access_by_research_process") is not False:
+        raise EvidenceError("Tier 3 research-process access must be false")
+    bindings = config["authority_bindings"]
     missing = [key for key in REQUIRED_AUTHORITY_KEYS if not bindings.get(key)]
     if missing:
         raise EvidenceError(
-            "experiment-config.json: incomplete MRL authority/evidence bindings "
-            f"{sorted(missing)}"
-        )
-
-    sealed_policy = config.get("sealed_evaluation_policy")
-    if not isinstance(sealed_policy, dict):
-        raise EvidenceError("experiment-config.json: sealed_evaluation_policy missing")
-    if sealed_policy.get("tier3_item_access_by_research_process") is not False:
-        raise EvidenceError(
-            "experiment-config.json: Tier 3 research-process access must be false"
+            f"incomplete MRL authority/evidence bindings {sorted(missing)}"
         )
     return candidates
 
 
-def validate_runtime(runtime: Any, config: dict[str, Any]) -> None:
+def validate_environment(environment: Any) -> None:
+    """Validate metadata-only environment evidence."""
+    if (
+        not isinstance(environment, dict)
+        or environment.get("schema_version") != SCHEMAS[ENVIRONMENT]
+    ):
+        raise EvidenceError("environment-manifest.json: schema mismatch")
+    require_text(environment.get("python_version"), "environment.python_version")
+    require_text(environment.get("platform"), "environment.platform")
+    packages = environment.get("packages")
+    if not isinstance(packages, list):
+        raise EvidenceError("environment.packages must be a list")
+    for index, package in enumerate(packages):
+        if not isinstance(package, dict):
+            raise EvidenceError(f"environment.packages[{index}]: expected object")
+        require_text(package.get("name"), f"environment.packages[{index}].name")
+        require_text(package.get("version"), f"environment.packages[{index}].version")
+
+
+def validate_runtime(
+    runtime: Any,
+    config: dict[str, Any],
+    environment_hash: str,
+) -> None:
+    """Validate complete runtime identity and environment hash binding."""
     if not isinstance(runtime, dict):
         raise EvidenceError("runtime-receipt.json: expected object")
-    if runtime.get("schema_version") != "MESC-EXPERIMENT-0-RUNTIME-V1":
+    require_fields(runtime, RUNTIME_FIELDS, "runtime-receipt.json")
+    if runtime.get("schema_version") != SCHEMAS[RUNTIME]:
         raise EvidenceError("runtime-receipt.json: schema mismatch")
     if runtime.get("repository_sha") != config.get("repository_sha"):
         raise EvidenceError("runtime/config repository_sha mismatch")
     if runtime.get("repository_tree") != config.get("repository_tree"):
         raise EvidenceError("runtime/config repository_tree mismatch")
-    require_sha256(
-        runtime.get("experiment_config_sha256"),
-        "runtime-receipt.experiment_config_sha256",
+    observed = require_hash(
+        runtime.get("installed_environment_manifest_sha256"),
+        "installed_environment_manifest_sha256",
     )
+    if observed != environment_hash:
+        raise EvidenceError("runtime receipt environment-manifest hash mismatch")
+    if runtime.get("final_runtime_disposition") not in RUNTIME_DISPOSITIONS:
+        raise EvidenceError("invalid final_runtime_disposition")
+    require_number(runtime.get("gpu_count"), "runtime.gpu_count")
+    models = runtime.get("gpu_models")
+    memory = runtime.get("gpu_total_memory_bytes")
+    if not isinstance(models, list) or not isinstance(memory, list):
+        raise EvidenceError("runtime GPU fields must be lists")
+    if len(models) != runtime["gpu_count"] or len(memory) != runtime["gpu_count"]:
+        raise EvidenceError("runtime GPU cardinality mismatch")
 
 
-def validate_snapshot_receipts(
-    json_docs: dict[str, Any],
+def validate_snapshots(
+    docs: dict[str, Any],
     members: dict[str, bytes],
     candidates: list[dict[str, Any]],
-    config_sha256: str,
+    config_hash: str,
 ) -> dict[str, dict[str, Any]]:
-    receipts: dict[str, dict[str, Any]] = {}
-    expected_paths = {
-        f"{SNAPSHOT_PREFIX}{candidate['evidence_key']}.json": candidate
+    """Require one complete snapshot receipt for every candidate."""
+    expected = {
+        f"{SNAPSHOTS}{candidate['evidence_key']}.json": candidate
         for candidate in candidates
     }
-    observed_paths = {path for path in members if path.startswith(SNAPSHOT_PREFIX)}
-    if observed_paths != set(expected_paths):
-        missing = sorted(set(expected_paths) - observed_paths)
-        extra = sorted(observed_paths - set(expected_paths))
-        raise EvidenceError(f"candidate snapshot coverage mismatch missing={missing} extra={extra}")
-
-    for path, candidate in expected_paths.items():
-        receipt = json_docs[path]
+    if {path for path in members if path.startswith(SNAPSHOTS)} != set(expected):
+        raise EvidenceError("candidate snapshot coverage mismatch")
+    receipts: dict[str, dict[str, Any]] = {}
+    for path, candidate in expected.items():
+        receipt = docs[path]
         if not isinstance(receipt, dict):
             raise EvidenceError(f"{path}: expected object")
-        if receipt.get("schema_version") != "MESC-EXPERIMENT-0-CANDIDATE-SNAPSHOT-V1":
-            raise EvidenceError(f"{path}: snapshot schema mismatch")
-        if receipt.get("experiment_config_sha256") != config_sha256:
+        require_fields(receipt, SNAPSHOT_FIELDS, path)
+        expected_schema = "MESC-EXPERIMENT-0-CANDIDATE-SNAPSHOT-V1"
+        if receipt.get("schema_version") != expected_schema:
+            raise EvidenceError(f"{path}: schema mismatch")
+        if receipt.get("experiment_config_sha256") != config_hash:
             raise EvidenceError(f"{path}: config hash mismatch")
-        for field in ("candidate_id", "candidate_revision", "candidate_class", "evidence_key"):
+        for field in (
+            "candidate_id",
+            "candidate_revision",
+            "candidate_class",
+            "evidence_key",
+        ):
             if receipt.get(field) != candidate[field]:
-                raise EvidenceError(f"{path}: roster identity mismatch for {field}")
-        resolved_revision = receipt.get("resolved_revision")
-        if resolved_revision is not None and resolved_revision != candidate["candidate_revision"]:
-            raise EvidenceError(f"{path}: resolved revision differs from frozen revision")
-        trust_remote_code = receipt.get("trust_remote_code")
-        if not isinstance(trust_remote_code, bool):
+                raise EvidenceError(f"{path}: roster identity mismatch")
+        if receipt.get("resolved_revision") not in {
+            None,
+            candidate["candidate_revision"],
+        }:
+            raise EvidenceError(f"{path}: resolved revision mismatch")
+        if receipt.get("load_disposition") not in SNAPSHOT_DISPOSITIONS:
+            raise EvidenceError(f"{path}: invalid load disposition")
+        if not isinstance(receipt.get("trust_remote_code"), bool):
             raise EvidenceError(f"{path}: trust_remote_code must be boolean")
-        if trust_remote_code and not receipt.get("remote_code_exception_identity"):
-            raise EvidenceError(f"{path}: remote-code exception identity missing")
+        if receipt["trust_remote_code"] and not receipt.get(
+            "remote_code_exception_identity"
+        ):
+            raise EvidenceError(f"{path}: remote-code exception missing")
         receipts[candidate["evidence_key"]] = {
             "record": receipt,
-            "sha256": sha256_bytes(members[path]),
-            "path": path,
+            "sha256": digest(members[path]),
         }
     return receipts
 
 
-def _parse_result_path(path: str) -> tuple[str, str]:
-    relative = path.removeprefix(RESULT_PREFIX)
-    parts = relative.split("/")
-    if len(parts) != 2 or not parts[1].endswith(".json"):
-        raise EvidenceError(f"invalid candidate-result path: {path}")
-    evidence_key = parts[0]
-    lane = parts[1][:-5]
-    if not EVIDENCE_KEY_RE.fullmatch(evidence_key) or not LANE_KEY_RE.fullmatch(lane):
-        raise EvidenceError(f"invalid candidate-result path identity: {path}")
-    return evidence_key, lane
-
-
-def validate_candidate_results(
-    json_docs: dict[str, Any],
+def validate_results(
+    docs: dict[str, Any],
     members: dict[str, bytes],
     candidates: list[dict[str, Any]],
     snapshots: dict[str, dict[str, Any]],
-    config_sha256: str,
-    runtime_sha256: str,
+    config_hash: str,
+    runtime_hash: str,
 ) -> list[dict[str, Any]]:
+    """Validate result contracts and immutable candidate/runtime bindings."""
     by_key = {candidate["evidence_key"]: candidate for candidate in candidates}
     results: list[dict[str, Any]] = []
-    for path in sorted(member for member in members if member.startswith(RESULT_PREFIX)):
-        evidence_key, lane = _parse_result_path(path)
-        if evidence_key not in by_key:
-            raise EvidenceError(f"{path}: result candidate not in frozen roster")
-        result = json_docs[path]
+    for path in sorted(name for name in members if name.startswith(RESULTS)):
+        relative = path.removeprefix(RESULTS)
+        parts = relative.split("/")
+        if len(parts) != 2 or not parts[1].endswith(".json"):
+            raise EvidenceError(f"invalid result path: {path}")
+        key, lane = parts[0], parts[1][:-5]
+        if key not in by_key or not KEY_RE.fullmatch(lane):
+            raise EvidenceError(f"invalid result identity: {path}")
+        result = docs[path]
         if not isinstance(result, dict):
             raise EvidenceError(f"{path}: expected object")
-        if result.get("schema_version") != "MESC-EXPERIMENT-0-CANDIDATE-RESULT-V1":
-            raise EvidenceError(f"{path}: candidate-result schema mismatch")
-        if result.get("experiment_config_sha256") != config_sha256:
+        require_fields(result, RESULT_FIELDS, path)
+        candidate = by_key[key]
+        expected_schema = "MESC-EXPERIMENT-0-CANDIDATE-RESULT-V1"
+        if result.get("schema_version") != expected_schema:
+            raise EvidenceError(f"{path}: schema mismatch")
+        if result.get("experiment_config_sha256") != config_hash:
             raise EvidenceError(f"{path}: config hash mismatch")
-        if result.get("runtime_receipt_sha256") != runtime_sha256:
-            raise EvidenceError(f"{path}: runtime receipt hash mismatch")
-        candidate = by_key[evidence_key]
-        for field in ("candidate_id", "candidate_revision", "evidence_key"):
-            if result.get(field) != candidate[field]:
-                raise EvidenceError(f"{path}: roster identity mismatch for {field}")
-        if result.get("lane") != lane:
-            raise EvidenceError(f"{path}: lane field does not match path")
-        if result.get("candidate_snapshot_receipt_sha256") != snapshots[evidence_key]["sha256"]:
-            raise EvidenceError(f"{path}: candidate snapshot hash mismatch")
-        if result.get("candidate_disposition") not in CANDIDATE_RESULT_DISPOSITIONS:
-            raise EvidenceError(f"{path}: invalid candidate disposition")
+        if result.get("runtime_receipt_sha256") != runtime_hash:
+            raise EvidenceError(f"{path}: runtime hash mismatch")
+        if result.get("candidate_snapshot_receipt_sha256") != snapshots[key]["sha256"]:
+            raise EvidenceError(f"{path}: snapshot hash mismatch")
+        if result.get("candidate_id") != candidate["candidate_id"]:
+            raise EvidenceError(f"{path}: candidate identity mismatch")
+        if result.get("candidate_revision") != candidate["candidate_revision"]:
+            raise EvidenceError(f"{path}: candidate revision mismatch")
+        if (
+            result.get("lane") != lane
+            or result.get("candidate_disposition") not in RESULT_DISPOSITIONS
+        ):
+            raise EvidenceError(f"{path}: lane/disposition mismatch")
         results.append(
             {
-                "record": result,
-                "sha256": sha256_bytes(members[path]),
-                "path": path,
+                "sha256": digest(members[path]),
                 "candidate": candidate,
             }
         )
@@ -373,239 +535,178 @@ def validate_decision(
     candidates: list[dict[str, Any]],
     snapshots: dict[str, dict[str, Any]],
     results: list[dict[str, Any]],
-    config_sha256: str,
+    config_hash: str,
 ) -> None:
+    """Validate complete decision evidence and safe foundation selection."""
     if not isinstance(decision, dict):
         raise EvidenceError("foundation-decision.json: expected object")
-    missing_fields = sorted(REQUIRED_DECISION_FIELDS - set(decision))
-    if missing_fields:
-        raise EvidenceError(f"foundation-decision.json: missing fields {missing_fields}")
-    if decision.get("schema_version") != "MESC-EXPERIMENT-0-DECISION-V1":
+    require_fields(decision, DECISION_FIELDS, "foundation-decision.json")
+    if decision.get("schema_version") != SCHEMAS[DECISION]:
         raise EvidenceError("foundation-decision.json: schema mismatch")
-    if decision.get("experiment_config_sha256") != config_sha256:
+    if decision.get("experiment_config_sha256") != config_hash:
         raise EvidenceError("foundation-decision.json: config hash mismatch")
-
     disposition = decision.get("decision_disposition")
     if disposition not in DECISION_DISPOSITIONS:
-        raise EvidenceError(f"foundation-decision.json: invalid disposition {disposition!r}")
-
-    declared_result_hashes = decision.get("candidate_result_sha256s")
-    if not isinstance(declared_result_hashes, list):
-        raise EvidenceError("foundation-decision.json: candidate_result_sha256s must be a list")
-    for index, value in enumerate(declared_result_hashes):
-        require_sha256(value, f"foundation-decision.candidate_result_sha256s[{index}]")
-    if declared_result_hashes != sorted(set(declared_result_hashes)):
+        raise EvidenceError("foundation-decision.json: invalid disposition")
+    declared = decision.get("candidate_result_sha256s")
+    if not isinstance(declared, list) or declared != sorted(set(declared)):
+        raise EvidenceError("candidate_result_sha256s must be sorted and unique")
+    if any(
+        not isinstance(value, str) or not SHA_RE.fullmatch(value)
+        for value in declared
+    ):
+        raise EvidenceError("candidate_result_sha256s contains invalid digest")
+    if declared != sorted(result["sha256"] for result in results):
         raise EvidenceError(
-            "foundation-decision.json: candidate_result_sha256s must be sorted and unique"
+            "foundation-decision.json: candidate result hash set mismatch"
         )
-    actual_result_hashes = sorted(result["sha256"] for result in results)
-    if declared_result_hashes != actual_result_hashes:
-        raise EvidenceError("foundation-decision.json: candidate result hash set mismatch")
-
-    hard_floor_summary = decision.get("hard_floor_summary")
-    if not isinstance(hard_floor_summary, dict):
-        raise EvidenceError("foundation-decision.json: hard_floor_summary must be an object")
-    all_mandatory_passed = hard_floor_summary.get("all_mandatory_passed")
-    failed_floor_ids = hard_floor_summary.get("failed_floor_ids")
-    if not isinstance(all_mandatory_passed, bool) or not isinstance(failed_floor_ids, list):
-        raise EvidenceError("foundation-decision.json: malformed hard_floor_summary")
-    if any(not isinstance(floor_id, str) or not floor_id for floor_id in failed_floor_ids):
-        raise EvidenceError("foundation-decision.json: invalid failed_floor_ids")
-
-    for summary_field in (
+    hard = decision.get("hard_floor_summary")
+    if (
+        not isinstance(hard, dict)
+        or not isinstance(hard.get("all_mandatory_passed"), bool)
+    ):
+        raise EvidenceError("foundation-decision.json: malformed hard-floor summary")
+    failed = hard.get("failed_floor_ids")
+    if not isinstance(failed, list):
+        raise EvidenceError(
+            "foundation-decision.json: failed_floor_ids must be a list"
+        )
+    for field in (
         "metric_vector_summary",
         "resource_summary",
         "rights_summary",
         "contamination_summary",
     ):
-        if not isinstance(decision.get(summary_field), dict):
-            raise EvidenceError(f"foundation-decision.json: {summary_field} must be an object")
-    if not isinstance(decision.get("rationale"), str) or not decision["rationale"].strip():
-        raise EvidenceError("foundation-decision.json: rationale must be non-empty")
+        if not isinstance(decision.get(field), dict):
+            raise EvidenceError(
+                f"foundation-decision.json: {field} must be an object"
+            )
+    require_text(decision.get("rationale"), "foundation-decision.rationale")
     if not isinstance(decision.get("limitations"), list):
         raise EvidenceError("foundation-decision.json: limitations must be a list")
-
     selected_id = decision.get("selected_candidate_id")
     selected_revision = decision.get("selected_candidate_revision")
-    if disposition in SELECTION_DISPOSITIONS:
-        if not selected_id or not selected_revision:
-            raise EvidenceError("foundation-decision.json: selected candidate identity missing")
-        require_git_sha(selected_revision, "foundation-decision.selected_candidate_revision")
-        matching = [
-            candidate
-            for candidate in candidates
-            if candidate["candidate_id"] == selected_id
-            and candidate["candidate_revision"] == selected_revision
-        ]
-        if len(matching) != 1:
-            raise EvidenceError("foundation-decision.json: selected candidate is not in roster")
-        selected = matching[0]
-        if selected["candidate_class"] != "SELECTABLE_FOUNDATION":
-            raise EvidenceError("foundation-decision.json: reference-only candidate cannot be selected")
-        snapshot = snapshots[selected["evidence_key"]]["record"]
-        if snapshot.get("load_disposition") != SUCCESSFUL_SNAPSHOT_DISPOSITION:
-            raise EvidenceError("foundation-decision.json: selected candidate load did not pass")
-        selected_results = [
-            result
-            for result in results
-            if result["candidate"]["candidate_id"] == selected_id
-            and result["candidate"]["candidate_revision"] == selected_revision
-        ]
-        if not selected_results:
-            raise EvidenceError("foundation-decision.json: selected candidate has no result evidence")
-        if decision.get("sealed_evaluation_receipt_identity") in {None, ""}:
-            raise EvidenceError("foundation-decision.json: sealed evaluation receipt missing")
-        if all_mandatory_passed is not True or failed_floor_ids:
-            raise EvidenceError("foundation-decision.json: selection attempted with failed hard floors")
-    elif selected_id is not None or selected_revision is not None:
-        raise EvidenceError(
-            "foundation-decision.json: blocked/invalid decision cannot select a candidate"
-        )
+    if disposition not in SELECTION_DISPOSITIONS:
+        if selected_id is not None or selected_revision is not None:
+            raise EvidenceError("blocked/invalid decision cannot select a candidate")
+        return
+    matching = [
+        candidate
+        for candidate in candidates
+        if candidate["candidate_id"] == selected_id
+        and candidate["candidate_revision"] == selected_revision
+    ]
+    if len(matching) != 1:
+        raise EvidenceError("selected candidate is not in roster")
+    selected = matching[0]
+    if selected["candidate_class"] != "SELECTABLE_FOUNDATION":
+        raise EvidenceError("reference-only candidate cannot be selected")
+    snapshot = snapshots[selected["evidence_key"]]["record"]
+    if snapshot.get("load_disposition") != "PASS_LOAD":
+        raise EvidenceError("selected candidate load did not pass")
+    if not any(result["candidate"] == selected for result in results):
+        raise EvidenceError("selected candidate has no result evidence")
+    if not decision.get("sealed_evaluation_receipt_identity"):
+        raise EvidenceError("sealed evaluation receipt missing")
+    if hard["all_mandatory_passed"] is not True or failed:
+        raise EvidenceError("selection attempted with failed hard floors")
 
 
 def validate_manifest(manifest: Any, members: dict[str, bytes]) -> None:
-    if not isinstance(manifest, dict):
-        raise EvidenceError("bundle-manifest.json: expected object")
-    if manifest.get("schema_version") != "MESC-EXPERIMENT-0-BUNDLE-V1":
+    """Validate exact bundle coverage, sizes, hashes, and media types."""
+    if (
+        not isinstance(manifest, dict)
+        or manifest.get("schema_version") != SCHEMAS[MANIFEST]
+    ):
         raise EvidenceError("bundle-manifest.json: schema mismatch")
     entries = manifest.get("entries")
     if not isinstance(entries, list):
         raise EvidenceError("bundle-manifest.json: entries must be a list")
-
+    expected = set(members) - {MANIFEST}
     seen: set[str] = set()
-    expected_paths = set(members) - {MANIFEST_PATH}
-    declared_paths: set[str] = set()
-
-    for index, entry in enumerate(entries):
-        if not isinstance(entry, dict):
-            raise EvidenceError(f"bundle-manifest entry {index}: expected object")
-        path = entry.get("path")
-        if not isinstance(path, str):
-            raise EvidenceError(f"bundle-manifest entry {index}: missing path")
-        if path == MANIFEST_PATH:
+    for entry in entries:
+        if not isinstance(entry, dict) or not isinstance(entry.get("path"), str):
+            raise EvidenceError("bundle-manifest.json: malformed entry")
+        path = entry["path"]
+        if path == MANIFEST:
             raise EvidenceError("bundle-manifest.json must not list/hash itself")
-        if path in seen:
-            raise EvidenceError(f"bundle-manifest duplicate entry: {path}")
+        if path in seen or path not in members:
+            raise EvidenceError("bundle-manifest.json: duplicate or missing path")
         seen.add(path)
-        declared_paths.add(path)
-        if path not in members:
-            raise EvidenceError(f"bundle-manifest references missing member: {path}")
-        observed = members[path]
-        if entry.get("size_bytes") != len(observed):
-            raise EvidenceError(f"bundle-manifest size mismatch: {path}")
-        expected_sha = require_sha256(entry.get("sha256"), f"manifest sha256 for {path}")
-        if expected_sha != sha256_bytes(observed):
-            raise EvidenceError(f"bundle-manifest hash mismatch: {path}")
+        data = members[path]
+        if (
+            entry.get("size_bytes") != len(data)
+            or entry.get("sha256") != digest(data)
+        ):
+            raise EvidenceError(f"bundle-manifest mismatch: {path}")
         if entry.get("media_type") != "application/json":
             raise EvidenceError(f"bundle-manifest media_type mismatch: {path}")
-
-    if declared_paths != expected_paths:
-        missing = sorted(expected_paths - declared_paths)
-        extra = sorted(declared_paths - expected_paths)
-        raise EvidenceError(f"bundle-manifest coverage mismatch missing={missing} extra={extra}")
-
-
-def read_archive(path: Path) -> dict[str, bytes]:
-    with zipfile.ZipFile(path, "r") as archive:
-        infos = archive.infolist()
-        if len(infos) > MAX_MEMBER_COUNT:
-            raise EvidenceError("evidence archive exceeds member-count safety limit")
-
-        names = [info.filename for info in infos]
-        if len(names) != len(set(names)):
-            raise EvidenceError("duplicate ZIP member paths")
-        casefolded = [name.rstrip("/").casefold() for name in names]
-        if len(casefolded) != len(set(casefolded)):
-            raise EvidenceError("case-colliding ZIP member paths")
-
-        total_size = 0
-        for info in infos:
-            validate_member_path(info.filename)
-            if info.flag_bits & 0x1:
-                raise EvidenceError(f"encrypted ZIP member is forbidden: {info.filename}")
-            unix_mode = (info.external_attr >> 16) & 0xFFFF
-            if unix_mode and stat.S_ISLNK(unix_mode):
-                raise EvidenceError(f"symbolic-link ZIP member is forbidden: {info.filename}")
-            if info.is_dir():
-                continue
-            if info.file_size > MAX_MEMBER_UNCOMPRESSED_BYTES:
-                raise EvidenceError(f"ZIP member exceeds size limit: {info.filename}")
-            total_size += info.file_size
-            if total_size > MAX_TOTAL_UNCOMPRESSED_BYTES:
-                raise EvidenceError("evidence archive exceeds total uncompressed-size limit")
-
-        return {info.filename: archive.read(info) for info in infos if not info.is_dir()}
+    if seen != expected:
+        raise EvidenceError("bundle-manifest coverage mismatch")
 
 
 def verify(path: str | Path) -> dict[str, Any]:
+    """Verify Experiment-0 structure, identities, hashes, and decision integrity."""
     path_obj = Path(path)
     members = read_archive(path_obj)
-
-    missing = sorted(MANDATORY_PATHS - set(members))
+    missing = sorted(MANDATORY - set(members))
     if missing:
         raise EvidenceError(f"missing mandatory evidence members: {missing}")
-
-    json_docs = {name: load_json(data, name) for name, data in members.items()}
-    for name, value in json_docs.items():
-        walk_forbidden_fields(value, name)
-
-    for path_name, expected_schema in EXPECTED_SCHEMAS.items():
-        value = json_docs[path_name]
-        if not isinstance(value, dict) or value.get("schema_version") != expected_schema:
-            raise EvidenceError(f"{path_name}: expected schema {expected_schema}")
-
-    config = json_docs[f"{ROOT}/experiment-config.json"]
-    runtime = json_docs[f"{ROOT}/runtime-receipt.json"]
-    decision = json_docs[f"{ROOT}/decision/foundation-decision.json"]
-    manifest = json_docs[MANIFEST_PATH]
-
+    docs = {name: load_json(data, name) for name, data in members.items()}
+    for name, value in docs.items():
+        scan_fields(value, name)
+    for name, schema in SCHEMAS.items():
+        if (
+            not isinstance(docs[name], dict)
+            or docs[name].get("schema_version") != schema
+        ):
+            raise EvidenceError(f"{name}: expected schema {schema}")
+    config = docs[CONFIG]
     candidates = validate_config(config)
-    config_bytes = json.dumps(
-        config,
-        sort_keys=True,
-        separators=(",", ":"),
-        ensure_ascii=False,
-        allow_nan=False,
-    ).encode("utf-8")
-    config_sha256 = sha256_bytes(config_bytes)
-
-    validate_runtime(runtime, config)
-    if runtime.get("experiment_config_sha256") != config_sha256:
-        raise EvidenceError("runtime receipt does not bind canonical experiment config hash")
-    runtime_sha256 = sha256_bytes(members[f"{ROOT}/runtime-receipt.json"])
-
-    snapshots = validate_snapshot_receipts(
-        json_docs,
-        members,
-        candidates,
-        config_sha256,
+    config_hash = digest(
+        json.dumps(
+            config,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        ).encode("utf-8")
     )
-    results = validate_candidate_results(
-        json_docs,
+    validate_environment(docs[ENVIRONMENT])
+    environment_hash = digest(members[ENVIRONMENT])
+    runtime = docs[RUNTIME]
+    validate_runtime(runtime, config, environment_hash)
+    if runtime.get("experiment_config_sha256") != config_hash:
+        raise EvidenceError("runtime receipt does not bind canonical config hash")
+    runtime_hash = digest(members[RUNTIME])
+    snapshots = validate_snapshots(docs, members, candidates, config_hash)
+    results = validate_results(
+        docs,
         members,
         candidates,
         snapshots,
-        config_sha256,
-        runtime_sha256,
+        config_hash,
+        runtime_hash,
     )
-    validate_decision(decision, candidates, snapshots, results, config_sha256)
-    validate_manifest(manifest, members)
-
-    archive_sha256 = sha256_bytes(path_obj.read_bytes())
+    decision = docs[DECISION]
+    validate_decision(decision, candidates, snapshots, results, config_hash)
+    validate_manifest(docs[MANIFEST], members)
     return {
         "status": "VERIFIED_STRUCTURE_AND_IDENTITY",
-        "archive_sha256": archive_sha256,
+        "archive_sha256": digest(path_obj.read_bytes()),
         "member_count": len(members),
         "candidate_count": len(candidates),
         "candidate_result_count": len(results),
-        "experiment_config_sha256": config_sha256,
+        "experiment_config_sha256": config_hash,
         "repository_sha": config["repository_sha"],
         "repository_tree": config["repository_tree"],
+        "runtime_disposition": runtime["final_runtime_disposition"],
         "decision_disposition": decision["decision_disposition"],
     }
 
 
 def main() -> int:
+    """Run the verifier CLI and emit one JSON verdict."""
     parser = argparse.ArgumentParser(
         description="Verify the MESC Experiment-0 metadata evidence bundle."
     )
