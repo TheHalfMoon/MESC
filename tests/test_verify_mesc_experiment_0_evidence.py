@@ -15,7 +15,11 @@ ROOT = "mesc-experiment-0-evidence"
 
 
 def _load_verifier() -> ModuleType:
-    path = Path(__file__).resolve().parents[1] / "tools" / "verify_mesc_experiment_0_evidence.py"
+    path = (
+        Path(__file__).resolve().parents[1]
+        / "tools"
+        / "verify_mesc_experiment_0_evidence.py"
+    )
     spec = importlib.util.spec_from_file_location("mesc_exp0_verifier", path)
     assert spec is not None
     assert spec.loader is not None
@@ -41,6 +45,16 @@ def _authority_bindings() -> dict[str, str]:
     return {key: f"test-{key}" for key in VERIFIER.REQUIRED_AUTHORITY_KEYS}
 
 
+def _base_candidate() -> dict[str, Any]:
+    return {
+        "candidate_id": "example/model",
+        "candidate_revision": "c" * 40,
+        "candidate_class": "SELECTABLE_FOUNDATION",
+        "evidence_key": "example-model",
+        "supported_input_modalities": ["text", "vision"],
+    }
+
+
 def _base_docs() -> dict[str, bytes]:
     config = {
         "schema_version": "MESC-EXPERIMENT-0-CONFIG-V1",
@@ -49,7 +63,7 @@ def _base_docs() -> dict[str, bytes]:
         "objective_id": "objective-test",
         "repository_sha": "a" * 40,
         "repository_tree": "b" * 40,
-        "candidate_roster": [{"candidate_id": "example/model", "revision": "c" * 40}],
+        "candidate_roster": [_base_candidate()],
         "authority_bindings": _authority_bindings(),
         "sealed_evaluation_policy": {
             "tier3_item_access_by_research_process": False,
@@ -93,6 +107,10 @@ def _replace_config(docs: dict[str, bytes], config: dict[str, Any]) -> None:
 
     decision = json.loads(docs[f"{ROOT}/decision/foundation-decision.json"])
     decision["experiment_config_sha256"] = config_sha
+    docs[f"{ROOT}/decision/foundation-decision.json"] = _json_bytes(decision)
+
+
+def _replace_decision(docs: dict[str, bytes], decision: dict[str, Any]) -> None:
     docs[f"{ROOT}/decision/foundation-decision.json"] = _json_bytes(decision)
 
 
@@ -187,7 +205,31 @@ def test_verify_rejects_missing_mrl_binding(tmp_path: Path) -> None:
     bundle = tmp_path / "missing-binding.zip"
     _write_bundle(bundle, docs)
 
-    with pytest.raises(VERIFIER.EvidenceError, match="incomplete MRL authority/evidence bindings"):
+    with pytest.raises(
+        VERIFIER.EvidenceError,
+        match="incomplete MRL authority/evidence bindings",
+    ):
+        VERIFIER.verify(str(bundle))
+
+
+def test_verify_rejects_reference_only_selection(tmp_path: Path) -> None:
+    docs = _base_docs()
+    config = json.loads(docs[f"{ROOT}/experiment-config.json"])
+    config["candidate_roster"][0]["candidate_class"] = "REFERENCE_ONLY"
+    _replace_config(docs, config)
+
+    decision = json.loads(docs[f"{ROOT}/decision/foundation-decision.json"])
+    decision["decision_disposition"] = "SELECT_CHALLENGER"
+    decision["selected_candidate_id"] = config["candidate_roster"][0]["candidate_id"]
+    decision["selected_candidate_revision"] = config["candidate_roster"][0][
+        "candidate_revision"
+    ]
+    _replace_decision(docs, decision)
+
+    bundle = tmp_path / "reference-only.zip"
+    _write_bundle(bundle, docs)
+
+    with pytest.raises(VERIFIER.EvidenceError, match="reference-only candidate cannot be selected"):
         VERIFIER.verify(str(bundle))
 
 
