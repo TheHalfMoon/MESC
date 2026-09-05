@@ -136,7 +136,7 @@ def test_verify_rejects_missing_result_lane_binding(tmp_path: Path) -> None:
 
     bundle = tmp_path / "missing-lane-binding.zip"
     FIXTURES._write_bundle(bundle, docs)
-    with pytest.raises(VERIFIER.EvidenceError, match="field mismatch"):
+    with pytest.raises(VERIFIER.EvidenceError, match=r"missing fields \['scoring_policy_id'\]"):
         VERIFIER.verify(str(bundle))
 
 
