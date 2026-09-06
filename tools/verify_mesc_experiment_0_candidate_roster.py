@@ -134,6 +134,7 @@ def validate_roster(payload: Any) -> dict[str, Any]:
     if not isinstance(active, list) or len(active) < 2:
         raise CandidateRosterError("roster.active_candidates: at least two candidates required")
 
+    candidate_ids: set[str] = set()
     identities: set[tuple[str, str]] = set()
     roles: set[str] = set()
     keys: set[str] = set()
@@ -150,6 +151,8 @@ def validate_roster(payload: Any) -> dict[str, Any]:
             candidate["candidate_revision"],
             f"{label}.candidate_revision",
         )
+        if candidate_id in candidate_ids:
+            raise CandidateRosterError(f"{label}: duplicate candidate identity")
         if candidate["candidate_class"] != "SELECTABLE_FOUNDATION":
             raise CandidateRosterError(f"{label}: active candidate must be selectable")
         role = _require_text(candidate["role"], f"{label}.role")
@@ -191,6 +194,7 @@ def validate_roster(payload: Any) -> dict[str, Any]:
             raise CandidateRosterError(f"{label}: duplicate candidate role")
         if key in keys:
             raise CandidateRosterError(f"{label}: duplicate evidence key")
+        candidate_ids.add(candidate_id)
         identities.add(identity)
         roles.add(role)
         keys.add(key)
@@ -208,10 +212,18 @@ def validate_roster(payload: Any) -> dict[str, Any]:
         if not isinstance(candidate, dict):
             raise CandidateRosterError(f"{label}: expected object")
         _require_exact_fields(candidate, DEFERRED_FIELDS, label)
-        _require_text(candidate["candidate_id"], f"{label}.candidate_id")
-        _require_git_sha(candidate["observed_revision"], f"{label}.observed_revision")
-        if candidate["role"] != "DEFERRED_CONTROL":
+        candidate_id = _require_text(candidate["candidate_id"], f"{label}.candidate_id")
+        revision = _require_git_sha(
+            candidate["observed_revision"],
+            f"{label}.observed_revision",
+        )
+        if candidate_id in candidate_ids:
+            raise CandidateRosterError(f"{label}: duplicate candidate identity")
+        role = _require_text(candidate["role"], f"{label}.role")
+        if role != "DEFERRED_CONTROL":
             raise CandidateRosterError(f"{label}: invalid deferred role")
+        if role in roles:
+            raise CandidateRosterError(f"{label}: duplicate candidate role")
         _require_text(candidate["license_identity"], f"{label}.license_identity")
         _require_text(candidate["published_pipeline"], f"{label}.published_pipeline")
         _require_text(
@@ -226,6 +238,9 @@ def validate_roster(payload: Any) -> dict[str, Any]:
             candidate["authoritative_sources"],
             f"{label}.authoritative_sources",
         )
+        candidate_ids.add(candidate_id)
+        identities.add((candidate_id, revision))
+        roles.add(role)
 
     return payload
 
