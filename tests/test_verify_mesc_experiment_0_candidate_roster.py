@@ -121,7 +121,10 @@ def test_active_candidate_binding_cannot_be_substituted() -> None:
     """A different candidate cannot inherit one of the two frozen active roles."""
     roster = _roster()
     roster["active_candidates"][0]["candidate_id"] = "example/substitute"
-    with pytest.raises(VERIFIER.CandidateRosterError, match="exact frozen active record mismatch"):
+    with pytest.raises(
+        VERIFIER.CandidateRosterError,
+        match="exact frozen active record mismatch",
+    ):
         VERIFIER.validate_roster(roster)
 
 
@@ -137,15 +140,22 @@ def test_active_frozen_metadata_cannot_drift(field: str, replacement: str) -> No
     """Frozen active rights and published runtime metadata are exact bindings."""
     roster = _roster()
     roster["active_candidates"][0][field] = replacement
-    with pytest.raises(VERIFIER.CandidateRosterError, match="exact frozen active record mismatch"):
+    with pytest.raises(
+        VERIFIER.CandidateRosterError,
+        match="exact frozen active record mismatch",
+    ):
         VERIFIER.validate_roster(roster)
 
 
 def test_active_authoritative_source_cannot_be_substituted() -> None:
     """An arbitrary HTTPS URL cannot replace a frozen authoritative source."""
     roster = _roster()
-    roster["active_candidates"][0]["authoritative_sources"][0] = "https://example.com/model"
-    with pytest.raises(VERIFIER.CandidateRosterError, match="exact frozen active record mismatch"):
+    sources = roster["active_candidates"][0]["authoritative_sources"]
+    sources[0] = "https://example.com/model"
+    with pytest.raises(
+        VERIFIER.CandidateRosterError,
+        match="exact frozen active record mismatch",
+    ):
         VERIFIER.validate_roster(roster)
 
 
@@ -162,7 +172,10 @@ def test_frozen_repository_binding_cannot_drift(field: str) -> None:
     """The roster remains bound to the exact canonical base commit and tree."""
     roster = _roster()
     roster[field] = "a" * 40
-    with pytest.raises(VERIFIER.CandidateRosterError, match="does not match the frozen roster"):
+    with pytest.raises(
+        VERIFIER.CandidateRosterError,
+        match="does not match the frozen roster",
+    ):
         VERIFIER.validate_roster(roster)
 
 
@@ -219,7 +232,10 @@ def test_nonstandard_json_constant_fails_closed(tmp_path: Path) -> None:
     assert tampered != original
     path = tmp_path / "nonstandard-json-roster.json"
     path.write_text(tampered, encoding="utf-8")
-    with pytest.raises(VERIFIER.CandidateRosterError, match="non-standard JSON constant: NaN"):
+    with pytest.raises(
+        VERIFIER.CandidateRosterError,
+        match="non-standard JSON constant: NaN",
+    ):
         VERIFIER.load_and_validate(path)
 
 
@@ -228,7 +244,10 @@ def test_duplicate_authoritative_source_fails_closed() -> None:
     roster = _roster()
     sources = roster["active_candidates"][0]["authoritative_sources"]
     sources.append(sources[0])
-    with pytest.raises(VERIFIER.CandidateRosterError, match="duplicate authoritative source"):
+    with pytest.raises(
+        VERIFIER.CandidateRosterError,
+        match="duplicate authoritative source",
+    ):
         VERIFIER.validate_roster(roster)
 
 
@@ -271,22 +290,30 @@ def test_deferred_frozen_metadata_cannot_drift(field: str, replacement: str) -> 
     """The deferred control's frozen rights and published runtime metadata are exact."""
     roster = _roster()
     roster["deferred_controls"][0][field] = replacement
-    with pytest.raises(VERIFIER.CandidateRosterError, match="exact frozen deferred record mismatch"):
+    with pytest.raises(
+        VERIFIER.CandidateRosterError,
+        match="exact frozen deferred record mismatch",
+    ):
         VERIFIER.validate_roster(roster)
 
 
 def test_deferred_authoritative_source_cannot_be_substituted() -> None:
     """Deferred-control provenance is frozen, not merely constrained to HTTPS."""
     roster = _roster()
-    roster["deferred_controls"][0]["authoritative_sources"][0] = "https://example.com/control"
-    with pytest.raises(VERIFIER.CandidateRosterError, match="exact frozen deferred record mismatch"):
+    sources = roster["deferred_controls"][0]["authoritative_sources"]
+    sources[0] = "https://example.com/control"
+    with pytest.raises(
+        VERIFIER.CandidateRosterError,
+        match="exact frozen deferred record mismatch",
+    ):
         VERIFIER.validate_roster(roster)
 
 
 def test_active_candidate_cannot_reappear_as_deferred_control() -> None:
     """Candidate identity is unique across active and deferred roster sections."""
     roster = _roster()
-    roster["deferred_controls"][0]["candidate_id"] = roster["active_candidates"][0]["candidate_id"]
+    active_id = roster["active_candidates"][0]["candidate_id"]
+    roster["deferred_controls"][0]["candidate_id"] = active_id
     with pytest.raises(VERIFIER.CandidateRosterError, match="duplicate candidate identity"):
         VERIFIER.validate_roster(roster)
 
