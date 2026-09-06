@@ -25,40 +25,28 @@ def _notebook_code() -> str:
 
 def _load_functions(*names: str) -> dict[str, Any]:
     tree = ast.parse(_notebook_code())
+    wanted_constants = {
+        "GIT_RE",
+        "KEY_RE",
+        "CANDIDATE_CLASSES",
+        "SECRET_FIELDS",
+        "SECRET_PATTERNS",
+    }
+    constants = [
+        node
+        for node in tree.body
+        if isinstance(node, ast.Assign)
+        and any(
+            isinstance(target, ast.Name) and target.id in wanted_constants
+            for target in node.targets
+        )
+    ]
     functions = [
         node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name in set(names)
     ]
-    module = ast.Module(body=functions, type_ignores=[])
+    module = ast.Module(body=constants + functions, type_ignores=[])
     ast.fix_missing_locations(module)
-    namespace: dict[str, Any] = {
-        "json": json,
-        "math": math,
-        "re": re,
-        "GIT_RE": re.compile(r"^[0-9a-f]{40}$"),
-        "KEY_RE": re.compile(r"^[a-z0-9][a-z0-9._-]{0,63}$"),
-        "CANDIDATE_CLASSES": {"SELECTABLE_FOUNDATION", "REFERENCE_ONLY"},
-        "SECRET_FIELDS": {
-            "token",
-            "hf_token",
-            "access_token",
-            "refresh_token",
-            "password",
-            "secret",
-            "api_key",
-            "apikey",
-            "private_key",
-            "client_secret",
-            "authorization_header",
-        },
-        "SECRET_PATTERNS": (
-            re.compile(r"\bhf_[A-Za-z0-9]{20,}\b"),
-            re.compile(r"\bgh[pousr]_[A-Za-z0-9_]{20,}\b"),
-            re.compile(r"\bgithub_pat_[A-Za-z0-9_]{20,}\b"),
-            re.compile(r"\bsk-[A-Za-z0-9_-]{20,}\b"),
-            re.compile(r"(?i)\bauthorization\s*:\s*bearer\s+\S+"),
-            re.compile(r"https?://[^/\s:@]+:[^@\s/]+@"),
-        ),
-    }
+    namespace: dict[str, Any] = {"json": json, "math": math, "re": re}
     exec(compile(module, str(NOTEBOOK_PATH), "exec"), namespace)
     return namespace
 
