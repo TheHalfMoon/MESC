@@ -23,6 +23,7 @@ This package intentionally separates protocol preparation from real execution ev
 - `../../tests/test_verify_mesc_experiment_0_evidence.py`
 - `../../tests/test_verify_mesc_experiment_0_evidence_integrity.py`
 - `../../tests/test_mesc_experiment_0_frozen_identities.py`
+- `../../tests/test_mesc_experiment_0_config_preflight_parity.py`
 - `../../tests/test_mesc_experiment_0_protocol.py`
 
 No file in this package is a model checkpoint, dataset, runtime receipt, training artifact, or
