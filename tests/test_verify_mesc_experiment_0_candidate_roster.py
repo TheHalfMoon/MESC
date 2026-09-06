@@ -121,7 +121,31 @@ def test_active_candidate_binding_cannot_be_substituted() -> None:
     """A different candidate cannot inherit one of the two frozen active roles."""
     roster = _roster()
     roster["active_candidates"][0]["candidate_id"] = "example/substitute"
-    with pytest.raises(VERIFIER.CandidateRosterError, match="exact frozen roster binding mismatch"):
+    with pytest.raises(VERIFIER.CandidateRosterError, match="exact frozen active record mismatch"):
+        VERIFIER.validate_roster(roster)
+
+
+@pytest.mark.parametrize(
+    ("field", "replacement"),
+    [
+        ("license_identity", "MIT"),
+        ("published_pipeline", "text-generation"),
+        ("published_weight_size_label", "1 GB"),
+    ],
+)
+def test_active_frozen_metadata_cannot_drift(field: str, replacement: str) -> None:
+    """Frozen active rights and published runtime metadata are exact bindings."""
+    roster = _roster()
+    roster["active_candidates"][0][field] = replacement
+    with pytest.raises(VERIFIER.CandidateRosterError, match="exact frozen active record mismatch"):
+        VERIFIER.validate_roster(roster)
+
+
+def test_active_authoritative_source_cannot_be_substituted() -> None:
+    """An arbitrary HTTPS URL cannot replace a frozen authoritative source."""
+    roster = _roster()
+    roster["active_candidates"][0]["authoritative_sources"][0] = "https://example.com/model"
+    with pytest.raises(VERIFIER.CandidateRosterError, match="exact frozen active record mismatch"):
         VERIFIER.validate_roster(roster)
 
 
@@ -230,8 +254,32 @@ def test_deferred_control_binding_cannot_be_substituted() -> None:
     roster["deferred_controls"][0]["candidate_id"] = "example/other-remote-code-model"
     with pytest.raises(
         VERIFIER.CandidateRosterError,
-        match="exact frozen deferred-control binding mismatch",
+        match="exact frozen deferred record mismatch",
     ):
+        VERIFIER.validate_roster(roster)
+
+
+@pytest.mark.parametrize(
+    ("field", "replacement"),
+    [
+        ("license_identity", "Apache-2.0"),
+        ("published_pipeline", "image-text-to-text"),
+        ("published_weight_size_label", "1 GB"),
+    ],
+)
+def test_deferred_frozen_metadata_cannot_drift(field: str, replacement: str) -> None:
+    """The deferred control's frozen rights and published runtime metadata are exact."""
+    roster = _roster()
+    roster["deferred_controls"][0][field] = replacement
+    with pytest.raises(VERIFIER.CandidateRosterError, match="exact frozen deferred record mismatch"):
+        VERIFIER.validate_roster(roster)
+
+
+def test_deferred_authoritative_source_cannot_be_substituted() -> None:
+    """Deferred-control provenance is frozen, not merely constrained to HTTPS."""
+    roster = _roster()
+    roster["deferred_controls"][0]["authoritative_sources"][0] = "https://example.com/control"
+    with pytest.raises(VERIFIER.CandidateRosterError, match="exact frozen deferred record mismatch"):
         VERIFIER.validate_roster(roster)
 
 
