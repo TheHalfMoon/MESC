@@ -14,27 +14,69 @@ CANONICAL_BASE_TREE = "b719587c10f3775cb3db65d1fedec4645334daa0"
 GIT_RE = re.compile(r"^[0-9a-f]{40}$")
 KEY_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{0,63}$")
 
-EXPECTED_ACTIVE_BINDINGS = frozenset(
-    {
+EXPECTED_ACTIVE_RECORDS: dict[str, dict[str, Any]] = {
+    "Qwen/Qwen3.8-27B": {
+        "candidate_id": "Qwen/Qwen3.8-27B",
+        "candidate_revision": "1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0",
+        "candidate_class": "SELECTABLE_FOUNDATION",
+        "role": "PREFERRED_FOUNDATION_CANDIDATE",
+        "evidence_key": "qwen3.8-27b",
+        "license_identity": "Apache-2.0",
+        "published_pipeline": "image-text-to-text",
+        "published_weight_size_label": "55.6 GB",
+        "supported_input_modalities": ["text", "vision"],
+        "trust_remote_code": False,
+        "remote_code_exception_required": False,
+        "eligibility_disposition": "ACTIVE_FOR_MRL_0801_IDENTITY_CUSTODY_QUALIFICATION",
+        "authoritative_sources": [
+            "https://huggingface.co/Qwen/Qwen3.8-27B",
+            (
+                "https://huggingface.co/Qwen/Qwen3.8-27B/commit/"
+                "1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0"
+            ),
+            "https://github.com/QwenLM/Qwen3.8",
+        ],
+    },
+    "google/gemma-4-31B-it": {
+        "candidate_id": "google/gemma-4-31B-it",
+        "candidate_revision": "842da3794eaa0b77d5f08bae87a17459d91ff475",
+        "candidate_class": "SELECTABLE_FOUNDATION",
+        "role": "PRIMARY_CHALLENGER",
+        "evidence_key": "gemma-4-31b-it",
+        "license_identity": "Apache-2.0",
+        "published_pipeline": "image-text-to-text",
+        "published_weight_size_label": "62.6 GB",
+        "supported_input_modalities": ["text", "vision"],
+        "trust_remote_code": False,
+        "remote_code_exception_required": False,
+        "eligibility_disposition": "ACTIVE_FOR_MRL_0801_IDENTITY_CUSTODY_QUALIFICATION",
+        "authoritative_sources": [
+            "https://huggingface.co/google/gemma-4-31B-it",
+            (
+                "https://huggingface.co/google/gemma-4-31B-it/commit/"
+                "842da3794eaa0b77d5f08bae87a17459d91ff475"
+            ),
+            "https://ai.google.dev/gemma/docs/core",
+        ],
+    },
+}
+EXPECTED_DEFERRED_RECORD: dict[str, Any] = {
+    "candidate_id": "microsoft/Phi-4-multimodal-instruct",
+    "observed_revision": "450bd6eb5ed6a74e38a03ada0320c4fa07865c81",
+    "role": "DEFERRED_CONTROL",
+    "license_identity": "MIT",
+    "published_pipeline": "multimodal/custom-code",
+    "published_weight_size_label": "12.9 GB",
+    "trust_remote_code_required_by_published_path": True,
+    "eligibility_disposition": "DEFERRED_REMOTE_CODE_EXCEPTION_REQUIRED",
+    "authoritative_sources": [
+        "https://huggingface.co/microsoft/Phi-4-multimodal-instruct",
         (
-            "Qwen/Qwen3.8-27B",
-            "1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0",
-            "PREFERRED_FOUNDATION_CANDIDATE",
-            "qwen3.8-27b",
+            "https://huggingface.co/microsoft/Phi-4-multimodal-instruct/commit/"
+            "450bd6eb5ed6a74e38a03ada0320c4fa07865c81"
         ),
-        (
-            "google/gemma-4-31B-it",
-            "842da3794eaa0b77d5f08bae87a17459d91ff475",
-            "PRIMARY_CHALLENGER",
-            "gemma-4-31b-it",
-        ),
-    }
-)
-EXPECTED_DEFERRED_BINDING = (
-    "microsoft/Phi-4-multimodal-instruct",
-    "450bd6eb5ed6a74e38a03ada0320c4fa07865c81",
-    "DEFERRED_CONTROL",
-)
+    ],
+}
 
 TOP_LEVEL_FIELDS = {
     "schema_version",
@@ -168,7 +210,7 @@ def validate_roster(payload: Any) -> dict[str, Any]:
         raise CandidateRosterError("roster: training must remain unauthorized")
 
     active = payload["active_candidates"]
-    if not isinstance(active, list) or len(active) != 2:
+    if not isinstance(active, list) or len(active) != len(EXPECTED_ACTIVE_RECORDS):
         raise CandidateRosterError(
             "roster.active_candidates: exactly two frozen candidates required"
         )
@@ -177,7 +219,6 @@ def validate_roster(payload: Any) -> dict[str, Any]:
     identities: set[tuple[str, str]] = set()
     roles: set[str] = set()
     keys: set[str] = set()
-    active_bindings: set[tuple[str, str, str, str]] = set()
     for index, candidate in enumerate(active):
         label = f"roster.active_candidates[{index}]"
         if not isinstance(candidate, dict):
@@ -232,14 +273,16 @@ def validate_roster(payload: Any) -> dict[str, Any]:
             raise CandidateRosterError(f"{label}: duplicate candidate role")
         if key in keys:
             raise CandidateRosterError(f"{label}: duplicate evidence key")
+        expected_record = EXPECTED_ACTIVE_RECORDS.get(candidate_id)
+        if expected_record is None or candidate != expected_record:
+            raise CandidateRosterError(f"{label}: exact frozen active record mismatch")
         candidate_ids.add(candidate_id)
         identities.add(identity)
         roles.add(role)
         keys.add(key)
-        active_bindings.add((candidate_id, revision, role, key))
 
-    if frozenset(active_bindings) != EXPECTED_ACTIVE_BINDINGS:
-        raise CandidateRosterError("roster.active_candidates: exact frozen roster binding mismatch")
+    if candidate_ids != set(EXPECTED_ACTIVE_RECORDS):
+        raise CandidateRosterError("roster.active_candidates: exact frozen roster mismatch")
 
     deferred = payload["deferred_controls"]
     if not isinstance(deferred, list) or len(deferred) != 1:
@@ -257,8 +300,8 @@ def validate_roster(payload: Any) -> dict[str, Any]:
         if candidate_id in candidate_ids:
             raise CandidateRosterError(f"{label}: duplicate candidate identity")
         role = _require_text(candidate["role"], f"{label}.role")
-        if (candidate_id, revision, role) != EXPECTED_DEFERRED_BINDING:
-            raise CandidateRosterError(f"{label}: exact frozen deferred-control binding mismatch")
+        if role != "DEFERRED_CONTROL":
+            raise CandidateRosterError(f"{label}: invalid deferred role")
         if role in roles:
             raise CandidateRosterError(f"{label}: duplicate candidate role")
         _require_text(candidate["license_identity"], f"{label}.license_identity")
@@ -275,6 +318,8 @@ def validate_roster(payload: Any) -> dict[str, Any]:
             candidate["authoritative_sources"],
             f"{label}.authoritative_sources",
         )
+        if candidate != EXPECTED_DEFERRED_RECORD:
+            raise CandidateRosterError(f"{label}: exact frozen deferred record mismatch")
         candidate_ids.add(candidate_id)
         identities.add((candidate_id, revision))
         roles.add(role)
