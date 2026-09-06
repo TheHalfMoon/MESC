@@ -1,0 +1,79 @@
+{
+  "schema_version": "MESC-EXPERIMENT-0-CONFIG-V1",
+  "experiment_id": "mesc-experiment-0-foundation-tournament",
+  "status": "UNFROZEN_TEMPLATE_ONLY",
+  "objective_id": null,
+  "repository_sha": null,
+  "repository_tree": null,
+  "strategy_decision_id": "ADR-0036",
+  "candidate_roster": [],
+  "dataset_identities": [],
+  "evaluator_identities": [],
+  "scoring_policy_identities": [],
+  "prompt_template_identities": [],
+  "generation_configs": [],
+  "runtime_policy": {
+    "provider": "GOOGLE_COLAB",
+    "require_hosted_gpu": true,
+    "allowed_gpu_count": 1,
+    "allowed_gpu_models": [],
+    "allow_unlisted_gpu_model": false
+  },
+  "network_policy": {
+    "allow_repository_clone": true,
+    "allow_model_acquisition": false,
+    "allow_dataset_acquisition": false,
+    "allowed_hosts": []
+  },
+  "filesystem_policy": {
+    "allowed_write_roots": [
+      "/content/mesc-experiment-0"
+    ],
+    "forbid_weight_mutation_outputs": true
+  },
+  "credential_policy": {
+    "allowed_secret_names": [],
+    "forbid_secret_printing": true,
+    "forbid_secret_persistence": true
+  },
+  "resource_budget": {
+    "max_gpu_hours": null,
+    "max_wall_hours": null,
+    "max_storage_bytes": null,
+    "max_retries": null
+  },
+  "query_budget": {
+    "max_adaptive_queries": null
+  },
+  "result_exposure_budget": {
+    "tier1_max_exposures": null,
+    "tier2_max_exposures": null,
+    "tier3_allowed_fields": []
+  },
+  "hard_floor_policy": {
+    "policy_id": null,
+    "rules": []
+  },
+  "decision_rule": {
+    "rule_id": null,
+    "type": null,
+    "definition": null
+  },
+  "sealed_evaluation_policy": {
+    "policy_id": null,
+    "tier3_item_access_by_research_process": false,
+    "allowed_aggregate_fields": []
+  },
+  "authority_bindings": {
+    "mrl_0801_evidence_id": null,
+    "mrl_0802_evidence_id": null,
+    "mrl_0803_evidence_id": null,
+    "mrl_0804_evidence_id": null,
+    "mrl_0805_authority_id": null,
+    "mrl_0806_objective_id": null,
+    "mrl_0807_evaluator_freeze_id": null,
+    "mrl_0808_sandbox_id": null,
+    "mrl_0809_preflight_id": null,
+    "mrl_0899_readiness_id": null
+  }
+}
