@@ -138,6 +138,24 @@ def test_duplicate_security_or_authority_json_key_fails_closed(
         VERIFIER.load_and_validate(path)
 
 
+def test_duplicate_deferred_control_fails_closed() -> None:
+    """A deferred control cannot be repeated under the closed roster roles."""
+    roster = _roster()
+    roster["deferred_controls"].append(deepcopy(roster["deferred_controls"][0]))
+    with pytest.raises(VERIFIER.CandidateRosterError, match="duplicate candidate identity"):
+        VERIFIER.validate_roster(roster)
+
+
+def test_active_candidate_cannot_reappear_as_deferred_control() -> None:
+    """Candidate identity is unique across active and deferred roster sections."""
+    roster = _roster()
+    roster["deferred_controls"][0]["candidate_id"] = roster["active_candidates"][0][
+        "candidate_id"
+    ]
+    with pytest.raises(VERIFIER.CandidateRosterError, match="duplicate candidate identity"):
+        VERIFIER.validate_roster(roster)
+
+
 def test_phi4_control_remains_deferred_for_remote_code() -> None:
     """Phi-4 stays outside the active roster until a separate exception exists."""
     roster = VERIFIER.load_and_validate(ROSTER_PATH)
