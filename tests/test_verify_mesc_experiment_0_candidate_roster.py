@@ -96,11 +96,57 @@ def test_active_roster_cannot_claim_mrl_0801_or_execution_authority() -> None:
 def test_duplicate_active_identity_fails_closed() -> None:
     """Candidate identity duplication is rejected before any later execution config."""
     roster = _roster()
-    duplicate = deepcopy(roster["active_candidates"][0])
-    duplicate["role"] = "SECONDARY_CHALLENGER"
-    duplicate["evidence_key"] = "duplicate-qwen"
-    roster["active_candidates"].append(duplicate)
+    first = roster["active_candidates"][0]
+    second = roster["active_candidates"][1]
+    second["candidate_id"] = first["candidate_id"]
+    second["candidate_revision"] = first["candidate_revision"]
     with pytest.raises(VERIFIER.CandidateRosterError, match="duplicate candidate identity"):
+        VERIFIER.validate_roster(roster)
+
+
+def test_extra_active_candidate_fails_closed() -> None:
+    """The frozen active roster cannot be widened with a third candidate."""
+    roster = _roster()
+    extra = deepcopy(roster["active_candidates"][0])
+    extra["candidate_id"] = "example/third-candidate"
+    extra["candidate_revision"] = "a" * 40
+    extra["role"] = "SECONDARY_CHALLENGER"
+    extra["evidence_key"] = "third-candidate"
+    roster["active_candidates"].append(extra)
+    with pytest.raises(VERIFIER.CandidateRosterError, match="exactly two frozen candidates"):
+        VERIFIER.validate_roster(roster)
+
+
+def test_active_candidate_binding_cannot_be_substituted() -> None:
+    """A different candidate cannot inherit one of the two frozen active roles."""
+    roster = _roster()
+    roster["active_candidates"][0]["candidate_id"] = "example/substitute"
+    with pytest.raises(VERIFIER.CandidateRosterError, match="exact frozen roster binding mismatch"):
+        VERIFIER.validate_roster(roster)
+
+
+def test_active_modalities_cannot_be_widened() -> None:
+    """Phase 0 multimodal scope remains exactly text and vision."""
+    roster = _roster()
+    roster["active_candidates"][0]["supported_input_modalities"].append("audio")
+    with pytest.raises(VERIFIER.CandidateRosterError, match="exactly text and vision"):
+        VERIFIER.validate_roster(roster)
+
+
+@pytest.mark.parametrize("field", ["canonical_base_sha", "canonical_base_tree"])
+def test_frozen_repository_binding_cannot_drift(field: str) -> None:
+    """The roster remains bound to the exact canonical base commit and tree."""
+    roster = _roster()
+    roster[field] = "a" * 40
+    with pytest.raises(VERIFIER.CandidateRosterError, match="does not match the frozen roster"):
+        VERIFIER.validate_roster(roster)
+
+
+def test_freeze_timestamp_cannot_drift() -> None:
+    """The frozen roster timestamp is part of the immutable Phase 0 record."""
+    roster = _roster()
+    roster["frozen_at_utc"] = "2026-09-06T21:19:58Z"
+    with pytest.raises(VERIFIER.CandidateRosterError, match="freeze timestamp"):
         VERIFIER.validate_roster(roster)
 
 
@@ -138,11 +184,54 @@ def test_duplicate_security_or_authority_json_key_fails_closed(
         VERIFIER.load_and_validate(path)
 
 
+def test_nonstandard_json_constant_fails_closed(tmp_path: Path) -> None:
+    """NaN and Infinity cannot enter the roster through Python JSON extensions."""
+    original = ROSTER_PATH.read_text(encoding="utf-8")
+    tampered = original.replace(
+        '"published_weight_size_label": "55.6 GB"',
+        '"published_weight_size_label": NaN',
+        1,
+    )
+    assert tampered != original
+    path = tmp_path / "nonstandard-json-roster.json"
+    path.write_text(tampered, encoding="utf-8")
+    with pytest.raises(VERIFIER.CandidateRosterError, match="non-standard JSON constant: NaN"):
+        VERIFIER.load_and_validate(path)
+
+
+def test_duplicate_authoritative_source_fails_closed() -> None:
+    """Source provenance cannot contain duplicate entries."""
+    roster = _roster()
+    sources = roster["active_candidates"][0]["authoritative_sources"]
+    sources.append(sources[0])
+    with pytest.raises(VERIFIER.CandidateRosterError, match="duplicate authoritative source"):
+        VERIFIER.validate_roster(roster)
+
+
 def test_duplicate_deferred_control_fails_closed() -> None:
     """A deferred control cannot be repeated under the closed roster roles."""
     roster = _roster()
     roster["deferred_controls"].append(deepcopy(roster["deferred_controls"][0]))
-    with pytest.raises(VERIFIER.CandidateRosterError, match="duplicate candidate identity"):
+    with pytest.raises(VERIFIER.CandidateRosterError, match="exactly one frozen control"):
+        VERIFIER.validate_roster(roster)
+
+
+def test_deferred_control_cannot_be_removed() -> None:
+    """The frozen Phi-4 control cannot disappear from Phase 0 metadata."""
+    roster = _roster()
+    roster["deferred_controls"] = []
+    with pytest.raises(VERIFIER.CandidateRosterError, match="exactly one frozen control"):
+        VERIFIER.validate_roster(roster)
+
+
+def test_deferred_control_binding_cannot_be_substituted() -> None:
+    """A different remote-code model cannot inherit the frozen control role."""
+    roster = _roster()
+    roster["deferred_controls"][0]["candidate_id"] = "example/other-remote-code-model"
+    with pytest.raises(
+        VERIFIER.CandidateRosterError,
+        match="exact frozen deferred-control binding mismatch",
+    ):
         VERIFIER.validate_roster(roster)
 
 
