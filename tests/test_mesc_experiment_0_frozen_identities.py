@@ -6,13 +6,15 @@ import json
 from collections.abc import Callable
 from pathlib import Path
 from types import ModuleType
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
 ROOT = "mesc-experiment-0-evidence"
 REPO_ROOT = Path(__file__).resolve().parents[1]
 NOTEBOOK_PATH = REPO_ROOT / "notebooks" / "MESC_Experiment_0_Colab.ipynb"
+
+IdentityValidator = Callable[[object, tuple[str, ...], str], None]
 
 
 def _load_module(path: Path, name: str) -> ModuleType:
@@ -115,7 +117,7 @@ def _notebook_code() -> str:
     )
 
 
-def _load_notebook_identity_validator() -> Callable[[object, tuple[str, ...], str], None]:
+def _load_notebook_identity_validator() -> IdentityValidator:
     """Extract only the pure frozen-identity validator from the Colab notebook."""
     tree = ast.parse(_notebook_code())
     function = next(
@@ -127,7 +129,7 @@ def _load_notebook_identity_validator() -> Callable[[object, tuple[str, ...], st
     ast.fix_missing_locations(module)
     namespace: dict[str, Any] = {}
     exec(compile(module, str(NOTEBOOK_PATH), "exec"), namespace)
-    return namespace["validate_frozen_identity_records"]
+    return cast(IdentityValidator, namespace["validate_frozen_identity_records"])
 
 
 NOTEBOOK_VALIDATE_IDENTITIES = _load_notebook_identity_validator()
