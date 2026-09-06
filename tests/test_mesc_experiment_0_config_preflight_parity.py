@@ -32,19 +32,17 @@ def _load_functions(*names: str) -> dict[str, Any]:
         "SECRET_FIELDS",
         "SECRET_PATTERNS",
     }
-    constants = [
-        node
-        for node in tree.body
-        if isinstance(node, ast.Assign)
-        and any(
+    wanted_functions = set(names)
+    module_body: list[ast.stmt] = []
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and any(
             isinstance(target, ast.Name) and target.id in wanted_constants
             for target in node.targets
-        )
-    ]
-    functions = [
-        node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name in set(names)
-    ]
-    module = ast.Module(body=constants + functions, type_ignores=[])
+        ):
+            module_body.append(node)
+        elif isinstance(node, ast.FunctionDef) and node.name in wanted_functions:
+            module_body.append(node)
+    module = ast.Module(body=module_body, type_ignores=[])
     ast.fix_missing_locations(module)
     namespace: dict[str, Any] = {"json": json, "math": math, "re": re}
     exec(compile(module, str(NOTEBOOK_PATH), "exec"), namespace)
