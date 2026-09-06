@@ -42,6 +42,7 @@ MRLRealPreflightTask = Literal[
 
 _SCHEMA_VERSION: Final = "MRL-REAL-PREFLIGHT-EVIDENCE-V1"
 _TRUST_REGISTRY_VERSION: Final = "MRL-REAL-PREFLIGHT-EVIDENCE-TRUST-V1"
+_MRL_0805_NO_TRAINING_KIND: Final = "mesc.mrl.real_preflight.no_training_evaluation_authority.v1"
 _SHA256: Final = re.compile(r"^[0-9a-f]{64}$", flags=re.ASCII)
 _GIT_SHA: Final = re.compile(r"^[0-9a-f]{40}$", flags=re.ASCII)
 _COMMON_KEYS: Final = frozenset(
@@ -105,7 +106,7 @@ class MRLRealPreflightEvidence:
             raise MRLRealPreflightEvidenceError("real-preflight evidence schema_version is invalid")
         task_id = _require_task_id(document["task_id"])
         kind = _require_text(document["kind"], field="kind")
-        if kind != _TASK_KIND[task_id]:
+        if not _kind_matches_task(task_id, kind):
             raise MRLRealPreflightEvidenceError(
                 "real-preflight evidence kind does not match task_id"
             )
@@ -120,7 +121,7 @@ class MRLRealPreflightEvidence:
         payload = document["payload"]
         if type(payload) is not dict:
             raise MRLRealPreflightEvidenceError("real-preflight evidence payload must be an object")
-        _validate_payload(task_id, cast(dict[str, object], payload))
+        _validate_payload(task_id, kind, cast(dict[str, object], payload))
 
         object.__setattr__(self, "task_id", cast(MRLRealPreflightTask, task_id))
         object.__setattr__(self, "kind", kind)
@@ -176,7 +177,7 @@ def admit_mrl_real_preflight_evidence(
         raise MRLRealPreflightEvidenceError(
             "real-preflight evidence digest is not trusted by the canonical registry"
         )
-    if evidence.task_id == "MRL-0805":
+    if evidence.task_id == "MRL-0805" and evidence.kind == _TASK_KIND["MRL-0805"]:
         document = _parse_canonical_object(raw)
         payload = cast(dict[str, object], document["payload"])
         try:
@@ -215,7 +216,13 @@ def _parse_canonical_object(raw: bytes) -> dict[str, object]:
     return document
 
 
-def _validate_payload(task_id: str, payload: dict[str, object]) -> None:
+def _kind_matches_task(task_id: str, kind: str) -> bool:
+    if kind == _TASK_KIND[task_id]:
+        return True
+    return task_id == "MRL-0805" and kind == _MRL_0805_NO_TRAINING_KIND
+
+
+def _validate_payload(task_id: str, kind: str, payload: dict[str, object]) -> None:
     if task_id == "MRL-0801":
         _validate_model_weights(payload)
     elif task_id == "MRL-0802":
@@ -225,7 +232,12 @@ def _validate_payload(task_id: str, payload: dict[str, object]) -> None:
     elif task_id == "MRL-0804":
         _validate_runtime(payload)
     elif task_id == "MRL-0805":
-        _validate_training_authorization(payload)
+        if kind == _TASK_KIND["MRL-0805"]:
+            _validate_training_authorization(payload)
+        elif kind == _MRL_0805_NO_TRAINING_KIND:
+            _validate_no_training_evaluation_authority(payload)
+        else:  # pragma: no cover - _kind_matches_task closes this path
+            raise MRLRealPreflightEvidenceError("unsupported MRL-0805 evidence kind")
     elif task_id == "MRL-0806":
         _validate_objective_budgets(payload)
     elif task_id == "MRL-0807":
@@ -354,7 +366,7 @@ def _validate_training_authorization(payload: dict[str, object]) -> None:
             "real_training_authorized",
             "training_authorization_receipt_sha256",
         },
-        label="MRL-0805 payload",
+        label="MRL-0805 training payload",
     )
     if payload["authorization_disposition"] != "AUTHORIZED":
         raise MRLRealPreflightEvidenceError("authorization_disposition must be exactly AUTHORIZED")
@@ -364,6 +376,41 @@ def _validate_training_authorization(payload: dict[str, object]) -> None:
         "authorization_subject_sha256",
         "authorization_trust_registry_sha256",
         "training_authorization_receipt_sha256",
+    ):
+        _require_sha256(payload[field_name], field=field_name)
+
+
+def _validate_no_training_evaluation_authority(payload: dict[str, object]) -> None:
+    _require_keys(
+        payload,
+        {
+            "authorization_artifact_sha256",
+            "authorization_disposition",
+            "authorization_scope",
+            "authorization_subject_sha256",
+            "evaluation_execution_authorized",
+            "execution_authority_receipt_sha256",
+            "real_training_authorized",
+            "training_prohibited",
+        },
+        label="MRL-0805 no-training evaluation payload",
+    )
+    if payload["authorization_disposition"] != "AUTHORIZED":
+        raise MRLRealPreflightEvidenceError("authorization_disposition must be exactly AUTHORIZED")
+    if payload["authorization_scope"] != "NO_TRAINING_EVALUATION":
+        raise MRLRealPreflightEvidenceError(
+            "authorization_scope must be exactly NO_TRAINING_EVALUATION"
+        )
+    _require_true(
+        payload["evaluation_execution_authorized"],
+        field="evaluation_execution_authorized",
+    )
+    _require_false(payload["real_training_authorized"], field="real_training_authorized")
+    _require_true(payload["training_prohibited"], field="training_prohibited")
+    for field_name in (
+        "authorization_artifact_sha256",
+        "authorization_subject_sha256",
+        "execution_authority_receipt_sha256",
     ):
         _require_sha256(payload[field_name], field=field_name)
 
