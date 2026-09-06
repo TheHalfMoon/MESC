@@ -149,9 +149,7 @@ def test_duplicate_deferred_control_fails_closed() -> None:
 def test_active_candidate_cannot_reappear_as_deferred_control() -> None:
     """Candidate identity is unique across active and deferred roster sections."""
     roster = _roster()
-    roster["deferred_controls"][0]["candidate_id"] = roster["active_candidates"][0][
-        "candidate_id"
-    ]
+    roster["deferred_controls"][0]["candidate_id"] = roster["active_candidates"][0]["candidate_id"]
     with pytest.raises(VERIFIER.CandidateRosterError, match="duplicate candidate identity"):
         VERIFIER.validate_roster(roster)
 
