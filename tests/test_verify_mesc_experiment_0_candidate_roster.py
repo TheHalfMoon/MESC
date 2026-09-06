@@ -104,6 +104,40 @@ def test_duplicate_active_identity_fails_closed() -> None:
         VERIFIER.validate_roster(roster)
 
 
+@pytest.mark.parametrize(
+    ("needle", "replacement", "duplicate_key"),
+    [
+        (
+            '"training_authorized": false,',
+            '"training_authorized": true,\n  "training_authorized": false,',
+            "training_authorized",
+        ),
+        (
+            '"trust_remote_code": false,',
+            '"trust_remote_code": true,\n      "trust_remote_code": false,',
+            "trust_remote_code",
+        ),
+    ],
+)
+def test_duplicate_security_or_authority_json_key_fails_closed(
+    tmp_path: Path,
+    needle: str,
+    replacement: str,
+    duplicate_key: str,
+) -> None:
+    """Duplicate JSON keys cannot conceal an earlier security or authority value."""
+    original = ROSTER_PATH.read_text(encoding="utf-8")
+    tampered = original.replace(needle, replacement, 1)
+    assert tampered != original
+    path = tmp_path / "duplicate-key-roster.json"
+    path.write_text(tampered, encoding="utf-8")
+    with pytest.raises(
+        VERIFIER.CandidateRosterError,
+        match=rf"duplicate JSON key: {duplicate_key}",
+    ):
+        VERIFIER.load_and_validate(path)
+
+
 def test_phi4_control_remains_deferred_for_remote_code() -> None:
     """Phi-4 stays outside the active roster until a separate exception exists."""
     roster = VERIFIER.load_and_validate(ROSTER_PATH)

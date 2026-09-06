@@ -56,6 +56,16 @@ class CandidateRosterError(ValueError):
     """Raised when the Experiment-0 Phase 0 roster fails closed."""
 
 
+def _reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    """Build one JSON object while rejecting duplicate keys at every nesting level."""
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise CandidateRosterError(f"duplicate JSON key: {key}")
+        result[key] = value
+    return result
+
+
 def _require_exact_fields(
     record: dict[str, Any],
     expected: set[str],
@@ -223,7 +233,10 @@ def validate_roster(payload: Any) -> dict[str, Any]:
 def load_and_validate(path: Path) -> dict[str, Any]:
     """Read and validate one UTF-8 JSON roster."""
     try:
-        payload: Any = json.loads(path.read_text(encoding="utf-8"))
+        payload: Any = json.loads(
+            path.read_text(encoding="utf-8"),
+            object_pairs_hook=_reject_duplicate_keys,
+        )
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         raise CandidateRosterError(f"{path}: invalid roster JSON") from exc
     return validate_roster(payload)
