@@ -112,6 +112,53 @@ Any later acquisition, derivative creation, redistribution, teacher-output use, 
 step must re-check the exact pinned rights materials applicable to that action. Unknown or
 changed rights evidence fails closed rather than inheriting Phase 0 eligibility.
 
+## Published component and runtime envelope
+
+Phase 0 verifies only the published component/runtime surface needed to decide whether a
+candidate can proceed to identity/custody qualification. Exact local component hashes and
+actual runtime/GPU feasibility remain MRL-0801 and MRL-0804 evidence respectively.
+
+### Qwen/Qwen3.8-27B
+
+```text
+published_transformers_processor = AutoProcessor
+published_transformers_model = AutoModelForMultimodalLM
+published_runtime_frameworks = Transformers, vLLM, SGLang, TokenSpeed
+vision_component = NATIVE_VISION_ENCODER_DECLARED_IN_PINNED_MODEL_CONFIG
+processor_tokenizer_presence = PUBLISHED_MODEL_REPOSITORY_COMPONENTS_PRESENT_BYTE_IDENTITY_DEFERRED_TO_MRL_0801
+hardware_envelope = 55.6_GB_PUBLISHED_WEIGHT_ARTIFACT_ACTUAL_ACCELERATOR_FIT_UNQUALIFIED
+runtime_qualification = DEFERRED_TO_MRL_0804
+```
+
+The pinned model card describes a causal language model with a native vision encoder and
+publishes Transformers `AutoProcessor` / `AutoModelForMultimodalLM` usage plus vLLM,
+SGLang, and TokenSpeed compatibility. Phase 0 does not infer a GPU-memory requirement from
+the published weight size and does not treat `device_map="auto"` as runtime qualification.
+
+### google/gemma-4-31B-it
+
+```text
+published_transformers_processor = AutoProcessor
+published_transformers_model = AutoModelForMultimodalLM
+published_runtime_frameworks = Transformers, vLLM, SGLang
+vision_component = MULTIMODAL_MODEL_CONFIG_AND_PROCESSOR_COMPONENTS_PRESENT
+processor_tokenizer_presence = PROCESSOR_CONFIG_TOKENIZER_AND_TOKENIZER_CONFIG_PRESENT_AT_PINNED_REVISION
+weight_layout = TWO_SHARD_SAFETENSORS_WITH_INDEX_PRESENT_AT_PINNED_REVISION
+hardware_envelope = 62.6_GB_PUBLISHED_WEIGHT_ARTIFACT_ACTUAL_ACCELERATOR_FIT_UNQUALIFIED
+runtime_qualification = DEFERRED_TO_MRL_0804
+```
+
+The pinned artifact publishes `config.json`, `processor_config.json`, `tokenizer.json`,
+`tokenizer_config.json`, a SafeTensors index, and two SafeTensors shards, and documents the
+same Transformers `AutoProcessor` / `AutoModelForMultimodalLM` path plus vLLM and SGLang.
+Phase 0 records those published facts only. Exact byte identities, local loadability, peak
+memory, GPU class/count, and execution feasibility are not established here.
+
+For both active candidates, any mismatch between the later acquired snapshot and this
+frozen revision/component surface blocks MRL-0801 rather than being repaired by a floating
+upgrade. Published framework compatibility is not equivalent to repository-qualified
+runtime evidence.
+
 ## Deferred control
 
 ```text
