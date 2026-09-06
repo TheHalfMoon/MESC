@@ -71,6 +71,47 @@ Disposition:
 ACTIVE_FOR_MRL_0801_IDENTITY_CUSTODY_QUALIFICATION
 ```
 
+## Rights-disposition record
+
+Phase 0 records rights metadata conservatively. These observations are provenance inputs,
+not legal advice, acquisition authority, downstream dataset rights, output ownership, or
+permission to train.
+
+### Qwen/Qwen3.8-27B
+
+```text
+license_disposition = APACHE_2_0_DECLARED_AND_LICENSE_FILE_OBSERVED
+notice_disposition = NO_SEPARATE_NOTICE_FILE_OBSERVED_AT_PINNED_REVISION
+usage_policy_disposition = NO_SEPARATE_CANDIDATE_SPECIFIC_USAGE_POLICY_IDENTIFIED_IN_PINNED_MODEL_MATERIALS
+derivative_disposition = EXACT_APACHE_2_0_TERMS_MUST_BE_REEVALUATED_FOR_ANY_DERIVATIVE_OR_DISTRIBUTION_ACTION
+output_use_disposition = NO_SEPARATE_OUTPUT_USE_TERM_IDENTIFIED_IN_PINNED_MODEL_MATERIALS_NO_OUTPUT_RIGHT_INFERRED
+```
+
+The pinned artifact tree exposes an Apache-2.0 `LICENSE` file. The inspected pinned model
+materials did not expose a separate `NOTICE` file or a separate candidate-specific usage
+policy. Phase 0 therefore records the absence of a separately identified term rather than
+manufacturing a broader permission.
+
+### google/gemma-4-31B-it
+
+```text
+license_disposition = APACHE_2_0_DECLARED_BY_PINNED_HUB_METADATA_NO_SEPARATE_LICENSE_FILE_OBSERVED
+notice_disposition = NO_SEPARATE_NOTICE_FILE_OBSERVED_AT_PINNED_REVISION
+usage_policy_disposition = MODEL_CARD_INTENDED_AND_RESPONSIBLE_USE_GUIDANCE_PRESENT_NO_SEPARATE_EXECUTION_AUTHORITY
+ derivative_disposition = EXACT_DECLARED_LICENSE_TERMS_MUST_BE_REEVALUATED_FOR_ANY_DERIVATIVE_OR_DISTRIBUTION_ACTION
+output_use_disposition = NO_SEPARATE_OUTPUT_USE_TERM_IDENTIFIED_IN_PINNED_MODEL_MATERIALS_NO_OUTPUT_RIGHT_INFERRED
+```
+
+The pinned Hugging Face artifact metadata declares Apache-2.0. The inspected pinned tree did
+not expose a separate `LICENSE` or `NOTICE` file. The model card includes intended-use,
+limitations, ethics/safety, and responsible-use guidance. Those statements are recorded as
+usage guidance only and do not grant Experiment-0 execution, training, downstream data, or
+output-use authority.
+
+Any later acquisition, derivative creation, redistribution, teacher-output use, or training
+step must re-check the exact pinned rights materials applicable to that action. Unknown or
+changed rights evidence fails closed rather than inheriting Phase 0 eligibility.
+
 ## Deferred control
 
 ```text
