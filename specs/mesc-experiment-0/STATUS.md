@@ -13,7 +13,7 @@ EXPERIMENT_0_MERGED = TRUE
 EXPERIMENT_0_QUALIFIED_HEAD = 227842f3911f009487d39487e3d75a146c22677c
 EXPERIMENT_0_MERGE_SHA = 729b9e1764821b2a35323197d05af5f44778fd3a
 EXPERIMENT_0_MERGE_TREE = 947af355bd9e0f3dfa6cf38dfb59805efa5b4fb6
-EXPERIMENT_0_POSTMERGE_QUALIFICATION = IN_PROGRESS
+EXPERIMENT_0_POSTMERGE_QUALIFICATION = SUCCESS
 REAL_MODEL_EXECUTION = FALSE
 REAL_DATA_EXECUTION = FALSE
 REAL_GPU_EVIDENCE = FALSE
@@ -30,8 +30,10 @@ TRAINING_READY = FALSE
 merge SHA.
 
 `EXPERIMENT_0_MERGED = TRUE` records only the mechanically verified merge of PR #374 into
-canonical `main`. `EXPERIMENT_0_POSTMERGE_QUALIFICATION` must not become `SUCCESS` until the
-exact PR #374 merge SHA has successful post-merge required CI and CodeQL evidence.
+canonical `main`. `EXPERIMENT_0_POSTMERGE_QUALIFICATION = SUCCESS` is bound to successful
+post-merge CI and CodeQL on the exact PR #374 merge SHA
+`729b9e1764821b2a35323197d05af5f44778fd3a`. This qualification is repository-health
+evidence only and does not grant real experiment authority.
 
 Repository-side formatting and qualification are code-quality evidence only. They grant no
 execution, asset, evaluator, runtime, training, promotion, or readiness authority.
