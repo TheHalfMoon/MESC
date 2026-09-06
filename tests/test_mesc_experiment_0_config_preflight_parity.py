@@ -26,9 +26,7 @@ def _notebook_code() -> str:
 def _load_functions(*names: str) -> dict[str, Any]:
     tree = ast.parse(_notebook_code())
     functions = [
-        node
-        for node in tree.body
-        if isinstance(node, ast.FunctionDef) and node.name in set(names)
+        node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name in set(names)
     ]
     module = ast.Module(body=functions, type_ignores=[])
     ast.fix_missing_locations(module)
