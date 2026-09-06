@@ -169,7 +169,9 @@ def validate_roster(payload: Any) -> dict[str, Any]:
 
     active = payload["active_candidates"]
     if not isinstance(active, list) or len(active) != 2:
-        raise CandidateRosterError("roster.active_candidates: exactly two frozen candidates required")
+        raise CandidateRosterError(
+            "roster.active_candidates: exactly two frozen candidates required"
+        )
 
     candidate_ids: set[str] = set()
     identities: set[tuple[str, str]] = set()
