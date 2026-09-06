@@ -56,13 +56,19 @@ class CandidateRosterError(ValueError):
     """Raised when the Experiment-0 Phase 0 roster fails closed."""
 
 
-def _require_exact_fields(record: dict[str, Any], expected: set[str], label: str) -> None:
+def _require_exact_fields(
+    record: dict[str, Any],
+    expected: set[str],
+    label: str,
+) -> None:
     """Reject missing or unexpected fields in a closed record."""
     observed = set(record)
     if observed != expected:
         missing = sorted(expected - observed)
         extra = sorted(observed - expected)
-        raise CandidateRosterError(f"{label}: closed-field mismatch missing={missing} extra={extra}")
+        raise CandidateRosterError(
+            f"{label}: closed-field mismatch missing={missing} extra={extra}"
+        )
 
 
 def _require_text(value: Any, label: str) -> str:
@@ -76,7 +82,9 @@ def _require_git_sha(value: Any, label: str) -> str:
     """Require one immutable full Git-style revision."""
     text = _require_text(value, label)
     if not GIT_RE.fullmatch(text):
-        raise CandidateRosterError(f"{label}: expected 40-character lowercase hex revision")
+        raise CandidateRosterError(
+            f"{label}: expected 40-character lowercase hex revision"
+        )
     return text
 
 
@@ -116,7 +124,9 @@ def validate_roster(payload: Any) -> dict[str, Any]:
 
     active = payload["active_candidates"]
     if not isinstance(active, list) or len(active) < 2:
-        raise CandidateRosterError("roster.active_candidates: at least two candidates required")
+        raise CandidateRosterError(
+            "roster.active_candidates: at least two candidates required"
+        )
 
     identities: set[tuple[str, str]] = set()
     roles: set[str] = set()
@@ -126,8 +136,14 @@ def validate_roster(payload: Any) -> dict[str, Any]:
         if not isinstance(candidate, dict):
             raise CandidateRosterError(f"{label}: expected object")
         _require_exact_fields(candidate, ACTIVE_FIELDS, label)
-        candidate_id = _require_text(candidate["candidate_id"], f"{label}.candidate_id")
-        revision = _require_git_sha(candidate["candidate_revision"], f"{label}.candidate_revision")
+        candidate_id = _require_text(
+            candidate["candidate_id"],
+            f"{label}.candidate_id",
+        )
+        revision = _require_git_sha(
+            candidate["candidate_revision"],
+            f"{label}.candidate_revision",
+        )
         if candidate["candidate_class"] != "SELECTABLE_FOUNDATION":
             raise CandidateRosterError(f"{label}: active candidate must be selectable")
         role = _require_text(candidate["role"], f"{label}.role")
@@ -136,17 +152,36 @@ def validate_roster(payload: Any) -> dict[str, Any]:
             raise CandidateRosterError(f"{label}.evidence_key: invalid key")
         _require_text(candidate["license_identity"], f"{label}.license_identity")
         _require_text(candidate["published_pipeline"], f"{label}.published_pipeline")
-        _require_text(candidate["published_weight_size_label"], f"{label}.published_weight_size_label")
+        _require_text(
+            candidate["published_weight_size_label"],
+            f"{label}.published_weight_size_label",
+        )
         modalities = candidate["supported_input_modalities"]
-        if not isinstance(modalities, list) or "text" not in modalities or "vision" not in modalities:
-            raise CandidateRosterError(f"{label}: active candidate must declare text and vision")
+        if (
+            not isinstance(modalities, list)
+            or "text" not in modalities
+            or "vision" not in modalities
+        ):
+            raise CandidateRosterError(
+                f"{label}: active candidate must declare text and vision"
+            )
         if candidate["trust_remote_code"] is not False:
-            raise CandidateRosterError(f"{label}: active candidate cannot require remote code")
+            raise CandidateRosterError(
+                f"{label}: active candidate cannot require remote code"
+            )
         if candidate["remote_code_exception_required"] is not False:
-            raise CandidateRosterError(f"{label}: active candidate cannot require a remote-code exception")
-        if candidate["eligibility_disposition"] != "ACTIVE_FOR_MRL_0801_IDENTITY_CUSTODY_QUALIFICATION":
+            raise CandidateRosterError(
+                f"{label}: active candidate cannot require a remote-code exception"
+            )
+        if (
+            candidate["eligibility_disposition"]
+            != "ACTIVE_FOR_MRL_0801_IDENTITY_CUSTODY_QUALIFICATION"
+        ):
             raise CandidateRosterError(f"{label}: invalid eligibility disposition")
-        _require_sources(candidate["authoritative_sources"], f"{label}.authoritative_sources")
+        _require_sources(
+            candidate["authoritative_sources"],
+            f"{label}.authoritative_sources",
+        )
         identity = (candidate_id, revision)
         if identity in identities:
             raise CandidateRosterError(f"{label}: duplicate candidate identity")
@@ -158,8 +193,13 @@ def validate_roster(payload: Any) -> dict[str, Any]:
         roles.add(role)
         keys.add(key)
 
-    if "PREFERRED_FOUNDATION_CANDIDATE" not in roles or "PRIMARY_CHALLENGER" not in roles:
-        raise CandidateRosterError("roster.active_candidates: preferred and challenger roles are required")
+    if (
+        "PREFERRED_FOUNDATION_CANDIDATE" not in roles
+        or "PRIMARY_CHALLENGER" not in roles
+    ):
+        raise CandidateRosterError(
+            "roster.active_candidates: preferred and challenger roles are required"
+        )
 
     deferred = payload["deferred_controls"]
     if not isinstance(deferred, list):
@@ -175,12 +215,23 @@ def validate_roster(payload: Any) -> dict[str, Any]:
             raise CandidateRosterError(f"{label}: invalid deferred role")
         _require_text(candidate["license_identity"], f"{label}.license_identity")
         _require_text(candidate["published_pipeline"], f"{label}.published_pipeline")
-        _require_text(candidate["published_weight_size_label"], f"{label}.published_weight_size_label")
+        _require_text(
+            candidate["published_weight_size_label"],
+            f"{label}.published_weight_size_label",
+        )
         if candidate["trust_remote_code_required_by_published_path"] is not True:
-            raise CandidateRosterError(f"{label}: deferred remote-code reason must remain explicit")
-        if candidate["eligibility_disposition"] != "DEFERRED_REMOTE_CODE_EXCEPTION_REQUIRED":
+            raise CandidateRosterError(
+                f"{label}: deferred remote-code reason must remain explicit"
+            )
+        if (
+            candidate["eligibility_disposition"]
+            != "DEFERRED_REMOTE_CODE_EXCEPTION_REQUIRED"
+        ):
             raise CandidateRosterError(f"{label}: invalid deferred disposition")
-        _require_sources(candidate["authoritative_sources"], f"{label}.authoritative_sources")
+        _require_sources(
+            candidate["authoritative_sources"],
+            f"{label}.authoritative_sources",
+        )
 
     return payload
 
