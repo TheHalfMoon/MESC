@@ -41,6 +41,7 @@ The closed V1 role set is:
 | `MRL-0803` | `mesc.mrl.real_preflight.isolation.v1` | passing contamination evidence and explicit held-out/sealed exclusion from training |
 | `MRL-0804` | `mesc.mrl.real_preflight.runtime.v1` | platform-qualified runtime/smoke identities with no remote-code or network-access claim in the evidence envelope |
 | `MRL-0805` | `mesc.mrl.real_preflight.training_authorization.v1` | explicit `AUTHORIZED` training receipt/artifact/current trust-registry identities and `real_training_authorized=true` |
+| `MRL-0805` | `mesc.mrl.real_preflight.no_training_evaluation_authority.v1` | explicit no-training evaluation scope with execution authorized, real training unauthorized, and training prohibited |
 | `MRL-0806` | `mesc.mrl.real_preflight.objective_budgets.v1` | externally frozen research objective and resource/query/exposure budgets |
 | `MRL-0807` | `mesc.mrl.real_preflight.evaluators.v1` | exact evaluator/Tier-3 identities with explicit non-promotional semantics |
 | `MRL-0808` | `mesc.mrl.real_preflight.sandbox.v1` | qualified sandbox plus frozen network, mutation-path, output-destination, and stop-condition identities |
@@ -60,6 +61,46 @@ task_id
 `disposition` must be exactly `PASS`. `schema_version` must be exactly
 `MRL-REAL-PREFLIGHT-EVIDENCE-V1`. The task and evidence kind must occupy the exact matching
 role. Every task payload has a closed field set and fail-closed semantic checks.
+
+### MRL-0805 applicable-authority payloads
+
+MRL-0805 has two mutually exclusive evidence kinds because applicable execution authority is
+not always training authority.
+
+The existing training kind remains unchanged. Its payload requires an exact authorized
+training artifact/receipt/current training-trust-registry identity and
+`real_training_authorized=true`. Admission requires both outer MRL real-evidence trust and
+the canonical training-authorization trust validator.
+
+The no-training evaluation kind exists for bounded evaluation programs such as Experiment-0.
+Its payload is exactly:
+
+```text
+authorization_artifact_sha256
+authorization_disposition
+authorization_scope
+authorization_subject_sha256
+evaluation_execution_authorized
+execution_authority_receipt_sha256
+real_training_authorized
+training_prohibited
+```
+
+For this kind the semantic invariants are exactly:
+
+```text
+authorization_disposition = AUTHORIZED
+authorization_scope = NO_TRAINING_EVALUATION
+evaluation_execution_authorized = true
+real_training_authorized = false
+training_prohibited = true
+```
+
+The no-training kind must not contain training-trust fields and does not invoke the
+training-authorization trust validator. It still requires the outer repository-controlled
+MRL real-evidence trust admission before it can be admitted. This distinction does not create
+an authority artifact, populate the production trust registry, close MRL-0805, or authorize
+Experiment-0 execution by itself.
 
 ### MRL-0806 objective-budget payload
 
@@ -144,16 +185,17 @@ governance mutation. It must be based on genuine external evidence for that exac
 must receive the review/qualification required by live MRL governance. A self-authored
 envelope is not made genuine by adding hashes to it.
 
-For `MRL-0805`, this layer is additional to, not a replacement for, the canonical training
-authorization trust path. A future trusted MRL envelope must bind the exact training
-authorization receipt, exact authorization artifact, exact authorization subject, and the
-exact current training-authorization trust-registry identity. This package does not add a
-training-authorization trust root.
+For the MRL-0805 training kind, this layer is additional to, not a replacement for, the
+canonical training-authorization trust path. A future trusted training envelope must bind the
+exact training-authorization receipt, exact authorization artifact, exact authorization
+subject, and exact current training-authorization trust-registry identity. Admission invokes
+the canonical training-authorization trust validator after outer MRL trust succeeds.
 
-At `MRL-0805` admission time, the outer MRL evidence digest is necessary but not sufficient.
-The admission path also invokes the canonical training-authorization trust validator so the
-claimed authorization artifact must be trusted by the exact current registry snapshot.
-Parsing remains independent of that authority check.
+For the MRL-0805 no-training evaluation kind, training authorization is explicitly not
+applicable: the envelope must state that real training is unauthorized and prohibited. Its
+admission therefore uses only the outer MRL real-evidence trust boundary and never the
+training-authorization trust validator. Outer trust remains mandatory and cannot be
+manufactured by parsing a syntactically valid envelope.
 
 ## Current disposition
 
