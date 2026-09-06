@@ -41,10 +41,7 @@ def _load_functions(*names: str) -> dict[str, Any]:
                 isinstance(target, ast.Name) and target.id in wanted_constants
                 for target in node.targets
             )
-        ) or (
-            isinstance(node, ast.FunctionDef)
-            and node.name in wanted_functions
-        ):
+        ) or (isinstance(node, ast.FunctionDef) and node.name in wanted_functions):
             module_body.append(node)
     module = ast.Module(body=module_body, type_ignores=[])
     ast.fix_missing_locations(module)
