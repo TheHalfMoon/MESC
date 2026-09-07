@@ -142,6 +142,30 @@ def test_noncanonical_authorization_bytes_fail_closed() -> None:
         parse_mrl_0801_acquisition_authorization(noncanonical)
 
 
+@pytest.mark.parametrize(
+    ("field_name", "replacement"),
+    (
+        ("training_authorized", 0),
+        ("allowlist_only", 1),
+    ),
+)
+def test_authorization_rejects_python_boolean_integer_aliases(
+    field_name: str,
+    replacement: int,
+) -> None:
+    document = _authorization_document()
+    policy = cast(dict[str, object], document["acquisition_policy"])
+    policy[field_name] = replacement
+    raw = canonical_json_bytes(document)
+
+    assert raw != _authorization_bytes()
+    with pytest.raises(
+        MRL0801AcquisitionCustodyError,
+        match="exact authorized scope",
+    ):
+        parse_mrl_0801_acquisition_authorization(raw)
+
+
 def test_storage_capacity_preflight_uses_exact_bytes_plus_maximum_margin() -> None:
     one_gib = 1024 * 1024 * 1024
     ten_gib = 10 * one_gib
