@@ -27,7 +27,7 @@ This implementation unit is derived from the exact canonical authorization merge
 
 ## Authority boundary
 
-The executor accepts only an exact runtime `MRL0801AcquisitionAuthorization` instance parsed from the canonical authorization artifact. Duck-typed or look-alike authorization objects are rejected before repository identity inspection or network access. The executor cannot broaden candidates, revisions, files, credential use, terms acceptance, remote-code policy, model loading, inference, GPU use, Experiment-0 execution, training, trust admission, or MRL-0801 population.
+The executor accepts only an exact runtime `MRL0801AcquisitionAuthorization` instance parsed from the canonical authorization artifact. Duck-typed or look-alike authorization objects are rejected before repository identity inspection or network access. Independent provenance revalidation likewise requires exact canonical acquisition-provenance and custody receipt runtime types before reading receipt properties. The executor cannot broaden candidates, revisions, files, credential use, terms acceptance, remote-code policy, model loading, inference, GPU use, Experiment-0 execution, training, trust admission, or MRL-0801 population.
 
 ## Executor repository identity
 
@@ -35,13 +35,15 @@ Before the first Hub request, the executor itself—not its caller—must establ
 
 ```text
 repository_root is the exact Git work-tree root
-tracked work tree is clean
+Git-visible tracked and untracked work-tree state is clean
 executor_code_commit = git rev-parse HEAD
 executor_code_tree = git rev-parse HEAD^{tree}
 executor source path = src/medscale/mesc/_mrl_0801_hf_acquisition_v1.py
 current executor source bytes = Git object bytes at HEAD
 executor_source_sha256 = SHA-256(current exact source bytes)
 ```
+
+The CLI rejects every preloaded `medscale` or `medscale.*` module before exact-source import. After import, it verifies every loaded `medscale` module has a real source file under the exact checked-out `src` root and that each source file's bytes equal the corresponding `HEAD` Git object bytes. This prevents stale or foreign transitive canonicalization/custody modules from silently participating in acquisition.
 
 The execution commit/tree/source identities are written into the supporting provenance receipt. A later independent validator resolves the recorded historical commit, requires its tree to equal the receipt tree, requires that commit to be an ancestor of the review checkout, and hashes the executor source bytes from Git history. Caller-supplied SHA strings are not accepted as execution identity.
 
@@ -105,15 +107,21 @@ Every acquired file additionally receives an ordinary raw-byte SHA-256 for suppo
 
 ## Destination and transaction semantics
 
-Raw model roots must be outside the MESC repository and outside any discovered Git work tree. The raw input path and every existing path component are checked before symlink resolution; an existing symlink anywhere in the destination path is rejected. The resolved destination is checked again against repository/Git boundaries. The final destination must be a real empty directory.
+Raw model roots must be outside the MESC repository and outside any discovered Git work tree. The destination must already exist as a real empty directory. The raw input path and every existing path component are checked before symlink resolution; an existing symlink anywhere in the destination path is rejected. The resolved destination is checked again against repository/Git boundaries.
 
-The executor never overwrites existing asset files. Every file is streamed to a no-follow, exclusive partial file with restrictive mode, fully hashed and size-checked, then atomically renamed into place.
+The executor requires no-follow directory-descriptor support and opens the destination once. The opened device/inode identity is bound for the transaction. File existence checks, exclusive partial-file creation, atomic publication, cleanup, and rollback operate descriptor-relative to that opened directory rather than by resolving the destination pathname again. Authorized V1 file paths are one canonical POSIX basename each.
 
-If any later file, metadata refresh, remote-content check, or SafeTensors custody verification fails, every file created by the current acquisition transaction and every transaction partial file is removed. No resume, mutable overwrite, or partial-snapshot acceptance exists in V1.
+The executor never overwrites existing asset files. Every file is streamed to an exclusive no-follow partial file with restrictive mode, fully hashed and size-checked, then atomically published with a same-directory no-replace hard link. The partial link is removed only after the target link exists. If a racing target appears, publication fails without modifying that target.
+
+Before and after the path-based canonical SafeTensors custody handoff, the destination pathname must still resolve to the exact opened device/inode. If the pathname is concurrently removed, replaced, redirected, or changed to another directory, the transaction fails and descriptor-relative rollback removes only files created in the originally opened directory.
+
+Receipt publication by the CLI is supplied as the acquisition transaction finalizer. Therefore a late custody/provenance reconciliation error or receipt-output write failure occurs while the destination descriptor remains open and triggers the same descriptor-relative model-file rollback. No path-based post-return snapshot rollback is trusted.
+
+If any later file, metadata refresh, remote-content check, SafeTensors custody verification, provenance reconciliation, destination-identity check, or transaction finalizer fails, every file created by the current acquisition transaction and every transaction partial file is removed from the originally opened directory. No resume, mutable overwrite, or partial-snapshot acceptance exists in V1.
 
 ## Storage preflight
 
-The exact byte count is the sum of authoritative metadata for every authorized file. Before acquisition, the executor calls the existing canonical MRL-0801 storage preflight:
+The exact byte count is the sum of authoritative metadata for every authorized file. Available storage is read from the opened destination directory descriptor rather than by re-resolving its pathname. Before acquisition, the executor calls the existing canonical MRL-0801 storage preflight:
 
 ```text
 AVAILABLE_BYTES >= ALLOWLIST_BYTES + max(10 GiB, ceil(ALLOWLIST_BYTES * 10%))
@@ -171,23 +179,26 @@ This receipt is not `mesc.mrl.real_preflight.model_weights_set.v1`; it is an inp
 
 `validate_mrl_0801_hf_acquisition_provenance(...)` must, without downloading weights again:
 
-1. bind the receipt to an exact currently authorized candidate;
-2. verify the recorded historical executor commit/tree/source against Git history;
-3. rerun the canonical local custody validator over the currently present model root;
-4. reconcile acquisition file identities with the reverified custody manifest; and
-5. re-query every pinned Hub file and require current `(path, revision, byte_count, etag, algorithm)` metadata to equal the acquisition record.
+1. require exact canonical acquisition-provenance, custody, and authorization runtime types;
+2. bind the receipt to an exact currently authorized candidate;
+3. verify the recorded historical executor commit/tree/source against Git history;
+4. rerun the canonical local custody validator over the currently present model root;
+5. reconcile acquisition file identities with the reverified custody manifest; and
+6. re-query every pinned Hub file and require current `(path, revision, byte_count, etag, algorithm)` metadata to equal the acquisition record.
 
 Parsing a canonical supporting receipt without these external/local checks is never possession or trust evidence.
 
 ## CLI boundary
 
-The acquisition entrypoint performs a clean Git precheck before importing repository acquisition code, prepends only the exact repository `src` root, and verifies the imported acquisition module path. Snapshot and receipt output paths are outside the MESC repository, receipts are outside the raw snapshot root, and existing symlink path components are rejected.
+The acquisition entrypoint performs a full Git-visible clean-work-tree precheck before importing repository acquisition code, rejects all preloaded `medscale*` modules, prepends only the exact repository `src` root, and verifies every loaded `medscale` source file against the exact `HEAD` Git object bytes. Snapshot and receipt output paths are outside the MESC repository, receipts are outside the raw snapshot root, and existing symlink path components are rejected.
+
+Receipt outputs are created exclusively and are published through the executor transaction finalizer. If receipt publication fails, the executor rolls back the model files through the still-open destination descriptor; the CLI removes any receipt output created before the failure.
 
 User-visible success output contains stable subject/digest fields only. Failures emit one generic blocked message and do not print signed URLs, local paths, credentials, or provider error bodies.
 
 ## CI boundary
 
-Repository tests inject fake Hub transports. CI must never download model weights or depend on live Hub availability. Transport tests synthesize redirect/metadata responses, including the external-redirect `Content-Length` ambiguity case.
+Repository tests inject fake Hub transports. CI must never download model weights or depend on live Hub availability. Transport tests synthesize redirect/metadata responses, including the external-redirect `Content-Length` ambiguity case. Security tests cover exact runtime receipt types, preloaded transitive module rejection, untracked-work-tree rejection, descriptor-relative publication, concurrent destination replacement, and late transaction-finalizer rollback.
 
 ## Non-authority statement
 
