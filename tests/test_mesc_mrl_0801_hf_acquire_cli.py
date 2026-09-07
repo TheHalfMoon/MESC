@@ -5,7 +5,7 @@ import importlib.util
 import subprocess
 import sys
 from pathlib import Path
-from types import ModuleType, SimpleNamespace
+from types import ModuleType
 
 import pytest
 
@@ -92,7 +92,9 @@ def test_preloaded_medscale_from_other_source_is_rejected(
     foreign = tmp_path / "foreign/medscale/__init__.py"
     foreign.parent.mkdir(parents=True)
     foreign.write_text("", encoding="utf-8")
-    monkeypatch.setitem(sys.modules, "medscale", SimpleNamespace(__file__=str(foreign)))
+    foreign_module = ModuleType("medscale")
+    foreign_module.__file__ = str(foreign)
+    monkeypatch.setitem(sys.modules, "medscale", foreign_module)
     with pytest.raises(cli.AcquisitionEntrypointError, match="outside"):
         cli._import_exact_repository_modules(root)
 
@@ -103,11 +105,9 @@ def test_nonexistent_preloaded_module_path_fails_closed(
 ) -> None:
     cli = load_cli()
     root = repo(tmp_path)
-    monkeypatch.setitem(
-        sys.modules,
-        "medscale",
-        SimpleNamespace(__file__=str(tmp_path / "missing.py")),
-    )
+    missing_module = ModuleType("medscale")
+    missing_module.__file__ = str(tmp_path / "missing.py")
+    monkeypatch.setitem(sys.modules, "medscale", missing_module)
     with pytest.raises(cli.AcquisitionEntrypointError, match="outside"):
         cli._import_exact_repository_modules(root)
 
