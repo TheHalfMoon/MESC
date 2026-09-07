@@ -23,8 +23,11 @@ POST_MERGE_CI = SUCCESS
 ISSUE = #387
 ```
 
-The authorization is valid only for the repository state above. It does not silently roll
-forward when canonical `main` changes.
+The authorization is anchored to the exact pre-authorization canonical base above and may
+be canonically adopted only by merging this package on top of that base through its required
+gates. The recorded base, roster, candidate revisions, allowlists, and policy assumptions do
+not silently roll forward when later canonical `main` changes; changing any of those frozen
+source assumptions requires separately governed authorization.
 
 ## Canonical authorization artifact
 
