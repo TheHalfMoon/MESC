@@ -5,6 +5,7 @@ canonical MRL-0801 acquisition/custody artifact. It never reads credentials, acc
 loads model/tokenizer objects, executes remote code, performs inference, uses a GPU, mutates
 weights, trains, populates MRL-0801, or changes a trust registry.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -204,9 +205,7 @@ class MRL0801HfAcquisitionProvenanceReceipt:
         artifact_sha256 = _require_sha256(
             document["artifact_identity_sha256"], field_name="artifact_identity_sha256"
         )
-        weights_sha256 = _require_sha256(
-            document["weights_sha256"], field_name="weights_sha256"
-        )
+        weights_sha256 = _require_sha256(document["weights_sha256"], field_name="weights_sha256")
         custody_sha256 = _require_sha256(
             document["asset_custody_sha256"], field_name="asset_custody_sha256"
         )
@@ -697,9 +696,7 @@ def _capture_repository_execution_identity(repository_root: Path) -> RepositoryE
         raise MRL0801HfAcquisitionError("repository_root is not the exact Git work-tree root")
     status = _run_git_bytes(root, "status", "--porcelain", "--untracked-files=no")
     if status:
-        raise MRL0801HfAcquisitionError(
-            "tracked repository bytes must be clean before acquisition"
-        )
+        raise MRL0801HfAcquisitionError("tracked repository bytes must be clean before acquisition")
     commit_sha = _require_git_sha(
         _run_git_text(root, "rev-parse", "HEAD"), field_name="executor_code_commit"
     )
@@ -715,9 +712,7 @@ def _capture_repository_execution_identity(repository_root: Path) -> RepositoryE
     current_bytes = expected_source.read_bytes()
     committed_bytes = _run_git_bytes(root, "show", f"HEAD:{_MODULE_RELATIVE_PATH.as_posix()}")
     if current_bytes != committed_bytes:
-        raise MRL0801HfAcquisitionError(
-            "executor source bytes differ from the exact Git commit"
-        )
+        raise MRL0801HfAcquisitionError("executor source bytes differ from the exact Git commit")
     return RepositoryExecutionIdentity(
         commit_sha=commit_sha,
         tree_sha=tree_sha,
@@ -878,9 +873,7 @@ def _build_remote_metadata(
             "Hugging Face metadata contains an invalid exact size"
         ) from None
     if byte_count <= 0:
-        raise MRL0801HfAcquisitionError(
-            "Hugging Face metadata exact size must be positive"
-        )
+        raise MRL0801HfAcquisitionError("Hugging Face metadata exact size must be positive")
     return HfRemoteFileMetadata(
         path=path,
         commit_sha=commit_sha,
@@ -1065,9 +1058,7 @@ def _acquire_one_file(
             raise MRL0801HfAcquisitionError("download byte count differs from remote metadata")
         local_sha256 = sha256.hexdigest()
         remote_identity = (
-            local_sha256
-            if metadata.etag_algorithm == "sha256"
-            else git_blob_sha1.hexdigest()
+            local_sha256 if metadata.etag_algorithm == "sha256" else git_blob_sha1.hexdigest()
         )
         if remote_identity != metadata.etag:
             raise MRL0801HfAcquisitionError("download bytes differ from remote content identity")
