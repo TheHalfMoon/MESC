@@ -46,11 +46,25 @@ def repo(tmp_path: Path) -> Path:
     return root
 
 
+def clear_medscale_modules(monkeypatch: pytest.MonkeyPatch) -> None:
+    for name in tuple(sys.modules):
+        if name == "medscale" or name.startswith("medscale."):
+            monkeypatch.delitem(sys.modules, name, raising=False)
+
+
 def test_dirty_tracked_repository_is_rejected_before_import(tmp_path: Path) -> None:
     cli = load_cli()
     root = repo(tmp_path)
     module = root / "src/medscale/mesc/_mrl_0801_hf_acquisition_v1.py"
     module.write_text("x = 2\n", encoding="utf-8")
+    with pytest.raises(cli.AcquisitionEntrypointError, match="clean"):
+        cli._require_clean_repository_before_import(root)
+
+
+def test_untracked_repository_bytes_are_rejected_before_import(tmp_path: Path) -> None:
+    cli = load_cli()
+    root = repo(tmp_path)
+    (root / "src/medscale/mesc/untracked.py").write_text("x = 1\n", encoding="utf-8")
     with pytest.raises(cli.AcquisitionEntrypointError, match="clean"):
         cli._require_clean_repository_before_import(root)
 
@@ -84,32 +98,36 @@ def test_receipt_outputs_must_be_outside_repo_snapshot_and_symlinks(tmp_path: Pa
         )
 
 
-def test_preloaded_medscale_from_other_source_is_rejected(
+def test_any_preloaded_medscale_module_is_rejected(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     cli = load_cli()
     root = repo(tmp_path)
+    clear_medscale_modules(monkeypatch)
     foreign = tmp_path / "foreign/medscale/__init__.py"
     foreign.parent.mkdir(parents=True)
     foreign.write_text("", encoding="utf-8")
     foreign_module = ModuleType("medscale")
     foreign_module.__file__ = str(foreign)
     monkeypatch.setitem(sys.modules, "medscale", foreign_module)
-    with pytest.raises(cli.AcquisitionEntrypointError, match="outside"):
+    with pytest.raises(cli.AcquisitionEntrypointError, match="preloaded medscale modules"):
         cli._import_exact_repository_modules(root)
 
 
-def test_nonexistent_preloaded_module_path_fails_closed(
+def test_preloaded_transitive_medscale_module_is_rejected(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     cli = load_cli()
     root = repo(tmp_path)
-    missing_module = ModuleType("medscale")
-    missing_module.__file__ = str(tmp_path / "missing.py")
-    monkeypatch.setitem(sys.modules, "medscale", missing_module)
-    with pytest.raises(cli.AcquisitionEntrypointError, match="outside"):
+    clear_medscale_modules(monkeypatch)
+    foreign = tmp_path / "foreign/_canonical_json_v1.py"
+    foreign.write_text("", encoding="utf-8")
+    foreign_module = ModuleType("medscale.mesc._canonical_json_v1")
+    foreign_module.__file__ = str(foreign)
+    monkeypatch.setitem(sys.modules, "medscale.mesc._canonical_json_v1", foreign_module)
+    with pytest.raises(cli.AcquisitionEntrypointError, match="preloaded medscale modules"):
         cli._import_exact_repository_modules(root)
 
 
