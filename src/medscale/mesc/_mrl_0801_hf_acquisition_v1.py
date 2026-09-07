@@ -526,48 +526,47 @@ def acquire_mrl_0801_hf_candidate(
             model_id=model_id,
             revision=revision,
         )
+        payload: dict[str, object] = {
+            "access_authorization_sha256": authorization.authorization_sha256,
+            "artifact_identity_sha256": custody.artifact_identity_sha256,
+            "asset_custody_sha256": custody.asset_custody_sha256,
+            "candidate_roster_sha256": _candidate_roster_sha256(custody),
+            "credentials_used": False,
+            "executor_code_commit": execution_identity.commit_sha,
+            "executor_code_tree": execution_identity.tree_sha,
+            "executor_source_sha256": execution_identity.source_sha256,
+            "files": [item.to_dict() for item in acquired],
+            "gpu_execution_performed": False,
+            "inference_performed": False,
+            "model_id": model_id,
+            "model_loading_performed": False,
+            "mrl_0801_population_performed": False,
+            "network_accessed": True,
+            "public_unauthenticated": True,
+            "remote_code_allowed": False,
+            "revision": revision,
+            "schema_version": _SCHEMA_VERSION,
+            "source": _SOURCE,
+            "storage_available_bytes_at_preflight": available_bytes,
+            "storage_required_bytes": storage_required_bytes,
+            "terms_accepted": False,
+            "tokenizer_loading_performed": False,
+            "total_byte_count": exact_allowlist_bytes,
+            "training_performed": False,
+            "trust_registry_mutation_performed": False,
+            "weight_mutation_performed": False,
+            "weights_sha256": custody.weights_sha256,
+        }
+        receipt = MRL0801HfAcquisitionProvenanceReceipt(canonical_json_bytes(payload))
+        _require_receipt_matches_custody(
+            receipt=receipt,
+            custody=custody,
+            authorization=authorization,
+            expected_files=candidate.allowed_files,
+        )
     except BaseException:
         _rollback_created_files(root=root, acquired=tuple(acquired))
         raise
-
-    payload: dict[str, object] = {
-        "access_authorization_sha256": authorization.authorization_sha256,
-        "artifact_identity_sha256": custody.artifact_identity_sha256,
-        "asset_custody_sha256": custody.asset_custody_sha256,
-        "candidate_roster_sha256": _candidate_roster_sha256(custody),
-        "credentials_used": False,
-        "executor_code_commit": execution_identity.commit_sha,
-        "executor_code_tree": execution_identity.tree_sha,
-        "executor_source_sha256": execution_identity.source_sha256,
-        "files": [item.to_dict() for item in acquired],
-        "gpu_execution_performed": False,
-        "inference_performed": False,
-        "model_id": model_id,
-        "model_loading_performed": False,
-        "mrl_0801_population_performed": False,
-        "network_accessed": True,
-        "public_unauthenticated": True,
-        "remote_code_allowed": False,
-        "revision": revision,
-        "schema_version": _SCHEMA_VERSION,
-        "source": _SOURCE,
-        "storage_available_bytes_at_preflight": available_bytes,
-        "storage_required_bytes": storage_required_bytes,
-        "terms_accepted": False,
-        "tokenizer_loading_performed": False,
-        "total_byte_count": exact_allowlist_bytes,
-        "training_performed": False,
-        "trust_registry_mutation_performed": False,
-        "weight_mutation_performed": False,
-        "weights_sha256": custody.weights_sha256,
-    }
-    receipt = MRL0801HfAcquisitionProvenanceReceipt(canonical_json_bytes(payload))
-    _require_receipt_matches_custody(
-        receipt=receipt,
-        custody=custody,
-        authorization=authorization,
-        expected_files=candidate.allowed_files,
-    )
     return custody, receipt
 
 
