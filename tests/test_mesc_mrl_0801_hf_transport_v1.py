@@ -4,7 +4,7 @@ from __future__ import annotations
 import urllib.error
 from email.message import Message
 from io import BytesIO
-from pathlib import Path
+from typing import Any, cast
 
 import pytest
 
@@ -40,9 +40,9 @@ class Opener:
         self.sequence = sequence
         self.urls: list[str] = []
 
-    def open(self, request: object, timeout: float) -> Response:
+    def open(self, request: urllib.request.Request, timeout: float) -> Response:
         del timeout
-        self.urls.append(request.full_url)  # type: ignore[attr-defined]
+        self.urls.append(request.full_url)
         value = self.sequence.pop(0)
         if isinstance(value, BaseException):
             raise value
@@ -63,7 +63,7 @@ def redirect(url: str, values: Message) -> urllib.error.HTTPError:
 
 def transport_with(opener: Opener) -> subject.UrllibHfPublicTransport:
     transport = subject.UrllibHfPublicTransport()
-    transport._metadata_opener = opener  # type: ignore[attr-defined]
+    cast(Any, transport)._metadata_opener = opener
     return transport
 
 
@@ -127,7 +127,7 @@ def test_public_access_failure_has_no_credential_fallback() -> None:
 def test_byte_stream_rejects_unsafe_final_redirect() -> None:
     item = subject.HfRemoteFileMetadata(PATH, REV, 4, ETAG, "https://huggingface.co/file")
     transport = subject.UrllibHfPublicTransport()
-    transport._download_opener = Opener(  # type: ignore[attr-defined]
+    cast(Any, transport)._download_opener = Opener(
         [Response(200, headers(Content_Length="4"), "https://127.0.0.1/file", b"data")]
     )
     with pytest.raises(subject.MRL0801HfAcquisitionError, match="non-global"):
