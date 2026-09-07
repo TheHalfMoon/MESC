@@ -1,4 +1,5 @@
 """Atomic publication regression tests for MRL-0801 acquisition."""
+
 from pathlib import Path
 
 import pytest
