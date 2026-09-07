@@ -150,10 +150,13 @@ def test_storage_capacity_preflight_uses_exact_bytes_plus_maximum_margin() -> No
 
     assert required_mrl_0801_free_bytes(hundred_gib) == hundred_gib + ten_gib
     assert required_mrl_0801_free_bytes(two_hundred_gib) == two_hundred_gib + 20 * one_gib
-    assert require_mrl_0801_storage_capacity(
-        exact_allowlist_bytes=hundred_gib,
-        available_bytes=hundred_gib + ten_gib,
-    ) == hundred_gib + ten_gib
+    assert (
+        require_mrl_0801_storage_capacity(
+            exact_allowlist_bytes=hundred_gib,
+            available_bytes=hundred_gib + ten_gib,
+        )
+        == hundred_gib + ten_gib
+    )
 
     with pytest.raises(MRL0801AcquisitionCustodyError, match="below"):
         require_mrl_0801_storage_capacity(
