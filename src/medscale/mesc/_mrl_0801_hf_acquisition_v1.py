@@ -13,12 +13,12 @@ import ipaddress
 import json
 import os
 import re
-import shutil
+import stat
 import subprocess
 import urllib.error
 import urllib.parse
 import urllib.request
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from http.client import HTTPMessage
 from pathlib import Path, PurePosixPath
@@ -43,6 +43,9 @@ _GIT_SHA: Final = _SHA1
 _CHUNK_BYTES: Final = 8 * 1024 * 1024
 _MODULE_RELATIVE_PATH: Final = Path("src/medscale/mesc/_mrl_0801_hf_acquisition_v1.py")
 _ALLOWED_REMOTE_HOST_SUFFIXES: Final = (".huggingface.co", ".hf.co")
+_O_NOFOLLOW: Final = getattr(os, "O_NOFOLLOW", 0)
+_O_DIRECTORY: Final = getattr(os, "O_DIRECTORY", 0)
+_O_CLOEXEC: Final = getattr(os, "O_CLOEXEC", 0)
 _RECEIPT_KEYS: Final = frozenset(
     {
         "access_authorization_sha256",
@@ -92,6 +95,16 @@ class RepositoryExecutionIdentity:
     commit_sha: str
     tree_sha: str
     source_sha256: str
+
+
+@dataclass(frozen=True, slots=True)
+class _DestinationDirectory:
+    """Opened destination directory identity used for descriptor-relative mutation."""
+
+    path: Path
+    descriptor: int
+    device: int
+    inode: int
 
 
 class _Digest(Protocol):
@@ -485,6 +498,10 @@ def acquire_mrl_0801_hf_candidate(
     destination: Path,
     model_id: str,
     revision: str,
+    finalizer: Callable[
+        [MRL0801AssetCustodyReceipt, MRL0801HfAcquisitionProvenanceReceipt], None
+    ]
+    | None = None,
 ) -> tuple[MRL0801AssetCustodyReceipt, MRL0801HfAcquisitionProvenanceReceipt]:
     """Acquire one exact authorized candidate and bind remote provenance to local custody."""
     if type(authorization) is not MRL0801AcquisitionAuthorization:
@@ -493,25 +510,25 @@ def acquire_mrl_0801_hf_candidate(
         )
     execution_identity = _capture_repository_execution_identity(repository_root)
     candidate = authorization.require_candidate(model_id=model_id, revision=revision)
-    root = _require_external_empty_destination(
+    destination_root = _require_external_empty_destination(
         destination=destination,
         repository_root=repository_root,
     )
-    metadata = _verify_remote_allowlist_metadata(
-        transport=transport,
-        model_id=model_id,
-        revision=revision,
-        allowed_files=candidate.allowed_files,
-    )
-    exact_allowlist_bytes = sum(item.byte_count for item in metadata)
-    available_bytes = shutil.disk_usage(root).free
-    storage_required_bytes = require_mrl_0801_storage_capacity(
-        exact_allowlist_bytes=exact_allowlist_bytes,
-        available_bytes=available_bytes,
-    )
-
     acquired: list[HfAcquiredFileIdentity] = []
     try:
+        metadata = _verify_remote_allowlist_metadata(
+            transport=transport,
+            model_id=model_id,
+            revision=revision,
+            allowed_files=candidate.allowed_files,
+        )
+        exact_allowlist_bytes = sum(item.byte_count for item in metadata)
+        available_bytes = _available_bytes(destination_root)
+        storage_required_bytes = require_mrl_0801_storage_capacity(
+            exact_allowlist_bytes=exact_allowlist_bytes,
+            available_bytes=available_bytes,
+        )
+
         for preflight_item in metadata:
             fresh_item = transport.metadata(
                 model_id=model_id,
@@ -519,13 +536,22 @@ def acquire_mrl_0801_hf_candidate(
                 path=preflight_item.path,
             )
             _require_same_remote_identity(preflight=preflight_item, fresh=fresh_item)
-            acquired.append(_acquire_one_file(root=root, transport=transport, metadata=fresh_item))
+            acquired.append(
+                _acquire_one_file(
+                    root_fd=destination_root.descriptor,
+                    transport=transport,
+                    metadata=fresh_item,
+                )
+            )
+
+        _require_destination_path_identity(destination_root)
         custody = generate_mrl_0801_asset_custody_receipt(
-            model_root=root,
+            model_root=destination_root.path,
             authorization=authorization,
             model_id=model_id,
             revision=revision,
         )
+        _require_destination_path_identity(destination_root)
         payload: dict[str, object] = {
             "access_authorization_sha256": authorization.authorization_sha256,
             "artifact_identity_sha256": custody.artifact_identity_sha256,
@@ -564,10 +590,19 @@ def acquire_mrl_0801_hf_candidate(
             authorization=authorization,
             expected_files=candidate.allowed_files,
         )
+        _require_destination_path_identity(destination_root)
+        if finalizer is not None:
+            finalizer(custody, receipt)
+        _require_destination_path_identity(destination_root)
+        return custody, receipt
     except BaseException:
-        _rollback_created_files(root=root, acquired=tuple(acquired))
+        _rollback_created_files(
+            root_fd=destination_root.descriptor,
+            acquired=tuple(acquired),
+        )
         raise
-    return custody, receipt
+    finally:
+        os.close(destination_root.descriptor)
 
 
 def validate_mrl_0801_hf_acquisition_provenance(
@@ -580,6 +615,14 @@ def validate_mrl_0801_hf_acquisition_provenance(
     repository_root: Path,
 ) -> None:
     """Reverify remote identities, historical executor bytes, and current local custody."""
+    if type(receipt) is not MRL0801HfAcquisitionProvenanceReceipt:
+        raise MRL0801HfAcquisitionError(
+            "receipt must use the exact canonical MRL0801HfAcquisitionProvenanceReceipt type"
+        )
+    if type(custody) is not MRL0801AssetCustodyReceipt:
+        raise MRL0801HfAcquisitionError(
+            "custody must use the exact canonical MRL0801AssetCustodyReceipt type"
+        )
     if type(authorization) is not MRL0801AcquisitionAuthorization:
         raise MRL0801HfAcquisitionError(
             "authorization must be an exact MRL0801AcquisitionAuthorization"
@@ -629,6 +672,12 @@ def _require_receipt_matches_custody(
     authorization: MRL0801AcquisitionAuthorization,
     expected_files: tuple[str, ...],
 ) -> None:
+    if type(receipt) is not MRL0801HfAcquisitionProvenanceReceipt:
+        raise MRL0801HfAcquisitionError("acquisition provenance receipt type is not canonical")
+    if type(custody) is not MRL0801AssetCustodyReceipt:
+        raise MRL0801HfAcquisitionError("custody receipt type is not canonical")
+    if type(authorization) is not MRL0801AcquisitionAuthorization:
+        raise MRL0801HfAcquisitionError("acquisition authorization type is not canonical")
     if receipt.model_id != custody.model_id or receipt.revision != custody.revision:
         raise MRL0801HfAcquisitionError("acquisition and custody subject identities differ")
     if receipt.access_authorization_sha256 != authorization.authorization_sha256:
@@ -695,9 +744,9 @@ def _capture_repository_execution_identity(repository_root: Path) -> RepositoryE
     top_level = Path(_run_git_text(root, "rev-parse", "--show-toplevel")).resolve(strict=True)
     if top_level != root:
         raise MRL0801HfAcquisitionError("repository_root is not the exact Git work-tree root")
-    status = _run_git_bytes(root, "status", "--porcelain", "--untracked-files=no")
+    status = _run_git_bytes(root, "status", "--porcelain", "--untracked-files=all")
     if status:
-        raise MRL0801HfAcquisitionError("tracked repository bytes must be clean before acquisition")
+        raise MRL0801HfAcquisitionError("repository work tree must be clean before acquisition")
     commit_sha = _require_git_sha(
         _run_git_text(root, "rev-parse", "HEAD"), field_name="executor_code_commit"
     )
@@ -886,8 +935,17 @@ def _build_remote_metadata(
 
 def _validate_relative_path(path: str) -> PurePosixPath:
     value = PurePosixPath(path)
-    if not path or value.is_absolute() or any(part in {"", ".", ".."} for part in value.parts):
-        raise MRL0801HfAcquisitionError("authorized file path must be normalized and relative")
+    if (
+        not path
+        or "\\" in path
+        or "\x00" in path
+        or value.is_absolute()
+        or len(value.parts) != 1
+        or any(part in {"", ".", ".."} for part in value.parts)
+    ):
+        raise MRL0801HfAcquisitionError(
+            "authorized file path must be one normalized relative basename"
+        )
     if str(value) != path:
         raise MRL0801HfAcquisitionError("authorized file path is not canonical")
     return value
@@ -901,13 +959,44 @@ def _is_descendant(path: Path, parent: Path) -> bool:
     return True
 
 
-def _require_external_empty_destination(*, destination: Path, repository_root: Path) -> Path:
+def _require_descriptor_relative_support() -> None:
+    if _O_DIRECTORY == 0 or _O_NOFOLLOW == 0:
+        raise MRL0801HfAcquisitionError(
+            "platform lacks required no-follow directory descriptor support"
+        )
+    required_dir_fd = (os.open, os.stat, os.unlink, os.link)
+    if any(operation not in os.supports_dir_fd for operation in required_dir_fd):
+        raise MRL0801HfAcquisitionError(
+            "platform lacks required descriptor-relative filesystem operations"
+        )
+    if os.listdir not in os.supports_fd or os.link not in os.supports_follow_symlinks:
+        raise MRL0801HfAcquisitionError(
+            "platform lacks required descriptor-safe listing or linking support"
+        )
+    if not hasattr(os, "fstatvfs"):
+        raise MRL0801HfAcquisitionError(
+            "platform lacks descriptor-relative storage-capacity inspection"
+        )
+
+
+def _stat_descriptor_identity(observation: os.stat_result) -> tuple[int, int]:
+    return observation.st_dev, observation.st_ino
+
+
+def _require_external_empty_destination(
+    *, destination: Path, repository_root: Path
+) -> _DestinationDirectory:
     repo = repository_root.resolve(strict=True)
     raw = destination.expanduser().absolute()
     if raw == repo or _is_descendant(raw, repo):
         raise MRL0801HfAcquisitionError("raw model snapshot destination must be outside Git")
     _require_no_existing_symlink_components(raw, label="raw model snapshot destination")
-    root = raw.resolve(strict=False)
+    try:
+        root = raw.resolve(strict=True)
+    except OSError:
+        raise MRL0801HfAcquisitionError(
+            "acquisition destination must be an existing real empty directory"
+        ) from None
     if root == repo or _is_descendant(root, repo):
         raise MRL0801HfAcquisitionError("raw model snapshot destination must be outside Git")
     for ancestor in (root, *root.parents):
@@ -915,20 +1004,79 @@ def _require_external_empty_destination(*, destination: Path, repository_root: P
             raise MRL0801HfAcquisitionError(
                 "raw model snapshot destination is inside a Git work tree"
             )
-    if root.exists():
-        if not root.is_dir() or any(root.iterdir()):
+    _require_descriptor_relative_support()
+    flags = os.O_RDONLY | _O_DIRECTORY | _O_NOFOLLOW | _O_CLOEXEC
+    try:
+        descriptor = os.open(root, flags)
+    except OSError:
+        raise MRL0801HfAcquisitionError(
+            "acquisition destination must be an existing non-symlink directory"
+        ) from None
+    try:
+        opened = os.fstat(descriptor)
+        if not stat.S_ISDIR(opened.st_mode):
+            raise MRL0801HfAcquisitionError(
+                "acquisition destination descriptor must reference a directory"
+            )
+        path_observation = os.stat(root, follow_symlinks=False)
+        if _stat_descriptor_identity(opened) != _stat_descriptor_identity(path_observation):
+            raise MRL0801HfAcquisitionError(
+                "acquisition destination changed while it was being opened"
+            )
+        if os.listdir(descriptor):
             raise MRL0801HfAcquisitionError(
                 "acquisition destination must be an empty real directory"
             )
-    else:
-        root.mkdir(parents=True, mode=0o700)
-    return root
+        return _DestinationDirectory(
+            path=root,
+            descriptor=descriptor,
+            device=opened.st_dev,
+            inode=opened.st_ino,
+        )
+    except BaseException:
+        os.close(descriptor)
+        raise
 
 
 def _require_no_existing_symlink_components(path: Path, *, label: str) -> None:
     for component in (path, *path.parents):
         if component.is_symlink():
             raise MRL0801HfAcquisitionError(f"{label} must not traverse a symbolic link")
+
+
+def _require_destination_path_identity(destination: _DestinationDirectory) -> None:
+    try:
+        opened = os.fstat(destination.descriptor)
+        current = os.stat(destination.path, follow_symlinks=False)
+    except OSError:
+        raise MRL0801HfAcquisitionError(
+            "acquisition destination path changed during the transaction"
+        ) from None
+    expected = (destination.device, destination.inode)
+    if (
+        not stat.S_ISDIR(opened.st_mode)
+        or not stat.S_ISDIR(current.st_mode)
+        or _stat_descriptor_identity(opened) != expected
+        or _stat_descriptor_identity(current) != expected
+    ):
+        raise MRL0801HfAcquisitionError(
+            "acquisition destination path changed during the transaction"
+        )
+
+
+def _available_bytes(destination: _DestinationDirectory) -> int:
+    try:
+        observation = os.fstatvfs(destination.descriptor)
+    except OSError:
+        raise MRL0801HfAcquisitionError(
+            "acquisition destination storage capacity could not be inspected"
+        ) from None
+    available = observation.f_bavail * observation.f_frsize
+    if available <= 0:
+        raise MRL0801HfAcquisitionError(
+            "acquisition destination reports no available storage capacity"
+        )
+    return available
 
 
 def _require_safe_remote_url(url: str) -> None:
@@ -1006,43 +1154,73 @@ def _new_git_blob_digest(byte_count: int) -> _Digest:
     return digest
 
 
-def _publish_partial_no_replace(*, partial: Path, target: Path) -> None:
+def _descriptor_entry_exists(*, root_fd: int, name: str) -> bool:
     try:
-        target.hardlink_to(partial)
+        os.stat(name, dir_fd=root_fd, follow_symlinks=False)
+    except FileNotFoundError:
+        return False
+    except OSError:
+        raise MRL0801HfAcquisitionError(
+            "acquisition destination entry could not be inspected safely"
+        ) from None
+    return True
+
+
+def _unlink_descriptor_entry(*, root_fd: int, name: str) -> None:
+    try:
+        os.unlink(name, dir_fd=root_fd)
+    except FileNotFoundError:
+        return
+
+
+def _publish_partial_no_replace(*, root_fd: int, partial_name: str, target_name: str) -> None:
+    try:
+        os.link(
+            partial_name,
+            target_name,
+            src_dir_fd=root_fd,
+            dst_dir_fd=root_fd,
+            follow_symlinks=False,
+        )
     except FileExistsError:
         raise MRL0801HfAcquisitionError(
             "executor refuses to overwrite an asset file created during publication"
         ) from None
-    try:
-        partial.unlink()
     except OSError:
-        target.unlink(missing_ok=True)
+        raise MRL0801HfAcquisitionError("asset publication failed safely") from None
+    try:
+        os.unlink(partial_name, dir_fd=root_fd)
+    except OSError:
+        _unlink_descriptor_entry(root_fd=root_fd, name=target_name)
         raise
 
 
 def _acquire_one_file(
     *,
-    root: Path,
+    root_fd: int,
     transport: HfPublicTransport,
     metadata: HfRemoteFileMetadata,
 ) -> HfAcquiredFileIdentity:
     relative = _validate_relative_path(metadata.path)
-    target = root.joinpath(*relative.parts)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    if target.exists() or target.is_symlink():
+    target_name = relative.name
+    partial_name = f".{target_name}.mrl-0801-partial"
+    if _descriptor_entry_exists(root_fd=root_fd, name=target_name):
         raise MRL0801HfAcquisitionError("executor refuses to overwrite an existing asset file")
-    partial = target.with_name(f".{target.name}.mrl-0801-partial")
-    if partial.exists() or partial.is_symlink():
+    if _descriptor_entry_exists(root_fd=root_fd, name=partial_name):
         raise MRL0801HfAcquisitionError("stale partial acquisition file exists")
 
     sha256 = hashlib.sha256()
     git_blob_sha1 = _new_git_blob_digest(metadata.byte_count)
     byte_count = 0
-    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
-    if hasattr(os, "O_NOFOLLOW"):
-        flags |= os.O_NOFOLLOW
-    descriptor = os.open(partial, flags, 0o600)
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | _O_NOFOLLOW | _O_CLOEXEC
     try:
+        descriptor = os.open(partial_name, flags, 0o600, dir_fd=root_fd)
+    except OSError:
+        raise MRL0801HfAcquisitionError("partial acquisition file could not be opened safely") from None
+    try:
+        opened = os.fstat(descriptor)
+        if not stat.S_ISREG(opened.st_mode):
+            raise MRL0801HfAcquisitionError("partial acquisition descriptor is not a regular file")
         with os.fdopen(descriptor, "wb", closefd=True) as stream:
             for chunk in transport.iter_bytes(metadata=metadata):
                 if not isinstance(chunk, bytes) or not chunk:
@@ -1063,7 +1241,11 @@ def _acquire_one_file(
         )
         if remote_identity != metadata.etag:
             raise MRL0801HfAcquisitionError("download bytes differ from remote content identity")
-        _publish_partial_no_replace(partial=partial, target=target)
+        _publish_partial_no_replace(
+            root_fd=root_fd,
+            partial_name=partial_name,
+            target_name=target_name,
+        )
         return HfAcquiredFileIdentity(
             path=metadata.path,
             byte_count=byte_count,
@@ -1072,20 +1254,24 @@ def _acquire_one_file(
             local_sha256=local_sha256,
         )
     except BaseException:
-        partial.unlink(missing_ok=True)
+        _unlink_descriptor_entry(root_fd=root_fd, name=partial_name)
         raise
 
 
 def _rollback_created_files(
     *,
-    root: Path,
+    root_fd: int,
     acquired: tuple[HfAcquiredFileIdentity, ...],
 ) -> None:
     for item in reversed(acquired):
         relative = _validate_relative_path(item.path)
-        target = root.joinpath(*relative.parts)
-        if target.exists() or target.is_symlink():
-            target.unlink(missing_ok=True)
-    for path in root.rglob("*.mrl-0801-partial"):
-        if path.is_symlink() or path.is_file():
-            path.unlink(missing_ok=True)
+        _unlink_descriptor_entry(root_fd=root_fd, name=relative.name)
+    try:
+        names = tuple(os.listdir(root_fd))
+    except OSError:
+        raise MRL0801HfAcquisitionError(
+            "acquisition destination could not be enumerated during rollback"
+        ) from None
+    for name in names:
+        if name.startswith(".") and name.endswith(".mrl-0801-partial"):
+            _unlink_descriptor_entry(root_fd=root_fd, name=name)
