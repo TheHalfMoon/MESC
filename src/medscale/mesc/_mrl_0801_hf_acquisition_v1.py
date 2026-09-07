@@ -498,9 +498,7 @@ def acquire_mrl_0801_hf_candidate(
     destination: Path,
     model_id: str,
     revision: str,
-    finalizer: Callable[
-        [MRL0801AssetCustodyReceipt, MRL0801HfAcquisitionProvenanceReceipt], None
-    ]
+    finalizer: Callable[[MRL0801AssetCustodyReceipt, MRL0801HfAcquisitionProvenanceReceipt], None]
     | None = None,
 ) -> tuple[MRL0801AssetCustodyReceipt, MRL0801HfAcquisitionProvenanceReceipt]:
     """Acquire one exact authorized candidate and bind remote provenance to local custody."""
