@@ -110,10 +110,6 @@ known-first-party = ["medscale"]
 # Keep their canonical bytes unchanged while newer Ruff versions enforce RUF036 elsewhere.
 "src/medscale/mesc/_bt_executor_core_fixture_v1.py" = ["RUF036"]
 "src/medscale/mesc/_canonical_json_v1.py" = ["RUF036"]
-# This acquisition module intentionally uses descriptor-relative os.* primitives to bind file
-# mutation to one opened directory inode. Replacing them with pathname APIs would weaken the
-# TOCTOU defense. Long low-level error paths remain covered by formatter, mypy, and tests.
-"src/medscale/mesc/_mrl_0801_hf_acquisition_v1.py" = ["PTH116", "PTH208", "E501"]
 
 [tool.ruff.format]
 # Preserve the notebook's explicit Colab cell layout while continuing to lint every code cell.
