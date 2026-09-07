@@ -32,9 +32,7 @@ _SCHEMA_VERSION: Final = "MESC-MRL-0801-ACQUISITION-CUSTODY-AUTHORIZATION-V1"
 _AUTHORIZATION_ID: Final = "MESC-MRL-0801-ACQUISITION-CUSTODY-20260907-V1"
 _SCOPE: Final = "MRL-0801_ACQUISITION_CUSTODY_ONLY"
 _CUSTODY_SCHEMA_VERSION: Final = "MESC-MRL-0801-ASSET-CUSTODY-RECEIPT-V1"
-_CUSTODY_VERIFICATION_METHOD: Final = (
-    "MESC_HF_SAFETENSORS_FULL_LOCAL_BYTE_VERIFICATION_V1"
-)
+_CUSTODY_VERIFICATION_METHOD: Final = "MESC_HF_SAFETENSORS_FULL_LOCAL_BYTE_VERIFICATION_V1"
 _SHA256: Final = re.compile(r"^[0-9a-f]{64}$", flags=re.ASCII)
 _GIT_SHA: Final = re.compile(r"^[0-9a-f]{40}$", flags=re.ASCII)
 _MIN_EXTRA_FREE_BYTES: Final = 10 * 1024 * 1024 * 1024
@@ -73,9 +71,7 @@ _GEMMA_FILES: Final = (
     "model-00002-of-00002.safetensors",
 )
 _ROSTER_PATH: Final = "specs/mesc-experiment-0/candidate-roster-v1.json"
-_ROSTER_SHA256: Final = (
-    "2968f2c71fd0de4a9ef9b5f6e5d4d58d75ce0f2cf5af8a56840031d85f694489"
-)
+_ROSTER_SHA256: Final = "2968f2c71fd0de4a9ef9b5f6e5d4d58d75ce0f2cf5af8a56840031d85f694489"
 _AUTHORIZED_BASE_SHA: Final = "07b98baded530b7914dc0d1d89534cfcf6ee568a"
 _AUTHORIZED_BASE_TREE: Final = "339125e96fa38c2cdab4b2f93c0a634f333f2587"
 _POST_MERGE_CI_RUN: Final = 34139543250
@@ -277,9 +273,7 @@ def required_mrl_0801_free_bytes(exact_allowlist_bytes: int) -> int:
         exact_allowlist_bytes,
         field_name="exact_allowlist_bytes",
     )
-    ratio_margin = (
-        exact_bytes * _MIN_EXTRA_FREE_BASIS_POINTS + 9999
-    ) // 10000
+    ratio_margin = (exact_bytes * _MIN_EXTRA_FREE_BASIS_POINTS + 9999) // 10000
     return exact_bytes + max(_MIN_EXTRA_FREE_BYTES, ratio_margin)
 
 
@@ -365,9 +359,7 @@ def validate_mrl_0801_custody_receipt_authorization(
 ) -> None:
     """Bind a parsed custody receipt to the exact current authorization artifact."""
     if type(receipt) is not MRL0801AssetCustodyReceipt:
-        raise MRL0801AcquisitionCustodyError(
-            "receipt must be an exact MRL0801AssetCustodyReceipt"
-        )
+        raise MRL0801AcquisitionCustodyError("receipt must be an exact MRL0801AssetCustodyReceipt")
     if type(authorization) is not MRL0801AcquisitionAuthorization:
         raise MRL0801AcquisitionCustodyError(
             "authorization must be an exact MRL0801AcquisitionAuthorization"
@@ -477,9 +469,7 @@ def _parse_canonical_object(raw: bytes, *, label: str) -> dict[str, object]:
     except MRL0801AcquisitionCustodyError:
         raise
     except (UnicodeDecodeError, ValueError, RecursionError, CanonicalContractError) as exc:
-        raise MRL0801AcquisitionCustodyError(
-            f"{label} must be valid canonical UTF-8 JSON"
-        ) from exc
+        raise MRL0801AcquisitionCustodyError(f"{label} must be valid canonical UTF-8 JSON") from exc
     if canonical != raw:
         raise MRL0801AcquisitionCustodyError(f"{label} bytes are not canonical JSON")
     return document
@@ -556,15 +546,11 @@ def _require_file_kind(value: object) -> HfArtifactFileKind:
 
 def _parse_artifact_files(value: object) -> tuple[HfArtifactFileIdentity, ...]:
     if type(value) is not list or not value:
-        raise MRL0801AcquisitionCustodyError(
-            "custody receipt files must be a non-empty array"
-        )
+        raise MRL0801AcquisitionCustodyError("custody receipt files must be a non-empty array")
     files: list[HfArtifactFileIdentity] = []
     for raw_item in value:
         if type(raw_item) is not dict:
-            raise MRL0801AcquisitionCustodyError(
-                "custody receipt file entry must be an object"
-            )
+            raise MRL0801AcquisitionCustodyError("custody receipt file entry must be an object")
         item = cast(dict[str, object], raw_item)
         _validate_exact_keys(
             item,
