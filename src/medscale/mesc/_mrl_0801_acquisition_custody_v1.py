@@ -101,11 +101,11 @@ class MRL0801AcquisitionAuthorization:
     candidates: tuple[AuthorizedModelAcquisition, ...] = field(init=False)
 
     def __post_init__(self) -> None:
-        document = _parse_canonical_object(
+        _parse_canonical_object(
             self.canonical_bytes,
             label="MRL-0801 acquisition authorization",
         )
-        if document != _expected_authorization_document():
+        if self.canonical_bytes != canonical_mrl_0801_acquisition_authorization_bytes():
             raise MRL0801AcquisitionCustodyError(
                 "MRL-0801 acquisition authorization does not match the exact authorized scope"
             )
