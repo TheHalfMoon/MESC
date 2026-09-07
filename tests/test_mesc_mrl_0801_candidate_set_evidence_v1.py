@@ -63,7 +63,7 @@ def test_candidate_set_parses_but_is_not_trusted_by_default() -> None:
     assert parsed.task_id == "MRL-0801"
     assert parsed.kind == _KIND
     assert parsed.evidence_sha256 == hashlib.sha256(raw).hexdigest()
-    assert evidence.TRUSTED_MRL_REAL_PREFLIGHT_EVIDENCE_SHA256 == frozenset()
+    assert frozenset() == evidence.TRUSTED_MRL_REAL_PREFLIGHT_EVIDENCE_SHA256
 
     with pytest.raises(evidence.MRLRealPreflightEvidenceError, match="not trusted"):
         evidence.admit_mrl_real_preflight_evidence(raw, expected_task_id="MRL-0801")
