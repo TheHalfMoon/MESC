@@ -15,6 +15,7 @@ from medscale.mesc._canonical_json_v1 import canonical_json_bytes
 from medscale.mesc._mrl_0801_acquisition_custody_v1 import (
     MRL0801AcquisitionAuthorization,
     MRL0801AcquisitionCustodyError,
+    MRL0801AssetCustodyReceipt,
     parse_mrl_0801_acquisition_authorization,
 )
 
@@ -102,7 +103,15 @@ def patch_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(subject.shutil, "disk_usage", lambda _: SimpleNamespace(free=10**15))
 
 
-def acquire(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, transport: FakeTransport):
+def acquire(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    transport: FakeTransport,
+) -> tuple[
+    Path,
+    MRL0801AssetCustodyReceipt,
+    subject.MRL0801HfAcquisitionProvenanceReceipt,
+]:
     patch_environment(monkeypatch)
     destination = tmp_path / "assets"
     custody, receipt = subject.acquire_mrl_0801_hf_candidate(
