@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import shutil
 from collections.abc import Iterator
 from pathlib import Path
 from types import SimpleNamespace
@@ -88,6 +87,22 @@ class FakeTransport:
         yield raw
 
 
+class ReplacingTransport(FakeTransport):
+    def __init__(self, *, destination: Path, replacement: Path) -> None:
+        super().__init__()
+        self.destination = destination
+        self.replacement = replacement
+        self.replaced = False
+
+    def iter_bytes(self, *, metadata: subject.HfRemoteFileMetadata) -> Iterator[bytes]:
+        if not self.replaced:
+            self.destination.rename(self.replacement)
+            self.destination.mkdir()
+            (self.destination / "sentinel.txt").write_text("replacement", encoding="utf-8")
+            self.replaced = True
+        yield from super().iter_bytes(metadata=metadata)
+
+
 def fake_repo(tmp_path: Path) -> Path:
     root = tmp_path / "repo"
     root.mkdir(parents=True)
@@ -102,7 +117,7 @@ def patch_environment(monkeypatch: pytest.MonkeyPatch) -> None:
         "_validate_recorded_repository_execution_identity",
         lambda **_: None,
     )
-    monkeypatch.setattr(shutil, "disk_usage", lambda _: SimpleNamespace(free=10**15))
+    monkeypatch.setattr(subject, "_available_bytes", lambda _: 10**15)
 
 
 def acquire(
@@ -116,6 +131,7 @@ def acquire(
 ]:
     patch_environment(monkeypatch)
     destination = tmp_path / "assets"
+    destination.mkdir(parents=True)
     custody, receipt = subject.acquire_mrl_0801_hf_candidate(
         authorization=authorization(),
         transport=transport,
@@ -200,6 +216,7 @@ def test_metadata_drift_and_corrupt_bytes_roll_back(
         patch_environment(monkeypatch)
         root = tmp_path / hashlib.sha256(pattern.encode()).hexdigest()
         destination = root / "assets"
+        destination.mkdir(parents=True)
         with pytest.raises(subject.MRL0801HfAcquisitionError, match=pattern):
             subject.acquire_mrl_0801_hf_candidate(
                 authorization=authorization(),
@@ -216,25 +233,32 @@ def test_storage_failure_occurs_before_model_bytes(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(subject, "_capture_repository_execution_identity", lambda _: IDENTITY)
-    monkeypatch.setattr(shutil, "disk_usage", lambda _: SimpleNamespace(free=1))
+    monkeypatch.setattr(subject, "_available_bytes", lambda _: 1)
+    destination = tmp_path / "assets"
+    destination.mkdir()
     transport = FakeTransport()
     with pytest.raises(MRL0801AcquisitionCustodyError, match="below"):
         subject.acquire_mrl_0801_hf_candidate(
             authorization=authorization(),
             transport=transport,
             repository_root=fake_repo(tmp_path),
-            destination=tmp_path / "assets",
+            destination=destination,
             model_id=MODEL,
             revision=REV,
         )
     assert transport.downloads == []
 
 
-def test_destination_and_remote_url_boundaries(tmp_path: Path) -> None:
+def test_destination_must_exist_and_remote_url_boundaries(tmp_path: Path) -> None:
     repo = fake_repo(tmp_path)
     with pytest.raises(subject.MRL0801HfAcquisitionError, match="outside Git"):
         subject._require_external_empty_destination(
             destination=repo / "assets",
+            repository_root=repo,
+        )
+    with pytest.raises(subject.MRL0801HfAcquisitionError, match="existing real empty directory"):
+        subject._require_external_empty_destination(
+            destination=tmp_path / "missing",
             repository_root=repo,
         )
     real = tmp_path / "real"
@@ -251,6 +275,79 @@ def test_destination_and_remote_url_boundaries(tmp_path: Path) -> None:
     ):
         with pytest.raises(subject.MRL0801HfAcquisitionError):
             subject._require_safe_remote_url(url)
+
+
+def test_destination_replacement_cannot_redirect_writes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    patch_environment(monkeypatch)
+    destination = tmp_path / "assets"
+    destination.mkdir()
+    original = tmp_path / "original-assets"
+    transport = ReplacingTransport(destination=destination, replacement=original)
+    with pytest.raises(subject.MRL0801HfAcquisitionError, match="destination path changed"):
+        subject.acquire_mrl_0801_hf_candidate(
+            authorization=authorization(),
+            transport=transport,
+            repository_root=fake_repo(tmp_path),
+            destination=destination,
+            model_id=MODEL,
+            revision=REV,
+        )
+    assert list(original.iterdir()) == []
+    assert (destination / "sentinel.txt").read_text(encoding="utf-8") == "replacement"
+
+
+def test_finalizer_failure_rolls_back_snapshot(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    patch_environment(monkeypatch)
+    destination = tmp_path / "assets"
+    destination.mkdir()
+
+    def fail_finalize(
+        _: MRL0801AssetCustodyReceipt,
+        __: subject.MRL0801HfAcquisitionProvenanceReceipt,
+    ) -> None:
+        raise OSError("receipt publication failed")
+
+    with pytest.raises(OSError, match="receipt publication failed"):
+        subject.acquire_mrl_0801_hf_candidate(
+            authorization=authorization(),
+            transport=FakeTransport(),
+            repository_root=fake_repo(tmp_path),
+            destination=destination,
+            model_id=MODEL,
+            revision=REV,
+            finalizer=fail_finalize,
+        )
+    assert list(destination.iterdir()) == []
+
+
+def test_provenance_validation_requires_exact_receipt_types(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    destination, custody, receipt = acquire(tmp_path, monkeypatch, FakeTransport())
+    fake_receipt = cast(subject.MRL0801HfAcquisitionProvenanceReceipt, SimpleNamespace())
+    with pytest.raises(subject.MRL0801HfAcquisitionError, match="exact canonical"):
+        subject.validate_mrl_0801_hf_acquisition_provenance(
+            receipt=fake_receipt,
+            custody=custody,
+            authorization=authorization(),
+            model_root=destination,
+            transport=FakeTransport(),
+            repository_root=fake_repo(tmp_path / "review-receipt"),
+        )
+    fake_custody = cast(MRL0801AssetCustodyReceipt, SimpleNamespace())
+    with pytest.raises(subject.MRL0801HfAcquisitionError, match="exact canonical"):
+        subject.validate_mrl_0801_hf_acquisition_provenance(
+            receipt=receipt,
+            custody=fake_custody,
+            authorization=authorization(),
+            model_root=destination,
+            transport=FakeTransport(),
+            repository_root=fake_repo(tmp_path / "review-custody"),
+        )
 
 
 def test_receipt_is_canonical_and_exact_boolean_typed(
