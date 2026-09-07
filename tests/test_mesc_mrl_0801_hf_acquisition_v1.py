@@ -94,7 +94,11 @@ def fake_repo(tmp_path: Path) -> Path:
 
 def patch_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(subject, "_capture_repository_execution_identity", lambda _: IDENTITY)
-    monkeypatch.setattr(subject, "_validate_recorded_repository_execution_identity", lambda **_: None)
+    monkeypatch.setattr(
+        subject,
+        "_validate_recorded_repository_execution_identity",
+        lambda **_: None,
+    )
     monkeypatch.setattr(subject.shutil, "disk_usage", lambda _: SimpleNamespace(free=10**15))
 
 
@@ -165,7 +169,9 @@ def test_phi_and_mutable_revision_are_not_authorized(
             subject.acquire_mrl_0801_hf_candidate(
                 authorization=authorization(),
                 transport=transport,
-                repository_root=fake_repo(tmp_path / hashlib.sha256(f"{model_id}{revision}".encode()).hexdigest()),
+                repository_root=fake_repo(
+                    tmp_path / hashlib.sha256(f"{model_id}{revision}".encode()).hexdigest()
+                ),
                 destination=tmp_path / hashlib.sha256(revision.encode()).hexdigest(),
                 model_id=model_id,
                 revision=revision,
@@ -216,7 +222,10 @@ def test_storage_failure_occurs_before_model_bytes(
 def test_destination_and_remote_url_boundaries(tmp_path: Path) -> None:
     repo = fake_repo(tmp_path)
     with pytest.raises(subject.MRL0801HfAcquisitionError, match="outside Git"):
-        subject._require_external_empty_destination(destination=repo / "assets", repository_root=repo)
+        subject._require_external_empty_destination(
+            destination=repo / "assets",
+            repository_root=repo,
+        )
     real = tmp_path / "real"
     real.mkdir()
     link = tmp_path / "link"
