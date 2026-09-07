@@ -123,6 +123,7 @@ def test_preloaded_transitive_medscale_module_is_rejected(
     root = repo(tmp_path)
     clear_medscale_modules(monkeypatch)
     foreign = tmp_path / "foreign/_canonical_json_v1.py"
+    foreign.parent.mkdir(parents=True)
     foreign.write_text("", encoding="utf-8")
     foreign_module = ModuleType("medscale.mesc._canonical_json_v1")
     foreign_module.__file__ = str(foreign)
