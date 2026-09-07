@@ -1,0 +1,73 @@
+{
+  "schema_version": "MESC-EXPERIMENT-0-CANDIDATE-ROSTER-V1",
+  "status": "FROZEN_METADATA_ONLY",
+  "frozen_at_utc": "2026-09-06T21:19:57Z",
+  "canonical_base_sha": "9a98eb6ac2966a68d3020b0ddba223c3ec081c59",
+  "canonical_base_tree": "b719587c10f3775cb3db65d1fedec4645334daa0",
+  "result_exposure_started": false,
+  "mrl_0801_state": "ABSENT",
+  "real_model_execution_authorized": false,
+  "training_authorized": false,
+  "active_candidates": [
+    {
+      "candidate_id": "Qwen/Qwen3.8-27B",
+      "candidate_revision": "1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0",
+      "candidate_class": "SELECTABLE_FOUNDATION",
+      "role": "PREFERRED_FOUNDATION_CANDIDATE",
+      "evidence_key": "qwen3.8-27b",
+      "license_identity": "Apache-2.0",
+      "published_pipeline": "image-text-to-text",
+      "published_weight_size_label": "55.6 GB",
+      "supported_input_modalities": [
+        "text",
+        "vision"
+      ],
+      "trust_remote_code": false,
+      "remote_code_exception_required": false,
+      "eligibility_disposition": "ACTIVE_FOR_MRL_0801_IDENTITY_CUSTODY_QUALIFICATION",
+      "authoritative_sources": [
+        "https://huggingface.co/Qwen/Qwen3.8-27B",
+        "https://huggingface.co/Qwen/Qwen3.8-27B/commit/1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0",
+        "https://github.com/QwenLM/Qwen3.8"
+      ]
+    },
+    {
+      "candidate_id": "google/gemma-4-31B-it",
+      "candidate_revision": "842da3794eaa0b77d5f08bae87a17459d91ff475",
+      "candidate_class": "SELECTABLE_FOUNDATION",
+      "role": "PRIMARY_CHALLENGER",
+      "evidence_key": "gemma-4-31b-it",
+      "license_identity": "Apache-2.0",
+      "published_pipeline": "image-text-to-text",
+      "published_weight_size_label": "62.6 GB",
+      "supported_input_modalities": [
+        "text",
+        "vision"
+      ],
+      "trust_remote_code": false,
+      "remote_code_exception_required": false,
+      "eligibility_disposition": "ACTIVE_FOR_MRL_0801_IDENTITY_CUSTODY_QUALIFICATION",
+      "authoritative_sources": [
+        "https://huggingface.co/google/gemma-4-31B-it",
+        "https://huggingface.co/google/gemma-4-31B-it/commit/842da3794eaa0b77d5f08bae87a17459d91ff475",
+        "https://ai.google.dev/gemma/docs/core"
+      ]
+    }
+  ],
+  "deferred_controls": [
+    {
+      "candidate_id": "microsoft/Phi-4-multimodal-instruct",
+      "observed_revision": "450bd6eb5ed6a74e38a03ada0320c4fa07865c81",
+      "role": "DEFERRED_CONTROL",
+      "license_identity": "MIT",
+      "published_pipeline": "multimodal/custom-code",
+      "published_weight_size_label": "12.9 GB",
+      "trust_remote_code_required_by_published_path": true,
+      "eligibility_disposition": "DEFERRED_REMOTE_CODE_EXCEPTION_REQUIRED",
+      "authoritative_sources": [
+        "https://huggingface.co/microsoft/Phi-4-multimodal-instruct",
+        "https://huggingface.co/microsoft/Phi-4-multimodal-instruct/commit/450bd6eb5ed6a74e38a03ada0320c4fa07865c81"
+      ]
+    }
+  ]
+}
