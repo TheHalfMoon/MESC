@@ -57,9 +57,7 @@ def test_receipt_bytes_are_deterministic_and_exclude_execution_locations() -> No
     reversed_document = dict(reversed(tuple(document.items())))
 
     first = subject.MRL0801HfAcquisitionProvenanceReceipt(canonical_json_bytes(document))
-    second = subject.MRL0801HfAcquisitionProvenanceReceipt(
-        canonical_json_bytes(reversed_document)
-    )
+    second = subject.MRL0801HfAcquisitionProvenanceReceipt(canonical_json_bytes(reversed_document))
 
     assert first.canonical_bytes == second.canonical_bytes
     assert first.receipt_sha256 == second.receipt_sha256
