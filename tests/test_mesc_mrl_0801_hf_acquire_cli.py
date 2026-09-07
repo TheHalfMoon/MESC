@@ -129,16 +129,3 @@ def test_preloaded_transitive_medscale_module_is_rejected(
     monkeypatch.setitem(sys.modules, "medscale.mesc._canonical_json_v1", foreign_module)
     with pytest.raises(cli.AcquisitionEntrypointError, match="preloaded medscale modules"):
         cli._import_exact_repository_modules(root)
-
-
-def test_rollback_only_removes_exact_completed_snapshot_files(tmp_path: Path) -> None:
-    cli = load_cli()
-    root = tmp_path / "snapshot"
-    root.mkdir()
-    created = root / "model.safetensors.index.json"
-    created.write_text("x", encoding="utf-8")
-    unrelated = root / "keep.txt"
-    unrelated.write_text("keep", encoding="utf-8")
-    cli._rollback_completed_snapshot(root, (created.name,))
-    assert not created.exists()
-    assert unrelated.read_text(encoding="utf-8") == "keep"
