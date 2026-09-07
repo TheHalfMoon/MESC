@@ -52,6 +52,20 @@ def _git(repository_root: Path, *arguments: str) -> str:
     return completed.stdout.strip()
 
 
+def _git_bytes(repository_root: Path, *arguments: str) -> bytes:
+    try:
+        completed = subprocess.run(
+            ["git", "-C", str(repository_root), *arguments],
+            check=False,
+            capture_output=True,
+        )
+    except OSError:
+        raise AcquisitionEntrypointError("Git execution is unavailable") from None
+    if completed.returncode != 0:
+        raise AcquisitionEntrypointError("repository Git identity cannot be resolved")
+    return completed.stdout
+
+
 def _require_clean_repository_before_import(repository_root: Path) -> Path:
     root = repository_root.resolve(strict=True)
     if not (root / ".git").exists():
@@ -59,10 +73,8 @@ def _require_clean_repository_before_import(repository_root: Path) -> Path:
     top_level = Path(_git(root, "rev-parse", "--show-toplevel")).resolve(strict=True)
     if top_level != root:
         raise AcquisitionEntrypointError("repository_root is not the exact Git work-tree root")
-    if _git(root, "status", "--porcelain", "--untracked-files=no"):
-        raise AcquisitionEntrypointError(
-            "tracked repository bytes must be clean before acquisition"
-        )
+    if _git(root, "status", "--porcelain", "--untracked-files=all"):
+        raise AcquisitionEntrypointError("repository work tree must be clean before acquisition")
     module_path = (root / _MODULE_RELATIVE_PATH).resolve(strict=True)
     if not module_path.is_file():
         raise AcquisitionEntrypointError("canonical acquisition executor source is missing")
@@ -77,22 +89,50 @@ def _require_module_file(module: ModuleType, expected: Path, *, label: str) -> N
         )
 
 
+def _require_no_preloaded_medscale_modules() -> None:
+    preloaded = tuple(
+        sorted(name for name in sys.modules if name == "medscale" or name.startswith("medscale."))
+    )
+    if preloaded:
+        raise AcquisitionEntrypointError(
+            "preloaded medscale modules are prohibited before exact-source acquisition import"
+        )
+
+
+def _require_loaded_medscale_modules_match_head(
+    *, repository_root: Path, source_root: Path
+) -> None:
+    for name, module in tuple(sys.modules.items()):
+        if name != "medscale" and not name.startswith("medscale."):
+            continue
+        if module is None:
+            raise AcquisitionEntrypointError("loaded medscale module identity is unavailable")
+        module_file = getattr(module, "__file__", None)
+        if type(module_file) is not str:
+            raise AcquisitionEntrypointError("loaded medscale module has no exact source file")
+        try:
+            resolved = Path(module_file).resolve(strict=True)
+            relative_source = resolved.relative_to(source_root)
+        except (OSError, ValueError):
+            raise AcquisitionEntrypointError(
+                "loaded medscale module is outside the exact checked-out repository source"
+            ) from None
+        repository_relative = Path("src") / relative_source
+        committed = _git_bytes(
+            repository_root,
+            "show",
+            f"HEAD:{repository_relative.as_posix()}",
+        )
+        if resolved.read_bytes() != committed:
+            raise AcquisitionEntrypointError(
+                "loaded medscale module bytes differ from the exact Git commit"
+            )
+
+
 def _import_exact_repository_modules(repository_root: Path) -> tuple[ModuleType, ModuleType]:
     source_root_path = (repository_root / "src").resolve(strict=True)
     source_root = str(source_root_path)
-    preloaded = sys.modules.get("medscale")
-    if preloaded is not None:
-        package_file = getattr(preloaded, "__file__", None)
-        package_root = None
-        if type(package_file) is str:
-            try:
-                package_root = Path(package_file).resolve(strict=True).parent.parent
-            except OSError:
-                package_root = None
-        if package_root != source_root_path:
-            raise AcquisitionEntrypointError(
-                "preloaded medscale package is outside the exact checked-out repository"
-            )
+    _require_no_preloaded_medscale_modules()
     if source_root not in sys.path:
         sys.path.insert(0, source_root)
     try:
@@ -108,6 +148,10 @@ def _import_exact_repository_modules(repository_root: Path) -> tuple[ModuleType,
     expected_acquisition = (repository_root / _MODULE_RELATIVE_PATH).resolve(strict=True)
     _require_module_file(custody, expected_custody, label="custody contract")
     _require_module_file(acquisition, expected_acquisition, label="acquisition executor")
+    _require_loaded_medscale_modules_match_head(
+        repository_root=repository_root,
+        source_root=source_root_path,
+    )
     return custody, acquisition
 
 
