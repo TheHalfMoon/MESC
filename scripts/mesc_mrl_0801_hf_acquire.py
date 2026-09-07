@@ -219,17 +219,19 @@ def main(argv: list[str] | None = None) -> int:
         authorization = custody_module.parse_mrl_0801_acquisition_authorization(
             authorization_path.read_bytes()
         )
-        custody_output = _require_external_new_output(
+        custody_output_path = _require_external_new_output(
             path=args.custody_receipt_output,
             repository_root=repository_root,
             snapshot_root=args.destination,
         )
-        provenance_output = _require_external_new_output(
+        provenance_output_path = _require_external_new_output(
             path=args.provenance_receipt_output,
             repository_root=repository_root,
             snapshot_root=args.destination,
         )
-        if custody_output == provenance_output:
+        custody_output = custody_output_path
+        provenance_output = provenance_output_path
+        if custody_output_path == provenance_output_path:
             raise AcquisitionEntrypointError("custody and provenance outputs must be distinct")
 
         def publish_receipts(custody_value: object, provenance_value: object) -> None:
@@ -237,8 +239,8 @@ def main(argv: list[str] | None = None) -> int:
             provenance_bytes = getattr(provenance_value, "canonical_bytes", None)
             if type(custody_bytes) is not bytes or type(provenance_bytes) is not bytes:
                 raise AcquisitionEntrypointError("executor returned non-canonical receipt values")
-            _write_exact_new(custody_output, custody_bytes)
-            _write_exact_new(provenance_output, provenance_bytes)
+            _write_exact_new(custody_output_path, custody_bytes)
+            _write_exact_new(provenance_output_path, provenance_bytes)
 
         custody, provenance = acquisition_module.acquire_mrl_0801_hf_candidate(
             authorization=authorization,
