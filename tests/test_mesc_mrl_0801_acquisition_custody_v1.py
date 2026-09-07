@@ -142,6 +142,36 @@ def test_noncanonical_authorization_bytes_fail_closed() -> None:
         parse_mrl_0801_acquisition_authorization(noncanonical)
 
 
+def test_authorization_duplicate_json_key_fails_closed() -> None:
+    raw = _authorization_bytes()
+    needle = b'"training_authorized":false'
+    assert needle in raw
+    duplicated = raw.replace(
+        needle,
+        b'"training_authorized":false,"training_authorized":false',
+        1,
+    )
+
+    with pytest.raises(
+        MRL0801AcquisitionCustodyError,
+        match="duplicate JSON key: training_authorized",
+    ):
+        parse_mrl_0801_acquisition_authorization(duplicated)
+
+
+def test_authorization_nonstandard_json_constant_fails_closed() -> None:
+    raw = _authorization_bytes()
+    needle = b'"issue_number":387'
+    assert needle in raw
+    nonstandard = raw.replace(needle, b'"issue_number":NaN', 1)
+
+    with pytest.raises(
+        MRL0801AcquisitionCustodyError,
+        match="non-standard JSON constant is prohibited: NaN",
+    ):
+        parse_mrl_0801_acquisition_authorization(nonstandard)
+
+
 @pytest.mark.parametrize(
     ("field_name", "replacement"),
     (
