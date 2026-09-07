@@ -205,6 +205,12 @@ generator actually completes the existing full-byte local SafeTensors verificati
 an already-present authorized root. A hand-authored receipt or digest has no authority and
 must not be added to production trust.
 
+Parsing custody receipt bytes proves only canonical byte/schema/internal-digest consistency.
+Independent validation of an existing receipt requires the actual local `model_root`, reruns
+the descriptor-safe full-byte SafeTensors verifier, and requires the current file identities,
+`weights_sha256`, and `artifact_identity_sha256` to match the receipt exactly. Parsing alone
+must never be treated as proof of possession.
+
 ## Acquisition boundary
 
 This authorization requires:
