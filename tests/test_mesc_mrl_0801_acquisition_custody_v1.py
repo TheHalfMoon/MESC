@@ -194,6 +194,7 @@ def test_genuine_local_custody_receipt_is_path_free_and_deterministic(tmp_path: 
     validate_mrl_0801_custody_receipt_authorization(
         receipt=first,
         authorization=authorization,
+        model_root=first_root,
     )
 
 
@@ -237,6 +238,31 @@ def test_custody_receipt_requires_current_exact_authorization_binding(tmp_path: 
         validate_mrl_0801_custody_receipt_authorization(
             receipt=altered,
             authorization=authorization,
+            model_root=root,
+        )
+
+
+def test_parsed_custody_receipt_requires_live_local_byte_reverification(tmp_path: Path) -> None:
+    authorization = parse_mrl_0801_acquisition_authorization(_authorization_bytes())
+    root = tmp_path / "model"
+    _write_gemma_layout(root)
+    generated = generate_mrl_0801_asset_custody_receipt(
+        model_root=root,
+        authorization=authorization,
+        model_id=_GEMMA_MODEL_ID,
+        revision=_GEMMA_REVISION,
+    )
+    parsed = MRL0801AssetCustodyReceipt(generated.canonical_bytes)
+    (root / "model-00002-of-00002.safetensors").write_bytes(b"tampered-local-shard")
+
+    with pytest.raises(
+        MRL0801AcquisitionCustodyError,
+        match="current local bytes",
+    ):
+        validate_mrl_0801_custody_receipt_authorization(
+            receipt=parsed,
+            authorization=authorization,
+            model_root=root,
         )
 
 
