@@ -1,4 +1,5 @@
 """Qualification tests for bounded MRL-0801 Hugging Face acquisition."""
+
 from __future__ import annotations
 
 import hashlib
