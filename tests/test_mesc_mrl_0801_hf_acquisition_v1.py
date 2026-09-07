@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import shutil
 from collections.abc import Iterator
 from pathlib import Path
 from types import SimpleNamespace
@@ -101,7 +102,7 @@ def patch_environment(monkeypatch: pytest.MonkeyPatch) -> None:
         "_validate_recorded_repository_execution_identity",
         lambda **_: None,
     )
-    monkeypatch.setattr(subject.shutil, "disk_usage", lambda _: SimpleNamespace(free=10**15))
+    monkeypatch.setattr(shutil, "disk_usage", lambda _: SimpleNamespace(free=10**15))
 
 
 def acquire(
@@ -215,7 +216,7 @@ def test_storage_failure_occurs_before_model_bytes(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(subject, "_capture_repository_execution_identity", lambda _: IDENTITY)
-    monkeypatch.setattr(subject.shutil, "disk_usage", lambda _: SimpleNamespace(free=1))
+    monkeypatch.setattr(shutil, "disk_usage", lambda _: SimpleNamespace(free=1))
     transport = FakeTransport()
     with pytest.raises(MRL0801AcquisitionCustodyError, match="below"):
         subject.acquire_mrl_0801_hf_candidate(
