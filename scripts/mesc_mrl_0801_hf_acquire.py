@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import contextlib
 import importlib
 import json
 import os
@@ -209,22 +208,10 @@ def _write_exact_new(path: Path, data: bytes) -> None:
         raise
 
 
-def _rollback_completed_snapshot(snapshot_root: Path, paths: tuple[str, ...]) -> None:
-    root = snapshot_root.resolve(strict=True)
-    for relative_text in reversed(paths):
-        relative = Path(relative_text)
-        if relative.is_absolute() or len(relative.parts) != 1 or relative.name != relative_text:
-            continue
-        target = root / relative_text
-        if target.is_symlink() or target.is_file():
-            target.unlink(missing_ok=True)
-
-
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     custody_output: Path | None = None
     provenance_output: Path | None = None
-    completed_snapshot_paths: tuple[str, ...] = ()
     try:
         repository_root = _require_clean_repository_before_import(args.repository_root)
         custody_module, acquisition_module = _import_exact_repository_modules(repository_root)
@@ -245,6 +232,14 @@ def main(argv: list[str] | None = None) -> int:
         if custody_output == provenance_output:
             raise AcquisitionEntrypointError("custody and provenance outputs must be distinct")
 
+        def publish_receipts(custody_value: object, provenance_value: object) -> None:
+            custody_bytes = getattr(custody_value, "canonical_bytes", None)
+            provenance_bytes = getattr(provenance_value, "canonical_bytes", None)
+            if type(custody_bytes) is not bytes or type(provenance_bytes) is not bytes:
+                raise AcquisitionEntrypointError("executor returned non-canonical receipt values")
+            _write_exact_new(custody_output, custody_bytes)
+            _write_exact_new(provenance_output, provenance_bytes)
+
         custody, provenance = acquisition_module.acquire_mrl_0801_hf_candidate(
             authorization=authorization,
             transport=acquisition_module.UrllibHfPublicTransport(
@@ -254,10 +249,8 @@ def main(argv: list[str] | None = None) -> int:
             destination=args.destination,
             model_id=args.model_id,
             revision=args.revision,
+            finalizer=publish_receipts,
         )
-        completed_snapshot_paths = tuple(item.path for item in provenance.files)
-        _write_exact_new(custody_output, custody.canonical_bytes)
-        _write_exact_new(provenance_output, provenance.canonical_bytes)
         print(
             json.dumps(
                 {
@@ -278,9 +271,6 @@ def main(argv: list[str] | None = None) -> int:
             custody_output.unlink(missing_ok=True)
         if provenance_output is not None:
             provenance_output.unlink(missing_ok=True)
-        if completed_snapshot_paths:
-            with contextlib.suppress(OSError, RuntimeError, ValueError):
-                _rollback_completed_snapshot(args.destination, completed_snapshot_paths)
         print(
             "MRL-0801 acquisition blocked: bounded acquisition requirements were not met",
             file=sys.stderr,
