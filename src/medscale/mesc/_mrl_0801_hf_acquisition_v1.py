@@ -20,8 +20,9 @@ import urllib.parse
 import urllib.request
 from collections.abc import Iterator
 from dataclasses import dataclass, field
+from http.client import HTTPMessage
 from pathlib import Path, PurePosixPath
-from typing import Final, Protocol, cast
+from typing import IO, Final, Protocol, cast
 
 from medscale.mesc._canonical_json_v1 import CanonicalContractError, canonical_json_bytes
 from medscale.mesc._mrl_0801_acquisition_custody_v1 import (
@@ -326,10 +327,10 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(
         self,
         req: urllib.request.Request,
-        fp: object,
+        fp: IO[bytes],
         code: int,
         msg: str,
-        headers: object,
+        headers: HTTPMessage,
         newurl: str,
     ) -> urllib.request.Request | None:
         return None
@@ -339,10 +340,10 @@ class _SafeRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(
         self,
         req: urllib.request.Request,
-        fp: object,
+        fp: IO[bytes],
         code: int,
         msg: str,
-        headers: object,
+        headers: HTTPMessage,
         newurl: str,
     ) -> urllib.request.Request | None:
         _require_safe_remote_url(newurl)
