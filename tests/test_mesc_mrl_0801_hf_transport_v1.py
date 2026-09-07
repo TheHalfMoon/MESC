@@ -114,6 +114,32 @@ def test_external_redirect_requires_and_uses_linked_identity() -> None:
     assert item.location.startswith("https://cdn-lfs.huggingface.co/")
 
 
+@pytest.mark.parametrize(
+    ("size_text", "etag_text", "pattern"),
+    (
+        ("not-a-size", ETAG, "invalid exact size"),
+        ("0", ETAG, "exact size must be positive"),
+        ("123", "mutable-etag", "content etag is not immutable"),
+    ),
+)
+def test_external_redirect_rejects_ambiguous_size_or_etag(
+    size_text: str,
+    etag_text: str,
+    pattern: str,
+) -> None:
+    url = "https://huggingface.co/google/gemma/resolve/" + REV + "/" + PATH
+    linked = headers(
+        Location="https://cdn-lfs.huggingface.co/file",
+        X_Repo_Commit=REV,
+        X_Linked_Size=size_text,
+        X_Linked_Etag=etag_text,
+    )
+    with pytest.raises(subject.MRL0801HfAcquisitionError, match=pattern):
+        transport_with(Opener([redirect(url, linked)])).metadata(
+            model_id="google/gemma", revision=REV, path=PATH
+        )
+
+
 def test_public_access_failure_has_no_credential_fallback() -> None:
     url = "https://huggingface.co/google/gemma/resolve/" + REV + "/" + PATH
     forbidden = urllib.error.HTTPError(url, 403, "forbidden", Message(), None)
