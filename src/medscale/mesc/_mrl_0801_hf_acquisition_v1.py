@@ -20,7 +20,7 @@ import urllib.request
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
-from typing import Final, Protocol
+from typing import Final, Protocol, cast
 
 from medscale.mesc._canonical_json_v1 import CanonicalContractError, canonical_json_bytes
 from medscale.mesc._mrl_0801_acquisition_custody_v1 import (
@@ -226,7 +226,7 @@ class MRL0801HfAcquisitionProvenanceReceipt:
         for index, raw_file in enumerate(raw_files):
             if type(raw_file) is not dict:
                 raise MRL0801HfAcquisitionError(f"files[{index}] must be an object")
-            file_document = raw_file
+            file_document = cast(dict[str, object], raw_file)
             if frozenset(file_document) != _FILE_KEYS:
                 raise MRL0801HfAcquisitionError(f"files[{index}] has an invalid key set")
             path = _require_text(file_document["path"], field_name=f"files[{index}].path")
@@ -413,12 +413,9 @@ class UrllibHfPublicTransport:
                 _require_safe_remote_url(next_url)
                 next_host = urllib.parse.urlparse(next_url).hostname
                 if next_host is not None and next_host.rstrip(".").lower() == "huggingface.co":
-                    # Follow Hub-internal resolve-cache redirects, preserving the query string.
                     url = next_url
                     continue
 
-                # On an external/CDN redirect, Content-Length describes the redirect body,
-                # not the target object. Only authoritative linked metadata is admissible.
                 commit_sha = headers.get("X-Repo-Commit")
                 size_text = headers.get("X-Linked-Size")
                 etag_text = headers.get("X-Linked-Etag")
@@ -661,7 +658,10 @@ def _require_receipt_matches_custody(
 
 
 def _candidate_roster_sha256(custody: MRL0801AssetCustodyReceipt) -> str:
-    document = json.loads(custody.canonical_bytes.decode("utf-8"))
+    loaded: object = json.loads(custody.canonical_bytes.decode("utf-8"))
+    if type(loaded) is not dict:
+        raise MRL0801HfAcquisitionError("custody receipt must be a JSON object")
+    document = cast(dict[str, object], loaded)
     value = document.get("candidate_roster_sha256")
     if not isinstance(value, str) or _SHA256.fullmatch(value) is None:
         raise MRL0801HfAcquisitionError("custody receipt has no canonical roster identity")
@@ -745,7 +745,6 @@ def _validate_recorded_repository_execution_identity(
         raise MRL0801HfAcquisitionError(
             "recorded executor commit does not resolve to the receipt tree"
         )
-    # The acquisition commit must be in the ancestry of the repository state used for review.
     try:
         ancestry = subprocess.run(
             [
@@ -781,14 +780,14 @@ def _parse_canonical_object(raw: bytes) -> dict[str, object]:
     if type(raw) is not bytes or not raw:
         raise MRL0801HfAcquisitionError("acquisition provenance must be non-empty exact bytes")
     try:
-        value = json.loads(
+        loaded: object = json.loads(
             raw.decode("utf-8"),
             object_pairs_hook=_unique_object,
             parse_constant=_reject_json_constant,
         )
-        if type(value) is not dict:
+        if type(loaded) is not dict:
             raise MRL0801HfAcquisitionError("acquisition provenance must be a JSON object")
-        document = value
+        document = cast(dict[str, object], loaded)
         canonical = canonical_json_bytes(document)
     except MRL0801HfAcquisitionError:
         raise
@@ -952,7 +951,7 @@ def _require_safe_remote_url(url: str) -> None:
         if host != "huggingface.co" and not host.endswith(_ALLOWED_REMOTE_HOST_SUFFIXES):
             raise MRL0801HfAcquisitionError(
                 "remote location is outside the bounded Hugging Face transport domains"
-            )
+            ) from None
         return
     if not address.is_global:
         raise MRL0801HfAcquisitionError("remote location uses a non-global IP address")
@@ -1014,6 +1013,20 @@ def _new_git_blob_digest(byte_count: int) -> _Digest:
     return digest
 
 
+def _publish_partial_no_replace(*, partial: Path, target: Path) -> None:
+    try:
+        target.hardlink_to(partial)
+    except FileExistsError:
+        raise MRL0801HfAcquisitionError(
+            "executor refuses to overwrite an asset file created during publication"
+        ) from None
+    try:
+        partial.unlink()
+    except OSError:
+        target.unlink(missing_ok=True)
+        raise
+
+
 def _acquire_one_file(
     *,
     root: Path,
@@ -1059,7 +1072,7 @@ def _acquire_one_file(
         )
         if remote_identity != metadata.etag:
             raise MRL0801HfAcquisitionError("download bytes differ from remote content identity")
-        os.replace(partial, target)
+        _publish_partial_no_replace(partial=partial, target=target)
         return HfAcquiredFileIdentity(
             path=metadata.path,
             byte_count=byte_count,
