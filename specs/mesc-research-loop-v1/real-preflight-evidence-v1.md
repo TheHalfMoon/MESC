@@ -36,7 +36,8 @@ The closed V1 role set is:
 
 | Task | Evidence kind | Required semantic boundary |
 |---|---|---|
-| `MRL-0801` | `mesc.mrl.real_preflight.model_weights.v1` | exact model id, immutable revision, `weights_sha256`, artifact identity, custody, and access-authorization identities; actual asset presence |
+| `MRL-0801` | `mesc.mrl.real_preflight.model_weights.v1` | exact single model id, immutable revision, `weights_sha256`, artifact identity, custody, and access-authorization identities; actual asset presence |
+| `MRL-0801` | `mesc.mrl.real_preflight.model_weights_set.v1` | one roster-bound, deterministic non-empty set of exact per-candidate model/weights/custody/access identities with actual asset presence for every candidate |
 | `MRL-0802` | `mesc.mrl.real_preflight.corpus_rights.v1` | exact corpus identity and bytes plus rights, provenance, and access-authorization identities |
 | `MRL-0803` | `mesc.mrl.real_preflight.isolation.v1` | passing contamination evidence and explicit held-out/sealed exclusion from training |
 | `MRL-0804` | `mesc.mrl.real_preflight.runtime.v1` | platform-qualified runtime/smoke identities with no remote-code or network-access claim in the evidence envelope |
@@ -61,6 +62,48 @@ task_id
 `disposition` must be exactly `PASS`. `schema_version` must be exactly
 `MRL-REAL-PREFLIGHT-EVIDENCE-V1`. The task and evidence kind must occupy the exact matching
 role. Every task payload has a closed field set and fail-closed semantic checks.
+
+### MRL-0801 active-candidate set payload
+
+`mesc.mrl.real_preflight.model_weights_set.v1` exists for programs such as Experiment-0 where
+one MRL-0801 task must prove custody/identity for every member of a frozen active roster while
+the machine-state layer retains one canonical evidence slot per MRL task.
+
+Its payload is exactly:
+
+```text
+candidate_roster_sha256
+candidates
+```
+
+`candidate_roster_sha256` must be one exact SHA-256 identity for the externally frozen roster.
+`candidates` must be a non-empty JSON array. Every candidate record reuses the exact existing
+single-model MRL-0801 field set and semantics:
+
+```text
+access_authorization_sha256
+artifact_identity_sha256
+asset_custody_sha256
+asset_present
+model_id
+revision
+weights_sha256
+```
+
+Every candidate must have `asset_present=true`, an immutable 40-character lowercase Git
+revision, and exact SHA-256 identities for weights, artifact identity, custody, and access
+authorization. Model IDs must be unique; model/revision identities must be unique; records
+must be strictly ordered by `(model_id, revision)` so one logical set cannot have multiple
+canonical encodings.
+
+Parsing this kind proves only the declared set's byte/schema semantics. Before genuine
+MRL-0801 admission, independent verification must additionally establish that
+`candidate_roster_sha256` identifies the exact current frozen roster and that the candidate
+records represent every and only active candidate in that roster. The parser does not infer
+or manufacture that external binding.
+
+The existing `mesc.mrl.real_preflight.model_weights.v1` kind is preserved unchanged for
+single-model programs and historical compatibility.
 
 ### MRL-0805 applicable-authority payloads
 
