@@ -535,13 +535,13 @@ def _require_nonnegative_int(value: object, *, field_name: str) -> int:
 def _require_layout(value: object) -> HfWeightLayout:
     if value not in ("single", "sharded"):
         raise MRL0801AcquisitionCustodyError("custody receipt layout is invalid")
-    return cast(HfWeightLayout, value)
+    return value
 
 
 def _require_file_kind(value: object) -> HfArtifactFileKind:
     if value not in ("index", "weight"):
         raise MRL0801AcquisitionCustodyError("custody receipt file kind is invalid")
-    return cast(HfArtifactFileKind, value)
+    return value
 
 
 def _parse_artifact_files(value: object) -> tuple[HfArtifactFileIdentity, ...]:
