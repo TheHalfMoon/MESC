@@ -1,4 +1,5 @@
 """CLI boundary tests for MRL-0801 public acquisition."""
+
 from __future__ import annotations
 
 import importlib.util
