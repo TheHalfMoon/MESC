@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import importlib
 import json
 import os
@@ -233,10 +234,8 @@ def main(argv: list[str] | None = None) -> int:
         if provenance_output is not None:
             provenance_output.unlink(missing_ok=True)
         if completed_snapshot_paths:
-            try:
+            with contextlib.suppress(OSError, RuntimeError, ValueError):
                 _rollback_completed_snapshot(args.destination, completed_snapshot_paths)
-            except (OSError, RuntimeError, ValueError):
-                pass
         print(
             "MRL-0801 acquisition blocked: bounded acquisition requirements were not met",
             file=sys.stderr,
