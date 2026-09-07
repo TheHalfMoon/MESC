@@ -345,9 +345,10 @@ def generate_mrl_0801_asset_custody_receipt(
         "weights_sha256": identity.weights_sha256,
     }
     receipt = MRL0801AssetCustodyReceipt(canonical_json_bytes(payload))
-    validate_mrl_0801_custody_receipt_authorization(
+    _validate_mrl_0801_custody_receipt_against_identity(
         receipt=receipt,
         authorization=authorization,
+        identity=identity,
     )
     return receipt
 
@@ -356,18 +357,51 @@ def validate_mrl_0801_custody_receipt_authorization(
     *,
     receipt: MRL0801AssetCustodyReceipt,
     authorization: MRL0801AcquisitionAuthorization,
+    model_root: Path,
 ) -> None:
-    """Bind a parsed custody receipt to the exact current authorization artifact."""
+    """Reverify local bytes and bind a parsed custody receipt to current authorization."""
     if type(receipt) is not MRL0801AssetCustodyReceipt:
         raise MRL0801AcquisitionCustodyError("receipt must be an exact MRL0801AssetCustodyReceipt")
     if type(authorization) is not MRL0801AcquisitionAuthorization:
         raise MRL0801AcquisitionCustodyError(
             "authorization must be an exact MRL0801AcquisitionAuthorization"
         )
+    authorization.require_candidate(
+        model_id=receipt.model_id,
+        revision=receipt.revision,
+    )
+    try:
+        identity = identify_hf_safetensors_artifact(
+            model_root=model_root,
+            model_id=receipt.model_id,
+            revision=receipt.revision,
+        )
+    except TrainingModelArtifactIdentityError as exc:
+        raise MRL0801AcquisitionCustodyError(
+            "custody receipt local SafeTensors reverification failed"
+        ) from exc
+    _validate_mrl_0801_custody_receipt_against_identity(
+        receipt=receipt,
+        authorization=authorization,
+        identity=identity,
+    )
+
+
+def _validate_mrl_0801_custody_receipt_against_identity(
+    *,
+    receipt: MRL0801AssetCustodyReceipt,
+    authorization: MRL0801AcquisitionAuthorization,
+    identity: HfSafeTensorsArtifactIdentity,
+) -> None:
+    """Require receipt, authorization, and one verified local identity to match exactly."""
     candidate = authorization.require_candidate(
         model_id=receipt.model_id,
         revision=receipt.revision,
     )
+    if identity.model_id != receipt.model_id or identity.revision != receipt.revision:
+        raise MRL0801AcquisitionCustodyError(
+            "verified local identity does not match the custody receipt subject"
+        )
     if receipt.access_authorization_sha256 != authorization.authorization_sha256:
         raise MRL0801AcquisitionCustodyError(
             "custody receipt is bound to a different acquisition authorization"
@@ -375,6 +409,18 @@ def validate_mrl_0801_custody_receipt_authorization(
     if tuple(item.path for item in receipt.files) != candidate.allowed_files:
         raise MRL0801AcquisitionCustodyError(
             "custody receipt file manifest is outside the exact authorized allowlist"
+        )
+    if identity.files != receipt.files:
+        raise MRL0801AcquisitionCustodyError(
+            "custody receipt file identities do not match the current local bytes"
+        )
+    if identity.weights_sha256 != receipt.weights_sha256:
+        raise MRL0801AcquisitionCustodyError(
+            "custody receipt weights_sha256 does not match the current local bytes"
+        )
+    if identity.verifier_receipt_sha256 != receipt.artifact_identity_sha256:
+        raise MRL0801AcquisitionCustodyError(
+            "custody receipt artifact identity does not match the current local bytes"
         )
 
 
