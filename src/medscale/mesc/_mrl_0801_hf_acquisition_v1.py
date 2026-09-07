@@ -625,7 +625,7 @@ def validate_mrl_0801_hf_acquisition_provenance(
         )
     if type(authorization) is not MRL0801AcquisitionAuthorization:
         raise MRL0801HfAcquisitionError(
-            "authorization must be an exact MRL0801AcquisitionAuthorization"
+            "authorization must use the exact canonical MRL0801AcquisitionAuthorization type"
         )
     candidate = authorization.require_candidate(
         model_id=receipt.model_id,
@@ -1018,12 +1018,12 @@ def _require_external_empty_destination(
             raise MRL0801HfAcquisitionError(
                 "acquisition destination descriptor must reference a directory"
             )
-        path_observation = os.stat(root, follow_symlinks=False)
+        path_observation = root.stat(follow_symlinks=False)
         if _stat_descriptor_identity(opened) != _stat_descriptor_identity(path_observation):
             raise MRL0801HfAcquisitionError(
                 "acquisition destination changed while it was being opened"
             )
-        if os.listdir(descriptor):
+        if os.listdir(descriptor):  # noqa: PTH208 -- descriptor-relative listing is required
             raise MRL0801HfAcquisitionError(
                 "acquisition destination must be an empty real directory"
             )
@@ -1047,7 +1047,7 @@ def _require_no_existing_symlink_components(path: Path, *, label: str) -> None:
 def _require_destination_path_identity(destination: _DestinationDirectory) -> None:
     try:
         opened = os.fstat(destination.descriptor)
-        current = os.stat(destination.path, follow_symlinks=False)
+        current = destination.path.stat(follow_symlinks=False)
     except OSError:
         raise MRL0801HfAcquisitionError(
             "acquisition destination path changed during the transaction"
@@ -1216,7 +1216,9 @@ def _acquire_one_file(
     try:
         descriptor = os.open(partial_name, flags, 0o600, dir_fd=root_fd)
     except OSError:
-        raise MRL0801HfAcquisitionError("partial acquisition file could not be opened safely") from None
+        raise MRL0801HfAcquisitionError(
+            "partial acquisition file could not be opened safely"
+        ) from None
     try:
         opened = os.fstat(descriptor)
         if not stat.S_ISREG(opened.st_mode):
