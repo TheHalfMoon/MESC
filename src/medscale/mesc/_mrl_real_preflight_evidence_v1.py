@@ -42,6 +42,7 @@ MRLRealPreflightTask = Literal[
 
 _SCHEMA_VERSION: Final = "MRL-REAL-PREFLIGHT-EVIDENCE-V1"
 _TRUST_REGISTRY_VERSION: Final = "MRL-REAL-PREFLIGHT-EVIDENCE-TRUST-V1"
+_MRL_0801_MODEL_WEIGHTS_SET_KIND: Final = "mesc.mrl.real_preflight.model_weights_set.v1"
 _MRL_0805_NO_TRAINING_KIND: Final = "mesc.mrl.real_preflight.no_training_evaluation_authority.v1"
 _SHA256: Final = re.compile(r"^[0-9a-f]{64}$", flags=re.ASCII)
 _GIT_SHA: Final = re.compile(r"^[0-9a-f]{40}$", flags=re.ASCII)
@@ -219,12 +220,19 @@ def _parse_canonical_object(raw: bytes) -> dict[str, object]:
 def _kind_matches_task(task_id: str, kind: str) -> bool:
     if kind == _TASK_KIND[task_id]:
         return True
+    if task_id == "MRL-0801" and kind == _MRL_0801_MODEL_WEIGHTS_SET_KIND:
+        return True
     return task_id == "MRL-0805" and kind == _MRL_0805_NO_TRAINING_KIND
 
 
 def _validate_payload(task_id: str, kind: str, payload: dict[str, object]) -> None:
     if task_id == "MRL-0801":
-        _validate_model_weights(payload)
+        if kind == _TASK_KIND["MRL-0801"]:
+            _validate_model_weights(payload)
+        elif kind == _MRL_0801_MODEL_WEIGHTS_SET_KIND:
+            _validate_model_weights_set(payload)
+        else:  # pragma: no cover - _kind_matches_task closes this path
+            raise MRLRealPreflightEvidenceError("unsupported MRL-0801 evidence kind")
     elif task_id == "MRL-0802":
         _validate_corpus_rights(payload)
     elif task_id == "MRL-0803":
@@ -248,7 +256,11 @@ def _validate_payload(task_id: str, kind: str, payload: dict[str, object]) -> No
         raise MRLRealPreflightEvidenceError("unsupported MRL real-preflight task")
 
 
-def _validate_model_weights(payload: dict[str, object]) -> None:
+def _validate_model_weights(
+    payload: dict[str, object],
+    *,
+    label: str = "MRL-0801 payload",
+) -> None:
     _require_keys(
         payload,
         {
@@ -260,18 +272,52 @@ def _validate_model_weights(payload: dict[str, object]) -> None:
             "revision",
             "weights_sha256",
         },
-        label="MRL-0801 payload",
+        label=label,
     )
-    _require_true(payload["asset_present"], field="asset_present")
-    _require_text(payload["model_id"], field="model_id")
-    _require_git_sha(payload["revision"], field="revision")
+    _require_true(payload["asset_present"], field=f"{label}.asset_present")
+    _require_text(payload["model_id"], field=f"{label}.model_id")
+    _require_git_sha(payload["revision"], field=f"{label}.revision")
     for field_name in (
         "weights_sha256",
         "artifact_identity_sha256",
         "asset_custody_sha256",
         "access_authorization_sha256",
     ):
-        _require_sha256(payload[field_name], field=field_name)
+        _require_sha256(payload[field_name], field=f"{label}.{field_name}")
+
+
+def _validate_model_weights_set(payload: dict[str, object]) -> None:
+    _require_keys(
+        payload,
+        {"candidate_roster_sha256", "candidates"},
+        label="MRL-0801 candidate-set payload",
+    )
+    _require_sha256(
+        payload["candidate_roster_sha256"],
+        field="candidate_roster_sha256",
+    )
+    raw_candidates = _require_list(payload["candidates"], field="candidates")
+    if not raw_candidates:
+        raise MRLRealPreflightEvidenceError("candidates must contain at least one candidate")
+
+    model_ids: list[str] = []
+    identities: list[tuple[str, str]] = []
+    for index, raw_candidate in enumerate(raw_candidates):
+        candidate = _require_object(raw_candidate, field=f"candidates[{index}]")
+        _validate_model_weights(candidate, label=f"candidates[{index}]")
+        model_id = cast(str, candidate["model_id"])
+        revision = cast(str, candidate["revision"])
+        model_ids.append(model_id)
+        identities.append((model_id, revision))
+
+    if len(model_ids) != len(set(model_ids)):
+        raise MRLRealPreflightEvidenceError("candidate model_id values must be unique")
+    if len(identities) != len(set(identities)):
+        raise MRLRealPreflightEvidenceError("candidate model/revision identities must be unique")
+    if tuple(identities) != tuple(sorted(identities)):
+        raise MRLRealPreflightEvidenceError(
+            "candidates must be strictly ordered by model_id and revision"
+        )
 
 
 def _validate_corpus_rights(payload: dict[str, object]) -> None:
