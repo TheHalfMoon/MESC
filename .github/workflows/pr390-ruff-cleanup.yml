@@ -1,0 +1,66 @@
+name: PR390 Ruff cleanup
+
+on:
+  push:
+    branches:
+      - ops/pr390-capability-preflight-20260908
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: macos-15
+    env:
+      EXPECTED_HEAD: d6a10af01730965e80f7892c3114d68898b53479
+      TARGET_BRANCH: feat/mrl-0801-hf-acquisition-executor-20260908
+    steps:
+      - name: Checkout operations branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          path: ops
+
+      - name: Checkout exact target branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ env.TARGET_BRANCH }}
+          path: work
+          fetch-depth: 0
+
+      - name: Guard exact target head
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C work rev-parse HEAD)" = "$EXPECTED_HEAD"
+
+      - name: Apply exact Ruff cleanup
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 ops/.github/pr390_ruff_cleanup.py work
+          python3 -m py_compile \
+            work/src/medscale/mesc/_mrl_0801_hf_acquisition_v1.py \
+            work/tests/test_mesc_mrl_0801_hf_acquire_cli.py \
+            work/tests/test_mesc_mrl_0801_hf_witness_v1.py
+          git -C work diff --check
+          expected_paths="$(printf '%s\n' \
+            'src/medscale/mesc/_mrl_0801_hf_acquisition_v1.py' \
+            'tests/test_mesc_mrl_0801_hf_acquire_cli.py' \
+            'tests/test_mesc_mrl_0801_hf_witness_v1.py')"
+          actual_paths="$(git -C work diff --name-only | sort)"
+          test "$actual_paths" = "$expected_paths"
+
+      - name: Guarded fast-forward push
+        shell: bash
+        run: |
+          set -euo pipefail
+          git -C work config user.name "TheHalfMoon"
+          git -C work config user.email "285091250+TheHalfMoon@users.noreply.github.com"
+          git -C work add \
+            src/medscale/mesc/_mrl_0801_hf_acquisition_v1.py \
+            tests/test_mesc_mrl_0801_hf_acquire_cli.py \
+            tests/test_mesc_mrl_0801_hf_witness_v1.py
+          git -C work commit -m "fix(mesc): clear witness qualification lint"
+          git -C work fetch origin "$TARGET_BRANCH"
+          test "$(git -C work rev-parse FETCH_HEAD)" = "$EXPECTED_HEAD"
+          git -C work push origin "HEAD:refs/heads/$TARGET_BRANCH"
