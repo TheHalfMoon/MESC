@@ -1,0 +1,107 @@
+name: MRL-0801 ADR-0037 guarded implementation
+
+on:
+  push:
+    branches:
+      - ops/mrl0801-impl-active
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-verify:
+    runs-on: ubuntu-latest
+    env:
+      EXPECTED_HEAD: d24eaf80da3e3dd8a37c6fe57d9de82a1112f6c5
+      TARGET_BRANCH: feat/mrl-0801-hf-acquisition-executor-20260908
+    steps:
+      - name: Checkout ops branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+
+      - name: Capture guarded patcher
+        run: cp .github/ops/mrl0801_adr0037_patch.py /tmp/mrl0801_adr0037_patch.py
+
+      - name: Verify exact target head before mutation
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual="$(git ls-remote origin "refs/heads/${TARGET_BRANCH}" | awk '{print $1}')"
+          test "${actual}" = "${EXPECTED_HEAD}"
+
+      - name: Checkout exact target head
+        run: git switch --detach "${EXPECTED_HEAD}"
+
+      - name: Apply deterministic ADR-0037 patch
+        run: python /tmp/mrl0801_adr0037_patch.py
+
+      - name: Syntax and diff checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m py_compile \
+            src/medscale/mesc/_mrl_0801_hf_acquisition_v1.py \
+            scripts/mesc_mrl_0801_hf_acquire.py \
+            tests/test_mesc_mrl_0801_hf_acquisition_v1.py \
+            tests/test_mesc_mrl_0801_hf_acquire_cli.py \
+            tests/test_mesc_mrl_0801_hf_witness_v1.py
+          git diff --check
+          git diff --name-only | sort
+          test "$(git diff --name-only | grep -Ev '^(src/medscale/mesc/_mrl_0801_hf_acquisition_v1.py|scripts/mesc_mrl_0801_hf_acquire.py|tests/test_mesc_mrl_0801_hf_acquisition_v1.py|tests/test_mesc_mrl_0801_hf_acquire_cli.py|tests/test_mesc_mrl_0801_hf_witness_v1.py|specs/mesc-experiment-0/mrl-0801-hf-acquisition-provenance-v1.md)$' | wc -l)" -eq 0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+
+      - name: Sync locked environment
+        run: uv sync --locked
+
+      - name: Focused lint and format
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run ruff check \
+            scripts/mesc_mrl_0801_hf_acquire.py \
+            tests/test_mesc_mrl_0801_hf_acquisition_v1.py \
+            tests/test_mesc_mrl_0801_hf_acquire_cli.py \
+            tests/test_mesc_mrl_0801_hf_witness_v1.py
+          uv run ruff format --check \
+            scripts/mesc_mrl_0801_hf_acquire.py \
+            tests/test_mesc_mrl_0801_hf_acquisition_v1.py \
+            tests/test_mesc_mrl_0801_hf_acquire_cli.py \
+            tests/test_mesc_mrl_0801_hf_witness_v1.py
+
+      - name: Focused strict typing
+        run: uv run mypy --strict src/medscale/mesc/_mrl_0801_hf_acquisition_v1.py scripts/mesc_mrl_0801_hf_acquire.py
+
+      - name: Focused qualification tests
+        run: >-
+          uv run pytest -q
+          tests/test_mesc_mrl_0801_hf_acquisition_v1.py
+          tests/test_mesc_mrl_0801_hf_acquire_cli.py
+          tests/test_mesc_mrl_0801_hf_witness_v1.py
+          tests/test_mesc_mrl_0801_hf_publish_v1.py
+          tests/test_mesc_mrl_0801_hf_mount_rollback_v1.py
+
+      - name: Commit verified implementation
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add \
+            src/medscale/mesc/_mrl_0801_hf_acquisition_v1.py \
+            scripts/mesc_mrl_0801_hf_acquire.py \
+            tests/test_mesc_mrl_0801_hf_acquisition_v1.py \
+            tests/test_mesc_mrl_0801_hf_acquire_cli.py \
+            tests/test_mesc_mrl_0801_hf_witness_v1.py \
+            specs/mesc-experiment-0/mrl-0801-hf-acquisition-provenance-v1.md
+          git commit -m 'feat(mesc): activate ADR-0037 acquisition semantics'
+
+      - name: Reverify exact target head and push fast-forward only
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual="$(git ls-remote origin "refs/heads/${TARGET_BRANCH}" | awk '{print $1}')"
+          test "${actual}" = "${EXPECTED_HEAD}"
+          git push origin "HEAD:refs/heads/${TARGET_BRANCH}"
