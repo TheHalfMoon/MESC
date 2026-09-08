@@ -143,6 +143,61 @@ def test_receipt_output_parent_swap_cannot_redirect_publication_into_repo(tmp_pa
         os.close(output.descriptor)
 
 
+def test_receipt_cleanup_preserves_foreign_racing_entry(tmp_path: Path) -> None:
+    cli = load_cli()
+    root = repo(tmp_path)
+    snapshot = tmp_path / "snapshot"
+    snapshot.mkdir()
+    receipt = tmp_path / "receipts/receipt.json"
+    output = cli._require_external_new_output(
+        path=receipt,
+        repository_root=root,
+        snapshot_root=snapshot,
+    )
+    receipt.write_bytes(b"foreign")
+    try:
+        with pytest.raises(cli.AcquisitionEntrypointError, match="could not be created"):
+            cli._write_exact_new(output, b"ours")
+        cli._unlink_bound_output(output)
+        assert receipt.read_bytes() == b"foreign"
+    finally:
+        os.close(output.descriptor)
+
+
+def test_receipt_replacement_during_write_preserves_foreign_entry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cli = load_cli()
+    root = repo(tmp_path)
+    snapshot = tmp_path / "snapshot"
+    snapshot.mkdir()
+    receipt = tmp_path / "receipts/receipt.json"
+    output = cli._require_external_new_output(
+        path=receipt,
+        repository_root=root,
+        snapshot_root=snapshot,
+    )
+    original_check = cli._require_bound_output_parent_identity
+    calls = 0
+
+    def replace_after_write(value: object) -> None:
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            receipt.unlink()
+            receipt.write_bytes(b"foreign")
+        original_check(value)
+
+    monkeypatch.setattr(cli, "_require_bound_output_parent_identity", replace_after_write)
+    try:
+        with pytest.raises(cli.AcquisitionEntrypointError, match="name changed"):
+            cli._write_exact_new(output, b"ours")
+        assert receipt.read_bytes() == b"foreign"
+    finally:
+        os.close(output.descriptor)
+
+
 def test_any_preloaded_medscale_module_is_rejected(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

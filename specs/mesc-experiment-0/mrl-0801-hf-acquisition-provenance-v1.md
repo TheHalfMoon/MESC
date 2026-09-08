@@ -194,13 +194,15 @@ The acquisition entrypoint performs a full Git-visible clean-work-tree precheck 
 
 Each receipt output parent directory is resolved after any required directory creation, opened once with no-follow directory flags, and bound to its exact device/inode identity. Receipt existence checks, exclusive creation, and failure cleanup are descriptor-relative to that bound parent. Parent pathname identity is rechecked before and after publication, so replacing the validated parent cannot redirect a receipt into the repository or raw snapshot.
 
-Receipt outputs are created exclusively and are published through the executor transaction finalizer. If receipt publication fails, the executor rolls back the model files through the still-open destination descriptor; the CLI removes any receipt output created before the failure through its bound parent descriptor.
+Every receipt file created by the transaction is also bound to its exact device/inode identity. Finalizer reconciliation requires the published name to continue referencing that exact regular file, and rollback removes a receipt only while the name still references the transaction-created inode. A racing or replacement entry owned by another actor is never deleted as transaction cleanup.
+
+Receipt outputs are created exclusively and are published through the executor transaction finalizer. If receipt publication fails, the executor rolls back the model files through the still-open destination descriptor; the CLI removes only transaction-owned receipt outputs through their bound parent descriptors.
 
 User-visible success output contains stable subject/digest fields only. Failures emit one generic blocked message and do not print signed URLs, local paths, credentials, or provider error bodies.
 
 ## CI boundary
 
-Repository tests inject fake Hub transports. CI must never download model weights or depend on live Hub availability. Transport tests synthesize redirect/metadata responses, including the external-redirect `Content-Length` ambiguity case. Security tests cover exact runtime receipt types, preloaded transitive module rejection, untracked-work-tree rejection, descriptor-relative publication, concurrent destination replacement, receipt-output parent replacement, and late transaction-finalizer rollback.
+Repository tests inject fake Hub transports. CI must never download model weights or depend on live Hub availability. Transport tests synthesize redirect/metadata responses, including the external-redirect `Content-Length` ambiguity case. Security tests cover exact runtime receipt types, preloaded transitive module rejection, untracked-work-tree rejection, descriptor-relative publication, concurrent destination replacement, receipt-output parent replacement, foreign receipt-entry preservation, and late transaction-finalizer rollback.
 
 ## Non-authority statement
 

@@ -27,10 +27,21 @@ class AcquisitionEntrypointError(RuntimeError):
 
 
 class _BoundReceiptOutput:
-    """Descriptor-bound receipt output that cannot follow a replaced parent pathname."""
+    """Descriptor-bound receipt output with transaction-created file identity."""
 
-    __slots__ = ("descriptor", "device", "inode", "name", "parent_path", "path")
+    __slots__ = (
+        "created_device",
+        "created_inode",
+        "descriptor",
+        "device",
+        "inode",
+        "name",
+        "parent_path",
+        "path",
+    )
 
+    created_device: int | None
+    created_inode: int | None
     descriptor: int
     device: int
     inode: int
@@ -54,6 +65,8 @@ class _BoundReceiptOutput:
         self.device = device
         self.inode = inode
         self.name = name
+        self.created_device = None
+        self.created_inode = None
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -242,20 +255,32 @@ def _require_bound_output_parent_identity(output: _BoundReceiptOutput) -> None:
         raise AcquisitionEntrypointError("receipt output parent changed during publication")
 
 
-def _descriptor_output_exists(output: _BoundReceiptOutput) -> bool:
+def _descriptor_output_stat(output: _BoundReceiptOutput) -> os.stat_result | None:
     try:
-        os.stat(  # noqa: PTH116 -- descriptor-relative inspection is required
+        return os.stat(  # noqa: PTH116 -- descriptor-relative inspection is required
             output.name,
             dir_fd=output.descriptor,
             follow_symlinks=False,
         )
     except FileNotFoundError:
-        return False
+        return None
     except OSError:
         raise AcquisitionEntrypointError(
             "receipt output entry could not be inspected safely"
         ) from None
-    return True
+
+
+def _require_owned_output_identity(output: _BoundReceiptOutput) -> None:
+    if output.created_device is None or output.created_inode is None:
+        raise AcquisitionEntrypointError("receipt output has no transaction-created identity")
+    observed = _descriptor_output_stat(output)
+    expected = (output.created_device, output.created_inode)
+    if (
+        observed is None
+        or not stat.S_ISREG(observed.st_mode)
+        or _stat_identity(observed) != expected
+    ):
+        raise AcquisitionEntrypointError("receipt output name changed during publication")
 
 
 def _require_external_new_output(
@@ -325,7 +350,7 @@ def _require_external_new_output(
             inode=opened.st_ino,
             name=value.name,
         )
-        if _descriptor_output_exists(output):
+        if _descriptor_output_stat(output) is not None:
             raise AcquisitionEntrypointError("receipt output must not already exist")
         return output
     except BaseException:
@@ -334,17 +359,29 @@ def _require_external_new_output(
 
 
 def _unlink_bound_output(output: _BoundReceiptOutput) -> None:
-    try:
-        os.unlink(  # noqa: PTH108 -- descriptor-relative cleanup is required
-            output.name,
-            dir_fd=output.descriptor,
-        )
-    except FileNotFoundError:
+    if output.created_device is None or output.created_inode is None:
         return
+    observed = _descriptor_output_stat(output)
+    expected = (output.created_device, output.created_inode)
+    try:
+        if (
+            observed is not None
+            and stat.S_ISREG(observed.st_mode)
+            and _stat_identity(observed) == expected
+        ):
+            os.unlink(  # noqa: PTH108 -- descriptor-relative cleanup is required
+                output.name,
+                dir_fd=output.descriptor,
+            )
+    finally:
+        output.created_device = None
+        output.created_inode = None
 
 
 def _write_exact_new(output: _BoundReceiptOutput, data: bytes) -> None:
     _require_bound_output_parent_identity(output)
+    if output.created_device is not None or output.created_inode is not None:
+        raise AcquisitionEntrypointError("receipt output is already owned by this transaction")
     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | _O_NOFOLLOW | _O_CLOEXEC
     try:
         descriptor = os.open(output.name, flags, 0o600, dir_fd=output.descriptor)
@@ -354,12 +391,15 @@ def _write_exact_new(output: _BoundReceiptOutput, data: bytes) -> None:
         opened = os.fstat(descriptor)
         if not stat.S_ISREG(opened.st_mode):
             raise AcquisitionEntrypointError("receipt output descriptor is not a regular file")
+        output.created_device = opened.st_dev
+        output.created_inode = opened.st_ino
         with os.fdopen(descriptor, "wb", closefd=True) as stream:
             descriptor = -1
             stream.write(data)
             stream.flush()
             os.fsync(stream.fileno())
         _require_bound_output_parent_identity(output)
+        _require_owned_output_identity(output)
     except BaseException:
         if descriptor >= 0:
             os.close(descriptor)
@@ -400,6 +440,8 @@ def main(argv: list[str] | None = None) -> int:
                 raise AcquisitionEntrypointError("executor returned non-canonical receipt values")
             _write_exact_new(custody_output_path, custody_bytes)
             _write_exact_new(provenance_output_path, provenance_bytes)
+            _require_owned_output_identity(custody_output_path)
+            _require_owned_output_identity(provenance_output_path)
 
         custody, provenance = acquisition_module.acquire_mrl_0801_hf_candidate(
             authorization=authorization,
@@ -430,7 +472,7 @@ def main(argv: list[str] | None = None) -> int:
     except (AcquisitionEntrypointError, ImportError, OSError, RuntimeError, ValueError):
         for output in (custody_output, provenance_output):
             if output is not None:
-                with contextlib.suppress(OSError):
+                with contextlib.suppress(OSError, AcquisitionEntrypointError):
                     _unlink_bound_output(output)
         print(
             "MRL-0801 acquisition blocked: bounded acquisition requirements were not met",
