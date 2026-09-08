@@ -26,7 +26,12 @@ old = '                witness_root=witness_root_for(tmp_path / hashlib.sha256(r
 new = '                witness_root=witness_root_for(\n                    tmp_path / hashlib.sha256(revision.encode()).hexdigest()\n                ),\n'
 if acq.count(old) != 1:
     raise SystemExit(f"acquisition marker count: {acq.count(old)}")
-ACQ.write_text(acq.replace(old, new, 1), encoding="utf-8")
+acq = acq.replace(old, new, 1)
+old_residue = '    assert list(original.iterdir()) == []\n    assert (destination / "sentinel.txt").read_text(encoding="utf-8") == "replacement"\n'
+new_residue = '    assert {item.name for item in original.iterdir()} == set(FILES)\n    assert (destination / "sentinel.txt").read_text(encoding="utf-8") == "replacement"\n'
+if acq.count(old_residue) != 1:
+    raise SystemExit(f"destination retained-residue marker count: {acq.count(old_residue)}")
+ACQ.write_text(acq.replace(old_residue, new_residue, 1), encoding="utf-8")
 
 cli = CLI.read_text(encoding="utf-8")
 if 'from typing import Any\n' not in cli:
@@ -41,4 +46,57 @@ old_noqa = '            os.rename(name, owned_name, src_dir_fd=root_fd, dst_dir_
 new_noqa = '            os.rename(name, owned_name, src_dir_fd=root_fd, dst_dir_fd=root_fd)\n'
 if witness.count(old_noqa) != 1:
     raise SystemExit(f"witness noqa marker count: {witness.count(old_noqa)}")
-WITNESS.write_text(witness.replace(old_noqa, new_noqa, 1), encoding="utf-8")
+witness = witness.replace(old_noqa, new_noqa, 1)
+old_device = '''    real_fstat = os.fstat
+
+    def mismatched(fd: int) -> os.stat_result:
+        observed = real_fstat(fd)
+        if fd == destination_root.descriptor:
+            return observed
+        values = list(observed)
+        values[2] = observed.st_dev + 1
+        return os.stat_result(values)
+
+    monkeypatch.setattr(subject.os, "fstat", mismatched)
+    try:
+        with pytest.raises(subject.MRL0801HfAcquisitionError, match="transaction filesystem"):
+            subject._require_external_witness_root(
+                witness_root=witness_dir,
+                repository_root=repository,
+                transaction_root=destination_root,
+            )
+    finally:
+        os.close(destination_root.descriptor)
+'''
+new_device = '''    witness_root = subject._require_external_witness_root(
+        witness_root=witness_dir,
+        repository_root=repository,
+        transaction_root=destination_root,
+    )
+    real_fstat = os.fstat
+
+    def mismatched(fd: int) -> os.stat_result:
+        observed = real_fstat(fd)
+        if not stat.S_ISREG(observed.st_mode):
+            return observed
+        values = list(observed)
+        values[2] = observed.st_dev + 1
+        return os.stat_result(values)
+
+    monkeypatch.setattr(subject.os, "fstat", mismatched)
+    try:
+        with pytest.raises(subject.MRL0801HfAcquisitionError, match="transaction filesystem"):
+            subject._probe_atomic_descriptor_publication(
+                source_root_fd=destination_root.descriptor,
+                witness_root=witness_root,
+            )
+    finally:
+        os.close(witness_root.descriptor)
+        os.close(destination_root.descriptor)
+'''
+if witness.count(old_device) != 1:
+    raise SystemExit(f"device mismatch marker count: {witness.count(old_device)}")
+witness = witness.replace(old_device, new_device, 1)
+if 'import stat\n' not in witness:
+    witness = witness.replace('import os\n', 'import os\nimport stat\n', 1)
+WITNESS.write_text(witness, encoding="utf-8")
