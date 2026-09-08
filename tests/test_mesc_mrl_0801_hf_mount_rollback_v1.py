@@ -12,6 +12,8 @@ import pytest
 
 from medscale.mesc import _mrl_0801_hf_acquisition_v1 as subject
 
+_O_DIRECTORY: int = getattr(os, "O_DIRECTORY", 0)
+
 
 def _acquired_file(path: str) -> subject.HfAcquiredFileIdentity:
     return subject.HfAcquiredFileIdentity(
@@ -33,7 +35,7 @@ def test_rollback_never_recurses_into_nonempty_finalizer_directory(tmp_path: Pat
     payload = unexpected / "payload.bin"
     payload.write_bytes(b"external-content")
 
-    root_fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY)
+    root_fd = os.open(root, os.O_RDONLY | _O_DIRECTORY)
     try:
         with pytest.raises(OSError):
             subject._rollback_created_files(
@@ -74,7 +76,7 @@ def test_rollback_does_not_descend_into_bind_mount(tmp_path: Path) -> None:
     if mounted.returncode != 0:
         pytest.skip("bind mounts are not permitted in this test environment")
     try:
-        root_fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY)
+        root_fd = os.open(root, os.O_RDONLY | _O_DIRECTORY)
         try:
             with pytest.raises(OSError):
                 subject._rollback_created_files(
