@@ -98,6 +98,12 @@ def _require_no_preloaded_medscale_modules() -> None:
         )
 
 
+def _prepend_exact_source_root(source_root: str) -> None:
+    """Place the exact repository source root first even when it already exists later."""
+    sys.path[:] = [entry for entry in sys.path if entry != source_root]
+    sys.path.insert(0, source_root)
+
+
 def _require_loaded_medscale_modules_match_head(
     *, repository_root: Path, source_root: Path
 ) -> None:
@@ -132,8 +138,7 @@ def _import_exact_repository_modules(repository_root: Path) -> tuple[ModuleType,
     source_root_path = (repository_root / "src").resolve(strict=True)
     source_root = str(source_root_path)
     _require_no_preloaded_medscale_modules()
-    if source_root not in sys.path:
-        sys.path.insert(0, source_root)
+    _prepend_exact_source_root(source_root)
     try:
         custody = importlib.import_module("medscale.mesc._mrl_0801_acquisition_custody_v1")
         acquisition = importlib.import_module("medscale.mesc._mrl_0801_hf_acquisition_v1")
