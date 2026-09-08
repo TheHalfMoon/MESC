@@ -1005,7 +1005,7 @@ def _require_descriptor_relative_support() -> None:
         raise MRL0801HfAcquisitionError(
             "platform lacks required no-follow or unnamed-file descriptor support"
         )
-    required_dir_fd = (os.mkdir, os.open, os.rmdir, os.stat, os.unlink)
+    required_dir_fd = (os.open, os.stat)
     if any(operation not in os.supports_dir_fd for operation in required_dir_fd):
         raise MRL0801HfAcquisitionError(
             "platform lacks required descriptor-relative filesystem operations"
@@ -1305,73 +1305,57 @@ def _publish_open_descriptor_no_replace(
 
 
 def _probe_atomic_descriptor_publication(*, root_fd: int) -> None:
-    """Prove unnamed-file atomic publication on this filesystem before network access."""
-    probe_dir_name = f".mrl-0801-publication-probe-{secrets.token_hex(16)}"
-    probe_fd: int | None = None
+    """Prove atomic publication on the same filesystem without deleting probe namespace."""
+    parent_fd: int | None = None
     source_fd: int | None = None
-    created_dir = False
-    published = False
     try:
-        os.mkdir(probe_dir_name, 0o700, dir_fd=root_fd)
-        created_dir = True
-        probe_fd = os.open(
-            probe_dir_name,
+        parent_fd = os.open(
+            "..",
             os.O_RDONLY | _O_DIRECTORY | _O_NOFOLLOW | _O_CLOEXEC,
             dir_fd=root_fd,
         )
-        probe_directory = os.fstat(probe_fd)
-        if not stat.S_ISDIR(probe_directory.st_mode):
+        root_observation = os.fstat(root_fd)
+        parent_observation = os.fstat(parent_fd)
+        if not stat.S_ISDIR(parent_observation.st_mode):
             raise MRL0801HfAcquisitionError(
-                "atomic publication capability probe did not bind a directory"
+                "atomic publication witness parent is not a directory"
             )
-        source_fd = _open_unnamed_temp_file(root_fd=probe_fd)
+        if parent_observation.st_dev != root_observation.st_dev:
+            raise MRL0801HfAcquisitionError(
+                "safe same-filesystem atomic publication witness is unavailable"
+            )
+        source_fd = _open_unnamed_temp_file(root_fd=parent_fd)
         source = os.fstat(source_fd)
         if not stat.S_ISREG(source.st_mode):
             raise MRL0801HfAcquisitionError(
-                "atomic publication capability probe did not create a regular file"
+                "atomic publication witness did not create a regular file"
             )
+        witness_name = f".mrl-0801-publication-witness-{secrets.token_hex(16)}"
         _publish_open_descriptor_no_replace(
             source_fd=source_fd,
-            root_fd=probe_fd,
-            target_name="probe",
+            root_fd=parent_fd,
+            target_name=witness_name,
         )
-        published = True
-        linked = _descriptor_entry_stat(root_fd=probe_fd, name="probe")
+        linked = _descriptor_entry_stat(root_fd=parent_fd, name=witness_name)
         if (
             linked is None
             or not stat.S_ISREG(linked.st_mode)
             or _stat_descriptor_identity(linked) != _stat_descriptor_identity(source)
         ):
             raise MRL0801HfAcquisitionError(
-                "atomic publication capability probe produced an invalid identity"
+                "atomic publication witness produced an invalid identity"
             )
-        os.unlink("probe", dir_fd=probe_fd)
-        published = False
-        os.close(source_fd)
-        source_fd = None
-        os.close(probe_fd)
-        probe_fd = None
-        os.rmdir(probe_dir_name, dir_fd=root_fd)
-        created_dir = False
     except MRL0801HfAcquisitionError:
         raise
     except OSError:
         raise MRL0801HfAcquisitionError(
-            "atomic descriptor publication capability probe failed safely"
+            "atomic descriptor publication capability witness failed safely"
         ) from None
     finally:
         if source_fd is not None:
-            with contextlib.suppress(OSError):
-                os.close(source_fd)
-        if probe_fd is not None:
-            if published:
-                with contextlib.suppress(OSError):
-                    os.unlink("probe", dir_fd=probe_fd)
-            with contextlib.suppress(OSError):
-                os.close(probe_fd)
-        if created_dir:
-            with contextlib.suppress(OSError):
-                os.rmdir(probe_dir_name, dir_fd=root_fd)
+            os.close(source_fd)
+        if parent_fd is not None:
+            os.close(parent_fd)
 
 
 def _acquire_one_file(
