@@ -35,7 +35,9 @@ class ByteTransport:
 
 
 def root_descriptor(root: Path) -> int:
-    return os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    if subject._O_DIRECTORY == 0 or subject._O_NOFOLLOW == 0:
+        pytest.skip("descriptor-safe acquisition primitives are unavailable on this platform")
+    return os.open(root, os.O_RDONLY | subject._O_DIRECTORY | subject._O_NOFOLLOW)
 
 
 def remote_metadata(data: bytes, *, byte_count: int) -> subject.HfRemoteFileMetadata:
