@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from collections.abc import Iterator
 from pathlib import Path
 from types import SimpleNamespace
@@ -303,6 +304,38 @@ def test_atomic_publication_capability_failure_precedes_transport(
     assert transport.calls == {}
     assert transport.downloads == []
     assert list(destination.iterdir()) == []
+
+
+def test_destination_race_during_capability_probe_blocks_before_transport(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    patch_environment(monkeypatch)
+    destination = tmp_path / "assets"
+    destination.mkdir()
+    transport = FakeTransport()
+
+    def race(*, root_fd: int) -> None:
+        descriptor = os.open(
+            "foreign.txt",
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+            0o600,
+            dir_fd=root_fd,
+        )
+        os.close(descriptor)
+
+    monkeypatch.setattr(subject, "_probe_atomic_descriptor_publication", race)
+    with pytest.raises(subject.MRL0801HfAcquisitionError, match="changed during atomic"):
+        subject.acquire_mrl_0801_hf_candidate(
+            authorization=authorization(),
+            transport=transport,
+            repository_root=fake_repo(tmp_path),
+            destination=destination,
+            model_id=MODEL,
+            revision=REV,
+        )
+    assert transport.calls == {}
+    assert transport.downloads == []
+    assert (destination / "foreign.txt").exists()
 
 
 def test_destination_replacement_cannot_redirect_writes(

@@ -1073,6 +1073,10 @@ def _require_external_empty_destination(
                 "acquisition destination must be an empty real directory"
             )
         _probe_atomic_descriptor_publication(root_fd=descriptor)
+        if os.listdir(descriptor):  # noqa: PTH208 -- descriptor-relative listing is required
+            raise MRL0801HfAcquisitionError(
+                "acquisition destination changed during atomic publication preflight"
+            )
         return _DestinationDirectory(
             path=root,
             descriptor=descriptor,

@@ -371,6 +371,10 @@ def _require_external_new_output(
             raise AcquisitionEntrypointError("receipt output must not already exist")
         _probe_receipt_atomic_publication(output)
         _require_bound_output_parent_identity(output)
+        if _descriptor_output_stat(output) is not None:
+            raise AcquisitionEntrypointError(
+                "receipt output appeared during atomic publication preflight"
+            )
         return output
     except BaseException:
         os.close(descriptor)

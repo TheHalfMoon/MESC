@@ -146,6 +146,32 @@ def test_receipt_atomic_publication_capability_is_verified_before_binding(
     assert not receipt.exists()
 
 
+def test_receipt_target_race_during_capability_probe_is_rejected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cli = load_cli()
+    root = repo(tmp_path)
+    snapshot = tmp_path / "snapshot"
+    snapshot.mkdir()
+    receipt = tmp_path / "receipts/receipt.json"
+    receipt.parent.mkdir()
+
+    def race(output: object) -> None:
+        descriptor = getattr(output, "descriptor")
+        name = getattr(output, "name")
+        fd = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600, dir_fd=descriptor)
+        os.close(fd)
+
+    monkeypatch.setattr(cli, "_probe_receipt_atomic_publication", race)
+    with pytest.raises(cli.AcquisitionEntrypointError, match="appeared during atomic"):
+        cli._require_external_new_output(
+            path=receipt,
+            repository_root=root,
+            snapshot_root=snapshot,
+        )
+    assert receipt.exists()
+
+
 def test_receipt_output_is_published_descriptor_relative(tmp_path: Path) -> None:
     cli = load_cli()
     root = repo(tmp_path)
