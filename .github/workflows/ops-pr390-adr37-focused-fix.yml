@@ -1,0 +1,71 @@
+name: Ops PR390 ADR37 Focused Fix
+
+on:
+  push:
+    branches:
+      - ops/pr390-adr37-focused-fix-20260908
+
+permissions:
+  contents: write
+
+jobs:
+  verify-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Preserve patcher
+        run: cp .github/ops/pr390_adr37_focused_fix.py /tmp/pr390_adr37_focused_fix.py
+      - name: Checkout exact PR head
+        run: |
+          git fetch origin feat/mrl-0801-hf-acquisition-executor-20260908
+          git checkout feat/mrl-0801-hf-acquisition-executor-20260908
+          test "$(git rev-parse HEAD)" = "8ca0d78789e17ce0fd5ab4b9b81d32008791242a"
+      - name: Apply deterministic fixes
+        run: python /tmp/pr390_adr37_focused_fix.py
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+      - name: Install Python
+        run: uv python install 3.11
+      - name: Sync locked environment
+        run: uv sync --frozen
+      - name: Ruff and diff guards
+        run: |
+          git diff --check
+          uv run ruff check \
+            src/medscale/mesc/_mrl_0801_hf_acquisition_v1.py \
+            scripts/mesc_mrl_0801_hf_acquire.py \
+            tests/test_mesc_mrl_0801_hf_acquisition_v1.py \
+            tests/test_mesc_mrl_0801_hf_acquire_cli.py \
+            tests/test_mesc_mrl_0801_hf_witness_v1.py
+          uv run ruff format --check \
+            scripts/mesc_mrl_0801_hf_acquire.py \
+            tests/test_mesc_mrl_0801_hf_acquisition_v1.py \
+            tests/test_mesc_mrl_0801_hf_acquire_cli.py \
+            tests/test_mesc_mrl_0801_hf_witness_v1.py
+      - name: Focused mypy
+        run: uv run mypy src/medscale/mesc/_mrl_0801_hf_acquisition_v1.py scripts/mesc_mrl_0801_hf_acquire.py
+      - name: Focused MRL-0801 tests
+        run: >-
+          uv run pytest -q
+          tests/test_mesc_mrl_0801_hf_acquisition_v1.py
+          tests/test_mesc_mrl_0801_hf_acquire_cli.py
+          tests/test_mesc_mrl_0801_hf_witness_v1.py
+          tests/test_mesc_mrl_0801_hf_publish_v1.py
+          tests/test_mesc_mrl_0801_hf_mount_rollback_v1.py
+          tests/test_mesc_mrl_0801_hf_transport_v1.py
+          tests/test_mesc_mrl_0801_hf_receipt_determinism_v1.py
+          tests/test_mesc_mrl_0801_hf_git_identity_v1.py
+      - name: Guard exact remote head and push
+        run: |
+          git fetch origin feat/mrl-0801-hf-acquisition-executor-20260908
+          test "$(git rev-parse origin/feat/mrl-0801-hf-acquisition-executor-20260908)" = "8ca0d78789e17ce0fd5ab4b9b81d32008791242a"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            scripts/mesc_mrl_0801_hf_acquire.py \
+            tests/test_mesc_mrl_0801_hf_acquisition_v1.py \
+            tests/test_mesc_mrl_0801_hf_acquire_cli.py \
+            tests/test_mesc_mrl_0801_hf_witness_v1.py
+          git commit -m "test(mesc): qualify ADR-0037 operational boundary"
+          git push origin HEAD:feat/mrl-0801-hf-acquisition-executor-20260908
