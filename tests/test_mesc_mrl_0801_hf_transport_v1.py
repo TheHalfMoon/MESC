@@ -1,0 +1,191 @@
+"""Transport-level tests for MRL-0801 public Hugging Face metadata."""
+
+from __future__ import annotations
+
+import urllib.error
+from email.message import Message
+from io import BytesIO
+from typing import Any, cast
+
+import pytest
+
+from medscale.mesc import _mrl_0801_hf_acquisition_v1 as subject
+
+REV = "842da3794eaa0b77d5f08bae87a17459d91ff475"
+PATH = "model-00001-of-00002.safetensors"
+ETAG = "a" * 64
+
+
+class Response:
+    def __init__(self, status: int, headers: Message, url: str, body: bytes = b"") -> None:
+        self.status = status
+        self.headers = headers
+        self._url = url
+        self._body = BytesIO(body)
+
+    def __enter__(self) -> Response:
+        return self
+
+    def __exit__(self, *_: object) -> None:
+        return None
+
+    def geturl(self) -> str:
+        return self._url
+
+    def read(self, size: int) -> bytes:
+        return self._body.read(size)
+
+
+class Opener:
+    def __init__(self, sequence: list[object]) -> None:
+        self.sequence = sequence
+        self.urls: list[str] = []
+
+    def open(self, request: urllib.request.Request, timeout: float) -> Response:
+        del timeout
+        self.urls.append(request.full_url)
+        value = self.sequence.pop(0)
+        if isinstance(value, BaseException):
+            raise value
+        assert isinstance(value, Response)
+        return value
+
+
+def headers(**values: str) -> Message:
+    result = Message()
+    for key, value in values.items():
+        result[key.replace("_", "-")] = value
+    return result
+
+
+def redirect(url: str, values: Message) -> urllib.error.HTTPError:
+    return urllib.error.HTTPError(url, 307, "redirect", values, None)
+
+
+def transport_with(opener: Opener) -> subject.UrllibHfPublicTransport:
+    transport = subject.UrllibHfPublicTransport()
+    cast(Any, transport)._metadata_opener = opener
+    return transport
+
+
+@pytest.mark.parametrize(
+    "timeout_seconds",
+    (0.0, -1.0, float("nan"), float("inf"), float("-inf"), 1e308),
+)
+def test_transport_rejects_non_positive_non_finite_or_oversized_timeout(
+    timeout_seconds: float,
+) -> None:
+    with pytest.raises(ValueError, match="finite and positive"):
+        subject.UrllibHfPublicTransport(timeout_seconds=timeout_seconds)
+
+
+def test_transport_accepts_maximum_bounded_timeout() -> None:
+    subject.UrllibHfPublicTransport(timeout_seconds=3600.0)
+
+
+def test_metadata_timeout_overflow_fails_closed() -> None:
+    transport = transport_with(Opener([OverflowError("timeout out of range")]))
+    with pytest.raises(subject.MRL0801HfAcquisitionError, match="metadata transport failed"):
+        transport.metadata(model_id="google/gemma", revision=REV, path=PATH)
+
+
+def test_byte_timeout_overflow_fails_closed() -> None:
+    item = subject.HfRemoteFileMetadata(PATH, REV, 4, ETAG, "https://huggingface.co/file")
+    transport = subject.UrllibHfPublicTransport()
+    cast(Any, transport)._download_opener = Opener([OverflowError("timeout out of range")])
+    with pytest.raises(subject.MRL0801HfAcquisitionError, match="byte transport failed"):
+        list(transport.iter_bytes(metadata=item))
+
+
+def test_internal_redirect_preserves_query_and_final_metadata() -> None:
+    first = "https://huggingface.co/google/gemma/resolve/" + REV + "/" + PATH
+    location = "/api/resolve-cache/models/google/gemma/" + REV + "/file?etag=abc%2Fdef"
+    opener = Opener(
+        [
+            redirect(first, headers(Location=location)),
+            Response(
+                200,
+                headers(X_Repo_Commit=REV, Content_Length="4", ETag=ETAG),
+                "https://huggingface.co/final",
+            ),
+        ]
+    )
+    item = transport_with(opener).metadata(model_id="google/gemma", revision=REV, path=PATH)
+    assert "?etag=abc%2Fdef" in opener.urls[1]
+    assert item.commit_sha == REV
+    assert item.byte_count == 4
+    assert item.etag == ETAG
+
+
+def test_external_redirect_never_uses_redirect_content_length_as_target_size() -> None:
+    url = "https://huggingface.co/google/gemma/resolve/" + REV + "/" + PATH
+    bad = headers(Location="https://cdn-lfs.huggingface.co/file", Content_Length="37")
+    with pytest.raises(subject.MRL0801HfAcquisitionError, match="authoritative linked metadata"):
+        transport_with(Opener([redirect(url, bad)])).metadata(
+            model_id="google/gemma", revision=REV, path=PATH
+        )
+
+
+def test_external_redirect_requires_and_uses_linked_identity() -> None:
+    url = "https://huggingface.co/google/gemma/resolve/" + REV + "/" + PATH
+    linked = headers(
+        Location="https://cdn-lfs.huggingface.co/file?signature=secret",
+        X_Repo_Commit=REV,
+        X_Linked_Size="123",
+        X_Linked_Etag=ETAG,
+        Content_Length="37",
+    )
+    item = transport_with(Opener([redirect(url, linked)])).metadata(
+        model_id="google/gemma", revision=REV, path=PATH
+    )
+    assert item.byte_count == 123
+    assert item.etag == ETAG
+    assert item.location.startswith("https://cdn-lfs.huggingface.co/")
+
+
+@pytest.mark.parametrize(
+    ("size_text", "etag_text", "pattern"),
+    (
+        ("not-a-size", ETAG, "invalid exact size"),
+        ("0", ETAG, "exact size must be positive"),
+        ("123", "mutable-etag", "content etag is not immutable"),
+        ("123", f'W/"{ETAG}"', "must not use a weak validator"),
+    ),
+)
+def test_external_redirect_rejects_ambiguous_size_or_etag(
+    size_text: str,
+    etag_text: str,
+    pattern: str,
+) -> None:
+    url = "https://huggingface.co/google/gemma/resolve/" + REV + "/" + PATH
+    linked = headers(
+        Location="https://cdn-lfs.huggingface.co/file",
+        X_Repo_Commit=REV,
+        X_Linked_Size=size_text,
+        X_Linked_Etag=etag_text,
+    )
+    with pytest.raises(subject.MRL0801HfAcquisitionError, match=pattern):
+        transport_with(Opener([redirect(url, linked)])).metadata(
+            model_id="google/gemma", revision=REV, path=PATH
+        )
+
+
+def test_public_access_failure_has_no_credential_fallback() -> None:
+    url = "https://huggingface.co/google/gemma/resolve/" + REV + "/" + PATH
+    forbidden = urllib.error.HTTPError(url, 403, "forbidden", Message(), None)
+    with pytest.raises(subject.MRL0801HfAcquisitionError, match="public unauthenticated"):
+        transport_with(Opener([forbidden])).metadata(
+            model_id="google/gemma",
+            revision=REV,
+            path=PATH,
+        )
+
+
+def test_byte_stream_rejects_unsafe_final_redirect() -> None:
+    item = subject.HfRemoteFileMetadata(PATH, REV, 4, ETAG, "https://huggingface.co/file")
+    transport = subject.UrllibHfPublicTransport()
+    cast(Any, transport)._download_opener = Opener(
+        [Response(200, headers(Content_Length="4"), "https://127.0.0.1/file", b"data")]
+    )
+    with pytest.raises(subject.MRL0801HfAcquisitionError, match="non-global"):
+        list(transport.iter_bytes(metadata=item))
