@@ -498,7 +498,9 @@ def acquire_mrl_0801_hf_candidate(
     destination: Path,
     model_id: str,
     revision: str,
-    finalizer: Callable[[MRL0801AssetCustodyReceipt, MRL0801HfAcquisitionProvenanceReceipt], None]
+    finalizer: Callable[
+        [MRL0801AssetCustodyReceipt, MRL0801HfAcquisitionProvenanceReceipt], None
+    ]
     | None = None,
 ) -> tuple[MRL0801AssetCustodyReceipt, MRL0801HfAcquisitionProvenanceReceipt]:
     """Acquire one exact authorized candidate and bind remote provenance to local custody."""
@@ -513,6 +515,7 @@ def acquire_mrl_0801_hf_candidate(
         repository_root=repository_root,
     )
     acquired: list[HfAcquiredFileIdentity] = []
+    pre_finalizer_entries: frozenset[str] | None = None
     try:
         metadata = _verify_remote_allowlist_metadata(
             transport=transport,
@@ -590,13 +593,42 @@ def acquire_mrl_0801_hf_candidate(
         )
         _require_destination_path_identity(destination_root)
         if finalizer is not None:
+            pre_finalizer_entries = _descriptor_entries(root_fd=destination_root.descriptor)
+            if pre_finalizer_entries != frozenset(candidate.allowed_files):
+                raise MRL0801HfAcquisitionError(
+                    "acquisition destination manifest differs from the authorized allowlist"
+                )
             finalizer(custody, receipt)
+            _require_destination_path_identity(destination_root)
+            if _descriptor_entries(root_fd=destination_root.descriptor) != pre_finalizer_entries:
+                raise MRL0801HfAcquisitionError(
+                    "acquisition destination manifest changed during finalization"
+                )
+            post_finalizer_custody = generate_mrl_0801_asset_custody_receipt(
+                model_root=destination_root.path,
+                authorization=authorization,
+                model_id=model_id,
+                revision=revision,
+            )
+            _require_destination_path_identity(destination_root)
+            if post_finalizer_custody.canonical_bytes != custody.canonical_bytes:
+                raise MRL0801HfAcquisitionError(
+                    "acquisition destination custody changed during finalization"
+                )
+            _require_receipt_matches_custody(
+                receipt=receipt,
+                custody=post_finalizer_custody,
+                authorization=authorization,
+                expected_files=candidate.allowed_files,
+            )
+            custody = post_finalizer_custody
         _require_destination_path_identity(destination_root)
         return custody, receipt
     except BaseException:
         _rollback_created_files(
             root_fd=destination_root.descriptor,
             acquired=tuple(acquired),
+            pre_finalizer_entries=pre_finalizer_entries,
         )
         raise
     finally:
@@ -1077,6 +1109,17 @@ def _available_bytes(destination: _DestinationDirectory) -> int:
     return available
 
 
+def _descriptor_entries(*, root_fd: int) -> frozenset[str]:
+    try:
+        return frozenset(
+            os.listdir(root_fd)  # noqa: PTH208 -- descriptor-relative listing is required
+        )
+    except OSError:
+        raise MRL0801HfAcquisitionError(
+            "acquisition destination could not be enumerated safely"
+        ) from None
+
+
 def _require_safe_remote_url(url: str) -> None:
     parsed = urllib.parse.urlparse(url)
     if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
@@ -1262,16 +1305,17 @@ def _rollback_created_files(
     *,
     root_fd: int,
     acquired: tuple[HfAcquiredFileIdentity, ...],
+    pre_finalizer_entries: frozenset[str] | None = None,
 ) -> None:
     for item in reversed(acquired):
         relative = _validate_relative_path(item.path)
         _unlink_descriptor_entry(root_fd=root_fd, name=relative.name)
-    try:
-        names = tuple(os.listdir(root_fd))
-    except OSError:
-        raise MRL0801HfAcquisitionError(
-            "acquisition destination could not be enumerated during rollback"
-        ) from None
+    names = _descriptor_entries(root_fd=root_fd)
     for name in names:
-        if name.startswith(".") and name.endswith(".mrl-0801-partial"):
+        if (
+            name.startswith(".")
+            and name.endswith(".mrl-0801-partial")
+            or pre_finalizer_entries is not None
+            and name not in pre_finalizer_entries
+        ):
             _unlink_descriptor_entry(root_fd=root_fd, name=name)
