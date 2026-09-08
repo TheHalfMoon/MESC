@@ -90,11 +90,7 @@ def test_model_capability_witness_foreign_replacement_is_never_deleted(
 
     def replace_after_identity_check(*, root_fd: int, name: str) -> os.stat_result | None:
         observed = original_stat(root_fd=root_fd, name=name)
-        if (
-            observed is not None
-            and name.startswith(".mrl-0801-publication-witness-")
-            and not raced
-        ):
+        if observed is not None and name.startswith(".mrl-0801-publication-witness-") and not raced:
             owned_name = f"{name}.owned"
             os.rename(
                 name,
@@ -198,11 +194,7 @@ def test_receipt_capability_witness_foreign_replacement_is_never_deleted(
         observed = original_stat(output)
         name = output.name
         descriptor = output.descriptor
-        if (
-            observed is not None
-            and name.startswith(".mrl-0801-receipt-witness-")
-            and not raced
-        ):
+        if observed is not None and name.startswith(".mrl-0801-receipt-witness-") and not raced:
             owned_name = f"{name}.owned"
             os.rename(
                 name,
