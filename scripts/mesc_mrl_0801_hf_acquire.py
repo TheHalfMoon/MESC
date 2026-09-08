@@ -426,32 +426,16 @@ def _publish_open_descriptor_no_replace(
 
 
 def _probe_receipt_atomic_publication(output: _BoundReceiptOutput) -> None:
-    """Prove receipt publication on the same filesystem without deleting probe namespace."""
+    """Prove receipt publication, retain the witness, and block before acquisition."""
     _require_bound_output_parent_identity(output)
-    witness_parent_fd: int | None = None
     source_fd: int | None = None
     try:
-        witness_parent_fd = os.open(
-            "..",
-            os.O_RDONLY | _O_DIRECTORY | _O_NOFOLLOW | _O_CLOEXEC,
-            dir_fd=output.descriptor,
-        )
-        output_parent = os.fstat(output.descriptor)
-        witness_parent = os.fstat(witness_parent_fd)
-        if not stat.S_ISDIR(witness_parent.st_mode):
-            raise AcquisitionEntrypointError(
-                "atomic receipt publication witness parent is not a directory"
-            )
-        if witness_parent.st_dev != output_parent.st_dev:
-            raise AcquisitionEntrypointError(
-                "safe same-filesystem receipt publication witness is unavailable"
-            )
         try:
             source_fd = os.open(
                 ".",
                 os.O_WRONLY | _O_TMPFILE | _O_CLOEXEC,
                 0o600,
-                dir_fd=witness_parent_fd,
+                dir_fd=output.descriptor,
             )
         except OSError:
             raise AcquisitionEntrypointError(
@@ -464,11 +448,11 @@ def _probe_receipt_atomic_publication(output: _BoundReceiptOutput) -> None:
             )
         witness_name = f".mrl-0801-receipt-witness-{secrets.token_hex(16)}"
         witness_output = _BoundReceiptOutput(
-            path=output.parent_path.parent / witness_name,
-            parent_path=output.parent_path.parent,
-            descriptor=witness_parent_fd,
-            device=witness_parent.st_dev,
-            inode=witness_parent.st_ino,
+            path=output.parent_path / witness_name,
+            parent_path=output.parent_path,
+            descriptor=output.descriptor,
+            device=output.device,
+            inode=output.inode,
             name=witness_name,
         )
         _publish_open_descriptor_no_replace(source_fd=source_fd, output=witness_output)
@@ -482,6 +466,10 @@ def _probe_receipt_atomic_publication(output: _BoundReceiptOutput) -> None:
                 "atomic receipt publication witness produced an invalid identity"
             )
         _require_bound_output_parent_identity(output)
+        raise AcquisitionEntrypointError(
+            "atomic receipt publication capability proven; witness retained because safe "
+            "atomic cleanup is unavailable, so acquisition is blocked"
+        )
     except AcquisitionEntrypointError:
         raise
     except OSError:
@@ -491,8 +479,6 @@ def _probe_receipt_atomic_publication(output: _BoundReceiptOutput) -> None:
     finally:
         if source_fd is not None:
             os.close(source_fd)
-        if witness_parent_fd is not None:
-            os.close(witness_parent_fd)
 
 
 def _write_exact_new(output: _BoundReceiptOutput, data: bytes) -> None:

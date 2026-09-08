@@ -1305,26 +1305,10 @@ def _publish_open_descriptor_no_replace(
 
 
 def _probe_atomic_descriptor_publication(*, root_fd: int) -> None:
-    """Prove atomic publication on the same filesystem without deleting probe namespace."""
-    parent_fd: int | None = None
+    """Prove atomic publication, retain the witness, and block before remote access."""
     source_fd: int | None = None
     try:
-        parent_fd = os.open(
-            "..",
-            os.O_RDONLY | _O_DIRECTORY | _O_NOFOLLOW | _O_CLOEXEC,
-            dir_fd=root_fd,
-        )
-        root_observation = os.fstat(root_fd)
-        parent_observation = os.fstat(parent_fd)
-        if not stat.S_ISDIR(parent_observation.st_mode):
-            raise MRL0801HfAcquisitionError(
-                "atomic publication witness parent is not a directory"
-            )
-        if parent_observation.st_dev != root_observation.st_dev:
-            raise MRL0801HfAcquisitionError(
-                "safe same-filesystem atomic publication witness is unavailable"
-            )
-        source_fd = _open_unnamed_temp_file(root_fd=parent_fd)
+        source_fd = _open_unnamed_temp_file(root_fd=root_fd)
         source = os.fstat(source_fd)
         if not stat.S_ISREG(source.st_mode):
             raise MRL0801HfAcquisitionError(
@@ -1333,10 +1317,10 @@ def _probe_atomic_descriptor_publication(*, root_fd: int) -> None:
         witness_name = f".mrl-0801-publication-witness-{secrets.token_hex(16)}"
         _publish_open_descriptor_no_replace(
             source_fd=source_fd,
-            root_fd=parent_fd,
+            root_fd=root_fd,
             target_name=witness_name,
         )
-        linked = _descriptor_entry_stat(root_fd=parent_fd, name=witness_name)
+        linked = _descriptor_entry_stat(root_fd=root_fd, name=witness_name)
         if (
             linked is None
             or not stat.S_ISREG(linked.st_mode)
@@ -1345,6 +1329,10 @@ def _probe_atomic_descriptor_publication(*, root_fd: int) -> None:
             raise MRL0801HfAcquisitionError(
                 "atomic publication witness produced an invalid identity"
             )
+        raise MRL0801HfAcquisitionError(
+            "atomic publication capability proven; witness retained because safe atomic "
+            "cleanup is unavailable, so remote access is blocked"
+        )
     except MRL0801HfAcquisitionError:
         raise
     except OSError:
@@ -1354,8 +1342,6 @@ def _probe_atomic_descriptor_publication(*, root_fd: int) -> None:
     finally:
         if source_fd is not None:
             os.close(source_fd)
-        if parent_fd is not None:
-            os.close(parent_fd)
 
 
 def _acquire_one_file(
