@@ -1,0 +1,60 @@
+name: Ops MRL-0801 atomic publication fix
+
+on:
+  push:
+    branches:
+      - ops/mrl-0801-atomic-publication-fix-20260908
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout ops patcher
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ops/mrl-0801-atomic-publication-fix-20260908
+          path: ops
+          fetch-depth: 1
+
+      - name: Checkout exact PR branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: feat/mrl-0801-hf-acquisition-executor-20260908
+          path: target
+          fetch-depth: 0
+
+      - name: Guard exact head
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected='56df010b26c1ed0ba6f1a8dc6a3c1375d7777a00'
+          actual="$(git -C target rev-parse HEAD)"
+          test "$actual" = "$expected"
+          remote="$(git -C target ls-remote origin refs/heads/feat/mrl-0801-hf-acquisition-executor-20260908 | cut -f1)"
+          test "$remote" = "$expected"
+
+      - name: Apply deterministic patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd target
+          python ../ops/.github/ops/mrl_0801_atomic_publication_fix.py
+          python -m compileall -q src/medscale/mesc/_mrl_0801_hf_acquisition_v1.py scripts/mesc_mrl_0801_hf_acquire.py tests/test_mesc_mrl_0801_hf_publish_v1.py tests/test_mesc_mrl_0801_hf_acquire_cli.py
+          git diff --check
+          git status --short
+
+      - name: Guard and push one fast-forward commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected='56df010b26c1ed0ba6f1a8dc6a3c1375d7777a00'
+          remote="$(git -C target ls-remote origin refs/heads/feat/mrl-0801-hf-acquisition-executor-20260908 | cut -f1)"
+          test "$remote" = "$expected"
+          git -C target config user.name 'github-actions[bot]'
+          git -C target config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git -C target add src/medscale/mesc/_mrl_0801_hf_acquisition_v1.py scripts/mesc_mrl_0801_hf_acquire.py specs/mesc-experiment-0/mrl-0801-hf-acquisition-provenance-v1.md tests/test_mesc_mrl_0801_hf_publish_v1.py tests/test_mesc_mrl_0801_hf_acquire_cli.py
+          git -C target commit -m 'fix(mesc): make MRL-0801 publication unlink-free'
+          git -C target push origin HEAD:refs/heads/feat/mrl-0801-hf-acquisition-executor-20260908
