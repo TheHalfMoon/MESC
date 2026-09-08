@@ -377,6 +377,91 @@ def test_finalizer_asset_mutation_is_rejected_and_rolled_back(
     assert list(destination.iterdir()) == []
 
 
+def test_finalizer_empty_directory_is_rejected_and_rolled_back(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    patch_environment(monkeypatch)
+    destination = tmp_path / "assets"
+    destination.mkdir()
+
+    def add_empty_directory(
+        _: MRL0801AssetCustodyReceipt,
+        __: subject.MRL0801HfAcquisitionProvenanceReceipt,
+    ) -> None:
+        (destination / "unexpected-dir").mkdir()
+
+    with pytest.raises(subject.MRL0801HfAcquisitionError, match="manifest changed"):
+        subject.acquire_mrl_0801_hf_candidate(
+            authorization=authorization(),
+            transport=FakeTransport(),
+            repository_root=fake_repo(tmp_path),
+            destination=destination,
+            model_id=MODEL,
+            revision=REV,
+            finalizer=add_empty_directory,
+        )
+    assert list(destination.iterdir()) == []
+
+
+def test_finalizer_nonempty_directory_is_rejected_and_rolled_back(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    patch_environment(monkeypatch)
+    destination = tmp_path / "assets"
+    destination.mkdir()
+
+    def add_nonempty_directory(
+        _: MRL0801AssetCustodyReceipt,
+        __: subject.MRL0801HfAcquisitionProvenanceReceipt,
+    ) -> None:
+        directory = destination / "unexpected-dir"
+        directory.mkdir()
+        nested = directory / "nested"
+        nested.mkdir()
+        (nested / "payload.txt").write_text("unexpected", encoding="utf-8")
+
+    with pytest.raises(subject.MRL0801HfAcquisitionError, match="manifest changed"):
+        subject.acquire_mrl_0801_hf_candidate(
+            authorization=authorization(),
+            transport=FakeTransport(),
+            repository_root=fake_repo(tmp_path),
+            destination=destination,
+            model_id=MODEL,
+            revision=REV,
+            finalizer=add_nonempty_directory,
+        )
+    assert list(destination.iterdir()) == []
+
+
+def test_finalizer_allowlisted_file_replaced_by_directory_is_rolled_back(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    patch_environment(monkeypatch)
+    destination = tmp_path / "assets"
+    destination.mkdir()
+
+    def replace_asset_with_directory(
+        _: MRL0801AssetCustodyReceipt,
+        __: subject.MRL0801HfAcquisitionProvenanceReceipt,
+    ) -> None:
+        target = destination / FILES[1]
+        target.unlink()
+        target.mkdir()
+        (target / "nested.bin").write_bytes(b"unexpected")
+
+    with pytest.raises((MRL0801AcquisitionCustodyError, subject.MRL0801HfAcquisitionError)):
+        subject.acquire_mrl_0801_hf_candidate(
+            authorization=authorization(),
+            transport=FakeTransport(),
+            repository_root=fake_repo(tmp_path),
+            destination=destination,
+            model_id=MODEL,
+            revision=REV,
+            finalizer=replace_asset_with_directory,
+        )
+    assert list(destination.iterdir()) == []
+
+
 def test_provenance_validation_requires_exact_receipt_types(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
