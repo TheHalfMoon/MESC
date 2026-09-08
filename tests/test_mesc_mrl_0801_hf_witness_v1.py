@@ -7,6 +7,7 @@ import os
 import sys
 from pathlib import Path
 from types import ModuleType
+from typing import Any
 
 import pytest
 
@@ -14,11 +15,12 @@ from medscale.mesc import _mrl_0801_hf_acquisition_v1 as subject
 
 ROOT = Path(__file__).parents[1]
 SCRIPT = ROOT / "scripts/mesc_mrl_0801_hf_acquire.py"
+_O_TMPFILE = os.__dict__.get("O_TMPFILE", 0)
+_O_DIRECTORY = os.__dict__.get("O_DIRECTORY", 0)
+_O_CLOEXEC = os.__dict__.get("O_CLOEXEC", 0)
 
 pytestmark = pytest.mark.skipif(
-    sys.platform != "linux"
-    or getattr(os, "O_TMPFILE", 0) == 0
-    or getattr(os, "O_DIRECTORY", 0) == 0,
+    sys.platform != "linux" or _O_TMPFILE == 0 or _O_DIRECTORY == 0,
     reason="requires Linux O_TMPFILE and descriptor-relative directory support",
 )
 
@@ -32,12 +34,7 @@ def load_cli() -> ModuleType:
 
 
 def _open_directory(path: Path) -> int:
-    return os.open(
-        path,
-        os.O_RDONLY
-        | getattr(os, "O_DIRECTORY", 0)
-        | getattr(os, "O_CLOEXEC", 0),
-    )
+    return os.open(path, os.O_RDONLY | _O_DIRECTORY | _O_CLOEXEC)
 
 
 def _skip_if_native_witness_is_unavailable(error: Exception) -> None:
@@ -82,7 +79,12 @@ def test_model_capability_witness_foreign_replacement_is_never_deleted(
             and not raced
         ):
             owned_name = f"{name}.owned"
-            os.rename(name, owned_name, src_dir_fd=root_fd, dst_dir_fd=root_fd)
+            os.rename(  # noqa: PTH104 -- descriptor-relative race injection is required
+                name,
+                owned_name,
+                src_dir_fd=root_fd,
+                dst_dir_fd=root_fd,
+            )
             foreign_fd = os.open(
                 name,
                 os.O_WRONLY | os.O_CREAT | os.O_EXCL,
@@ -151,17 +153,22 @@ def test_receipt_capability_witness_foreign_replacement_is_never_deleted(
     original_stat = cli._descriptor_output_stat
     raced: dict[str, str] = {}
 
-    def replace_after_identity_check(output: object) -> os.stat_result | None:
+    def replace_after_identity_check(output: Any) -> os.stat_result | None:
         observed = original_stat(output)
-        name = getattr(output, "name")
-        descriptor = getattr(output, "descriptor")
+        name = output.name
+        descriptor = output.descriptor
         if (
             observed is not None
             and name.startswith(".mrl-0801-receipt-witness-")
             and not raced
         ):
             owned_name = f"{name}.owned"
-            os.rename(name, owned_name, src_dir_fd=descriptor, dst_dir_fd=descriptor)
+            os.rename(  # noqa: PTH104 -- descriptor-relative race injection is required
+                name,
+                owned_name,
+                src_dir_fd=descriptor,
+                dst_dir_fd=descriptor,
+            )
             foreign_fd = os.open(
                 name,
                 os.O_WRONLY | os.O_CREAT | os.O_EXCL,
