@@ -121,7 +121,7 @@ def test_receipt_output_parent_must_preexist_without_filesystem_mutation(tmp_pat
     assert not (snapshot / "receipts").exists()
 
 
-def test_receipt_atomic_publication_capability_is_verified_before_binding(
+def test_receipt_atomic_publication_capability_is_verified_before_use(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     cli = load_cli()
@@ -130,6 +130,18 @@ def test_receipt_atomic_publication_capability_is_verified_before_binding(
     snapshot.mkdir()
     receipt = tmp_path / "receipts/receipt.json"
     receipt.parent.mkdir()
+    witness_dir = tmp_path / "receipt-witnesses"
+    witness_dir.mkdir()
+    output = cli._require_external_new_output(
+        path=receipt,
+        repository_root=root,
+        snapshot_root=snapshot,
+    )
+    witness = cli._require_external_witness_root(
+        path=witness_dir,
+        repository_root=root,
+        snapshot_root=snapshot,
+    )
 
     def unsupported_publication(**_: object) -> None:
         raise cli.AcquisitionEntrypointError(
@@ -137,18 +149,18 @@ def test_receipt_atomic_publication_capability_is_verified_before_binding(
         )
 
     monkeypatch.setattr(cli, "_publish_open_descriptor_no_replace", unsupported_publication)
-    with pytest.raises(cli.AcquisitionEntrypointError, match="atomic receipt publication"):
-        cli._require_external_new_output(
-            path=receipt,
-            repository_root=root,
-            snapshot_root=snapshot,
-        )
-    assert list(receipt.parent.iterdir()) == []
-    assert not receipt.exists()
+    try:
+        with pytest.raises(cli.AcquisitionEntrypointError, match="atomic receipt publication"):
+            cli._probe_receipt_atomic_publication(output, witness)
+        assert not receipt.exists()
+        assert list(witness_dir.iterdir()) == []
+    finally:
+        os.close(witness.descriptor)
+        os.close(output.descriptor)
 
 
-def test_receipt_target_race_during_capability_probe_is_rejected(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+def test_receipt_target_race_after_capability_probe_is_rejected(
+    tmp_path: Path,
 ) -> None:
     cli = load_cli()
     root = repo(tmp_path)
@@ -156,21 +168,28 @@ def test_receipt_target_race_during_capability_probe_is_rejected(
     snapshot.mkdir()
     receipt = tmp_path / "receipts/receipt.json"
     receipt.parent.mkdir()
-
-    def race(output: Any) -> None:
-        descriptor = output.descriptor
-        name = output.name
-        fd = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600, dir_fd=descriptor)
-        os.close(fd)
-
-    monkeypatch.setattr(cli, "_probe_receipt_atomic_publication", race)
-    with pytest.raises(cli.AcquisitionEntrypointError, match="appeared during atomic"):
-        cli._require_external_new_output(
-            path=receipt,
-            repository_root=root,
-            snapshot_root=snapshot,
-        )
-    assert receipt.exists()
+    witness_dir = tmp_path / "receipt-witnesses"
+    witness_dir.mkdir()
+    output = cli._require_external_new_output(
+        path=receipt,
+        repository_root=root,
+        snapshot_root=snapshot,
+    )
+    witness = cli._require_external_witness_root(
+        path=witness_dir,
+        repository_root=root,
+        snapshot_root=snapshot,
+    )
+    try:
+        cli._probe_receipt_atomic_publication(output, witness)
+        receipt.write_bytes(b"foreign")
+        with pytest.raises(cli.AcquisitionEntrypointError, match="must not already exist"):
+            cli._write_exact_new(output, b"ours")
+        assert receipt.read_bytes() == b"foreign"
+        assert len(tuple(witness_dir.glob(".mrl-0801-receipt-witness-*"))) == 1
+    finally:
+        os.close(witness.descriptor)
+        os.close(output.descriptor)
 
 
 def test_receipt_output_is_published_descriptor_relative(tmp_path: Path) -> None:

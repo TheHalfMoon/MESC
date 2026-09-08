@@ -35,6 +35,23 @@ class AcquisitionEntrypointError(RuntimeError):
     """Raised before importing repository code when execution identity is invalid."""
 
 
+class _BoundWitnessRoot:
+    """Descriptor-bound external capability-witness root."""
+
+    __slots__ = ("descriptor", "device", "inode", "path")
+
+    descriptor: int
+    device: int
+    inode: int
+    path: Path
+
+    def __init__(self, *, path: Path, descriptor: int, device: int, inode: int) -> None:
+        self.path = path
+        self.descriptor = descriptor
+        self.device = device
+        self.inode = inode
+
+
 class _BoundReceiptOutput:
     """Descriptor-bound receipt output with transaction-created file identity."""
 
@@ -84,6 +101,8 @@ def _parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--repository-root", type=Path, required=True)
     parser.add_argument("--destination", type=Path, required=True)
+    parser.add_argument("--model-witness-root", type=Path, required=True)
+    parser.add_argument("--receipt-witness-root", type=Path, required=True)
     parser.add_argument("--model-id", required=True)
     parser.add_argument("--revision", required=True)
     parser.add_argument("--custody-receipt-output", type=Path, required=True)
@@ -369,16 +388,77 @@ def _require_external_new_output(
         )
         if _descriptor_output_stat(output) is not None:
             raise AcquisitionEntrypointError("receipt output must not already exist")
-        _probe_receipt_atomic_publication(output)
-        _require_bound_output_parent_identity(output)
-        if _descriptor_output_stat(output) is not None:
-            raise AcquisitionEntrypointError(
-                "receipt output appeared during atomic publication preflight"
-            )
         return output
     except BaseException:
         os.close(descriptor)
         raise
+
+
+def _require_external_witness_root(
+    *,
+    path: Path,
+    repository_root: Path,
+    snapshot_root: Path,
+) -> _BoundWitnessRoot:
+    repo = repository_root.resolve(strict=True)
+    snapshot = snapshot_root.expanduser().absolute().resolve(strict=False)
+    raw = path.expanduser().absolute()
+    if raw == repo or _is_descendant(raw, repo):
+        raise AcquisitionEntrypointError("receipt witness root must be outside the repository")
+    if raw == snapshot or _is_descendant(raw, snapshot):
+        raise AcquisitionEntrypointError("receipt witness root must be outside the raw snapshot root")
+    _require_no_existing_symlink_components(raw, label="receipt witness root")
+    try:
+        root = raw.resolve(strict=True)
+    except OSError:
+        raise AcquisitionEntrypointError(
+            "receipt witness root must already exist as a real directory"
+        ) from None
+    if root == repo or _is_descendant(root, repo):
+        raise AcquisitionEntrypointError("receipt witness root must be outside the repository")
+    if root == snapshot or _is_descendant(root, snapshot):
+        raise AcquisitionEntrypointError("receipt witness root must be outside the raw snapshot root")
+    flags = os.O_RDONLY | _O_DIRECTORY | _O_NOFOLLOW | _O_CLOEXEC
+    try:
+        descriptor = os.open(root, flags)
+    except OSError:
+        raise AcquisitionEntrypointError("receipt witness root could not be opened safely") from None
+    try:
+        opened = os.fstat(descriptor)
+        current = root.stat(follow_symlinks=False)
+        if (
+            not stat.S_ISDIR(opened.st_mode)
+            or not stat.S_ISDIR(current.st_mode)
+            or _stat_identity(opened) != _stat_identity(current)
+        ):
+            raise AcquisitionEntrypointError(
+                "receipt witness root changed while it was being bound"
+            )
+        return _BoundWitnessRoot(
+            path=root,
+            descriptor=descriptor,
+            device=opened.st_dev,
+            inode=opened.st_ino,
+        )
+    except BaseException:
+        os.close(descriptor)
+        raise
+
+
+def _require_bound_witness_root_identity(witness: _BoundWitnessRoot) -> None:
+    try:
+        opened = os.fstat(witness.descriptor)
+        current = witness.path.stat(follow_symlinks=False)
+    except OSError:
+        raise AcquisitionEntrypointError("receipt witness root changed during acquisition") from None
+    expected = (witness.device, witness.inode)
+    if (
+        not stat.S_ISDIR(opened.st_mode)
+        or not stat.S_ISDIR(current.st_mode)
+        or _stat_identity(opened) != expected
+        or _stat_identity(current) != expected
+    ):
+        raise AcquisitionEntrypointError("receipt witness root changed during acquisition")
 
 
 def _load_posix_symbol(name: str) -> Any:
@@ -425,9 +505,21 @@ def _publish_open_descriptor_no_replace(
     raise AcquisitionEntrypointError("receipt output could not be published safely")
 
 
-def _probe_receipt_atomic_publication(output: _BoundReceiptOutput) -> None:
-    """Prove receipt publication, retain the witness, and block before acquisition."""
+def _probe_receipt_atomic_publication(
+    output: _BoundReceiptOutput,
+    witness_root: _BoundWitnessRoot,
+) -> str:
+    """Prove receipt-parent publication through a retained same-filesystem witness."""
     _require_bound_output_parent_identity(output)
+    _require_bound_witness_root_identity(witness_root)
+    if (
+        witness_root.path == output.parent_path
+        or _is_descendant(witness_root.path, output.parent_path)
+        or _is_descendant(output.parent_path, witness_root.path)
+    ):
+        raise AcquisitionEntrypointError(
+            "receipt witness root must be a dedicated directory outside receipt outputs"
+        )
     source_fd: int | None = None
     try:
         try:
@@ -446,13 +538,17 @@ def _probe_receipt_atomic_publication(output: _BoundReceiptOutput) -> None:
             raise AcquisitionEntrypointError(
                 "atomic receipt publication witness did not create a regular file"
             )
+        if source.st_dev != witness_root.device:
+            raise AcquisitionEntrypointError(
+                "receipt witness root must be on the receipt-output filesystem"
+            )
         witness_name = f".mrl-0801-receipt-witness-{secrets.token_hex(16)}"
         witness_output = _BoundReceiptOutput(
-            path=output.parent_path / witness_name,
-            parent_path=output.parent_path,
-            descriptor=output.descriptor,
-            device=output.device,
-            inode=output.inode,
+            path=witness_root.path / witness_name,
+            parent_path=witness_root.path,
+            descriptor=witness_root.descriptor,
+            device=witness_root.device,
+            inode=witness_root.inode,
             name=witness_name,
         )
         _publish_open_descriptor_no_replace(source_fd=source_fd, output=witness_output)
@@ -466,10 +562,12 @@ def _probe_receipt_atomic_publication(output: _BoundReceiptOutput) -> None:
                 "atomic receipt publication witness produced an invalid identity"
             )
         _require_bound_output_parent_identity(output)
-        raise AcquisitionEntrypointError(
-            "atomic receipt publication capability proven; witness retained because safe "
-            "atomic cleanup is unavailable, so acquisition is blocked"
-        )
+        _require_bound_witness_root_identity(witness_root)
+        if _descriptor_output_stat(output) is not None:
+            raise AcquisitionEntrypointError(
+                "receipt output appeared during atomic publication preflight"
+            )
+        return witness_name
     except AcquisitionEntrypointError:
         raise
     except OSError:
@@ -524,6 +622,7 @@ def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     custody_output: _BoundReceiptOutput | None = None
     provenance_output: _BoundReceiptOutput | None = None
+    receipt_witness: _BoundWitnessRoot | None = None
     try:
         repository_root = _require_clean_repository_before_import(args.repository_root)
         custody_module, acquisition_module = _import_exact_repository_modules(repository_root)
@@ -546,6 +645,17 @@ def main(argv: list[str] | None = None) -> int:
         if custody_output_path.path == provenance_output_path.path:
             raise AcquisitionEntrypointError("custody and provenance outputs must be distinct")
 
+        receipt_witness = _require_external_witness_root(
+            path=args.receipt_witness_root,
+            repository_root=repository_root,
+            snapshot_root=args.destination,
+        )
+        _probe_receipt_atomic_publication(custody_output_path, receipt_witness)
+        _probe_receipt_atomic_publication(provenance_output_path, receipt_witness)
+        _require_bound_output_parent_identity(custody_output_path)
+        _require_bound_output_parent_identity(provenance_output_path)
+        _require_bound_witness_root_identity(receipt_witness)
+
         def publish_receipts(custody_value: object, provenance_value: object) -> None:
             custody_bytes = getattr(custody_value, "canonical_bytes", None)
             provenance_bytes = getattr(provenance_value, "canonical_bytes", None)
@@ -563,6 +673,7 @@ def main(argv: list[str] | None = None) -> int:
             ),
             repository_root=repository_root,
             destination=args.destination,
+            witness_root=args.model_witness_root,
             model_id=args.model_id,
             revision=args.revision,
             finalizer=publish_receipts,
@@ -589,6 +700,9 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 2
     finally:
+        if receipt_witness is not None:
+            with contextlib.suppress(OSError):
+                os.close(receipt_witness.descriptor)
         for output in (custody_output, provenance_output):
             if output is not None:
                 with contextlib.suppress(OSError):

@@ -115,6 +115,16 @@ class _DestinationDirectory:
     inode: int
 
 
+@dataclass(frozen=True, slots=True)
+class _WitnessDirectory:
+    """Opened external capability-witness directory bound for one transaction."""
+
+    path: Path
+    descriptor: int
+    device: int
+    inode: int
+
+
 class _Digest(Protocol):
     def update(self, data: bytes, /) -> None: ...
 
@@ -506,6 +516,7 @@ def acquire_mrl_0801_hf_candidate(
     transport: HfPublicTransport,
     repository_root: Path,
     destination: Path,
+    witness_root: Path,
     model_id: str,
     revision: str,
     finalizer: Callable[
@@ -524,9 +535,26 @@ def acquire_mrl_0801_hf_candidate(
         destination=destination,
         repository_root=repository_root,
     )
+    witness: _WitnessDirectory | None = None
     acquired: list[HfAcquiredFileIdentity] = []
     pre_finalizer_entries: frozenset[str] | None = None
     try:
+        witness = _require_external_witness_root(
+            witness_root=witness_root,
+            repository_root=repository_root,
+            transaction_root=destination_root,
+        )
+        _probe_atomic_descriptor_publication(
+            source_root_fd=destination_root.descriptor,
+            witness_root=witness,
+        )
+        _require_witness_path_identity(witness)
+        _require_destination_path_identity(destination_root)
+        if _descriptor_entries(root_fd=destination_root.descriptor):
+            raise MRL0801HfAcquisitionError(
+                "acquisition destination changed during atomic publication preflight"
+            )
+
         metadata = _verify_remote_allowlist_metadata(
             transport=transport,
             model_id=model_id,
@@ -633,6 +661,7 @@ def acquire_mrl_0801_hf_candidate(
             )
             custody = post_finalizer_custody
         _require_destination_path_identity(destination_root)
+        _require_witness_path_identity(witness)
         return custody, receipt
     except BaseException:
         _rollback_created_files(
@@ -642,6 +671,8 @@ def acquire_mrl_0801_hf_candidate(
         )
         raise
     finally:
+        if witness is not None:
+            os.close(witness.descriptor)
         os.close(destination_root.descriptor)
 
 
@@ -1071,11 +1102,6 @@ def _require_external_empty_destination(
             raise MRL0801HfAcquisitionError(
                 "acquisition destination must be an empty real directory"
             )
-        _probe_atomic_descriptor_publication(root_fd=descriptor)
-        if os.listdir(descriptor):  # noqa: PTH208 -- descriptor-relative listing is required
-            raise MRL0801HfAcquisitionError(
-                "acquisition destination changed during atomic publication preflight"
-            )
         return _DestinationDirectory(
             path=root,
             descriptor=descriptor,
@@ -1085,6 +1111,89 @@ def _require_external_empty_destination(
     except BaseException:
         os.close(descriptor)
         raise
+
+
+def _require_external_witness_root(
+    *,
+    witness_root: Path,
+    repository_root: Path,
+    transaction_root: _DestinationDirectory,
+) -> _WitnessDirectory:
+    repo = repository_root.resolve(strict=True)
+    raw = witness_root.expanduser().absolute()
+    if raw == repo or _is_descendant(raw, repo):
+        raise MRL0801HfAcquisitionError("capability witness root must be outside Git")
+    _require_no_existing_symlink_components(raw, label="capability witness root")
+    try:
+        root = raw.resolve(strict=True)
+    except OSError:
+        raise MRL0801HfAcquisitionError(
+            "capability witness root must be an existing real directory"
+        ) from None
+    if root == repo or _is_descendant(root, repo):
+        raise MRL0801HfAcquisitionError("capability witness root must be outside Git")
+    if (
+        root == transaction_root.path
+        or _is_descendant(root, transaction_root.path)
+        or _is_descendant(transaction_root.path, root)
+    ):
+        raise MRL0801HfAcquisitionError(
+            "capability witness root must be a dedicated directory outside the transaction root"
+        )
+    for ancestor in (root, *root.parents):
+        if (ancestor / ".git").exists():
+            raise MRL0801HfAcquisitionError("capability witness root is inside a Git work tree")
+    flags = os.O_RDONLY | _O_DIRECTORY | _O_NOFOLLOW | _O_CLOEXEC
+    try:
+        descriptor = os.open(root, flags)
+    except OSError:
+        raise MRL0801HfAcquisitionError(
+            "capability witness root must be an existing non-symlink directory"
+        ) from None
+    try:
+        opened = os.fstat(descriptor)
+        current = root.stat(follow_symlinks=False)
+        if (
+            not stat.S_ISDIR(opened.st_mode)
+            or not stat.S_ISDIR(current.st_mode)
+            or _stat_descriptor_identity(opened) != _stat_descriptor_identity(current)
+        ):
+            raise MRL0801HfAcquisitionError(
+                "capability witness root changed while it was being opened"
+            )
+        if opened.st_dev != transaction_root.device:
+            raise MRL0801HfAcquisitionError(
+                "capability witness root must be on the transaction filesystem"
+            )
+        return _WitnessDirectory(
+            path=root,
+            descriptor=descriptor,
+            device=opened.st_dev,
+            inode=opened.st_ino,
+        )
+    except BaseException:
+        os.close(descriptor)
+        raise
+
+
+def _require_witness_path_identity(witness: _WitnessDirectory) -> None:
+    try:
+        opened = os.fstat(witness.descriptor)
+        current = witness.path.stat(follow_symlinks=False)
+    except OSError:
+        raise MRL0801HfAcquisitionError(
+            "capability witness root changed during the transaction"
+        ) from None
+    expected = (witness.device, witness.inode)
+    if (
+        not stat.S_ISDIR(opened.st_mode)
+        or not stat.S_ISDIR(current.st_mode)
+        or _stat_descriptor_identity(opened) != expected
+        or _stat_descriptor_identity(current) != expected
+    ):
+        raise MRL0801HfAcquisitionError(
+            "capability witness root changed during the transaction"
+        )
 
 
 def _require_no_existing_symlink_components(path: Path, *, label: str) -> None:
@@ -1303,23 +1412,32 @@ def _publish_open_descriptor_no_replace(
     raise MRL0801HfAcquisitionError("asset publication failed safely")
 
 
-def _probe_atomic_descriptor_publication(*, root_fd: int) -> None:
-    """Prove atomic publication, retain the witness, and block before remote access."""
+def _probe_atomic_descriptor_publication(
+    *,
+    source_root_fd: int,
+    witness_root: _WitnessDirectory,
+) -> str:
+    """Prove same-filesystem atomic publication into a retained external witness root."""
+    _require_witness_path_identity(witness_root)
     source_fd: int | None = None
     try:
-        source_fd = _open_unnamed_temp_file(root_fd=root_fd)
+        source_fd = _open_unnamed_temp_file(root_fd=source_root_fd)
         source = os.fstat(source_fd)
         if not stat.S_ISREG(source.st_mode):
             raise MRL0801HfAcquisitionError(
                 "atomic publication witness did not create a regular file"
             )
+        if source.st_dev != witness_root.device:
+            raise MRL0801HfAcquisitionError(
+                "capability witness root must be on the transaction filesystem"
+            )
         witness_name = f".mrl-0801-publication-witness-{secrets.token_hex(16)}"
         _publish_open_descriptor_no_replace(
             source_fd=source_fd,
-            root_fd=root_fd,
+            root_fd=witness_root.descriptor,
             target_name=witness_name,
         )
-        linked = _descriptor_entry_stat(root_fd=root_fd, name=witness_name)
+        linked = _descriptor_entry_stat(root_fd=witness_root.descriptor, name=witness_name)
         if (
             linked is None
             or not stat.S_ISREG(linked.st_mode)
@@ -1328,10 +1446,8 @@ def _probe_atomic_descriptor_publication(*, root_fd: int) -> None:
             raise MRL0801HfAcquisitionError(
                 "atomic publication witness produced an invalid identity"
             )
-        raise MRL0801HfAcquisitionError(
-            "atomic publication capability proven; witness retained because safe atomic "
-            "cleanup is unavailable, so remote access is blocked"
-        )
+        _require_witness_path_identity(witness_root)
+        return witness_name
     except MRL0801HfAcquisitionError:
         raise
     except OSError:

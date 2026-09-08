@@ -111,6 +111,12 @@ def fake_repo(tmp_path: Path) -> Path:
     return root
 
 
+def witness_root_for(destination: Path) -> Path:
+    root = destination.parent / f"{destination.name}-witnesses"
+    root.mkdir(parents=True, exist_ok=True)
+    return root
+
+
 def patch_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(subject, "_capture_repository_execution_identity", lambda _: IDENTITY)
     monkeypatch.setattr(
@@ -138,6 +144,7 @@ def acquire(
         transport=transport,
         repository_root=fake_repo(tmp_path),
         destination=destination,
+        witness_root=witness_root_for(destination),
         model_id=MODEL,
         revision=REV,
     )
@@ -181,6 +188,7 @@ def test_spoofed_authorization_fails_before_transport(
             transport=transport,
             repository_root=fake_repo(tmp_path),
             destination=tmp_path / "assets",
+            witness_root=witness_root_for(tmp_path / "assets"),
             model_id=MODEL,
             revision=REV,
         )
@@ -201,13 +209,14 @@ def test_phi_and_mutable_revision_are_not_authorized(
                     tmp_path / hashlib.sha256(f"{model_id}{revision}".encode()).hexdigest()
                 ),
                 destination=tmp_path / hashlib.sha256(revision.encode()).hexdigest(),
+                witness_root=witness_root_for(tmp_path / hashlib.sha256(revision.encode()).hexdigest()),
                 model_id=model_id,
                 revision=revision,
             )
         assert transport.calls == {}
 
 
-def test_metadata_drift_and_corrupt_bytes_roll_back(
+def test_metadata_drift_and_corrupt_bytes_retain_published_residue(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     for transport, pattern in (
@@ -224,10 +233,11 @@ def test_metadata_drift_and_corrupt_bytes_roll_back(
                 transport=transport,
                 repository_root=fake_repo(root),
                 destination=destination,
+                witness_root=witness_root_for(destination),
                 model_id=MODEL,
                 revision=REV,
             )
-        assert list(destination.iterdir()) == []
+        assert {item.name for item in destination.iterdir()} == {FILES[0]}
 
 
 def test_storage_failure_occurs_before_model_bytes(
@@ -244,6 +254,7 @@ def test_storage_failure_occurs_before_model_bytes(
             transport=transport,
             repository_root=fake_repo(tmp_path),
             destination=destination,
+            witness_root=witness_root_for(destination),
             model_id=MODEL,
             revision=REV,
         )
@@ -298,6 +309,7 @@ def test_atomic_publication_capability_failure_precedes_transport(
             transport=transport,
             repository_root=fake_repo(tmp_path),
             destination=destination,
+            witness_root=witness_root_for(destination),
             model_id=MODEL,
             revision=REV,
         )
@@ -314,14 +326,16 @@ def test_destination_race_during_capability_probe_blocks_before_transport(
     destination.mkdir()
     transport = FakeTransport()
 
-    def race(*, root_fd: int) -> None:
+    def race(*, source_root_fd: int, witness_root: object) -> str:
+        del witness_root
         descriptor = os.open(
             "foreign.txt",
             os.O_WRONLY | os.O_CREAT | os.O_EXCL,
             0o600,
-            dir_fd=root_fd,
+            dir_fd=source_root_fd,
         )
         os.close(descriptor)
+        return "synthetic-witness"
 
     monkeypatch.setattr(subject, "_probe_atomic_descriptor_publication", race)
     with pytest.raises(subject.MRL0801HfAcquisitionError, match="changed during atomic"):
@@ -330,6 +344,7 @@ def test_destination_race_during_capability_probe_blocks_before_transport(
             transport=transport,
             repository_root=fake_repo(tmp_path),
             destination=destination,
+            witness_root=witness_root_for(destination),
             model_id=MODEL,
             revision=REV,
         )
@@ -352,6 +367,7 @@ def test_destination_replacement_cannot_redirect_writes(
             transport=transport,
             repository_root=fake_repo(tmp_path),
             destination=destination,
+            witness_root=witness_root_for(destination),
             model_id=MODEL,
             revision=REV,
         )
@@ -379,6 +395,7 @@ def test_finalizer_failure_preserves_unbound_entry_and_rolls_back_snapshot(
             transport=FakeTransport(),
             repository_root=fake_repo(tmp_path),
             destination=destination,
+            witness_root=witness_root_for(destination),
             model_id=MODEL,
             revision=REV,
             finalizer=fail_finalize,
@@ -405,6 +422,7 @@ def test_finalizer_extra_entry_is_rejected_and_residue_is_retained(
             transport=FakeTransport(),
             repository_root=fake_repo(tmp_path),
             destination=destination,
+            witness_root=witness_root_for(destination),
             model_id=MODEL,
             revision=REV,
             finalizer=add_extra_entry,
@@ -431,6 +449,7 @@ def test_finalizer_asset_mutation_is_rejected_and_residue_is_retained(
             transport=FakeTransport(),
             repository_root=fake_repo(tmp_path),
             destination=destination,
+            witness_root=witness_root_for(destination),
             model_id=MODEL,
             revision=REV,
             finalizer=mutate_asset,
@@ -459,6 +478,7 @@ def test_late_failure_residue_blocks_retry_before_transport(
             transport=FakeTransport(),
             repository_root=root,
             destination=destination,
+            witness_root=witness_root_for(destination),
             model_id=MODEL,
             revision=REV,
             finalizer=fail_finalize,
@@ -472,6 +492,7 @@ def test_late_failure_residue_blocks_retry_before_transport(
             transport=retry_transport,
             repository_root=root,
             destination=destination,
+            witness_root=witness_root_for(destination),
             model_id=MODEL,
             revision=REV,
         )
