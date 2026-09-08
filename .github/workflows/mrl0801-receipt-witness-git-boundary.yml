@@ -1,0 +1,66 @@
+name: MRL-0801 receipt witness Git boundary
+
+on:
+  push:
+    branches:
+      - ops/mrl0801-receipt-witness-git-boundary
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-verify:
+    runs-on: ubuntu-latest
+    env:
+      EXPECTED_HEAD: 2c0b95506a8fbad1d96d8e68ee30a181d78f56be
+      TARGET_BRANCH: feat/mrl-0801-hf-acquisition-executor-20260908
+    steps:
+      - name: Checkout ops branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+      - name: Capture patcher
+        run: cp .github/ops/mrl0801_receipt_witness_git_boundary.py /tmp/patch.py
+      - name: Verify exact target head
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual="$(git ls-remote origin "refs/heads/${TARGET_BRANCH}" | awk '{print $1}')"
+          test "${actual}" = "${EXPECTED_HEAD}"
+      - name: Checkout target
+        run: git switch --detach "${EXPECTED_HEAD}"
+      - name: Apply patch
+        run: python /tmp/patch.py
+      - name: Syntax and diff checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m py_compile scripts/mesc_mrl_0801_hf_acquire.py tests/test_mesc_mrl_0801_hf_acquire_cli.py
+          git diff --check
+          test "$(git diff --name-only | grep -Ev '^(scripts/mesc_mrl_0801_hf_acquire.py|tests/test_mesc_mrl_0801_hf_acquire_cli.py)$' | wc -l)" -eq 0
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+      - name: Sync locked environment
+        run: uv sync --locked
+      - name: Focused lint and test
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run ruff check scripts/mesc_mrl_0801_hf_acquire.py tests/test_mesc_mrl_0801_hf_acquire_cli.py
+          uv run ruff format --check scripts/mesc_mrl_0801_hf_acquire.py tests/test_mesc_mrl_0801_hf_acquire_cli.py
+          uv run pytest -q tests/test_mesc_mrl_0801_hf_acquire_cli.py
+      - name: Commit fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add scripts/mesc_mrl_0801_hf_acquire.py tests/test_mesc_mrl_0801_hf_acquire_cli.py
+          git commit -m 'fix(mesc): reject Git-backed receipt witness roots'
+      - name: Reverify and push fast-forward only
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual="$(git ls-remote origin "refs/heads/${TARGET_BRANCH}" | awk '{print $1}')"
+          test "${actual}" = "${EXPECTED_HEAD}"
+          git push origin "HEAD:refs/heads/${TARGET_BRANCH}"
