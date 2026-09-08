@@ -257,7 +257,7 @@ def _require_bound_output_parent_identity(output: _BoundReceiptOutput) -> None:
 
 def _descriptor_output_stat(output: _BoundReceiptOutput) -> os.stat_result | None:
     try:
-        return os.stat(  # noqa: PTH116 -- descriptor-relative inspection is required
+        return os.stat(
             output.name,
             dir_fd=output.descriptor,
             follow_symlinks=False,
@@ -373,7 +373,7 @@ def _unlink_bound_output(output: _BoundReceiptOutput) -> None:
             and stat.S_ISREG(observed.st_mode)
             and _stat_identity(observed) == expected
         ):
-            os.unlink(  # noqa: PTH108 -- descriptor-relative cleanup is required
+            os.unlink(
                 output.name,
                 dir_fd=output.descriptor,
             )
