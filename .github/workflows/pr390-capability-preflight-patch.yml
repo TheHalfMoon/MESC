@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   patch:
-    runs-on: ubuntu-24.04
+    runs-on: macos-15
     env:
       EXPECTED_HEAD: 88f63429d656b44da08af4b92a840d162f030ddb
       TARGET_BRANCH: feat/mrl-0801-hf-acquisition-executor-20260908
