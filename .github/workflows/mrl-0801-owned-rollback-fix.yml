@@ -1,4 +1,4 @@
-name: Guarded MRL-0801 rollback hardening
+name: Guarded MRL-0801 rollback regression alignment
 
 on:
   push:
@@ -17,13 +17,11 @@ jobs:
         with:
           path: ops
 
-      - name: Stage deterministic patcher
+      - name: Stage deterministic test fixer
         run: |
           set -euo pipefail
-          cp ops/.github/ops/apply_mrl_0801_owned_rollback_fix.py "$RUNNER_TEMP/patcher.py"
-          cp ops/.github/ops/normalize_mrl_0801_patcher.py "$RUNNER_TEMP/normalize.py"
-          python "$RUNNER_TEMP/normalize.py" "$RUNNER_TEMP/patcher.py"
-          python -m py_compile "$RUNNER_TEMP/patcher.py"
+          cp ops/.github/ops/fix_mrl_0801_final_tests.py "$RUNNER_TEMP/fixer.py"
+          python -m py_compile "$RUNNER_TEMP/fixer.py"
 
       - name: Check out exact PR branch
         uses: actions/checkout@v4
@@ -35,7 +33,7 @@ jobs:
       - name: Verify expected PR head
         working-directory: target
         env:
-          EXPECTED_HEAD: 524516e9d16a00dd8d08967f129d559d33951155
+          EXPECTED_HEAD: 9312c86341f4fc0992f4ae246a381abdb7fd77fe
           TARGET_BRANCH: feat/mrl-0801-hf-acquisition-executor-20260908
         run: |
           set -euo pipefail
@@ -44,28 +42,21 @@ jobs:
           test "$remote_head" = "$EXPECTED_HEAD"
           test -z "$(git status --porcelain)"
 
-      - name: Apply deterministic ownership-bound rollback patch
+      - name: Apply deterministic regression alignment
         working-directory: target
         run: |
           set -euo pipefail
-          python "$RUNNER_TEMP/patcher.py"
-
-      - name: Verify patch syntax and whitespace
-        working-directory: target
-        run: |
-          set -euo pipefail
+          python "$RUNNER_TEMP/fixer.py"
           python -m py_compile \
-            src/medscale/mesc/_mrl_0801_hf_acquisition_v1.py \
-            tests/test_mesc_mrl_0801_hf_publish_v1.py \
             tests/test_mesc_mrl_0801_hf_mount_rollback_v1.py \
-            tests/test_mesc_mrl_0801_hf_acquisition_v1.py
+            tests/test_mesc_mrl_0801_hf_publish_v1.py
           git diff --check
           test -n "$(git status --porcelain)"
 
       - name: Commit and guarded fast-forward push
         working-directory: target
         env:
-          EXPECTED_HEAD: 524516e9d16a00dd8d08967f129d559d33951155
+          EXPECTED_HEAD: 9312c86341f4fc0992f4ae246a381abdb7fd77fe
           TARGET_BRANCH: feat/mrl-0801-hf-acquisition-executor-20260908
         run: |
           set -euo pipefail
@@ -74,10 +65,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add \
-            src/medscale/mesc/_mrl_0801_hf_acquisition_v1.py \
-            tests/test_mesc_mrl_0801_hf_publish_v1.py \
             tests/test_mesc_mrl_0801_hf_mount_rollback_v1.py \
-            tests/test_mesc_mrl_0801_hf_acquisition_v1.py \
-            specs/mesc-experiment-0/mrl-0801-hf-acquisition-provenance-v1.md
-          git commit -m "fix(mesc): bind rollback cleanup to owned entries"
+            tests/test_mesc_mrl_0801_hf_publish_v1.py
+          git commit -m "test(mesc): align rollback regressions with owned cleanup"
           git push origin HEAD:"refs/heads/$TARGET_BRANCH"
