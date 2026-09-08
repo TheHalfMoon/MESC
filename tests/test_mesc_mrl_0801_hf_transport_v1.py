@@ -120,6 +120,7 @@ def test_external_redirect_requires_and_uses_linked_identity() -> None:
         ("not-a-size", ETAG, "invalid exact size"),
         ("0", ETAG, "exact size must be positive"),
         ("123", "mutable-etag", "content etag is not immutable"),
+        ("123", f'W/"{ETAG}"', "must not use a weak validator"),
     ),
 )
 def test_external_redirect_rejects_ambiguous_size_or_etag(

@@ -88,6 +88,26 @@ class FakeTransport:
         yield raw
 
 
+class RevalidationGitBlobMismatchTransport(FakeTransport):
+    def metadata(
+        self,
+        *,
+        model_id: str,
+        revision: str,
+        path: str,
+    ) -> subject.HfRemoteFileMetadata:
+        item = super().metadata(model_id=model_id, revision=revision, path=path)
+        if path != FILES[0]:
+            return item
+        return subject.HfRemoteFileMetadata(
+            path=item.path,
+            commit_sha=item.commit_sha,
+            byte_count=item.byte_count,
+            etag="f" * 40,
+            location=item.location,
+        )
+
+
 class ReplacingTransport(FakeTransport):
     def __init__(self, *, destination: Path, replacement: Path) -> None:
         super().__init__()
@@ -171,6 +191,28 @@ def test_success_binds_remote_identity_to_existing_custody(
         transport=transport,
         repository_root=fake_repo(tmp_path / "review"),
     )
+
+
+def test_revalidation_binds_git_blob_etag_to_current_local_bytes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    destination, custody, receipt = acquire(tmp_path, monkeypatch, FakeTransport())
+    document = cast(dict[str, object], json.loads(receipt.canonical_bytes))
+    raw_files = cast(list[dict[str, object]], document["files"])
+    raw_files[0]["remote_etag"] = "f" * 40
+    mismatched_receipt = subject.MRL0801HfAcquisitionProvenanceReceipt(
+        canonical_json_bytes(document)
+    )
+
+    with pytest.raises(subject.MRL0801HfAcquisitionError, match="local Git-blob identity"):
+        subject.validate_mrl_0801_hf_acquisition_provenance(
+            receipt=mismatched_receipt,
+            custody=custody,
+            authorization=authorization(),
+            model_root=destination,
+            transport=RevalidationGitBlobMismatchTransport(),
+            repository_root=fake_repo(tmp_path / "review-git-blob"),
+        )
 
 
 def test_spoofed_authorization_fails_before_transport(

@@ -131,6 +131,15 @@ class _Digest(Protocol):
     def hexdigest(self) -> str: ...
 
 
+class _StatVfsResult(Protocol):
+    f_bavail: int
+    f_frsize: int
+
+
+class _FstatVfs(Protocol):
+    def __call__(self, descriptor: int, /) -> _StatVfsResult: ...
+
+
 @dataclass(frozen=True, slots=True)
 class HfRemoteFileMetadata:
     """Immutable remote identity for one authorized file at one pinned revision."""
@@ -718,6 +727,10 @@ def validate_mrl_0801_hf_acquisition_provenance(
         expected_files=candidate.allowed_files,
     )
     for recorded in receipt.files:
+        _require_git_blob_identity_matches_local_bytes(
+            model_root=model_root,
+            recorded=recorded,
+        )
         remote = transport.metadata(
             model_id=receipt.model_id,
             revision=receipt.revision,
@@ -734,6 +747,44 @@ def validate_mrl_0801_hf_acquisition_provenance(
             raise MRL0801HfAcquisitionError(
                 "current pinned Hugging Face metadata does not match acquisition provenance"
             )
+
+
+def _require_git_blob_identity_matches_local_bytes(
+    *,
+    model_root: Path,
+    recorded: HfAcquiredFileIdentity,
+) -> None:
+    """Bind a recorded Git-blob remote identity to the locally revalidated bytes."""
+    if recorded.remote_etag_algorithm != "git_blob_sha1":
+        return
+    _validate_relative_path(recorded.path)
+    local_sha256 = hashlib.sha256()
+    git_blob_sha1 = _new_git_blob_digest(recorded.byte_count)
+    observed_bytes = 0
+    try:
+        with (model_root / recorded.path).open("rb") as stream:
+            while True:
+                chunk = stream.read(_CHUNK_BYTES)
+                if not chunk:
+                    break
+                observed_bytes += len(chunk)
+                local_sha256.update(chunk)
+                git_blob_sha1.update(chunk)
+    except OSError:
+        raise MRL0801HfAcquisitionError(
+            "local bytes could not be reread for Git-blob identity verification"
+        ) from None
+    if (
+        observed_bytes != recorded.byte_count
+        or local_sha256.hexdigest() != recorded.local_sha256
+    ):
+        raise MRL0801HfAcquisitionError(
+            "local bytes changed during Git-blob identity verification"
+        )
+    if git_blob_sha1.hexdigest() != recorded.remote_etag:
+        raise MRL0801HfAcquisitionError(
+            "local Git-blob identity does not match acquisition provenance"
+        )
 
 
 def _require_receipt_matches_custody(
@@ -972,7 +1023,9 @@ def _normalize_etag(value: str | None) -> str:
         raise MRL0801HfAcquisitionError("Hugging Face metadata is missing a content etag")
     normalized = value.strip()
     if normalized.startswith("W/"):
-        normalized = normalized[2:].strip()
+        raise MRL0801HfAcquisitionError(
+            "Hugging Face content etag must not use a weak validator"
+        )
     normalized = normalized.strip('"')
     if _SHA256.fullmatch(normalized) is None and _SHA1.fullmatch(normalized) is None:
         raise MRL0801HfAcquisitionError("Hugging Face content etag is not immutable")
@@ -1223,8 +1276,13 @@ def _require_destination_path_identity(destination: _DestinationDirectory) -> No
 
 
 def _available_bytes(destination: _DestinationDirectory) -> int:
+    fstatvfs = cast(_FstatVfs | None, getattr(os, "fstatvfs", None))
+    if fstatvfs is None:
+        raise MRL0801HfAcquisitionError(
+            "platform lacks descriptor-relative storage-capacity inspection"
+        )
     try:
-        observation = os.fstatvfs(destination.descriptor)
+        observation = fstatvfs(destination.descriptor)
     except OSError:
         raise MRL0801HfAcquisitionError(
             "acquisition destination storage capacity could not be inspected"

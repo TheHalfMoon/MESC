@@ -152,7 +152,7 @@ def test_model_witness_root_device_mismatch_is_rejected_before_probe(
         values[2] = observed.st_dev + 1
         return os.stat_result(values)
 
-    monkeypatch.setattr(subject.os, "fstat", mismatched)
+    monkeypatch.setattr(os, "fstat", mismatched)
     try:
         with pytest.raises(subject.MRL0801HfAcquisitionError, match="transaction filesystem"):
             subject._probe_atomic_descriptor_publication(
