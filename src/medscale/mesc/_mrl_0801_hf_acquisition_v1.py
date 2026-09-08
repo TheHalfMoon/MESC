@@ -999,18 +999,22 @@ def _is_descendant(path: Path, parent: Path) -> bool:
 
 
 def _require_descriptor_relative_support() -> None:
-    if _O_DIRECTORY == 0 or _O_NOFOLLOW == 0:
+    if _O_DIRECTORY == 0 or _O_NOFOLLOW == 0 or _O_TMPFILE == 0:
         raise MRL0801HfAcquisitionError(
-            "platform lacks required no-follow directory descriptor support"
+            "platform lacks required no-follow or unnamed-file descriptor support"
         )
-    required_dir_fd = (os.open, os.stat, os.unlink, os.link)
+    required_dir_fd = (os.open, os.stat)
     if any(operation not in os.supports_dir_fd for operation in required_dir_fd):
         raise MRL0801HfAcquisitionError(
             "platform lacks required descriptor-relative filesystem operations"
         )
-    if os.listdir not in os.supports_fd or os.link not in os.supports_follow_symlinks:
+    if os.listdir not in os.supports_fd:
         raise MRL0801HfAcquisitionError(
-            "platform lacks required descriptor-safe listing or linking support"
+            "platform lacks required descriptor-safe directory listing"
+        )
+    if _load_posix_symbol("linkat") is None:
+        raise MRL0801HfAcquisitionError(
+            "platform lacks required atomic descriptor publication support"
         )
     if not hasattr(os, "fstatvfs"):
         raise MRL0801HfAcquisitionError(
@@ -1066,6 +1070,8 @@ def _require_external_empty_destination(
             raise MRL0801HfAcquisitionError(
                 "acquisition destination must be an empty real directory"
             )
+        probe = _open_unnamed_temp_file(root_fd=descriptor)
+        os.close(probe)
         return _DestinationDirectory(
             path=root,
             descriptor=descriptor,

@@ -230,14 +230,18 @@ def _require_no_existing_symlink_components(path: Path, *, label: str) -> None:
 
 
 def _require_receipt_output_descriptor_support() -> None:
-    if _O_DIRECTORY == 0 or _O_NOFOLLOW == 0:
+    if _O_DIRECTORY == 0 or _O_NOFOLLOW == 0 or _O_TMPFILE == 0:
         raise AcquisitionEntrypointError(
-            "platform lacks required no-follow receipt-output descriptor support"
+            "platform lacks required no-follow or unnamed-file receipt support"
         )
-    required_dir_fd = (os.open, os.stat, os.unlink)
+    required_dir_fd = (os.open, os.stat)
     if any(operation not in os.supports_dir_fd for operation in required_dir_fd):
         raise AcquisitionEntrypointError(
             "platform lacks required descriptor-relative receipt-output operations"
+        )
+    if _load_posix_symbol("linkat") is None:
+        raise AcquisitionEntrypointError(
+            "platform lacks required atomic receipt publication support"
         )
 
 
@@ -364,6 +368,18 @@ def _require_external_new_output(
         )
         if _descriptor_output_stat(output) is not None:
             raise AcquisitionEntrypointError("receipt output must not already exist")
+        try:
+            probe = os.open(
+                ".",
+                os.O_WRONLY | _O_TMPFILE | _O_CLOEXEC,
+                0o600,
+                dir_fd=output.descriptor,
+            )
+        except OSError:
+            raise AcquisitionEntrypointError(
+                "unnamed receipt publication is unsupported on this filesystem"
+            ) from None
+        os.close(probe)
         return output
     except BaseException:
         os.close(descriptor)
