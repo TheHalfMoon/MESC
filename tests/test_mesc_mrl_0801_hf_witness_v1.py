@@ -7,7 +7,7 @@ import os
 import sys
 from pathlib import Path
 from types import ModuleType
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
@@ -191,7 +191,7 @@ def test_receipt_capability_witness_foreign_replacement_is_never_deleted(
     raced: dict[str, str] = {}
 
     def replace_after_identity_check(output: Any) -> os.stat_result | None:
-        observed = original_stat(output)
+        observed = cast(os.stat_result | None, original_stat(output))
         name = output.name
         descriptor = output.descriptor
         if observed is not None and name.startswith(".mrl-0801-receipt-witness-") and not raced:
