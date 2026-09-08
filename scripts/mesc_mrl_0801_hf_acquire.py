@@ -418,6 +418,9 @@ def _require_external_witness_root(
         raise AcquisitionEntrypointError("receipt witness root must be outside the repository")
     if root == snapshot or _is_descendant(root, snapshot):
         raise AcquisitionEntrypointError("receipt witness root must be outside the raw snapshot root")
+    for ancestor in (root, *root.parents):
+        if (ancestor / ".git").exists():
+            raise AcquisitionEntrypointError("receipt witness root is inside a Git work tree")
     flags = os.O_RDONLY | _O_DIRECTORY | _O_NOFOLLOW | _O_CLOEXEC
     try:
         descriptor = os.open(root, flags)

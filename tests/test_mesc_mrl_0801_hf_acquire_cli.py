@@ -192,6 +192,25 @@ def test_receipt_target_race_after_capability_probe_is_rejected(
         os.close(output.descriptor)
 
 
+def test_receipt_witness_root_inside_foreign_git_work_tree_is_rejected(tmp_path: Path) -> None:
+    cli = load_cli()
+    root = repo(tmp_path)
+    snapshot = tmp_path / "snapshot"
+    snapshot.mkdir()
+    foreign = tmp_path / "foreign-repo"
+    foreign.mkdir()
+    (foreign / ".git").mkdir()
+    witness = foreign / "witnesses"
+    witness.mkdir()
+
+    with pytest.raises(cli.AcquisitionEntrypointError, match="Git work tree"):
+        cli._require_external_witness_root(
+            path=witness,
+            repository_root=root,
+            snapshot_root=snapshot,
+        )
+
+
 def test_receipt_output_is_published_descriptor_relative(tmp_path: Path) -> None:
     cli = load_cli()
     root = repo(tmp_path)
