@@ -677,11 +677,12 @@ def main(argv: list[str] | None = None) -> int:
             _require_owned_output_identity(custody_output_path)
             _require_owned_output_identity(provenance_output_path)
 
+        transport = acquisition_module.UrllibHfPublicTransport(
+            timeout_seconds=args.timeout_seconds
+        )
         custody, provenance = acquisition_module.acquire_mrl_0801_hf_candidate(
             authorization=authorization,
-            transport=acquisition_module.UrllibHfPublicTransport(
-                timeout_seconds=args.timeout_seconds
-            ),
+            transport=transport,
             repository_root=repository_root,
             destination=args.destination,
             witness_root=args.model_witness_root,
