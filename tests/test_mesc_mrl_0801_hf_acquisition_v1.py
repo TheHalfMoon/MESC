@@ -298,7 +298,7 @@ def test_destination_replacement_cannot_redirect_writes(
     assert (destination / "sentinel.txt").read_text(encoding="utf-8") == "replacement"
 
 
-def test_finalizer_failure_removes_finalizer_created_entry_and_snapshot(
+def test_finalizer_failure_preserves_unbound_entry_and_rolls_back_snapshot(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     patch_environment(monkeypatch)
@@ -322,10 +322,10 @@ def test_finalizer_failure_removes_finalizer_created_entry_and_snapshot(
             revision=REV,
             finalizer=fail_finalize,
         )
-    assert list(destination.iterdir()) == []
+    assert [item.name for item in destination.iterdir()] == ["unexpected.txt"]
 
 
-def test_finalizer_extra_entry_is_rejected_and_rolled_back(
+def test_finalizer_extra_entry_is_rejected_and_snapshot_rollback_preserves_unbound_entry(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     patch_environment(monkeypatch)
@@ -348,7 +348,7 @@ def test_finalizer_extra_entry_is_rejected_and_rolled_back(
             revision=REV,
             finalizer=add_extra_entry,
         )
-    assert list(destination.iterdir()) == []
+    assert [item.name for item in destination.iterdir()] == ["unexpected.txt"]
 
 
 def test_finalizer_asset_mutation_is_rejected_and_rolled_back(

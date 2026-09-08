@@ -50,6 +50,11 @@ def remote_metadata(data: bytes, *, byte_count: int) -> subject.HfRemoteFileMeta
     )
 
 
+def entry_identity(path: Path) -> tuple[int, int]:
+    observed = path.stat(follow_symlinks=False)
+    return observed.st_dev, observed.st_ino
+
+
 def test_publish_partial_no_replace_succeeds_without_target(tmp_path: Path) -> None:
     partial = tmp_path / ".asset.partial"
     target = tmp_path / "asset"
@@ -60,6 +65,7 @@ def test_publish_partial_no_replace_succeeds_without_target(tmp_path: Path) -> N
             root_fd=descriptor,
             partial_name=partial.name,
             target_name=target.name,
+            expected_identity=entry_identity(partial),
         )
     finally:
         os.close(descriptor)
@@ -80,6 +86,7 @@ def test_publish_partial_no_replace_preserves_racing_target(tmp_path: Path) -> N
                 root_fd=descriptor,
                 partial_name=partial.name,
                 target_name=target.name,
+                expected_identity=entry_identity(partial),
             )
     finally:
         os.close(descriptor)
@@ -129,3 +136,26 @@ def test_stale_partial_blocks_acquisition_without_mutation(tmp_path: Path) -> No
 
     assert partial.read_bytes() == b"stale"
     assert not (tmp_path / ASSET).exists()
+
+
+
+def test_rollback_preserves_replaced_published_target(tmp_path: Path) -> None:
+    data = b"model-bytes"
+    descriptor = root_descriptor(tmp_path)
+    try:
+        acquired = subject._acquire_one_file(
+            root_fd=descriptor,
+            transport=ByteTransport(data),
+            metadata=remote_metadata(data, byte_count=len(data)),
+        )
+        original = tmp_path / "original-model.safetensors"
+        target = tmp_path / ASSET
+        target.rename(original)
+        target.write_bytes(b"foreign-replacement")
+
+        subject._rollback_created_files(root_fd=descriptor, acquired=(acquired,))
+    finally:
+        os.close(descriptor)
+
+    assert target.read_bytes() == b"foreign-replacement"
+    assert original.read_bytes() == data

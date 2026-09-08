@@ -15,13 +15,16 @@ from medscale.mesc import _mrl_0801_hf_acquisition_v1 as subject
 _O_DIRECTORY: int = getattr(os, "O_DIRECTORY", 0)
 
 
-def _acquired_file(path: str) -> subject.HfAcquiredFileIdentity:
+def _acquired_file(path: Path) -> subject.HfAcquiredFileIdentity:
+    observed = path.stat(follow_symlinks=False)
     return subject.HfAcquiredFileIdentity(
-        path=path,
+        path=path.name,
         byte_count=1,
         remote_etag="a" * 64,
         remote_etag_algorithm="sha256",
         local_sha256="a" * 64,
+        owned_device=observed.st_dev,
+        owned_inode=observed.st_ino,
     )
 
 
@@ -40,7 +43,7 @@ def test_rollback_never_recurses_into_nonempty_finalizer_directory(tmp_path: Pat
         with pytest.raises(OSError):
             subject._rollback_created_files(
                 root_fd=root_fd,
-                acquired=(_acquired_file(asset.name),),
+                acquired=(_acquired_file(asset),),
                 pre_finalizer_entries=frozenset({asset.name}),
             )
     finally:
@@ -81,7 +84,7 @@ def test_rollback_does_not_descend_into_bind_mount(tmp_path: Path) -> None:
             with pytest.raises(OSError):
                 subject._rollback_created_files(
                     root_fd=root_fd,
-                    acquired=(_acquired_file(asset.name),),
+                    acquired=(_acquired_file(asset),),
                     pre_finalizer_entries=frozenset({asset.name}),
                 )
         finally:

@@ -144,6 +144,8 @@ class HfAcquiredFileIdentity:
     remote_etag: str
     remote_etag_algorithm: str
     local_sha256: str
+    owned_device: int | None = field(default=None, repr=False, compare=False)
+    owned_inode: int | None = field(default=None, repr=False, compare=False)
 
     def to_dict(self) -> dict[str, object]:
         """Return deterministic public provenance fields with no local path or URL."""
@@ -1207,14 +1209,44 @@ def _descriptor_entry_exists(*, root_fd: int, name: str) -> bool:
     return True
 
 
-def _unlink_descriptor_entry(*, root_fd: int, name: str) -> None:
+def _descriptor_entry_stat(*, root_fd: int, name: str) -> os.stat_result | None:
+    try:
+        return os.stat(name, dir_fd=root_fd, follow_symlinks=False)
+    except FileNotFoundError:
+        return None
+    except OSError:
+        raise MRL0801HfAcquisitionError(
+            "acquisition destination entry could not be inspected safely"
+        ) from None
+
+
+def _unlink_descriptor_entry_if_owned(
+    *,
+    root_fd: int,
+    name: str,
+    expected_identity: tuple[int, int],
+) -> bool:
+    observed = _descriptor_entry_stat(root_fd=root_fd, name=name)
+    if (
+        observed is None
+        or not stat.S_ISREG(observed.st_mode)
+        or _stat_descriptor_identity(observed) != expected_identity
+    ):
+        return False
     try:
         os.unlink(name, dir_fd=root_fd)
     except FileNotFoundError:
-        return
+        return False
+    return True
 
 
-def _publish_partial_no_replace(*, root_fd: int, partial_name: str, target_name: str) -> None:
+def _publish_partial_no_replace(
+    *,
+    root_fd: int,
+    partial_name: str,
+    target_name: str,
+    expected_identity: tuple[int, int],
+) -> tuple[int, int]:
     try:
         os.link(
             partial_name,
@@ -1229,11 +1261,49 @@ def _publish_partial_no_replace(*, root_fd: int, partial_name: str, target_name:
         ) from None
     except OSError:
         raise MRL0801HfAcquisitionError("asset publication failed safely") from None
+
+    published = _descriptor_entry_stat(root_fd=root_fd, name=target_name)
+    if (
+        published is None
+        or not stat.S_ISREG(published.st_mode)
+        or _stat_descriptor_identity(published) != expected_identity
+    ):
+        _unlink_descriptor_entry_if_owned(
+            root_fd=root_fd,
+            name=partial_name,
+            expected_identity=expected_identity,
+        )
+        raise MRL0801HfAcquisitionError(
+            "published asset identity changed during publication"
+        )
+
     try:
-        os.unlink(partial_name, dir_fd=root_fd)
-    except OSError:
-        _unlink_descriptor_entry(root_fd=root_fd, name=target_name)
+        if not _unlink_descriptor_entry_if_owned(
+            root_fd=root_fd,
+            name=partial_name,
+            expected_identity=expected_identity,
+        ):
+            raise MRL0801HfAcquisitionError(
+                "partial acquisition identity changed during publication"
+            )
+    except BaseException:
+        _unlink_descriptor_entry_if_owned(
+            root_fd=root_fd,
+            name=target_name,
+            expected_identity=expected_identity,
+        )
         raise
+
+    published = _descriptor_entry_stat(root_fd=root_fd, name=target_name)
+    if (
+        published is None
+        or not stat.S_ISREG(published.st_mode)
+        or _stat_descriptor_identity(published) != expected_identity
+    ):
+        raise MRL0801HfAcquisitionError(
+            "published asset identity changed after publication"
+        )
+    return expected_identity
 
 
 def _acquire_one_file(
@@ -1253,6 +1323,7 @@ def _acquire_one_file(
     sha256 = hashlib.sha256()
     git_blob_sha1 = _new_git_blob_digest(metadata.byte_count)
     byte_count = 0
+    owned_identity: tuple[int, int] | None = None
     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | _O_NOFOLLOW | _O_CLOEXEC
     try:
         descriptor = os.open(partial_name, flags, 0o600, dir_fd=root_fd)
@@ -1264,6 +1335,7 @@ def _acquire_one_file(
         opened = os.fstat(descriptor)
         if not stat.S_ISREG(opened.st_mode):
             raise MRL0801HfAcquisitionError("partial acquisition descriptor is not a regular file")
+        owned_identity = _stat_descriptor_identity(opened)
         with os.fdopen(descriptor, "wb", closefd=True) as stream:
             for chunk in transport.iter_bytes(metadata=metadata):
                 if not isinstance(chunk, bytes) or not chunk:
@@ -1284,10 +1356,15 @@ def _acquire_one_file(
         )
         if remote_identity != metadata.etag:
             raise MRL0801HfAcquisitionError("download bytes differ from remote content identity")
-        _publish_partial_no_replace(
+        if owned_identity is None:
+            raise MRL0801HfAcquisitionError(
+                "partial acquisition ownership identity is unavailable"
+            )
+        published_identity = _publish_partial_no_replace(
             root_fd=root_fd,
             partial_name=partial_name,
             target_name=target_name,
+            expected_identity=owned_identity,
         )
         return HfAcquiredFileIdentity(
             path=metadata.path,
@@ -1295,9 +1372,16 @@ def _acquire_one_file(
             remote_etag=metadata.etag,
             remote_etag_algorithm=metadata.etag_algorithm,
             local_sha256=local_sha256,
+            owned_device=published_identity[0],
+            owned_inode=published_identity[1],
         )
     except BaseException:
-        _unlink_descriptor_entry(root_fd=root_fd, name=partial_name)
+        if owned_identity is not None:
+            _unlink_descriptor_entry_if_owned(
+                root_fd=root_fd,
+                name=partial_name,
+                expected_identity=owned_identity,
+            )
         raise
 
 
@@ -1307,15 +1391,13 @@ def _rollback_created_files(
     acquired: tuple[HfAcquiredFileIdentity, ...],
     pre_finalizer_entries: frozenset[str] | None = None,
 ) -> None:
+    del pre_finalizer_entries
     for item in reversed(acquired):
         relative = _validate_relative_path(item.path)
-        _unlink_descriptor_entry(root_fd=root_fd, name=relative.name)
-    names = _descriptor_entries(root_fd=root_fd)
-    for name in names:
-        if (
-            name.startswith(".")
-            and name.endswith(".mrl-0801-partial")
-            or pre_finalizer_entries is not None
-            and name not in pre_finalizer_entries
-        ):
-            _unlink_descriptor_entry(root_fd=root_fd, name=name)
+        if item.owned_device is None or item.owned_inode is None:
+            continue
+        _unlink_descriptor_entry_if_owned(
+            root_fd=root_fd,
+            name=relative.name,
+            expected_identity=(item.owned_device, item.owned_inode),
+        )
