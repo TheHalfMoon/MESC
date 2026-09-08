@@ -99,12 +99,34 @@ def test_receipt_outputs_must_be_outside_repo_snapshot_and_symlinks(tmp_path: Pa
         )
 
 
+def test_receipt_output_parent_must_preexist_without_filesystem_mutation(tmp_path: Path) -> None:
+    cli = load_cli()
+    root = repo(tmp_path)
+    snapshot = tmp_path / "snapshot"
+    snapshot.mkdir()
+    missing_root = tmp_path / "missing"
+    receipt = missing_root / "receipts/receipt.json"
+
+    assert not missing_root.exists()
+    with pytest.raises(cli.AcquisitionEntrypointError, match="parent must already exist"):
+        cli._require_external_new_output(
+            path=receipt,
+            repository_root=root,
+            snapshot_root=snapshot,
+        )
+
+    assert not missing_root.exists()
+    assert not (root / "receipts").exists()
+    assert not (snapshot / "receipts").exists()
+
+
 def test_receipt_output_is_written_and_cleaned_descriptor_relative(tmp_path: Path) -> None:
     cli = load_cli()
     root = repo(tmp_path)
     snapshot = tmp_path / "snapshot"
     snapshot.mkdir()
     receipt = tmp_path / "receipts/receipt.json"
+    receipt.parent.mkdir()
     output = cli._require_external_new_output(
         path=receipt,
         repository_root=root,
@@ -125,6 +147,7 @@ def test_receipt_output_parent_swap_cannot_redirect_publication_into_repo(tmp_pa
     snapshot = tmp_path / "snapshot"
     snapshot.mkdir()
     receipt_parent = tmp_path / "receipts"
+    receipt_parent.mkdir()
     receipt = receipt_parent / "receipt.json"
     output = cli._require_external_new_output(
         path=receipt,
@@ -149,6 +172,7 @@ def test_receipt_cleanup_preserves_foreign_racing_entry(tmp_path: Path) -> None:
     snapshot = tmp_path / "snapshot"
     snapshot.mkdir()
     receipt = tmp_path / "receipts/receipt.json"
+    receipt.parent.mkdir()
     output = cli._require_external_new_output(
         path=receipt,
         repository_root=root,
@@ -173,6 +197,7 @@ def test_receipt_replacement_during_write_preserves_foreign_entry(
     snapshot = tmp_path / "snapshot"
     snapshot.mkdir()
     receipt = tmp_path / "receipts/receipt.json"
+    receipt.parent.mkdir()
     output = cli._require_external_new_output(
         path=receipt,
         repository_root=root,

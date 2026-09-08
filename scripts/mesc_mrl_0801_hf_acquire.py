@@ -306,10 +306,14 @@ def _require_external_new_output(
         raise AcquisitionEntrypointError("receipt output must be outside the raw snapshot root")
     if value.exists():
         raise AcquisitionEntrypointError("receipt output must not already exist")
-    value.parent.mkdir(parents=True, exist_ok=True)
 
+    try:
+        parent = raw.parent.resolve(strict=True)
+    except OSError:
+        raise AcquisitionEntrypointError(
+            "receipt output parent must already exist as a real directory"
+        ) from None
     _require_no_existing_symlink_components(raw, label="receipt output")
-    parent = raw.parent.resolve(strict=True)
     value = parent / raw.name
     if value == repo or _is_descendant(value, repo):
         raise AcquisitionEntrypointError("receipt output must be outside the repository")
