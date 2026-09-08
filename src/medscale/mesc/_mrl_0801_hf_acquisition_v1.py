@@ -1402,7 +1402,6 @@ def _descriptor_entry_stat(*, root_fd: int, name: str) -> os.stat_result | None:
         raise MRL0801HfAcquisitionError(
             "acquisition destination entry could not be inspected safely"
         ) from None
-    return True
 
 
 def _load_posix_symbol(name: str) -> Any:
