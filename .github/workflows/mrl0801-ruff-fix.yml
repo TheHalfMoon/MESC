@@ -1,0 +1,58 @@
+name: MRL-0801 Guarded Ruff Repair
+
+on:
+  push:
+    branches:
+      - ops/mrl0801-ruff-fix-20260908-v1
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repair helper
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Checkout exact PR branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: feat/mrl-0801-hf-acquisition-executor-20260908
+          path: target
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Guard expected PR head
+        working-directory: target
+        run: |
+          test "$(git rev-parse HEAD)" = "22f5b720d4b45d244dd788d09be485459336986c"
+
+      - name: Apply exact Ruff-only repair
+        run: |
+          python .github/scripts/mrl0801_ruff_fix.py target
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+
+      - name: Verify locked environment and Ruff
+        working-directory: target
+        run: |
+          uv sync --frozen
+          uv run ruff check .
+          uv run ruff format --check .
+          git diff --check
+          git diff --exit-code -- uv.lock
+
+      - name: Commit and guarded fast-forward push
+        working-directory: target
+        run: |
+          git diff --quiet && exit 1
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add scripts/mesc_mrl_0801_hf_acquire.py tests/test_mesc_mrl_0801_hf_acquire_cli.py tests/test_mesc_mrl_0801_hf_acquisition_v1.py tests/test_mesc_mrl_0801_hf_witness_v1.py
+          git diff --cached --check
+          git commit -m "style(mesc): satisfy ADR-0037 Ruff gates"
+          git push origin HEAD:refs/heads/feat/mrl-0801-hf-acquisition-executor-20260908
