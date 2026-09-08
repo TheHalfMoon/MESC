@@ -7,7 +7,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 
 import pytest
 
@@ -350,3 +350,82 @@ def test_exact_source_root_is_repositioned_first(monkeypatch: pytest.MonkeyPatch
     assert sys.path[0] == exact_source
     assert sys.path.count(exact_source) == 1
     assert sys.path[1] == foreign_source
+
+
+def test_oversized_timeout_exits_with_generic_blocked_message(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    cli = load_cli()
+    root = repo(tmp_path)
+    authorization = root / cli._AUTHORIZATION_RELATIVE_PATH
+    authorization.parent.mkdir(parents=True, exist_ok=True)
+    authorization.write_text("{}", encoding="utf-8")
+
+    opened_descriptors: list[int] = []
+
+    class FakeCustodyModule:
+        @staticmethod
+        def parse_mrl_0801_acquisition_authorization(_: bytes) -> object:
+            return object()
+
+    class FakeAcquisitionModule:
+        class UrllibHfPublicTransport:
+            def __init__(self, *, timeout_seconds: float) -> None:
+                assert timeout_seconds == 1e308
+                raise ValueError("timeout_seconds exceeds bounded transport maximum")
+
+    def fake_output(*, path: Path, **_: object) -> SimpleNamespace:
+        descriptor = os.open(os.devnull, os.O_RDONLY)
+        opened_descriptors.append(descriptor)
+        return SimpleNamespace(path=path, descriptor=descriptor)
+
+    def fake_witness(**_: object) -> SimpleNamespace:
+        descriptor = os.open(os.devnull, os.O_RDONLY)
+        opened_descriptors.append(descriptor)
+        return SimpleNamespace(descriptor=descriptor)
+
+    monkeypatch.setattr(cli, "_require_clean_repository_before_import", lambda _: root)
+    monkeypatch.setattr(
+        cli,
+        "_import_exact_repository_modules",
+        lambda _: (FakeCustodyModule, FakeAcquisitionModule),
+    )
+    monkeypatch.setattr(cli, "_require_external_new_output", fake_output)
+    monkeypatch.setattr(cli, "_require_external_witness_root", fake_witness)
+    monkeypatch.setattr(cli, "_probe_receipt_atomic_publication", lambda *_: None)
+    monkeypatch.setattr(cli, "_require_bound_output_parent_identity", lambda *_: None)
+    monkeypatch.setattr(cli, "_require_bound_witness_root_identity", lambda *_: None)
+
+    status = cli.main(
+        [
+            "--repository-root",
+            str(root),
+            "--destination",
+            str(tmp_path / "snapshot"),
+            "--model-witness-root",
+            str(tmp_path / "model-witness"),
+            "--receipt-witness-root",
+            str(tmp_path / "receipt-witness"),
+            "--model-id",
+            "google/gemma-4-31B-it",
+            "--revision",
+            "842da3794eaa0b77d5f08bae87a17459d91ff475",
+            "--custody-receipt-output",
+            str(tmp_path / "custody.json"),
+            "--provenance-receipt-output",
+            str(tmp_path / "provenance.json"),
+            "--timeout-seconds",
+            "1e308",
+        ]
+    )
+    captured = capsys.readouterr()
+
+    assert status == 2
+    assert captured.out == ""
+    assert captured.err == (
+        "MRL-0801 acquisition blocked: bounded acquisition requirements were not met\n"
+    )
+    assert "Traceback" not in captured.err
+    assert opened_descriptors
