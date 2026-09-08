@@ -51,6 +51,8 @@ The execution commit/tree/source identities are written into the supporting prov
 
 All remote access is public and unauthenticated. The implementation does not read or send Hugging Face tokens, cookies, netrc credentials, Git credentials, provider credentials, or environment proxy credentials. The urllib transport installs an empty `ProxyHandler` rather than inheriting credential-bearing environment proxies.
 
+The transport timeout is a per-open/socket-operation bound, not a total transfer deadline. It must be finite, positive, and no greater than `3600` seconds. Values outside that range are rejected before transport use, and platform timeout-conversion `OverflowError` failures are normalized into the same fail-closed acquisition transport errors as other network failures.
+
 The initial source is always an exact revision-pinned:
 
 ```text
@@ -200,7 +202,7 @@ User-visible failure emits a generic blocked message and must not print signed U
 
 ## CI boundary
 
-Repository tests inject fake Hub transports. CI must never download model weights or depend on live Hub availability. Transport tests synthesize redirect/metadata responses, including the external-redirect `Content-Length` ambiguity case. Security tests cover exact runtime receipt types, preloaded transitive module rejection, untracked-work-tree rejection, descriptor-relative publication, concurrent destination replacement, missing receipt-parent no-mutation, receipt-output parent replacement, foreign receipt-entry preservation, dedicated same-filesystem retained model/receipt witnesses, foreign witness replacement preservation, successful proof reaching the metadata phase, racing target preservation, late-failure retained residue, and retry rejection against non-empty failed destinations.
+Repository tests inject fake Hub transports. CI must never download model weights or depend on live Hub availability. Transport tests synthesize redirect/metadata responses, including the external-redirect `Content-Length` ambiguity case, timeout-boundary rejection, and fail-closed metadata/download `OverflowError` conversion. CLI tests verify an oversized finite timeout exits with status `2`, emits only the generic blocked stderr message, and emits no traceback. Security tests cover exact runtime receipt types, preloaded transitive module rejection, untracked-work-tree rejection, descriptor-relative publication, concurrent destination replacement, missing receipt-parent no-mutation, receipt-output parent replacement, foreign receipt-entry preservation, dedicated same-filesystem retained model/receipt witnesses, foreign witness replacement preservation, successful proof reaching the metadata phase, racing target preservation, late-failure retained residue, and retry rejection against non-empty failed destinations.
 
 ## Non-authority statement
 
