@@ -16,7 +16,18 @@ jobs:
         with:
           fetch-depth: 0
       - name: Preserve guarded patcher
-        run: cp .github/ops/pr390_adr37_patch.py /tmp/pr390_adr37_patch.py
+        run: |
+          cp .github/ops/pr390_adr37_patch.py /tmp/pr390_adr37_patch.py
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('/tmp/pr390_adr37_patch.py')
+          text = path.read_text()
+          text = text.replace('"def _require_no_existing_symlink_components(\\n"', '"def _require_no_existing_symlink_components("')
+          text = text.replace('"def _load_posix_symbol(\\n"', '"def _load_posix_symbol("')
+          text = text.replace('"def _write_exact_new(\\n"', '"def _write_exact_new("')
+          text = text.replace('"def test_receipt_output_is_published_descriptor_relative(\\n"', '"def test_receipt_output_is_published_descriptor_relative("')
+          path.write_text(text)
+          PY
       - name: Checkout exact PR branch
         run: |
           git fetch origin feat/mrl-0801-hf-acquisition-executor-20260908
@@ -35,8 +46,6 @@ jobs:
           git diff --check
           git status --short
       - name: Guard exact remote head and push one commit
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
           git fetch origin feat/mrl-0801-hf-acquisition-executor-20260908
           test "$(git rev-parse origin/feat/mrl-0801-hf-acquisition-executor-20260908)" = "d24eaf80da3e3dd8a37c6fe57d9de82a1112f6c5"
