@@ -8,6 +8,8 @@ weights, trains, populates MRL-0801, or changes a trust registry.
 
 from __future__ import annotations
 
+import ctypes
+import errno
 import hashlib
 import ipaddress
 import json
@@ -22,7 +24,7 @@ from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from http.client import HTTPMessage
 from pathlib import Path, PurePosixPath
-from typing import IO, Final, Protocol, cast
+from typing import IO, Any, Final, Protocol, cast
 
 from medscale.mesc._canonical_json_v1 import CanonicalContractError, canonical_json_bytes
 from medscale.mesc._mrl_0801_acquisition_custody_v1 import (
@@ -46,6 +48,11 @@ _ALLOWED_REMOTE_HOST_SUFFIXES: Final = (".huggingface.co", ".hf.co")
 _O_NOFOLLOW: Final = getattr(os, "O_NOFOLLOW", 0)
 _O_DIRECTORY: Final = getattr(os, "O_DIRECTORY", 0)
 _O_CLOEXEC: Final = getattr(os, "O_CLOEXEC", 0)
+_O_TMPFILE: Final = getattr(os, "O_TMPFILE", 0)
+_AT_EMPTY_PATH: Final = 0x1000
+_UNSUPPORTED_LINKAT_ERRNOS: Final = frozenset(
+    {errno.ENOSYS, errno.EINVAL, errno.ENOTSUP, getattr(errno, "EOPNOTSUPP", errno.ENOTSUP)}
+)
 _RECEIPT_KEYS: Final = frozenset(
     {
         "access_authorization_sha256",
@@ -1220,90 +1227,70 @@ def _descriptor_entry_stat(*, root_fd: int, name: str) -> os.stat_result | None:
         ) from None
 
 
-def _unlink_descriptor_entry_if_owned(
-    *,
-    root_fd: int,
-    name: str,
-    expected_identity: tuple[int, int],
-) -> bool:
-    observed = _descriptor_entry_stat(root_fd=root_fd, name=name)
-    if (
-        observed is None
-        or not stat.S_ISREG(observed.st_mode)
-        or _stat_descriptor_identity(observed) != expected_identity
-    ):
-        return False
+def _load_posix_symbol(name: str) -> Any:
+    """Return one libc symbol, or None when the runtime does not expose it."""
     try:
-        os.unlink(name, dir_fd=root_fd)
-    except FileNotFoundError:
-        return False
-    return True
+        library = ctypes.CDLL(None, use_errno=True)
+    except (OSError, TypeError):  # pragma: no cover - platform dependent
+        return None
+    return getattr(library, name, None)
 
 
-def _publish_partial_no_replace(
+def _open_unnamed_temp_file(*, root_fd: int) -> int:
+    """Create an unnamed same-filesystem temporary file or fail closed."""
+    if _O_TMPFILE == 0:
+        raise MRL0801HfAcquisitionError("unnamed temporary-file publication is unavailable")
+    try:
+        descriptor = os.open(".", os.O_WRONLY | _O_TMPFILE | _O_CLOEXEC, 0o600, dir_fd=root_fd)
+    except OSError as error:
+        if error.errno in _UNSUPPORTED_LINKAT_ERRNOS:
+            raise MRL0801HfAcquisitionError(
+                "unnamed temporary-file publication is unsupported on this filesystem"
+            ) from None
+        raise MRL0801HfAcquisitionError(
+            "unnamed temporary acquisition file could not be opened safely"
+        ) from None
+    return descriptor
+
+
+def _publish_open_descriptor_no_replace(
     *,
+    source_fd: int,
     root_fd: int,
-    partial_name: str,
     target_name: str,
-    expected_identity: tuple[int, int],
-) -> tuple[int, int]:
-    try:
-        os.link(
-            partial_name,
-            target_name,
-            src_dir_fd=root_fd,
-            dst_dir_fd=root_fd,
-            follow_symlinks=False,
-        )
-    except FileExistsError:
+) -> None:
+    """Atomically link one open unnamed file to a new descriptor-relative name."""
+    function = _load_posix_symbol("linkat")
+    if function is None:
+        raise MRL0801HfAcquisitionError("atomic descriptor publication is unavailable")
+    function.argtypes = [
+        ctypes.c_int,
+        ctypes.c_char_p,
+        ctypes.c_int,
+        ctypes.c_char_p,
+        ctypes.c_int,
+    ]
+    function.restype = ctypes.c_int
+    ctypes.set_errno(0)
+    status = function(
+        source_fd,
+        b"",
+        root_fd,
+        os.fsencode(target_name),
+        _AT_EMPTY_PATH,
+    )
+    if status == 0:
+        return
+    code = ctypes.get_errno()
+    if code == errno.EEXIST:
         raise MRL0801HfAcquisitionError(
             "executor refuses to overwrite an asset file created during publication"
-        ) from None
-    except OSError:
-        raise MRL0801HfAcquisitionError("asset publication failed safely") from None
-
-    published = _descriptor_entry_stat(root_fd=root_fd, name=target_name)
-    if (
-        published is None
-        or not stat.S_ISREG(published.st_mode)
-        or _stat_descriptor_identity(published) != expected_identity
-    ):
-        _unlink_descriptor_entry_if_owned(
-            root_fd=root_fd,
-            name=partial_name,
-            expected_identity=expected_identity,
         )
+    if code in _UNSUPPORTED_LINKAT_ERRNOS:
         raise MRL0801HfAcquisitionError(
-            "published asset identity changed during publication"
+            "atomic descriptor publication is unsupported on this filesystem"
         )
-
-    try:
-        if not _unlink_descriptor_entry_if_owned(
-            root_fd=root_fd,
-            name=partial_name,
-            expected_identity=expected_identity,
-        ):
-            raise MRL0801HfAcquisitionError(
-                "partial acquisition identity changed during publication"
-            )
-    except BaseException:
-        _unlink_descriptor_entry_if_owned(
-            root_fd=root_fd,
-            name=target_name,
-            expected_identity=expected_identity,
-        )
-        raise
-
-    published = _descriptor_entry_stat(root_fd=root_fd, name=target_name)
-    if (
-        published is None
-        or not stat.S_ISREG(published.st_mode)
-        or _stat_descriptor_identity(published) != expected_identity
-    ):
-        raise MRL0801HfAcquisitionError(
-            "published asset identity changed after publication"
-        )
-    return expected_identity
+    raise MRL0801HfAcquisitionError("asset publication failed safely")
 
 
 def _acquire_one_file(
@@ -1314,29 +1301,19 @@ def _acquire_one_file(
 ) -> HfAcquiredFileIdentity:
     relative = _validate_relative_path(metadata.path)
     target_name = relative.name
-    partial_name = f".{target_name}.mrl-0801-partial"
     if _descriptor_entry_exists(root_fd=root_fd, name=target_name):
         raise MRL0801HfAcquisitionError("executor refuses to overwrite an existing asset file")
-    if _descriptor_entry_exists(root_fd=root_fd, name=partial_name):
-        raise MRL0801HfAcquisitionError("stale partial acquisition file exists")
 
     sha256 = hashlib.sha256()
     git_blob_sha1 = _new_git_blob_digest(metadata.byte_count)
     byte_count = 0
-    owned_identity: tuple[int, int] | None = None
-    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | _O_NOFOLLOW | _O_CLOEXEC
-    try:
-        descriptor = os.open(partial_name, flags, 0o600, dir_fd=root_fd)
-    except OSError:
-        raise MRL0801HfAcquisitionError(
-            "partial acquisition file could not be opened safely"
-        ) from None
+    descriptor = _open_unnamed_temp_file(root_fd=root_fd)
     try:
         opened = os.fstat(descriptor)
         if not stat.S_ISREG(opened.st_mode):
-            raise MRL0801HfAcquisitionError("partial acquisition descriptor is not a regular file")
+            raise MRL0801HfAcquisitionError("unnamed acquisition descriptor is not a regular file")
         owned_identity = _stat_descriptor_identity(opened)
-        with os.fdopen(descriptor, "wb", closefd=True) as stream:
+        with os.fdopen(descriptor, "wb", closefd=False) as stream:
             for chunk in transport.iter_bytes(metadata=metadata):
                 if not isinstance(chunk, bytes) or not chunk:
                     raise MRL0801HfAcquisitionError("download transport yielded an invalid chunk")
@@ -1356,33 +1333,31 @@ def _acquire_one_file(
         )
         if remote_identity != metadata.etag:
             raise MRL0801HfAcquisitionError("download bytes differ from remote content identity")
-        if owned_identity is None:
-            raise MRL0801HfAcquisitionError(
-                "partial acquisition ownership identity is unavailable"
-            )
-        published_identity = _publish_partial_no_replace(
+        _publish_open_descriptor_no_replace(
+            source_fd=descriptor,
             root_fd=root_fd,
-            partial_name=partial_name,
             target_name=target_name,
-            expected_identity=owned_identity,
         )
+        published = _descriptor_entry_stat(root_fd=root_fd, name=target_name)
+        if (
+            published is None
+            or not stat.S_ISREG(published.st_mode)
+            or _stat_descriptor_identity(published) != owned_identity
+        ):
+            raise MRL0801HfAcquisitionError(
+                "published asset identity changed after atomic publication"
+            )
         return HfAcquiredFileIdentity(
             path=metadata.path,
             byte_count=byte_count,
             remote_etag=metadata.etag,
             remote_etag_algorithm=metadata.etag_algorithm,
             local_sha256=local_sha256,
-            owned_device=published_identity[0],
-            owned_inode=published_identity[1],
+            owned_device=owned_identity[0],
+            owned_inode=owned_identity[1],
         )
-    except BaseException:
-        if owned_identity is not None:
-            _unlink_descriptor_entry_if_owned(
-                root_fd=root_fd,
-                name=partial_name,
-                expected_identity=owned_identity,
-            )
-        raise
+    finally:
+        os.close(descriptor)
 
 
 def _rollback_created_files(
@@ -1391,13 +1366,5 @@ def _rollback_created_files(
     acquired: tuple[HfAcquiredFileIdentity, ...],
     pre_finalizer_entries: frozenset[str] | None = None,
 ) -> None:
-    del pre_finalizer_entries
-    for item in reversed(acquired):
-        relative = _validate_relative_path(item.path)
-        if item.owned_device is None or item.owned_inode is None:
-            continue
-        _unlink_descriptor_entry_if_owned(
-            root_fd=root_fd,
-            name=relative.name,
-            expected_identity=(item.owned_device, item.owned_inode),
-        )
+    """Retain published transaction residue rather than perform a racy namespace unlink."""
+    del root_fd, acquired, pre_finalizer_entries

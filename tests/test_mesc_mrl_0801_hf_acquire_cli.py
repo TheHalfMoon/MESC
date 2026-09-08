@@ -120,7 +120,7 @@ def test_receipt_output_parent_must_preexist_without_filesystem_mutation(tmp_pat
     assert not (snapshot / "receipts").exists()
 
 
-def test_receipt_output_is_written_and_cleaned_descriptor_relative(tmp_path: Path) -> None:
+def test_receipt_output_is_published_descriptor_relative(tmp_path: Path) -> None:
     cli = load_cli()
     root = repo(tmp_path)
     snapshot = tmp_path / "snapshot"
@@ -135,8 +135,6 @@ def test_receipt_output_is_written_and_cleaned_descriptor_relative(tmp_path: Pat
     try:
         cli._write_exact_new(output, b"{}")
         assert receipt.read_bytes() == b"{}"
-        cli._unlink_bound_output(output)
-        assert not receipt.exists()
     finally:
         os.close(output.descriptor)
 
@@ -180,15 +178,14 @@ def test_receipt_cleanup_preserves_foreign_racing_entry(tmp_path: Path) -> None:
     )
     receipt.write_bytes(b"foreign")
     try:
-        with pytest.raises(cli.AcquisitionEntrypointError, match="could not be created"):
+        with pytest.raises(cli.AcquisitionEntrypointError, match="must not already exist"):
             cli._write_exact_new(output, b"ours")
-        cli._unlink_bound_output(output)
         assert receipt.read_bytes() == b"foreign"
     finally:
         os.close(output.descriptor)
 
 
-def test_receipt_replacement_during_write_preserves_foreign_entry(
+def test_receipt_publication_race_preserves_foreign_entry(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -203,20 +200,15 @@ def test_receipt_replacement_during_write_preserves_foreign_entry(
         repository_root=root,
         snapshot_root=snapshot,
     )
-    original_check = cli._require_bound_output_parent_identity
-    calls = 0
+    original_publish = cli._publish_open_descriptor_no_replace
 
-    def replace_after_write(value: object) -> None:
-        nonlocal calls
-        calls += 1
-        if calls == 2:
-            receipt.unlink()
-            receipt.write_bytes(b"foreign")
-        original_check(value)
+    def race(*, source_fd: int, output: object) -> None:
+        receipt.write_bytes(b"foreign")
+        original_publish(source_fd=source_fd, output=output)
 
-    monkeypatch.setattr(cli, "_require_bound_output_parent_identity", replace_after_write)
+    monkeypatch.setattr(cli, "_publish_open_descriptor_no_replace", race)
     try:
-        with pytest.raises(cli.AcquisitionEntrypointError, match="name changed"):
+        with pytest.raises(cli.AcquisitionEntrypointError, match="must not already exist"):
             cli._write_exact_new(output, b"ours")
         assert receipt.read_bytes() == b"foreign"
     finally:

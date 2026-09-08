@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import ctypes
+import errno
 import importlib
 import json
 import os
@@ -12,6 +14,7 @@ import subprocess
 import sys
 from pathlib import Path
 from types import ModuleType
+from typing import Any
 
 _MODULE_RELATIVE_PATH = Path("src/medscale/mesc/_mrl_0801_hf_acquisition_v1.py")
 _AUTHORIZATION_RELATIVE_PATH = Path(
@@ -20,6 +23,11 @@ _AUTHORIZATION_RELATIVE_PATH = Path(
 _O_NOFOLLOW: int = getattr(os, "O_NOFOLLOW", 0)
 _O_DIRECTORY: int = getattr(os, "O_DIRECTORY", 0)
 _O_CLOEXEC: int = getattr(os, "O_CLOEXEC", 0)
+_O_TMPFILE: int = getattr(os, "O_TMPFILE", 0)
+_AT_EMPTY_PATH = 0x1000
+_UNSUPPORTED_LINKAT_ERRNOS = frozenset(
+    {errno.ENOSYS, errno.EINVAL, errno.ENOTSUP, getattr(errno, "EOPNOTSUPP", errno.ENOTSUP)}
+)
 
 
 class AcquisitionEntrypointError(RuntimeError):
@@ -362,34 +370,70 @@ def _require_external_new_output(
         raise
 
 
-def _unlink_bound_output(output: _BoundReceiptOutput) -> None:
-    if output.created_device is None or output.created_inode is None:
-        return
-    observed = _descriptor_output_stat(output)
-    expected = (output.created_device, output.created_inode)
+def _load_posix_symbol(name: str) -> Any:
     try:
-        if (
-            observed is not None
-            and stat.S_ISREG(observed.st_mode)
-            and _stat_identity(observed) == expected
-        ):
-            os.unlink(
-                output.name,
-                dir_fd=output.descriptor,
-            )
-    finally:
-        output.created_device = None
-        output.created_inode = None
+        library = ctypes.CDLL(None, use_errno=True)
+    except (OSError, TypeError):  # pragma: no cover - platform dependent
+        return None
+    return getattr(library, name, None)
+
+
+def _publish_open_descriptor_no_replace(
+    *,
+    source_fd: int,
+    output: _BoundReceiptOutput,
+) -> None:
+    function = _load_posix_symbol("linkat")
+    if function is None:
+        raise AcquisitionEntrypointError("atomic receipt publication is unavailable")
+    function.argtypes = [
+        ctypes.c_int,
+        ctypes.c_char_p,
+        ctypes.c_int,
+        ctypes.c_char_p,
+        ctypes.c_int,
+    ]
+    function.restype = ctypes.c_int
+    ctypes.set_errno(0)
+    status = function(
+        source_fd,
+        b"",
+        output.descriptor,
+        os.fsencode(output.name),
+        _AT_EMPTY_PATH,
+    )
+    if status == 0:
+        return
+    code = ctypes.get_errno()
+    if code == errno.EEXIST:
+        raise AcquisitionEntrypointError("receipt output must not already exist")
+    if code in _UNSUPPORTED_LINKAT_ERRNOS:
+        raise AcquisitionEntrypointError(
+            "atomic receipt publication is unsupported on this filesystem"
+        )
+    raise AcquisitionEntrypointError("receipt output could not be published safely")
 
 
 def _write_exact_new(output: _BoundReceiptOutput, data: bytes) -> None:
     _require_bound_output_parent_identity(output)
     if output.created_device is not None or output.created_inode is not None:
         raise AcquisitionEntrypointError("receipt output is already owned by this transaction")
-    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | _O_NOFOLLOW | _O_CLOEXEC
+    if _descriptor_output_stat(output) is not None:
+        raise AcquisitionEntrypointError("receipt output must not already exist")
+    if _O_TMPFILE == 0:
+        raise AcquisitionEntrypointError("unnamed receipt publication is unavailable")
     try:
-        descriptor = os.open(output.name, flags, 0o600, dir_fd=output.descriptor)
-    except OSError:
+        descriptor = os.open(
+            ".",
+            os.O_WRONLY | _O_TMPFILE | _O_CLOEXEC,
+            0o600,
+            dir_fd=output.descriptor,
+        )
+    except OSError as error:
+        if error.errno in _UNSUPPORTED_LINKAT_ERRNOS:
+            raise AcquisitionEntrypointError(
+                "unnamed receipt publication is unsupported on this filesystem"
+            ) from None
         raise AcquisitionEntrypointError("receipt output could not be created safely") from None
     try:
         opened = os.fstat(descriptor)
@@ -397,18 +441,16 @@ def _write_exact_new(output: _BoundReceiptOutput, data: bytes) -> None:
             raise AcquisitionEntrypointError("receipt output descriptor is not a regular file")
         output.created_device = opened.st_dev
         output.created_inode = opened.st_ino
-        with os.fdopen(descriptor, "wb", closefd=True) as stream:
-            descriptor = -1
+        with os.fdopen(descriptor, "wb", closefd=False) as stream:
             stream.write(data)
             stream.flush()
             os.fsync(stream.fileno())
         _require_bound_output_parent_identity(output)
+        _publish_open_descriptor_no_replace(source_fd=descriptor, output=output)
+        _require_bound_output_parent_identity(output)
         _require_owned_output_identity(output)
-    except BaseException:
-        if descriptor >= 0:
-            os.close(descriptor)
-        _unlink_bound_output(output)
-        raise
+    finally:
+        os.close(descriptor)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -474,10 +516,6 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 0
     except (AcquisitionEntrypointError, ImportError, OSError, RuntimeError, ValueError):
-        for output in (custody_output, provenance_output):
-            if output is not None:
-                with contextlib.suppress(OSError, AcquisitionEntrypointError):
-                    _unlink_bound_output(output)
         print(
             "MRL-0801 acquisition blocked: bounded acquisition requirements were not met",
             file=sys.stderr,

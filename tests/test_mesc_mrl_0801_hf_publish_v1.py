@@ -50,56 +50,54 @@ def remote_metadata(data: bytes, *, byte_count: int) -> subject.HfRemoteFileMeta
     )
 
 
-def entry_identity(path: Path) -> tuple[int, int]:
-    observed = path.stat(follow_symlinks=False)
-    return observed.st_dev, observed.st_ino
-
-
-def test_publish_partial_no_replace_succeeds_without_target(tmp_path: Path) -> None:
-    partial = tmp_path / ".asset.partial"
-    target = tmp_path / "asset"
-    partial.write_bytes(b"new-bytes")
+def test_unnamed_descriptor_publication_succeeds_without_target(tmp_path: Path) -> None:
     descriptor = root_descriptor(tmp_path)
+    temporary = -1
     try:
-        subject._publish_partial_no_replace(
+        temporary = subject._open_unnamed_temp_file(root_fd=descriptor)
+        os.write(temporary, b"new-bytes")
+        subject._publish_open_descriptor_no_replace(
+            source_fd=temporary,
             root_fd=descriptor,
-            partial_name=partial.name,
-            target_name=target.name,
-            expected_identity=entry_identity(partial),
+            target_name="asset",
         )
     finally:
+        if temporary >= 0:
+            os.close(temporary)
         os.close(descriptor)
 
-    assert target.read_bytes() == b"new-bytes"
-    assert not partial.exists()
+    assert (tmp_path / "asset").read_bytes() == b"new-bytes"
+    assert sorted(path.name for path in tmp_path.iterdir()) == ["asset"]
 
 
-def test_publish_partial_no_replace_preserves_racing_target(tmp_path: Path) -> None:
-    partial = tmp_path / ".asset.partial"
+def test_unnamed_descriptor_publication_preserves_racing_target(tmp_path: Path) -> None:
     target = tmp_path / "asset"
-    partial.write_bytes(b"new-bytes")
     target.write_bytes(b"existing-bytes")
     descriptor = root_descriptor(tmp_path)
+    temporary = -1
     try:
+        temporary = subject._open_unnamed_temp_file(root_fd=descriptor)
+        os.write(temporary, b"new-bytes")
         with pytest.raises(subject.MRL0801HfAcquisitionError, match="refuses to overwrite"):
-            subject._publish_partial_no_replace(
+            subject._publish_open_descriptor_no_replace(
+                source_fd=temporary,
                 root_fd=descriptor,
-                partial_name=partial.name,
                 target_name=target.name,
-                expected_identity=entry_identity(partial),
             )
     finally:
+        if temporary >= 0:
+            os.close(temporary)
         os.close(descriptor)
 
     assert target.read_bytes() == b"existing-bytes"
-    assert partial.read_bytes() == b"new-bytes"
+    assert sorted(path.name for path in tmp_path.iterdir()) == ["asset"]
 
 
 @pytest.mark.parametrize(
     ("declared_delta", "pattern"),
     ((1, "byte count differs"), (-1, "exceeded authoritative byte count")),
 )
-def test_short_and_oversized_downloads_fail_and_remove_partial(
+def test_short_and_oversized_downloads_leave_no_named_partial(
     tmp_path: Path,
     declared_delta: int,
     pattern: str,
@@ -119,13 +117,13 @@ def test_short_and_oversized_downloads_fail_and_remove_partial(
     assert list(tmp_path.iterdir()) == []
 
 
-def test_stale_partial_blocks_acquisition_without_mutation(tmp_path: Path) -> None:
+def test_existing_target_blocks_acquisition_without_mutation(tmp_path: Path) -> None:
     data = b"model-bytes"
-    partial = tmp_path / f".{ASSET}.mrl-0801-partial"
-    partial.write_bytes(b"stale")
+    target = tmp_path / ASSET
+    target.write_bytes(b"existing")
     descriptor = root_descriptor(tmp_path)
     try:
-        with pytest.raises(subject.MRL0801HfAcquisitionError, match="stale partial"):
+        with pytest.raises(subject.MRL0801HfAcquisitionError, match="overwrite"):
             subject._acquire_one_file(
                 root_fd=descriptor,
                 transport=ByteTransport(data),
@@ -134,11 +132,10 @@ def test_stale_partial_blocks_acquisition_without_mutation(tmp_path: Path) -> No
     finally:
         os.close(descriptor)
 
-    assert partial.read_bytes() == b"stale"
-    assert not (tmp_path / ASSET).exists()
+    assert target.read_bytes() == b"existing"
 
 
-def test_rollback_preserves_replaced_published_target(tmp_path: Path) -> None:
+def test_late_rollback_retains_published_transaction_file(tmp_path: Path) -> None:
     data = b"model-bytes"
     descriptor = root_descriptor(tmp_path)
     try:
@@ -147,11 +144,35 @@ def test_rollback_preserves_replaced_published_target(tmp_path: Path) -> None:
             transport=ByteTransport(data),
             metadata=remote_metadata(data, byte_count=len(data)),
         )
-        original = tmp_path / "original-model.safetensors"
+        subject._rollback_created_files(root_fd=descriptor, acquired=(acquired,))
+    finally:
+        os.close(descriptor)
+
+    assert (tmp_path / ASSET).read_bytes() == data
+
+
+def test_rollback_never_unlinks_replacement_or_owned_entry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    data = b"model-bytes"
+    descriptor = root_descriptor(tmp_path)
+    try:
+        acquired = subject._acquire_one_file(
+            root_fd=descriptor,
+            transport=ByteTransport(data),
+            metadata=remote_metadata(data, byte_count=len(data)),
+        )
         target = tmp_path / ASSET
+        original = tmp_path / "original-model.safetensors"
         target.rename(original)
         target.write_bytes(b"foreign-replacement")
 
+        def forbidden_unlink(*args: object, **kwargs: object) -> None:
+            del args, kwargs
+            raise AssertionError("rollback must not unlink public entries")
+
+        monkeypatch.setattr(os, "unlink", forbidden_unlink)
         subject._rollback_created_files(root_fd=descriptor, acquired=(acquired,))
     finally:
         os.close(descriptor)
