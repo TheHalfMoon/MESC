@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import importlib
 import json
 import os
+import stat
 import subprocess
 import sys
 from pathlib import Path
@@ -15,10 +17,43 @@ _MODULE_RELATIVE_PATH = Path("src/medscale/mesc/_mrl_0801_hf_acquisition_v1.py")
 _AUTHORIZATION_RELATIVE_PATH = Path(
     "specs/mesc-experiment-0/mrl-0801-acquisition-custody-authorization-v1.json"
 )
+_O_NOFOLLOW: int = getattr(os, "O_NOFOLLOW", 0)
+_O_DIRECTORY: int = getattr(os, "O_DIRECTORY", 0)
+_O_CLOEXEC: int = getattr(os, "O_CLOEXEC", 0)
 
 
 class AcquisitionEntrypointError(RuntimeError):
     """Raised before importing repository code when execution identity is invalid."""
+
+
+class _BoundReceiptOutput:
+    """Descriptor-bound receipt output that cannot follow a replaced parent pathname."""
+
+    __slots__ = ("descriptor", "device", "inode", "name", "parent_path", "path")
+
+    descriptor: int
+    device: int
+    inode: int
+    name: str
+    parent_path: Path
+    path: Path
+
+    def __init__(
+        self,
+        *,
+        path: Path,
+        parent_path: Path,
+        descriptor: int,
+        device: int,
+        inode: int,
+        name: str,
+    ) -> None:
+        self.path = path
+        self.parent_path = parent_path
+        self.descriptor = descriptor
+        self.device = device
+        self.inode = inode
+        self.name = name
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -173,15 +208,67 @@ def _require_no_existing_symlink_components(path: Path, *, label: str) -> None:
             raise AcquisitionEntrypointError(f"{label} must not traverse a symbolic link")
 
 
+def _require_receipt_output_descriptor_support() -> None:
+    if _O_DIRECTORY == 0 or _O_NOFOLLOW == 0:
+        raise AcquisitionEntrypointError(
+            "platform lacks required no-follow receipt-output descriptor support"
+        )
+    required_dir_fd = (os.open, os.stat, os.unlink)
+    if any(operation not in os.supports_dir_fd for operation in required_dir_fd):
+        raise AcquisitionEntrypointError(
+            "platform lacks required descriptor-relative receipt-output operations"
+        )
+
+
+def _stat_identity(observation: os.stat_result) -> tuple[int, int]:
+    return observation.st_dev, observation.st_ino
+
+
+def _require_bound_output_parent_identity(output: _BoundReceiptOutput) -> None:
+    try:
+        opened = os.fstat(output.descriptor)
+        current = output.parent_path.stat(follow_symlinks=False)
+    except OSError:
+        raise AcquisitionEntrypointError(
+            "receipt output parent changed during publication"
+        ) from None
+    expected = (output.device, output.inode)
+    if (
+        not stat.S_ISDIR(opened.st_mode)
+        or not stat.S_ISDIR(current.st_mode)
+        or _stat_identity(opened) != expected
+        or _stat_identity(current) != expected
+    ):
+        raise AcquisitionEntrypointError("receipt output parent changed during publication")
+
+
+def _descriptor_output_exists(output: _BoundReceiptOutput) -> bool:
+    try:
+        os.stat(  # noqa: PTH116 -- descriptor-relative inspection is required
+            output.name,
+            dir_fd=output.descriptor,
+            follow_symlinks=False,
+        )
+    except FileNotFoundError:
+        return False
+    except OSError:
+        raise AcquisitionEntrypointError(
+            "receipt output entry could not be inspected safely"
+        ) from None
+    return True
+
+
 def _require_external_new_output(
     *,
     path: Path,
     repository_root: Path,
     snapshot_root: Path,
-) -> Path:
+) -> _BoundReceiptOutput:
     repo = repository_root.resolve(strict=True)
     snapshot = snapshot_root.expanduser().absolute().resolve(strict=False)
     raw = path.expanduser().absolute()
+    if not raw.name:
+        raise AcquisitionEntrypointError("receipt output must name a file")
     if raw == repo or _is_descendant(raw, repo):
         raise AcquisitionEntrypointError("receipt output must be outside the repository")
     if raw == snapshot or _is_descendant(raw, snapshot):
@@ -195,28 +282,95 @@ def _require_external_new_output(
     if value.exists():
         raise AcquisitionEntrypointError("receipt output must not already exist")
     value.parent.mkdir(parents=True, exist_ok=True)
-    return value
 
+    _require_no_existing_symlink_components(raw, label="receipt output")
+    parent = raw.parent.resolve(strict=True)
+    value = parent / raw.name
+    if value == repo or _is_descendant(value, repo):
+        raise AcquisitionEntrypointError("receipt output must be outside the repository")
+    if value == snapshot or _is_descendant(value, snapshot):
+        raise AcquisitionEntrypointError("receipt output must be outside the raw snapshot root")
+    if value.exists():
+        raise AcquisitionEntrypointError("receipt output must not already exist")
 
-def _write_exact_new(path: Path, data: bytes) -> None:
-    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
-    if hasattr(os, "O_NOFOLLOW"):
-        flags |= os.O_NOFOLLOW
-    descriptor = os.open(path, flags, 0o600)
+    _require_receipt_output_descriptor_support()
+    before_open = parent.stat(follow_symlinks=False)
+    if not stat.S_ISDIR(before_open.st_mode):
+        raise AcquisitionEntrypointError("receipt output parent must be a real directory")
+    flags = os.O_RDONLY | _O_DIRECTORY | _O_NOFOLLOW | _O_CLOEXEC
     try:
+        descriptor = os.open(parent, flags)
+    except OSError:
+        raise AcquisitionEntrypointError(
+            "receipt output parent could not be opened safely"
+        ) from None
+    try:
+        opened = os.fstat(descriptor)
+        current = parent.stat(follow_symlinks=False)
+        expected = _stat_identity(before_open)
+        if (
+            not stat.S_ISDIR(opened.st_mode)
+            or not stat.S_ISDIR(current.st_mode)
+            or _stat_identity(opened) != expected
+            or _stat_identity(current) != expected
+        ):
+            raise AcquisitionEntrypointError(
+                "receipt output parent changed while it was being bound"
+            )
+        output = _BoundReceiptOutput(
+            path=value,
+            parent_path=parent,
+            descriptor=descriptor,
+            device=opened.st_dev,
+            inode=opened.st_ino,
+            name=value.name,
+        )
+        if _descriptor_output_exists(output):
+            raise AcquisitionEntrypointError("receipt output must not already exist")
+        return output
+    except BaseException:
+        os.close(descriptor)
+        raise
+
+
+def _unlink_bound_output(output: _BoundReceiptOutput) -> None:
+    try:
+        os.unlink(  # noqa: PTH108 -- descriptor-relative cleanup is required
+            output.name,
+            dir_fd=output.descriptor,
+        )
+    except FileNotFoundError:
+        return
+
+
+def _write_exact_new(output: _BoundReceiptOutput, data: bytes) -> None:
+    _require_bound_output_parent_identity(output)
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | _O_NOFOLLOW | _O_CLOEXEC
+    try:
+        descriptor = os.open(output.name, flags, 0o600, dir_fd=output.descriptor)
+    except OSError:
+        raise AcquisitionEntrypointError("receipt output could not be created safely") from None
+    try:
+        opened = os.fstat(descriptor)
+        if not stat.S_ISREG(opened.st_mode):
+            raise AcquisitionEntrypointError("receipt output descriptor is not a regular file")
         with os.fdopen(descriptor, "wb", closefd=True) as stream:
+            descriptor = -1
             stream.write(data)
             stream.flush()
             os.fsync(stream.fileno())
+        _require_bound_output_parent_identity(output)
     except BaseException:
-        path.unlink(missing_ok=True)
+        if descriptor >= 0:
+            os.close(descriptor)
+        _unlink_bound_output(output)
         raise
 
 
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
-    custody_output: Path | None = None
-    provenance_output: Path | None = None
+    custody_output: _BoundReceiptOutput | None = None
+    provenance_output: _BoundReceiptOutput | None = None
     try:
         repository_root = _require_clean_repository_before_import(args.repository_root)
         custody_module, acquisition_module = _import_exact_repository_modules(repository_root)
@@ -224,19 +378,19 @@ def main(argv: list[str] | None = None) -> int:
         authorization = custody_module.parse_mrl_0801_acquisition_authorization(
             authorization_path.read_bytes()
         )
-        custody_output_path = _require_external_new_output(
+        custody_output = _require_external_new_output(
             path=args.custody_receipt_output,
             repository_root=repository_root,
             snapshot_root=args.destination,
         )
-        provenance_output_path = _require_external_new_output(
+        custody_output_path = custody_output
+        provenance_output = _require_external_new_output(
             path=args.provenance_receipt_output,
             repository_root=repository_root,
             snapshot_root=args.destination,
         )
-        custody_output = custody_output_path
-        provenance_output = provenance_output_path
-        if custody_output_path == provenance_output_path:
+        provenance_output_path = provenance_output
+        if custody_output_path.path == provenance_output_path.path:
             raise AcquisitionEntrypointError("custody and provenance outputs must be distinct")
 
         def publish_receipts(custody_value: object, provenance_value: object) -> None:
@@ -274,15 +428,20 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 0
     except (AcquisitionEntrypointError, ImportError, OSError, RuntimeError, ValueError):
-        if custody_output is not None:
-            custody_output.unlink(missing_ok=True)
-        if provenance_output is not None:
-            provenance_output.unlink(missing_ok=True)
+        for output in (custody_output, provenance_output):
+            if output is not None:
+                with contextlib.suppress(OSError):
+                    _unlink_bound_output(output)
         print(
             "MRL-0801 acquisition blocked: bounded acquisition requirements were not met",
             file=sys.stderr,
         )
         return 2
+    finally:
+        for output in (custody_output, provenance_output):
+            if output is not None:
+                with contextlib.suppress(OSError):
+                    os.close(output.descriptor)
 
 
 if __name__ == "__main__":

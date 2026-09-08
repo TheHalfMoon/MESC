@@ -192,13 +192,15 @@ Parsing a canonical supporting receipt without these external/local checks is ne
 
 The acquisition entrypoint performs a full Git-visible clean-work-tree precheck before importing repository acquisition code, rejects all preloaded `medscale*` modules, prepends only the exact repository `src` root, and verifies every loaded `medscale` source file against the exact `HEAD` Git object bytes. Snapshot and receipt output paths are outside the MESC repository, receipts are outside the raw snapshot root, and existing symlink path components are rejected.
 
-Receipt outputs are created exclusively and are published through the executor transaction finalizer. If receipt publication fails, the executor rolls back the model files through the still-open destination descriptor; the CLI removes any receipt output created before the failure.
+Each receipt output parent directory is resolved after any required directory creation, opened once with no-follow directory flags, and bound to its exact device/inode identity. Receipt existence checks, exclusive creation, and failure cleanup are descriptor-relative to that bound parent. Parent pathname identity is rechecked before and after publication, so replacing the validated parent cannot redirect a receipt into the repository or raw snapshot.
+
+Receipt outputs are created exclusively and are published through the executor transaction finalizer. If receipt publication fails, the executor rolls back the model files through the still-open destination descriptor; the CLI removes any receipt output created before the failure through its bound parent descriptor.
 
 User-visible success output contains stable subject/digest fields only. Failures emit one generic blocked message and do not print signed URLs, local paths, credentials, or provider error bodies.
 
 ## CI boundary
 
-Repository tests inject fake Hub transports. CI must never download model weights or depend on live Hub availability. Transport tests synthesize redirect/metadata responses, including the external-redirect `Content-Length` ambiguity case. Security tests cover exact runtime receipt types, preloaded transitive module rejection, untracked-work-tree rejection, descriptor-relative publication, concurrent destination replacement, and late transaction-finalizer rollback.
+Repository tests inject fake Hub transports. CI must never download model weights or depend on live Hub availability. Transport tests synthesize redirect/metadata responses, including the external-redirect `Content-Length` ambiguity case. Security tests cover exact runtime receipt types, preloaded transitive module rejection, untracked-work-tree rejection, descriptor-relative publication, concurrent destination replacement, receipt-output parent replacement, and late transaction-finalizer rollback.
 
 ## Non-authority statement
 

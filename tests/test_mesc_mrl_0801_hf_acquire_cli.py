@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -96,6 +97,50 @@ def test_receipt_outputs_must_be_outside_repo_snapshot_and_symlinks(tmp_path: Pa
             repository_root=root,
             snapshot_root=snapshot,
         )
+
+
+def test_receipt_output_is_written_and_cleaned_descriptor_relative(tmp_path: Path) -> None:
+    cli = load_cli()
+    root = repo(tmp_path)
+    snapshot = tmp_path / "snapshot"
+    snapshot.mkdir()
+    receipt = tmp_path / "receipts/receipt.json"
+    output = cli._require_external_new_output(
+        path=receipt,
+        repository_root=root,
+        snapshot_root=snapshot,
+    )
+    try:
+        cli._write_exact_new(output, b"{}")
+        assert receipt.read_bytes() == b"{}"
+        cli._unlink_bound_output(output)
+        assert not receipt.exists()
+    finally:
+        os.close(output.descriptor)
+
+
+def test_receipt_output_parent_swap_cannot_redirect_publication_into_repo(tmp_path: Path) -> None:
+    cli = load_cli()
+    root = repo(tmp_path)
+    snapshot = tmp_path / "snapshot"
+    snapshot.mkdir()
+    receipt_parent = tmp_path / "receipts"
+    receipt = receipt_parent / "receipt.json"
+    output = cli._require_external_new_output(
+        path=receipt,
+        repository_root=root,
+        snapshot_root=snapshot,
+    )
+    original_parent = tmp_path / "receipts-original"
+    receipt_parent.rename(original_parent)
+    receipt_parent.symlink_to(root, target_is_directory=True)
+    try:
+        with pytest.raises(cli.AcquisitionEntrypointError, match="parent changed"):
+            cli._write_exact_new(output, b"{}")
+        assert not (root / "receipt.json").exists()
+        assert not (original_parent / "receipt.json").exists()
+    finally:
+        os.close(output.descriptor)
 
 
 def test_any_preloaded_medscale_module_is_rejected(
