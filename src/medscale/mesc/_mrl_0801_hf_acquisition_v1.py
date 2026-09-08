@@ -44,6 +44,7 @@ _SHA256: Final = re.compile(r"^[0-9a-f]{64}$", re.ASCII)
 _SHA1: Final = re.compile(r"^[0-9a-f]{40}$", re.ASCII)
 _GIT_SHA: Final = _SHA1
 _CHUNK_BYTES: Final = 8 * 1024 * 1024
+_MAX_TIMEOUT_SECONDS: Final = 3600.0
 _MODULE_RELATIVE_PATH: Final = Path("src/medscale/mesc/_mrl_0801_hf_acquisition_v1.py")
 _ALLOWED_REMOTE_HOST_SUFFIXES: Final = (".huggingface.co", ".hf.co")
 _O_NOFOLLOW: Final = getattr(os, "O_NOFOLLOW", 0)
@@ -396,8 +397,10 @@ class UrllibHfPublicTransport:
     """Minimal HTTPS-only Hub transport that never reads or sends credentials."""
 
     def __init__(self, *, timeout_seconds: float = 30.0) -> None:
-        if not 0 < timeout_seconds < float("inf"):
-            raise ValueError("timeout_seconds must be finite and positive")
+        if not 0 < timeout_seconds <= _MAX_TIMEOUT_SECONDS:
+            raise ValueError(
+                "timeout_seconds must be finite and positive, and no greater than 3600 seconds"
+            )
         self._timeout = timeout_seconds
         self._metadata_opener = urllib.request.build_opener(
             urllib.request.ProxyHandler({}),
@@ -436,7 +439,7 @@ class UrllibHfPublicTransport:
                     raise MRL0801HfAcquisitionError(
                         "Hugging Face metadata request failed for an authorized file"
                     ) from None
-            except (urllib.error.URLError, OSError):
+            except (urllib.error.URLError, OSError, OverflowError):
                 raise MRL0801HfAcquisitionError(
                     "Hugging Face metadata transport failed for an authorized file"
                 ) from None
@@ -502,7 +505,7 @@ class UrllibHfPublicTransport:
         )
         try:
             response = self._download_opener.open(request, timeout=self._timeout)
-        except (urllib.error.HTTPError, urllib.error.URLError, OSError):
+        except (urllib.error.HTTPError, urllib.error.URLError, OSError, OverflowError):
             raise MRL0801HfAcquisitionError(
                 "Hugging Face byte transport failed for an authorized file"
             ) from None
