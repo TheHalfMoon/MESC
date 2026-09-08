@@ -21,7 +21,7 @@ jobs:
         run: |
           git fetch origin feat/mrl-0801-hf-acquisition-executor-20260908
           git checkout feat/mrl-0801-hf-acquisition-executor-20260908
-          test "$(git rev-parse HEAD)" = "8ca0d78789e17ce0fd5ab4b9b81d32008791242a"
+          test "$(git rev-parse HEAD)" = "22f5b720d4b45d244dd788d09be485459336986c"
       - name: Apply deterministic fixes
         run: python /tmp/pr390_adr37_focused_fix.py
       - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
@@ -59,7 +59,7 @@ jobs:
       - name: Guard exact remote head and push
         run: |
           git fetch origin feat/mrl-0801-hf-acquisition-executor-20260908
-          test "$(git rev-parse origin/feat/mrl-0801-hf-acquisition-executor-20260908)" = "8ca0d78789e17ce0fd5ab4b9b81d32008791242a"
+          test "$(git rev-parse origin/feat/mrl-0801-hf-acquisition-executor-20260908)" = "22f5b720d4b45d244dd788d09be485459336986c"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add \
