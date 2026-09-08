@@ -1,4 +1,4 @@
-"""Regression tests for retained MRL-0801 atomic-publication witnesses."""
+"""Regression tests for retained, fail-closed MRL-0801 publication witnesses."""
 
 from __future__ import annotations
 
@@ -12,9 +12,16 @@ from typing import Any
 import pytest
 
 from medscale.mesc import _mrl_0801_hf_acquisition_v1 as subject
+from medscale.mesc._mrl_0801_acquisition_custody_v1 import (
+    parse_mrl_0801_acquisition_authorization,
+)
 
 ROOT = Path(__file__).parents[1]
 SCRIPT = ROOT / "scripts/mesc_mrl_0801_hf_acquire.py"
+AUTH = ROOT / "specs/mesc-experiment-0/mrl-0801-acquisition-custody-authorization-v1.json"
+MODEL = "google/gemma-4-31B-it"
+REVISION = "842da3794eaa0b77d5f08bae87a17459d91ff475"
+IDENTITY = subject.RepositoryExecutionIdentity("9" * 40, "8" * 40, "7" * 64)
 _O_TMPFILE = os.__dict__.get("O_TMPFILE", 0)
 _O_DIRECTORY = os.__dict__.get("O_DIRECTORY", 0)
 _O_CLOEXEC = os.__dict__.get("O_CLOEXEC", 0)
@@ -37,30 +44,40 @@ def _open_directory(path: Path) -> int:
     return os.open(path, os.O_RDONLY | _O_DIRECTORY | _O_CLOEXEC)
 
 
-def _skip_if_native_witness_is_unavailable(error: Exception) -> None:
-    text = str(error)
-    if "unsupported on this filesystem" in text or "unavailable" in text:
-        pytest.skip(text)
-    raise error
+class NeverTransport:
+    def __init__(self) -> None:
+        self.metadata_calls = 0
+        self.download_calls = 0
+
+    def metadata(
+        self,
+        *,
+        model_id: str,
+        revision: str,
+        path: str,
+    ) -> subject.HfRemoteFileMetadata:
+        self.metadata_calls += 1
+        raise AssertionError(f"unexpected remote metadata access: {model_id}@{revision}:{path}")
+
+    def iter_bytes(self, *, metadata: subject.HfRemoteFileMetadata) -> Any:
+        self.download_calls += 1
+        raise AssertionError(f"unexpected remote byte access: {metadata.path}")
 
 
-def test_model_capability_witness_is_retained_outside_destination(tmp_path: Path) -> None:
+def test_model_capability_witness_is_retained_and_blocks(tmp_path: Path) -> None:
     destination = tmp_path / "assets"
     destination.mkdir()
     root_fd = _open_directory(destination)
     try:
-        try:
+        with pytest.raises(subject.MRL0801HfAcquisitionError, match="witness retained"):
             subject._probe_atomic_descriptor_publication(root_fd=root_fd)
-        except subject.MRL0801HfAcquisitionError as error:
-            _skip_if_native_witness_is_unavailable(error)
     finally:
         os.close(root_fd)
 
-    witnesses = tuple(tmp_path.glob(".mrl-0801-publication-witness-*"))
+    witnesses = tuple(destination.glob(".mrl-0801-publication-witness-*"))
     assert len(witnesses) == 1
     assert witnesses[0].is_file()
     assert witnesses[0].read_bytes() == b""
-    assert list(destination.iterdir()) == []
 
 
 def test_model_capability_witness_foreign_replacement_is_never_deleted(
@@ -102,20 +119,46 @@ def test_model_capability_witness_foreign_replacement_is_never_deleted(
     monkeypatch.setattr(subject, "_descriptor_entry_stat", replace_after_identity_check)
     root_fd = _open_directory(destination)
     try:
-        try:
+        with pytest.raises(subject.MRL0801HfAcquisitionError, match="witness retained"):
             subject._probe_atomic_descriptor_publication(root_fd=root_fd)
-        except subject.MRL0801HfAcquisitionError as error:
-            _skip_if_native_witness_is_unavailable(error)
     finally:
         os.close(root_fd)
 
     assert raced
-    assert (tmp_path / raced["name"]).read_bytes() == b"foreign"
-    assert (tmp_path / raced["owned_name"]).read_bytes() == b""
-    assert list(destination.iterdir()) == []
+    assert (destination / raced["name"]).read_bytes() == b"foreign"
+    assert (destination / raced["owned_name"]).read_bytes() == b""
 
 
-def test_receipt_capability_witness_is_retained_outside_receipt_parent(tmp_path: Path) -> None:
+def test_successful_model_capability_proof_blocks_before_remote_metadata(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    destination = tmp_path / "assets"
+    destination.mkdir()
+    repository = tmp_path / "repo"
+    repository.mkdir()
+    (repository / ".git").mkdir()
+    transport = NeverTransport()
+    authorization = parse_mrl_0801_acquisition_authorization(AUTH.read_bytes())
+    monkeypatch.setattr(subject, "_capture_repository_execution_identity", lambda _: IDENTITY)
+
+    with pytest.raises(subject.MRL0801HfAcquisitionError, match="remote access is blocked"):
+        subject.acquire_mrl_0801_hf_candidate(
+            authorization=authorization,
+            transport=transport,
+            repository_root=repository,
+            destination=destination,
+            model_id=MODEL,
+            revision=REVISION,
+        )
+
+    assert transport.metadata_calls == 0
+    assert transport.download_calls == 0
+    witnesses = tuple(destination.glob(".mrl-0801-publication-witness-*"))
+    assert len(witnesses) == 1
+    assert witnesses[0].read_bytes() == b""
+
+
+def test_receipt_capability_witness_is_retained_and_blocks(tmp_path: Path) -> None:
     cli = load_cli()
     receipt_parent = tmp_path / "receipts"
     receipt_parent.mkdir()
@@ -130,18 +173,16 @@ def test_receipt_capability_witness_is_retained_outside_receipt_parent(tmp_path:
         name="receipt.json",
     )
     try:
-        try:
+        with pytest.raises(cli.AcquisitionEntrypointError, match="witness retained"):
             cli._probe_receipt_atomic_publication(output)
-        except cli.AcquisitionEntrypointError as error:
-            _skip_if_native_witness_is_unavailable(error)
     finally:
         os.close(descriptor)
 
-    witnesses = tuple(tmp_path.glob(".mrl-0801-receipt-witness-*"))
+    witnesses = tuple(receipt_parent.glob(".mrl-0801-receipt-witness-*"))
     assert len(witnesses) == 1
     assert witnesses[0].is_file()
     assert witnesses[0].read_bytes() == b""
-    assert list(receipt_parent.iterdir()) == []
+    assert not (receipt_parent / "receipt.json").exists()
 
 
 def test_receipt_capability_witness_foreign_replacement_is_never_deleted(
@@ -195,14 +236,35 @@ def test_receipt_capability_witness_foreign_replacement_is_never_deleted(
         name="receipt.json",
     )
     try:
-        try:
+        with pytest.raises(cli.AcquisitionEntrypointError, match="witness retained"):
             cli._probe_receipt_atomic_publication(output)
-        except cli.AcquisitionEntrypointError as error:
-            _skip_if_native_witness_is_unavailable(error)
     finally:
         os.close(descriptor)
 
     assert raced
-    assert (tmp_path / raced["name"]).read_bytes() == b"foreign"
-    assert (tmp_path / raced["owned_name"]).read_bytes() == b""
-    assert list(receipt_parent.iterdir()) == []
+    assert (receipt_parent / raced["name"]).read_bytes() == b"foreign"
+    assert (receipt_parent / raced["owned_name"]).read_bytes() == b""
+    assert not (receipt_parent / "receipt.json").exists()
+
+
+def test_receipt_binding_blocks_after_witness_without_creating_receipt(tmp_path: Path) -> None:
+    cli = load_cli()
+    repository = tmp_path / "repo"
+    repository.mkdir()
+    snapshot = tmp_path / "snapshot"
+    snapshot.mkdir()
+    receipt_parent = tmp_path / "receipts"
+    receipt_parent.mkdir()
+    receipt = receipt_parent / "receipt.json"
+
+    with pytest.raises(cli.AcquisitionEntrypointError, match="acquisition is blocked"):
+        cli._require_external_new_output(
+            path=receipt,
+            repository_root=repository,
+            snapshot_root=snapshot,
+        )
+
+    assert not receipt.exists()
+    witnesses = tuple(receipt_parent.glob(".mrl-0801-receipt-witness-*"))
+    assert len(witnesses) == 1
+    assert witnesses[0].read_bytes() == b""
