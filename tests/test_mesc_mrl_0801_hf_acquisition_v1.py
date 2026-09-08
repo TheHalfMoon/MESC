@@ -298,7 +298,7 @@ def test_destination_replacement_cannot_redirect_writes(
     assert (destination / "sentinel.txt").read_text(encoding="utf-8") == "replacement"
 
 
-def test_finalizer_failure_rolls_back_snapshot(
+def test_finalizer_failure_removes_finalizer_created_entry_and_snapshot(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     patch_environment(monkeypatch)
@@ -309,6 +309,7 @@ def test_finalizer_failure_rolls_back_snapshot(
         _: MRL0801AssetCustodyReceipt,
         __: subject.MRL0801HfAcquisitionProvenanceReceipt,
     ) -> None:
+        (destination / "unexpected.txt").write_text("unexpected", encoding="utf-8")
         raise OSError("receipt publication failed")
 
     with pytest.raises(OSError, match="receipt publication failed"):
@@ -320,6 +321,58 @@ def test_finalizer_failure_rolls_back_snapshot(
             model_id=MODEL,
             revision=REV,
             finalizer=fail_finalize,
+        )
+    assert list(destination.iterdir()) == []
+
+
+def test_finalizer_extra_entry_is_rejected_and_rolled_back(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    patch_environment(monkeypatch)
+    destination = tmp_path / "assets"
+    destination.mkdir()
+
+    def add_extra_entry(
+        _: MRL0801AssetCustodyReceipt,
+        __: subject.MRL0801HfAcquisitionProvenanceReceipt,
+    ) -> None:
+        (destination / "unexpected.txt").write_text("unexpected", encoding="utf-8")
+
+    with pytest.raises(subject.MRL0801HfAcquisitionError, match="manifest changed"):
+        subject.acquire_mrl_0801_hf_candidate(
+            authorization=authorization(),
+            transport=FakeTransport(),
+            repository_root=fake_repo(tmp_path),
+            destination=destination,
+            model_id=MODEL,
+            revision=REV,
+            finalizer=add_extra_entry,
+        )
+    assert list(destination.iterdir()) == []
+
+
+def test_finalizer_asset_mutation_is_rejected_and_rolled_back(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    patch_environment(monkeypatch)
+    destination = tmp_path / "assets"
+    destination.mkdir()
+
+    def mutate_asset(
+        _: MRL0801AssetCustodyReceipt,
+        __: subject.MRL0801HfAcquisitionProvenanceReceipt,
+    ) -> None:
+        (destination / FILES[1]).write_bytes(b"tamper-me")
+
+    with pytest.raises(subject.MRL0801HfAcquisitionError, match="custody changed"):
+        subject.acquire_mrl_0801_hf_candidate(
+            authorization=authorization(),
+            transport=FakeTransport(),
+            repository_root=fake_repo(tmp_path),
+            destination=destination,
+            model_id=MODEL,
+            revision=REV,
+            finalizer=mutate_asset,
         )
     assert list(destination.iterdir()) == []
 
