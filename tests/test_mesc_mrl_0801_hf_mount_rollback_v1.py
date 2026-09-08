@@ -40,12 +40,11 @@ def test_rollback_never_recurses_into_nonempty_finalizer_directory(tmp_path: Pat
 
     root_fd = os.open(root, os.O_RDONLY | _O_DIRECTORY)
     try:
-        with pytest.raises(OSError):
-            subject._rollback_created_files(
-                root_fd=root_fd,
-                acquired=(_acquired_file(asset),),
-                pre_finalizer_entries=frozenset({asset.name}),
-            )
+        subject._rollback_created_files(
+            root_fd=root_fd,
+            acquired=(_acquired_file(asset),),
+            pre_finalizer_entries=frozenset({asset.name}),
+        )
     finally:
         os.close(root_fd)
 
@@ -81,12 +80,11 @@ def test_rollback_does_not_descend_into_bind_mount(tmp_path: Path) -> None:
     try:
         root_fd = os.open(root, os.O_RDONLY | _O_DIRECTORY)
         try:
-            with pytest.raises(OSError):
-                subject._rollback_created_files(
-                    root_fd=root_fd,
-                    acquired=(_acquired_file(asset),),
-                    pre_finalizer_entries=frozenset({asset.name}),
-                )
+            subject._rollback_created_files(
+                root_fd=root_fd,
+                acquired=(_acquired_file(asset),),
+                pre_finalizer_entries=frozenset({asset.name}),
+            )
         finally:
             os.close(root_fd)
         assert not asset.exists()

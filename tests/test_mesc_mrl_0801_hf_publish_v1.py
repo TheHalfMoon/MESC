@@ -138,7 +138,6 @@ def test_stale_partial_blocks_acquisition_without_mutation(tmp_path: Path) -> No
     assert not (tmp_path / ASSET).exists()
 
 
-
 def test_rollback_preserves_replaced_published_target(tmp_path: Path) -> None:
     data = b"model-bytes"
     descriptor = root_descriptor(tmp_path)
