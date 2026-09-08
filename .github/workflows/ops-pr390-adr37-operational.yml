@@ -1,0 +1,53 @@
+name: Ops PR390 ADR37 Operational
+
+on:
+  push:
+    branches:
+      - ops/pr390-adr37-operational-20260908
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Preserve guarded patcher
+        run: cp .github/ops/pr390_adr37_patch.py /tmp/pr390_adr37_patch.py
+      - name: Checkout exact PR branch
+        run: |
+          git fetch origin feat/mrl-0801-hf-acquisition-executor-20260908
+          git checkout feat/mrl-0801-hf-acquisition-executor-20260908
+          test "$(git rev-parse HEAD)" = "d24eaf80da3e3dd8a37c6fe57d9de82a1112f6c5"
+      - name: Apply deterministic patch
+        run: python /tmp/pr390_adr37_patch.py
+      - name: Syntax and diff guards
+        run: |
+          python -m py_compile \
+            src/medscale/mesc/_mrl_0801_hf_acquisition_v1.py \
+            scripts/mesc_mrl_0801_hf_acquire.py \
+            tests/test_mesc_mrl_0801_hf_acquisition_v1.py \
+            tests/test_mesc_mrl_0801_hf_acquire_cli.py \
+            tests/test_mesc_mrl_0801_hf_witness_v1.py
+          git diff --check
+          git status --short
+      - name: Guard exact remote head and push one commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git fetch origin feat/mrl-0801-hf-acquisition-executor-20260908
+          test "$(git rev-parse origin/feat/mrl-0801-hf-acquisition-executor-20260908)" = "d24eaf80da3e3dd8a37c6fe57d9de82a1112f6c5"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            src/medscale/mesc/_mrl_0801_hf_acquisition_v1.py \
+            scripts/mesc_mrl_0801_hf_acquire.py \
+            tests/test_mesc_mrl_0801_hf_acquisition_v1.py \
+            tests/test_mesc_mrl_0801_hf_acquire_cli.py \
+            tests/test_mesc_mrl_0801_hf_witness_v1.py \
+            specs/mesc-experiment-0/mrl-0801-hf-acquisition-provenance-v1.md
+          git commit -m "feat(mesc): activate ADR-0037 acquisition semantics"
+          git push origin HEAD:feat/mrl-0801-hf-acquisition-executor-20260908
