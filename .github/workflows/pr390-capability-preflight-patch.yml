@@ -45,11 +45,12 @@ jobs:
             work/tests/test_mesc_mrl_0801_hf_acquisition_v1.py \
             work/tests/test_mesc_mrl_0801_hf_acquire_cli.py
           git -C work diff --check
-          expected_paths="scripts/mesc_mrl_0801_hf_acquire.py
-specs/mesc-experiment-0/mrl-0801-hf-acquisition-provenance-v1.md
-src/medscale/mesc/_mrl_0801_hf_acquisition_v1.py
-tests/test_mesc_mrl_0801_hf_acquire_cli.py
-tests/test_mesc_mrl_0801_hf_acquisition_v1.py"
+          expected_paths="$(printf '%s\n' \
+            'scripts/mesc_mrl_0801_hf_acquire.py' \
+            'specs/mesc-experiment-0/mrl-0801-hf-acquisition-provenance-v1.md' \
+            'src/medscale/mesc/_mrl_0801_hf_acquisition_v1.py' \
+            'tests/test_mesc_mrl_0801_hf_acquire_cli.py' \
+            'tests/test_mesc_mrl_0801_hf_acquisition_v1.py')"
           actual_paths="$(git -C work diff --name-only | sort)"
           test "$actual_paths" = "$expected_paths"
 
