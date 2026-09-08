@@ -1,0 +1,40 @@
+name: Ops PR390 ADR37 Hardening
+
+on:
+  push:
+    branches:
+      - ops/pr390-adr37-hardening-20260908
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Preserve patcher
+        run: cp .github/ops/pr390_adr37_hardening.py /tmp/pr390_adr37_hardening.py
+      - name: Checkout exact PR head
+        run: |
+          git fetch origin feat/mrl-0801-hf-acquisition-executor-20260908
+          git checkout feat/mrl-0801-hf-acquisition-executor-20260908
+          test "$(git rev-parse HEAD)" = "2c0b95506a8fbad1d96d8e68ee30a181d78f56be"
+      - name: Apply hardening
+        run: python /tmp/pr390_adr37_hardening.py
+      - name: Syntax and diff guards
+        run: |
+          python -m py_compile scripts/mesc_mrl_0801_hf_acquire.py tests/test_mesc_mrl_0801_hf_acquire_cli.py
+          git diff --check
+          git status --short
+      - name: Guard and push
+        run: |
+          git fetch origin feat/mrl-0801-hf-acquisition-executor-20260908
+          test "$(git rev-parse origin/feat/mrl-0801-hf-acquisition-executor-20260908)" = "2c0b95506a8fbad1d96d8e68ee30a181d78f56be"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add scripts/mesc_mrl_0801_hf_acquire.py tests/test_mesc_mrl_0801_hf_acquire_cli.py
+          git commit -m "fix(mesc): reject Git-contained receipt witness roots"
+          git push origin HEAD:feat/mrl-0801-hf-acquisition-executor-20260908
