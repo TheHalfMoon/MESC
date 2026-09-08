@@ -118,7 +118,12 @@ known-first-party = ["medscale"]
 
 [tool.ruff.format]
 # Preserve the notebook's explicit Colab cell layout while continuing to lint every code cell.
-exclude = ["notebooks/MESC_Experiment_0_Colab.ipynb"]
+# The MRL-0801 descriptor-hardening source is excluded from formatting only; full Ruff lint,
+# strict mypy, tests, CodeQL, and independent review remain required on its exact bytes.
+exclude = [
+  "notebooks/MESC_Experiment_0_Colab.ipynb",
+  "src/medscale/mesc/_mrl_0801_hf_acquisition_v1.py",
+]
 
 # ---------------------------------------------------------------------------
 # Mypy — strict typing
