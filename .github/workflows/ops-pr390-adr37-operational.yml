@@ -22,10 +22,16 @@ jobs:
           from pathlib import Path
           path = Path('/tmp/pr390_adr37_patch.py')
           text = path.read_text()
-          text = text.replace('"def _require_no_existing_symlink_components(\\n"', '"def _require_no_existing_symlink_components("')
-          text = text.replace('"def _load_posix_symbol(\\n"', '"def _load_posix_symbol("')
-          text = text.replace('"def _write_exact_new(\\n"', '"def _write_exact_new("')
-          text = text.replace('"def test_receipt_output_is_published_descriptor_relative(\\n"', '"def test_receipt_output_is_published_descriptor_relative("')
+          replacements = {
+              '"def _require_no_existing_symlink_components(\\n"': '"def _require_no_existing_symlink_components("',
+              '"def _probe_atomic_descriptor_publication(\\n"': '"def _probe_atomic_descriptor_publication("',
+              '"def _load_posix_symbol(\\n"': '"def _load_posix_symbol("',
+              '"def _probe_receipt_atomic_publication(\\n"': '"def _probe_receipt_atomic_publication("',
+              '"def _write_exact_new(\\n"': '"def _write_exact_new("',
+              '"def test_receipt_output_is_published_descriptor_relative(\\n"': '"def test_receipt_output_is_published_descriptor_relative("',
+          }
+          for old, new in replacements.items():
+              text = text.replace(old, new)
           path.write_text(text)
           PY
       - name: Checkout exact PR branch
