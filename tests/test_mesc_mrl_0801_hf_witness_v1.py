@@ -96,7 +96,7 @@ def test_model_capability_witness_foreign_replacement_is_never_deleted(
             and not raced
         ):
             owned_name = f"{name}.owned"
-            os.rename(  # noqa: PTH104 -- descriptor-relative race injection is required
+            os.rename(
                 name,
                 owned_name,
                 src_dir_fd=root_fd,
@@ -204,7 +204,7 @@ def test_receipt_capability_witness_foreign_replacement_is_never_deleted(
             and not raced
         ):
             owned_name = f"{name}.owned"
-            os.rename(  # noqa: PTH104 -- descriptor-relative race injection is required
+            os.rename(
                 name,
                 owned_name,
                 src_dir_fd=descriptor,

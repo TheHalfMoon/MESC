@@ -8,7 +8,6 @@ weights, trains, populates MRL-0801, or changes a trust registry.
 
 from __future__ import annotations
 
-import contextlib
 import ctypes
 import errno
 import hashlib

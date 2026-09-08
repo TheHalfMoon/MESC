@@ -8,6 +8,7 @@ import subprocess
 import sys
 from pathlib import Path
 from types import ModuleType
+from typing import Any
 
 import pytest
 
@@ -156,9 +157,9 @@ def test_receipt_target_race_during_capability_probe_is_rejected(
     receipt = tmp_path / "receipts/receipt.json"
     receipt.parent.mkdir()
 
-    def race(output: object) -> None:
-        descriptor = getattr(output, "descriptor")
-        name = getattr(output, "name")
+    def race(output: Any) -> None:
+        descriptor = output.descriptor
+        name = output.name
         fd = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600, dir_fd=descriptor)
         os.close(fd)
 
