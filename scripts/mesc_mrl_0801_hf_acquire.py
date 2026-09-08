@@ -406,7 +406,9 @@ def _require_external_witness_root(
     if raw == repo or _is_descendant(raw, repo):
         raise AcquisitionEntrypointError("receipt witness root must be outside the repository")
     if raw == snapshot or _is_descendant(raw, snapshot):
-        raise AcquisitionEntrypointError("receipt witness root must be outside the raw snapshot root")
+        raise AcquisitionEntrypointError(
+            "receipt witness root must be outside the raw snapshot root"
+        )
     _require_no_existing_symlink_components(raw, label="receipt witness root")
     try:
         root = raw.resolve(strict=True)
@@ -417,7 +419,9 @@ def _require_external_witness_root(
     if root == repo or _is_descendant(root, repo):
         raise AcquisitionEntrypointError("receipt witness root must be outside the repository")
     if root == snapshot or _is_descendant(root, snapshot):
-        raise AcquisitionEntrypointError("receipt witness root must be outside the raw snapshot root")
+        raise AcquisitionEntrypointError(
+            "receipt witness root must be outside the raw snapshot root"
+        )
     for ancestor in (root, *root.parents):
         if (ancestor / ".git").exists():
             raise AcquisitionEntrypointError("receipt witness root is inside a Git work tree")
@@ -425,7 +429,9 @@ def _require_external_witness_root(
     try:
         descriptor = os.open(root, flags)
     except OSError:
-        raise AcquisitionEntrypointError("receipt witness root could not be opened safely") from None
+        raise AcquisitionEntrypointError(
+            "receipt witness root could not be opened safely"
+        ) from None
     try:
         opened = os.fstat(descriptor)
         current = root.stat(follow_symlinks=False)
@@ -453,7 +459,9 @@ def _require_bound_witness_root_identity(witness: _BoundWitnessRoot) -> None:
         opened = os.fstat(witness.descriptor)
         current = witness.path.stat(follow_symlinks=False)
     except OSError:
-        raise AcquisitionEntrypointError("receipt witness root changed during acquisition") from None
+        raise AcquisitionEntrypointError(
+            "receipt witness root changed during acquisition"
+        ) from None
     expected = (witness.device, witness.inode)
     if (
         not stat.S_ISDIR(opened.st_mode)

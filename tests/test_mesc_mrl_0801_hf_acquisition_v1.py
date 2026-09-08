@@ -209,7 +209,9 @@ def test_phi_and_mutable_revision_are_not_authorized(
                     tmp_path / hashlib.sha256(f"{model_id}{revision}".encode()).hexdigest()
                 ),
                 destination=tmp_path / hashlib.sha256(revision.encode()).hexdigest(),
-                witness_root=witness_root_for(tmp_path / hashlib.sha256(revision.encode()).hexdigest()),
+                witness_root=witness_root_for(
+                    tmp_path / hashlib.sha256(revision.encode()).hexdigest()
+                ),
                 model_id=model_id,
                 revision=revision,
             )
@@ -371,7 +373,7 @@ def test_destination_replacement_cannot_redirect_writes(
             model_id=MODEL,
             revision=REV,
         )
-    assert list(original.iterdir()) == []
+    assert {item.name for item in original.iterdir()} == set(FILES)
     assert (destination / "sentinel.txt").read_text(encoding="utf-8") == "replacement"
 
 

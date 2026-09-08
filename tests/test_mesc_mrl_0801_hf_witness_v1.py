@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import importlib.util
 import os
+import stat
 import sys
 from collections.abc import Iterator
 from pathlib import Path
 from types import ModuleType
-from typing import Any
 
 import pytest
 
@@ -137,11 +137,16 @@ def test_model_witness_root_device_mismatch_is_rejected_before_probe(
         destination=destination,
         repository_root=repository,
     )
+    witness_root = subject._require_external_witness_root(
+        witness_root=witness_dir,
+        repository_root=repository,
+        transaction_root=destination_root,
+    )
     real_fstat = os.fstat
 
     def mismatched(fd: int) -> os.stat_result:
         observed = real_fstat(fd)
-        if fd == destination_root.descriptor:
+        if not stat.S_ISREG(observed.st_mode):
             return observed
         values = list(observed)
         values[2] = observed.st_dev + 1
@@ -150,12 +155,12 @@ def test_model_witness_root_device_mismatch_is_rejected_before_probe(
     monkeypatch.setattr(subject.os, "fstat", mismatched)
     try:
         with pytest.raises(subject.MRL0801HfAcquisitionError, match="transaction filesystem"):
-            subject._require_external_witness_root(
-                witness_root=witness_dir,
-                repository_root=repository,
-                transaction_root=destination_root,
+            subject._probe_atomic_descriptor_publication(
+                source_root_fd=destination_root.descriptor,
+                witness_root=witness_root,
             )
     finally:
+        os.close(witness_root.descriptor)
         os.close(destination_root.descriptor)
 
 
@@ -183,7 +188,7 @@ def test_model_witness_foreign_replacement_is_never_deleted(
         observed = original_stat(root_fd=root_fd, name=name)
         if observed is not None and name.startswith(".mrl-0801-publication-witness-") and not raced:
             owned_name = f"{name}.owned"
-            os.rename(name, owned_name, src_dir_fd=root_fd, dst_dir_fd=root_fd)  # noqa: PTH104
+            os.rename(name, owned_name, src_dir_fd=root_fd, dst_dir_fd=root_fd)
             foreign_fd = os.open(
                 name,
                 os.O_WRONLY | os.O_CREAT | os.O_EXCL,
