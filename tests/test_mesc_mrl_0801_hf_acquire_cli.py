@@ -130,3 +130,16 @@ def test_preloaded_transitive_medscale_module_is_rejected(
     monkeypatch.setitem(sys.modules, "medscale.mesc._canonical_json_v1", foreign_module)
     with pytest.raises(cli.AcquisitionEntrypointError, match="preloaded medscale modules"):
         cli._import_exact_repository_modules(root)
+
+
+def test_exact_source_root_is_repositioned_first(monkeypatch: pytest.MonkeyPatch) -> None:
+    cli = load_cli()
+    exact_source = "/repo/src"
+    foreign_source = "/foreign"
+    monkeypatch.setattr(sys, "path", [foreign_source, exact_source, "/other", exact_source])
+
+    cli._prepend_exact_source_root(exact_source)
+
+    assert sys.path[0] == exact_source
+    assert sys.path.count(exact_source) == 1
+    assert sys.path[1] == foreign_source
