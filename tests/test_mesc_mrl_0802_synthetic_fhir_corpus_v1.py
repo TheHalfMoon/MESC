@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from medscale.mesc._mrl_0802_synthetic_fhir_corpus_v1 import (
+    MRL0802CorpusQualification,
     MRL0802SyntheticFHIRCorpusError,
     build_mrl_0802_fixture_corpus,
     canonical_mrl_0802_authorization_bytes,
@@ -18,7 +19,7 @@ FIXTURES = ROOT / "data/mesc-mrl-0802-fhir-v1/source-fixtures.jsonl"
 AUTH = ROOT / "specs/mesc-experiment-0/mrl-0802-synthetic-fhir-authorization-v1.json"
 
 
-def _qualification():
+def _qualification() -> MRL0802CorpusQualification:
     authorization = parse_mrl_0802_authorization(AUTH.read_bytes())
     return build_mrl_0802_fixture_corpus(
         source_bytes=FIXTURES.read_bytes(), authorization=authorization
