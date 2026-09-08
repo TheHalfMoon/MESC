@@ -21,6 +21,8 @@ jobs:
         run: |
           set -euo pipefail
           cp ops/.github/ops/apply_mrl_0801_owned_rollback_fix.py "$RUNNER_TEMP/patcher.py"
+          cp ops/.github/ops/normalize_mrl_0801_patcher.py "$RUNNER_TEMP/normalize.py"
+          python "$RUNNER_TEMP/normalize.py" "$RUNNER_TEMP/patcher.py"
           python -m py_compile "$RUNNER_TEMP/patcher.py"
 
       - name: Check out exact PR branch
