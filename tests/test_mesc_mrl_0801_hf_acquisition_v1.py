@@ -277,6 +277,34 @@ def test_destination_must_exist_and_remote_url_boundaries(tmp_path: Path) -> Non
             subject._require_safe_remote_url(url)
 
 
+def test_atomic_publication_capability_failure_precedes_transport(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    patch_environment(monkeypatch)
+    destination = tmp_path / "assets"
+    destination.mkdir()
+    transport = FakeTransport()
+
+    def unsupported_publication(**_: object) -> None:
+        raise subject.MRL0801HfAcquisitionError(
+            "atomic descriptor publication is unsupported on this filesystem"
+        )
+
+    monkeypatch.setattr(subject, "_publish_open_descriptor_no_replace", unsupported_publication)
+    with pytest.raises(subject.MRL0801HfAcquisitionError, match="atomic descriptor publication"):
+        subject.acquire_mrl_0801_hf_candidate(
+            authorization=authorization(),
+            transport=transport,
+            repository_root=fake_repo(tmp_path),
+            destination=destination,
+            model_id=MODEL,
+            revision=REV,
+        )
+    assert transport.calls == {}
+    assert transport.downloads == []
+    assert list(destination.iterdir()) == []
+
+
 def test_destination_replacement_cannot_redirect_writes(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -322,10 +350,10 @@ def test_finalizer_failure_preserves_unbound_entry_and_rolls_back_snapshot(
             revision=REV,
             finalizer=fail_finalize,
         )
-    assert [item.name for item in destination.iterdir()] == ["unexpected.txt"]
+    assert {item.name for item in destination.iterdir()} == {*FILES, "unexpected.txt"}
 
 
-def test_finalizer_extra_entry_is_rejected_and_snapshot_rollback_preserves_unbound_entry(
+def test_finalizer_extra_entry_is_rejected_and_residue_is_retained(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     patch_environment(monkeypatch)
@@ -348,10 +376,10 @@ def test_finalizer_extra_entry_is_rejected_and_snapshot_rollback_preserves_unbou
             revision=REV,
             finalizer=add_extra_entry,
         )
-    assert [item.name for item in destination.iterdir()] == ["unexpected.txt"]
+    assert {item.name for item in destination.iterdir()} == {*FILES, "unexpected.txt"}
 
 
-def test_finalizer_asset_mutation_is_rejected_and_rolled_back(
+def test_finalizer_asset_mutation_is_rejected_and_residue_is_retained(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     patch_environment(monkeypatch)
@@ -374,7 +402,48 @@ def test_finalizer_asset_mutation_is_rejected_and_rolled_back(
             revision=REV,
             finalizer=mutate_asset,
         )
-    assert list(destination.iterdir()) == []
+    assert {item.name for item in destination.iterdir()} == set(FILES)
+    assert (destination / FILES[1]).read_bytes() == b"tamper-me"
+
+
+def test_late_failure_residue_blocks_retry_before_transport(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    patch_environment(monkeypatch)
+    destination = tmp_path / "assets"
+    destination.mkdir()
+    root = fake_repo(tmp_path)
+
+    def fail_finalize(
+        _: MRL0801AssetCustodyReceipt,
+        __: subject.MRL0801HfAcquisitionProvenanceReceipt,
+    ) -> None:
+        raise OSError("receipt publication failed")
+
+    with pytest.raises(OSError, match="receipt publication failed"):
+        subject.acquire_mrl_0801_hf_candidate(
+            authorization=authorization(),
+            transport=FakeTransport(),
+            repository_root=root,
+            destination=destination,
+            model_id=MODEL,
+            revision=REV,
+            finalizer=fail_finalize,
+        )
+    assert {item.name for item in destination.iterdir()} == set(FILES)
+
+    retry_transport = FakeTransport()
+    with pytest.raises(subject.MRL0801HfAcquisitionError, match="empty real directory"):
+        subject.acquire_mrl_0801_hf_candidate(
+            authorization=authorization(),
+            transport=retry_transport,
+            repository_root=root,
+            destination=destination,
+            model_id=MODEL,
+            revision=REV,
+        )
+    assert retry_transport.calls == {}
+    assert retry_transport.downloads == []
 
 
 def test_provenance_validation_requires_exact_receipt_types(

@@ -75,7 +75,9 @@ Signed or CDN locations are ephemeral transport data and never enter a canonical
 
 ## Two-pass metadata rule
 
-Before any model byte download:
+Before any remote metadata request or model byte download, the executor must first prove that unnamed-file atomic publication actually works on the bound destination filesystem. The CLI performs the same proof for each bound receipt-parent filesystem before acquisition begins. A successful `O_TMPFILE` open or an exported `linkat` symbol alone is insufficient; the capability probe must successfully publish an unnamed file with `linkat(..., AT_EMPTY_PATH)`, verify the linked identity, and restore its isolated probe directory.
+
+After that capability proof and before any model byte download:
 
 1. retrieve metadata for every and only authorized file;
 2. require every metadata record to resolve to the exact authorized revision;
@@ -111,11 +113,11 @@ Raw model roots must be outside the MESC repository and outside any discovered G
 
 The executor requires no-follow directory-descriptor support and opens the destination once. The opened device/inode identity is bound for the transaction. Authorized V1 file paths are one canonical POSIX basename each. Public namespace mutation is intentionally limited to atomic descriptor publication; the executor performs no automatic public-entry unlink cleanup or rollback.
 
-The executor never overwrites existing asset files. Every file is streamed into an unnamed same-filesystem `O_TMPFILE` opened through the bound destination descriptor, fully hashed and size-checked, then atomically published from that still-open file descriptor with `linkat(..., AT_EMPTY_PATH)`. If the primitive or filesystem support is unavailable, acquisition fails closed. If a racing target appears, the atomic link fails without modifying that target. Before publication, failure cleanup is descriptor close only because the temporary file has no directory entry.
+The executor never overwrites existing asset files. Before any remote metadata request, it performs an isolated same-filesystem capability probe through the bound destination descriptor that creates an unnamed `O_TMPFILE`, successfully publishes it with `linkat(..., AT_EMPTY_PATH)`, verifies the linked inode identity, and removes only the private probe namespace before continuing. Every authorized file is then streamed into an unnamed same-filesystem `O_TMPFILE` opened through the bound destination descriptor, fully hashed and size-checked, then atomically published from that still-open file descriptor with `linkat(..., AT_EMPTY_PATH)`. If the primitive or filesystem support is unavailable, acquisition fails closed before network access. If a racing target appears, the atomic link fails without modifying that target. Before publication, failure cleanup is descriptor close only because the temporary file has no directory entry.
 
 Before and after the path-based canonical SafeTensors custody handoff, the destination pathname must still resolve to the exact opened device/inode. If the pathname is concurrently removed, replaced, redirected, or changed to another directory, the transaction fails. Published model files retain an internal transaction identity for verification, but that identity is never used to justify a non-atomic `stat`-then-`unlink` sequence.
 
-Receipt publication by the CLI is supplied as the acquisition transaction finalizer and uses the same unnamed-file pattern in each pre-bound external receipt parent. Receipt bytes are written and fsynced before one atomic descriptor publication to the final name. The CLI performs no automatic receipt unlink cleanup.
+Receipt publication by the CLI is supplied as the acquisition transaction finalizer and uses the same unnamed-file pattern in each pre-bound external receipt parent. Before acquisition begins, every bound receipt parent must pass the same successful same-filesystem `O_TMPFILE` plus `linkat(..., AT_EMPTY_PATH)` capability proof. Receipt bytes are written and fsynced before one atomic descriptor publication to the final name. The CLI performs no automatic receipt unlink cleanup.
 
 If any later file, metadata refresh, remote-content check, SafeTensors custody verification, provenance reconciliation, destination-identity check, or transaction finalizer fails after a public name has been published, the transaction remains `BLOCKED` and the published residue is retained for operator inspection. Automatic deletion is prohibited because a separate identity check followed by namespace unlink cannot make ownership and removal atomic. A failed attempt never becomes success, and no resume, mutable overwrite, automatic repair, or partial-snapshot acceptance exists in V1. A subsequent attempt must begin from a separately inspected and restored empty destination and unused receipt names.
 

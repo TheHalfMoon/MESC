@@ -8,6 +8,7 @@ weights, trains, populates MRL-0801, or changes a trust registry.
 
 from __future__ import annotations
 
+import contextlib
 import ctypes
 import errno
 import hashlib
@@ -15,6 +16,7 @@ import ipaddress
 import json
 import os
 import re
+import secrets
 import stat
 import subprocess
 import urllib.error
@@ -1003,7 +1005,7 @@ def _require_descriptor_relative_support() -> None:
         raise MRL0801HfAcquisitionError(
             "platform lacks required no-follow or unnamed-file descriptor support"
         )
-    required_dir_fd = (os.open, os.stat)
+    required_dir_fd = (os.mkdir, os.open, os.rmdir, os.stat, os.unlink)
     if any(operation not in os.supports_dir_fd for operation in required_dir_fd):
         raise MRL0801HfAcquisitionError(
             "platform lacks required descriptor-relative filesystem operations"
@@ -1070,8 +1072,7 @@ def _require_external_empty_destination(
             raise MRL0801HfAcquisitionError(
                 "acquisition destination must be an empty real directory"
             )
-        probe = _open_unnamed_temp_file(root_fd=descriptor)
-        os.close(probe)
+        _probe_atomic_descriptor_publication(root_fd=descriptor)
         return _DestinationDirectory(
             path=root,
             descriptor=descriptor,
@@ -1297,6 +1298,76 @@ def _publish_open_descriptor_no_replace(
             "atomic descriptor publication is unsupported on this filesystem"
         )
     raise MRL0801HfAcquisitionError("asset publication failed safely")
+
+
+def _probe_atomic_descriptor_publication(*, root_fd: int) -> None:
+    """Prove unnamed-file atomic publication on this filesystem before network access."""
+    probe_dir_name = f".mrl-0801-publication-probe-{secrets.token_hex(16)}"
+    probe_fd: int | None = None
+    source_fd: int | None = None
+    created_dir = False
+    published = False
+    try:
+        os.mkdir(probe_dir_name, 0o700, dir_fd=root_fd)
+        created_dir = True
+        probe_fd = os.open(
+            probe_dir_name,
+            os.O_RDONLY | _O_DIRECTORY | _O_NOFOLLOW | _O_CLOEXEC,
+            dir_fd=root_fd,
+        )
+        probe_directory = os.fstat(probe_fd)
+        if not stat.S_ISDIR(probe_directory.st_mode):
+            raise MRL0801HfAcquisitionError(
+                "atomic publication capability probe did not bind a directory"
+            )
+        source_fd = _open_unnamed_temp_file(root_fd=probe_fd)
+        source = os.fstat(source_fd)
+        if not stat.S_ISREG(source.st_mode):
+            raise MRL0801HfAcquisitionError(
+                "atomic publication capability probe did not create a regular file"
+            )
+        _publish_open_descriptor_no_replace(
+            source_fd=source_fd,
+            root_fd=probe_fd,
+            target_name="probe",
+        )
+        published = True
+        linked = _descriptor_entry_stat(root_fd=probe_fd, name="probe")
+        if (
+            linked is None
+            or not stat.S_ISREG(linked.st_mode)
+            or _stat_descriptor_identity(linked) != _stat_descriptor_identity(source)
+        ):
+            raise MRL0801HfAcquisitionError(
+                "atomic publication capability probe produced an invalid identity"
+            )
+        os.unlink("probe", dir_fd=probe_fd)
+        published = False
+        os.close(source_fd)
+        source_fd = None
+        os.close(probe_fd)
+        probe_fd = None
+        os.rmdir(probe_dir_name, dir_fd=root_fd)
+        created_dir = False
+    except MRL0801HfAcquisitionError:
+        raise
+    except OSError:
+        raise MRL0801HfAcquisitionError(
+            "atomic descriptor publication capability probe failed safely"
+        ) from None
+    finally:
+        if source_fd is not None:
+            with contextlib.suppress(OSError):
+                os.close(source_fd)
+        if probe_fd is not None:
+            if published:
+                with contextlib.suppress(OSError):
+                    os.unlink("probe", dir_fd=probe_fd)
+            with contextlib.suppress(OSError):
+                os.close(probe_fd)
+        if created_dir:
+            with contextlib.suppress(OSError):
+                os.rmdir(probe_dir_name, dir_fd=root_fd)
 
 
 def _acquire_one_file(

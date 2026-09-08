@@ -9,6 +9,7 @@ import errno
 import importlib
 import json
 import os
+import secrets
 import stat
 import subprocess
 import sys
@@ -234,7 +235,7 @@ def _require_receipt_output_descriptor_support() -> None:
         raise AcquisitionEntrypointError(
             "platform lacks required no-follow or unnamed-file receipt support"
         )
-    required_dir_fd = (os.open, os.stat)
+    required_dir_fd = (os.mkdir, os.open, os.rmdir, os.stat, os.unlink)
     if any(operation not in os.supports_dir_fd for operation in required_dir_fd):
         raise AcquisitionEntrypointError(
             "platform lacks required descriptor-relative receipt-output operations"
@@ -368,18 +369,8 @@ def _require_external_new_output(
         )
         if _descriptor_output_stat(output) is not None:
             raise AcquisitionEntrypointError("receipt output must not already exist")
-        try:
-            probe = os.open(
-                ".",
-                os.O_WRONLY | _O_TMPFILE | _O_CLOEXEC,
-                0o600,
-                dir_fd=output.descriptor,
-            )
-        except OSError:
-            raise AcquisitionEntrypointError(
-                "unnamed receipt publication is unsupported on this filesystem"
-            ) from None
-        os.close(probe)
+        _probe_receipt_atomic_publication(output)
+        _require_bound_output_parent_identity(output)
         return output
     except BaseException:
         os.close(descriptor)
@@ -428,6 +419,92 @@ def _publish_open_descriptor_no_replace(
             "atomic receipt publication is unsupported on this filesystem"
         )
     raise AcquisitionEntrypointError("receipt output could not be published safely")
+
+
+def _probe_receipt_atomic_publication(output: _BoundReceiptOutput) -> None:
+    """Prove receipt atomic publication on the bound filesystem before acquisition."""
+    _require_bound_output_parent_identity(output)
+    probe_dir_name = f".mrl-0801-receipt-probe-{secrets.token_hex(16)}"
+    probe_fd: int | None = None
+    source_fd: int | None = None
+    created_dir = False
+    published = False
+    try:
+        os.mkdir(probe_dir_name, 0o700, dir_fd=output.descriptor)
+        created_dir = True
+        probe_fd = os.open(
+            probe_dir_name,
+            os.O_RDONLY | _O_DIRECTORY | _O_NOFOLLOW | _O_CLOEXEC,
+            dir_fd=output.descriptor,
+        )
+        probe_directory = os.fstat(probe_fd)
+        if not stat.S_ISDIR(probe_directory.st_mode):
+            raise AcquisitionEntrypointError(
+                "atomic receipt publication probe did not bind a directory"
+            )
+        try:
+            source_fd = os.open(
+                ".",
+                os.O_WRONLY | _O_TMPFILE | _O_CLOEXEC,
+                0o600,
+                dir_fd=probe_fd,
+            )
+        except OSError:
+            raise AcquisitionEntrypointError(
+                "unnamed receipt publication is unsupported on this filesystem"
+            ) from None
+        source = os.fstat(source_fd)
+        if not stat.S_ISREG(source.st_mode):
+            raise AcquisitionEntrypointError(
+                "atomic receipt publication probe did not create a regular file"
+            )
+        probe_output = _BoundReceiptOutput(
+            path=output.parent_path / probe_dir_name / "probe",
+            parent_path=output.parent_path / probe_dir_name,
+            descriptor=probe_fd,
+            device=probe_directory.st_dev,
+            inode=probe_directory.st_ino,
+            name="probe",
+        )
+        _publish_open_descriptor_no_replace(source_fd=source_fd, output=probe_output)
+        published = True
+        linked = _descriptor_output_stat(probe_output)
+        if (
+            linked is None
+            or not stat.S_ISREG(linked.st_mode)
+            or _stat_identity(linked) != _stat_identity(source)
+        ):
+            raise AcquisitionEntrypointError(
+                "atomic receipt publication probe produced an invalid identity"
+            )
+        os.unlink("probe", dir_fd=probe_fd)
+        published = False
+        os.close(source_fd)
+        source_fd = None
+        os.close(probe_fd)
+        probe_fd = None
+        os.rmdir(probe_dir_name, dir_fd=output.descriptor)
+        created_dir = False
+        _require_bound_output_parent_identity(output)
+    except AcquisitionEntrypointError:
+        raise
+    except OSError:
+        raise AcquisitionEntrypointError(
+            "atomic receipt publication capability probe failed safely"
+        ) from None
+    finally:
+        if source_fd is not None:
+            with contextlib.suppress(OSError):
+                os.close(source_fd)
+        if probe_fd is not None:
+            if published:
+                with contextlib.suppress(OSError):
+                    os.unlink("probe", dir_fd=probe_fd)
+            with contextlib.suppress(OSError):
+                os.close(probe_fd)
+        if created_dir:
+            with contextlib.suppress(OSError):
+                os.rmdir(probe_dir_name, dir_fd=output.descriptor)
 
 
 def _write_exact_new(output: _BoundReceiptOutput, data: bytes) -> None:

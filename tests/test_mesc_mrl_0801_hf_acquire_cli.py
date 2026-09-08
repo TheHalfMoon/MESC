@@ -120,6 +120,32 @@ def test_receipt_output_parent_must_preexist_without_filesystem_mutation(tmp_pat
     assert not (snapshot / "receipts").exists()
 
 
+def test_receipt_atomic_publication_capability_is_verified_before_binding(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cli = load_cli()
+    root = repo(tmp_path)
+    snapshot = tmp_path / "snapshot"
+    snapshot.mkdir()
+    receipt = tmp_path / "receipts/receipt.json"
+    receipt.parent.mkdir()
+
+    def unsupported_publication(**_: object) -> None:
+        raise cli.AcquisitionEntrypointError(
+            "atomic receipt publication is unsupported on this filesystem"
+        )
+
+    monkeypatch.setattr(cli, "_publish_open_descriptor_no_replace", unsupported_publication)
+    with pytest.raises(cli.AcquisitionEntrypointError, match="atomic receipt publication"):
+        cli._require_external_new_output(
+            path=receipt,
+            repository_root=root,
+            snapshot_root=snapshot,
+        )
+    assert list(receipt.parent.iterdir()) == []
+    assert not receipt.exists()
+
+
 def test_receipt_output_is_published_descriptor_relative(tmp_path: Path) -> None:
     cli = load_cli()
     root = repo(tmp_path)
