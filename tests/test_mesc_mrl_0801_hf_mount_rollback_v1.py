@@ -1,4 +1,4 @@
-"""Mount-boundary rollback regressions for MRL-0801 acquisition."""
+"""Mount-boundary retained-residue regressions for MRL-0801 acquisition."""
 
 from __future__ import annotations
 
@@ -28,7 +28,7 @@ def _acquired_file(path: Path) -> subject.HfAcquiredFileIdentity:
     )
 
 
-def test_rollback_never_recurses_into_nonempty_finalizer_directory(tmp_path: Path) -> None:
+def test_rollback_retains_asset_and_never_recurses_into_finalizer_directory(tmp_path: Path) -> None:
     root = tmp_path / "assets"
     root.mkdir()
     asset = root / "asset.safetensors"
@@ -48,12 +48,12 @@ def test_rollback_never_recurses_into_nonempty_finalizer_directory(tmp_path: Pat
     finally:
         os.close(root_fd)
 
-    assert not asset.exists()
+    assert asset.read_bytes() == b"x"
     assert payload.read_bytes() == b"external-content"
 
 
 @pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux bind-mount regression")
-def test_rollback_does_not_descend_into_bind_mount(tmp_path: Path) -> None:
+def test_rollback_retains_asset_and_does_not_descend_into_bind_mount(tmp_path: Path) -> None:
     mount = shutil.which("mount")
     umount = shutil.which("umount")
     if mount is None or umount is None:
@@ -87,7 +87,7 @@ def test_rollback_does_not_descend_into_bind_mount(tmp_path: Path) -> None:
             )
         finally:
             os.close(root_fd)
-        assert not asset.exists()
+        assert asset.read_bytes() == b"x"
         assert payload.read_bytes() == b"external-content"
     finally:
         subprocess.run([umount, str(mountpoint)], check=False, capture_output=True)
