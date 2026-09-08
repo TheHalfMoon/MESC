@@ -70,11 +70,31 @@ def transport_with(opener: Opener) -> subject.UrllibHfPublicTransport:
 
 @pytest.mark.parametrize(
     "timeout_seconds",
-    (0.0, -1.0, float("nan"), float("inf"), float("-inf")),
+    (0.0, -1.0, float("nan"), float("inf"), float("-inf"), 1e308),
 )
-def test_transport_rejects_non_positive_or_non_finite_timeout(timeout_seconds: float) -> None:
+def test_transport_rejects_non_positive_non_finite_or_oversized_timeout(
+    timeout_seconds: float,
+) -> None:
     with pytest.raises(ValueError, match="finite and positive"):
         subject.UrllibHfPublicTransport(timeout_seconds=timeout_seconds)
+
+
+def test_transport_accepts_maximum_bounded_timeout() -> None:
+    subject.UrllibHfPublicTransport(timeout_seconds=3600.0)
+
+
+def test_metadata_timeout_overflow_fails_closed() -> None:
+    transport = transport_with(Opener([OverflowError("timeout out of range")]))
+    with pytest.raises(subject.MRL0801HfAcquisitionError, match="metadata transport failed"):
+        transport.metadata(model_id="google/gemma", revision=REV, path=PATH)
+
+
+def test_byte_timeout_overflow_fails_closed() -> None:
+    item = subject.HfRemoteFileMetadata(PATH, REV, 4, ETAG, "https://huggingface.co/file")
+    transport = subject.UrllibHfPublicTransport()
+    cast(Any, transport)._download_opener = Opener([OverflowError("timeout out of range")])
+    with pytest.raises(subject.MRL0801HfAcquisitionError, match="byte transport failed"):
+        list(transport.iter_bytes(metadata=item))
 
 
 def test_internal_redirect_preserves_query_and_final_metadata() -> None:
