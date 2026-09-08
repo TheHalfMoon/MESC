@@ -68,6 +68,15 @@ def transport_with(opener: Opener) -> subject.UrllibHfPublicTransport:
     return transport
 
 
+@pytest.mark.parametrize(
+    "timeout_seconds",
+    (0.0, -1.0, float("nan"), float("inf"), float("-inf")),
+)
+def test_transport_rejects_non_positive_or_non_finite_timeout(timeout_seconds: float) -> None:
+    with pytest.raises(ValueError, match="finite and positive"):
+        subject.UrllibHfPublicTransport(timeout_seconds=timeout_seconds)
+
+
 def test_internal_redirect_preserves_query_and_final_metadata() -> None:
     first = "https://huggingface.co/google/gemma/resolve/" + REV + "/" + PATH
     location = "/api/resolve-cache/models/google/gemma/" + REV + "/file?etag=abc%2Fdef"
