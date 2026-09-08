@@ -994,7 +994,7 @@ def _require_descriptor_relative_support() -> None:
         raise MRL0801HfAcquisitionError(
             "platform lacks required no-follow directory descriptor support"
         )
-    required_dir_fd = (os.open, os.stat, os.unlink, os.link, os.rmdir)
+    required_dir_fd = (os.open, os.stat, os.unlink, os.link)
     if any(operation not in os.supports_dir_fd for operation in required_dir_fd):
         raise MRL0801HfAcquisitionError(
             "platform lacks required descriptor-relative filesystem operations"
@@ -1214,79 +1214,6 @@ def _unlink_descriptor_entry(*, root_fd: int, name: str) -> None:
         return
 
 
-def _remove_descriptor_entry_recursive(*, root_fd: int, name: str) -> None:
-    """Remove one transaction-created entry without following directory symlinks."""
-    try:
-        observed = os.stat(name, dir_fd=root_fd, follow_symlinks=False)
-    except FileNotFoundError:
-        return
-    except OSError:
-        raise MRL0801HfAcquisitionError(
-            "rollback entry could not be inspected safely"
-        ) from None
-
-    if not stat.S_ISDIR(observed.st_mode):
-        try:
-            os.unlink(name, dir_fd=root_fd)
-        except FileNotFoundError:
-            return
-        except OSError:
-            raise MRL0801HfAcquisitionError(
-                "rollback file entry could not be removed safely"
-            ) from None
-        return
-
-    flags = os.O_RDONLY | _O_DIRECTORY | _O_NOFOLLOW | _O_CLOEXEC
-    try:
-        directory_fd = os.open(name, flags, dir_fd=root_fd)
-    except FileNotFoundError:
-        return
-    except OSError:
-        raise MRL0801HfAcquisitionError(
-            "rollback directory entry could not be opened safely"
-        ) from None
-    try:
-        opened = os.fstat(directory_fd)
-        if (
-            not stat.S_ISDIR(opened.st_mode)
-            or _stat_descriptor_identity(opened) != _stat_descriptor_identity(observed)
-        ):
-            raise MRL0801HfAcquisitionError(
-                "rollback directory identity changed while it was being opened"
-            )
-        for child_name in os.listdir(directory_fd):
-            if not child_name or child_name in {".", ".."} or "/" in child_name or "\x00" in child_name:
-                raise MRL0801HfAcquisitionError(
-                    "rollback directory contains an invalid descriptor entry name"
-                )
-            _remove_descriptor_entry_recursive(root_fd=directory_fd, name=child_name)
-        try:
-            current = os.stat(name, dir_fd=root_fd, follow_symlinks=False)
-        except FileNotFoundError:
-            return
-        except OSError:
-            raise MRL0801HfAcquisitionError(
-                "rollback directory entry could not be revalidated safely"
-            ) from None
-        if (
-            not stat.S_ISDIR(current.st_mode)
-            or _stat_descriptor_identity(current) != _stat_descriptor_identity(opened)
-        ):
-            raise MRL0801HfAcquisitionError(
-                "rollback directory identity changed during cleanup"
-            )
-    finally:
-        os.close(directory_fd)
-    try:
-        os.rmdir(name, dir_fd=root_fd)
-    except FileNotFoundError:
-        return
-    except OSError:
-        raise MRL0801HfAcquisitionError(
-            "rollback directory entry could not be removed safely"
-        ) from None
-
-
 def _publish_partial_no_replace(*, root_fd: int, partial_name: str, target_name: str) -> None:
     try:
         os.link(
@@ -1382,7 +1309,7 @@ def _rollback_created_files(
 ) -> None:
     for item in reversed(acquired):
         relative = _validate_relative_path(item.path)
-        _remove_descriptor_entry_recursive(root_fd=root_fd, name=relative.name)
+        _unlink_descriptor_entry(root_fd=root_fd, name=relative.name)
     names = _descriptor_entries(root_fd=root_fd)
     for name in names:
         if (
@@ -1391,4 +1318,4 @@ def _rollback_created_files(
             or pre_finalizer_entries is not None
             and name not in pre_finalizer_entries
         ):
-            _remove_descriptor_entry_recursive(root_fd=root_fd, name=name)
+            _unlink_descriptor_entry(root_fd=root_fd, name=name)
