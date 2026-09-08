@@ -1,0 +1,59 @@
+name: MRL-0801 Guarded Review Blocker Repair
+
+on:
+  push:
+    branches:
+      - ops/mrl0801-review-blockers-20260908-v1
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repair helper
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Checkout exact PR branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: feat/mrl-0801-hf-acquisition-executor-20260908
+          path: target
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Guard expected PR head
+        working-directory: target
+        run: test "$(git rev-parse HEAD)" = "7a488465f9b29c8123555948f9a3a49d88f689f7"
+
+      - name: Apply exact review-blocker repair
+        run: python .github/scripts/mrl0801_review_blockers_fix.py target
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+
+      - name: Verify focused repair
+        working-directory: target
+        run: |
+          uv sync --frozen
+          uv run ruff check .
+          uv run ruff format --check .
+          uv run mypy src tests scripts
+          uv run pytest -q tests/test_mesc_mrl_0801_hf_transport_v1.py tests/test_mesc_mrl_0801_hf_acquisition_v1.py
+          git diff --check
+          git diff --exit-code -- uv.lock
+
+      - name: Commit and guarded fast-forward push
+        working-directory: target
+        run: |
+          test "$(git rev-parse HEAD)" = "7a488465f9b29c8123555948f9a3a49d88f689f7"
+          git diff --quiet && exit 1
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/medscale/mesc/_mrl_0801_hf_acquisition_v1.py pyproject.toml tests/test_mesc_mrl_0801_hf_transport_v1.py tests/test_mesc_mrl_0801_hf_acquisition_v1.py
+          git diff --cached --check
+          git commit -m "fix(mesc): bind immutable remote identities to local bytes"
+          git push origin HEAD:refs/heads/feat/mrl-0801-hf-acquisition-executor-20260908
