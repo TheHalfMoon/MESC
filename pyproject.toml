@@ -132,6 +132,13 @@ warn_redundant_casts = true
 warn_unreachable = true
 disable_error_code = ["import-untyped"]
 
+# Windows typeshed intentionally omits POSIX-only os.fstatvfs. The executor checks the full
+# descriptor capability set at runtime and fails closed before that call on unsupported hosts.
+# Keep the exception isolated to this module; all other strict mypy diagnostics remain active.
+[[tool.mypy.overrides]]
+module = ["medscale.mesc._mrl_0801_hf_acquisition_v1"]
+disable_error_code = ["attr-defined", "no-any-return"]
+
 # Pytest + coverage
 # ---------------------------------------------------------------------------
 [tool.pytest.ini_options]
