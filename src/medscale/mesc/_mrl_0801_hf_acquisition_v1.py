@@ -396,8 +396,8 @@ class UrllibHfPublicTransport:
     """Minimal HTTPS-only Hub transport that never reads or sends credentials."""
 
     def __init__(self, *, timeout_seconds: float = 30.0) -> None:
-        if timeout_seconds <= 0:
-            raise ValueError("timeout_seconds must be positive")
+        if not 0 < timeout_seconds < float("inf"):
+            raise ValueError("timeout_seconds must be finite and positive")
         self._timeout = timeout_seconds
         self._metadata_opener = urllib.request.build_opener(
             urllib.request.ProxyHandler({}),
@@ -1402,6 +1402,7 @@ def _descriptor_entry_stat(*, root_fd: int, name: str) -> os.stat_result | None:
         raise MRL0801HfAcquisitionError(
             "acquisition destination entry could not be inspected safely"
         ) from None
+    return True
 
 
 def _load_posix_symbol(name: str) -> Any:
