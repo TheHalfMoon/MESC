@@ -77,16 +77,16 @@ Signed or CDN locations are ephemeral transport data and never enter a canonical
 
 Before any remote metadata request or model byte download, the executor must first prove that unnamed-file atomic publication actually works on the bound destination filesystem. The CLI performs the same proof for each bound receipt-parent filesystem before acquisition begins. A successful `O_TMPFILE` open or an exported `linkat` symbol alone is insufficient. The capability check publishes an unnamed file with `linkat(..., AT_EMPTY_PATH)` directly into the already-bound transaction directory and verifies the linked identity. Because V1 has no kernel primitive that atomically binds a prior inode observation to namespace removal, the zero-byte hidden capability witness is intentionally retained and the operation then fails closed before remote metadata access or acquisition.
 
-After that capability proof and before any model byte download:
+**Current V1 stops at that retained-witness boundary.** The following two-pass metadata sequence documents the already-implemented future operational path only. It is unreachable in V1 after a successful capability proof and requires a separate canonical design/authority change before activation:
 
 1. retrieve metadata for every and only authorized file;
 2. require every metadata record to resolve to the exact authorized revision;
 3. compute the exact allowlist byte count;
 4. execute the canonical storage-capacity preflight.
 
-Immediately before downloading each file, retrieve fresh metadata again. Its `(path, commit_sha, byte_count, etag, etag_algorithm)` identity must exactly equal the preflight record. Only the ephemeral download location may change.
+In that future operational path, metadata would be retrieved again immediately before each file download. Its `(path, commit_sha, byte_count, etag, etag_algorithm)` identity must exactly equal the preflight record. Only the ephemeral download location may change.
 
-This rule prevents expired signed locations from forcing a weaker metadata policy and fails closed if immutable remote identity changes unexpectedly.
+This dormant rule is retained so any future activation cannot weaken immutable remote identity binding or signed-location handling.
 
 ## Remote content identities
 
@@ -113,17 +113,17 @@ Raw model roots must be outside the MESC repository and outside any discovered G
 
 The executor requires no-follow directory-descriptor support and opens the destination once. The opened device/inode identity is bound for the transaction. Authorized V1 file paths are one canonical POSIX basename each. Public namespace mutation is intentionally limited to atomic descriptor publication; the executor performs no automatic public-entry unlink cleanup or rollback.
 
-The executor never overwrites existing asset files. Before any remote metadata request, it creates an unnamed `O_TMPFILE` through the already-bound destination descriptor, publishes a random hidden zero-byte witness with `linkat(..., AT_EMPTY_PATH)`, verifies the linked inode identity, retains the witness, and returns `BLOCKED` before network access because safe atomic witness cleanup is unavailable in V1. This proves the required publication primitive without performing a racy namespace deletion or redirecting publication through a mutable parent relationship. The model-byte streaming path remains implemented for a future separately qualified execution boundary, but this V1 gate does not reach it after a successful capability proof.
+The executor never overwrites existing asset files. Before any remote metadata request, it creates an unnamed `O_TMPFILE` through the already-bound destination descriptor, publishes a random hidden zero-byte witness with `linkat(..., AT_EMPTY_PATH)`, verifies the linked inode identity, retains the witness, and returns `BLOCKED` before network access because safe atomic witness cleanup is unavailable in V1. This proves the required publication primitive without performing a racy namespace deletion. The model-byte streaming path remains implemented for a future separately qualified execution boundary, but V1 does not reach it after successful capability proof.
 
-Before and after the path-based canonical SafeTensors custody handoff, the destination pathname must still resolve to the exact opened device/inode. If the pathname is concurrently removed, replaced, redirected, or changed to another directory, the transaction fails. Published model files retain an internal transaction identity for verification, but that identity is never used to justify a non-atomic `stat`-then-`unlink` sequence.
+Before and after any future path-based canonical SafeTensors custody handoff, the destination pathname must still resolve to the exact opened device/inode. If the pathname is concurrently removed, replaced, redirected, or changed to another directory, the transaction fails. Published model files may retain an internal transaction identity for verification, but that identity is never used to justify a non-atomic `stat`-then-`unlink` sequence.
 
-Receipt publication by the CLI uses the same unnamed-file pattern in each pre-bound external receipt parent. Before acquisition begins, the bound receipt-parent descriptor publishes and verifies its own hidden zero-byte witness, retains it, and returns `BLOCKED`; no receipt bytes, model bytes, or remote metadata are reached through this V1 path after a successful proof. No capability-witness cleanup is automatic because a later name deletion cannot be proven to remove the previously verified inode atomically.
+Receipt publication by the CLI follows the same fail-closed V1 rule. The already-bound receipt-parent descriptor publishes and verifies its own hidden zero-byte witness, retains it, and returns `BLOCKED`; no receipt bytes, model bytes, or remote metadata are reached through current V1 after a successful proof. No capability-witness cleanup is automatic because a later name deletion cannot be proven to remove the previously verified inode atomically.
 
-If any later file, metadata refresh, remote-content check, SafeTensors custody verification, provenance reconciliation, destination-identity check, or transaction finalizer fails after a public name has been published, the transaction remains `BLOCKED` and the published residue is retained for operator inspection. Automatic deletion is prohibited because a separate identity check followed by namespace unlink cannot make ownership and removal atomic. A failed attempt never becomes success, and no resume, mutable overwrite, automatic repair, or partial-snapshot acceptance exists in V1. A subsequent attempt must begin from a separately inspected and restored empty destination and unused receipt names.
+If a future separately authorized operational path publishes any public model or receipt name and then encounters a later failure, the public residue must be treated as `BLOCKED` evidence for operator inspection. Current V1 does not authorize automatic deletion based on a separate identity observation followed by namespace unlink. Any future activation must independently qualify its residue lifecycle and cannot rely on the older identity-check-then-unlink cleanup claim.
 
 ## Storage preflight
 
-The exact byte count is the sum of authoritative metadata for every authorized file. Available storage is read from the opened destination directory descriptor rather than by re-resolving its pathname. Before acquisition, the executor calls the existing canonical MRL-0801 storage preflight:
+The storage-preflight implementation is retained for the future operational path and is not reached by current V1 after successful capability proof. When separately activated, the exact byte count is the sum of authoritative metadata for every authorized file, and available storage is read from the opened destination directory descriptor rather than by re-resolving its pathname. The canonical condition remains:
 
 ```text
 AVAILABLE_BYTES >= ALLOWLIST_BYTES + max(10 GiB, ceil(ALLOWLIST_BYTES * 10%))
@@ -133,7 +133,7 @@ Rounded model-card size labels are never used for this decision.
 
 ## Local custody handoff
 
-After every authorized remote file is verified and atomically present, the executor calls:
+The custody handoff implementation is retained but unreachable in current V1 after successful capability proof. In a future separately qualified operational path, after every authorized remote file is verified and atomically present, the executor calls:
 
 ```text
 generate_mrl_0801_asset_custody_receipt(...)
@@ -149,13 +149,13 @@ asset_custody_sha256
 
 The network executor does not introduce a competing artifact identity.
 
-The supporting acquisition file identities are reconciled against the custody receipt's exact local SHA-256 and byte-count manifest before success is returned.
+Any future supporting acquisition file identities must be reconciled against the custody receipt's exact local SHA-256 and byte-count manifest before success can be returned.
 
 ## Supporting acquisition provenance
 
-A successful execution emits one deterministic canonical supporting receipt that binds remote identities, storage preflight, exact executor code identity, and the resulting local custody identities. It contains no local path, hostname, signed URL, or query string.
+Current V1 cannot emit a successful acquisition-provenance receipt because it blocks before remote metadata or model bytes. The dormant operational path is designed so that a future separately authorized successful execution would emit one deterministic canonical supporting receipt binding remote identities, storage preflight, exact executor code identity, and resulting local custody identities. It must contain no local path, hostname, signed URL, or query string.
 
-The receipt explicitly records:
+That future receipt contract records:
 
 ```text
 public_unauthenticated = true
@@ -173,13 +173,13 @@ trust_registry_mutation_performed = false
 mrl_0801_population_performed = false
 ```
 
-These fields document this executor's bounded activity. They do not grant later authority.
+These fields document bounded activity only. They do not grant later authority.
 
-This receipt is not `mesc.mrl.real_preflight.model_weights_set.v1`; it is an input to later independent verification of that envelope.
+Such a receipt is not `mesc.mrl.real_preflight.model_weights_set.v1`; it is only an input to later independent verification of that envelope.
 
 ## Independent revalidation
 
-`validate_mrl_0801_hf_acquisition_provenance(...)` must, without downloading weights again:
+If a future operational acquisition-provenance receipt exists, `validate_mrl_0801_hf_acquisition_provenance(...)` must, without downloading weights again:
 
 1. require exact canonical acquisition-provenance, custody, and authorization runtime types;
 2. bind the receipt to an exact currently authorized candidate;
@@ -194,17 +194,15 @@ Parsing a canonical supporting receipt without these external/local checks is ne
 
 The acquisition entrypoint performs a full Git-visible clean-work-tree precheck before importing repository acquisition code, rejects all preloaded `medscale*` modules, prepends only the exact repository `src` root, and verifies every loaded `medscale` source file against the exact `HEAD` Git object bytes. Snapshot and receipt output paths are outside the MESC repository, receipts are outside the raw snapshot root, and existing symlink path components are rejected.
 
-Each receipt output parent directory must already exist as a real directory; the CLI never creates missing receipt-output directories. The parent is resolved, opened once with no-follow directory flags, and bound to its exact device/inode identity. Receipt existence checks, exclusive creation, and failure cleanup are descriptor-relative to that bound parent. Parent pathname identity is rechecked before and after publication, so replacing the validated parent cannot redirect a receipt into the repository or raw snapshot.
+Each receipt output parent directory must already exist as a real directory; the CLI never creates missing receipt-output directories. The parent is resolved, opened once with no-follow directory flags, and bound to its exact device/inode identity. Current V1 uses that bound descriptor only to perform the retained capability-witness proof and then blocks before receipt creation.
 
-Every receipt file created by the transaction is also bound to its exact device/inode identity. Finalizer reconciliation requires the published name to continue referencing that exact regular file, and rollback removes a receipt only while the name still references the transaction-created inode. A racing or replacement entry owned by another actor is never deleted as transaction cleanup.
+The descriptor-bound exclusive receipt publication and receipt-identity verification implementation remains present for a future separately qualified operational boundary. Current V1 never reaches receipt publication after a successful capability proof and therefore creates no receipt output. Automatic deletion of a published receipt name is not authorized in V1 because an identity check followed by `unlink` cannot atomically prove that the removed name still denotes the transaction-created inode.
 
-Receipt outputs are created exclusively and are published through the executor transaction finalizer. If receipt publication fails, the executor rolls back the model files through the still-open destination descriptor; the CLI removes only transaction-owned receipt outputs through their bound parent descriptors.
-
-User-visible success output contains stable subject/digest fields only. Failures emit one generic blocked message and do not print signed URLs, local paths, credentials, or provider error bodies.
+User-visible V1 failure emits a generic blocked message and must not print signed URLs, local paths, credentials, or provider error bodies. Any future success output remains constrained to stable subject/digest fields only.
 
 ## CI boundary
 
-Repository tests inject fake Hub transports. CI must never download model weights or depend on live Hub availability. Transport tests synthesize redirect/metadata responses, including the external-redirect `Content-Length` ambiguity case. Security tests cover exact runtime receipt types, preloaded transitive module rejection, untracked-work-tree rejection, descriptor-relative publication, concurrent destination replacement, missing receipt-parent no-mutation, receipt-output parent replacement, foreign receipt-entry preservation, and late transaction-finalizer rollback.
+Repository tests inject fake Hub transports. CI must never download model weights or depend on live Hub availability. Transport tests synthesize redirect/metadata responses, including the external-redirect `Content-Length` ambiguity case. Security tests cover exact runtime receipt types, preloaded transitive module rejection, untracked-work-tree rejection, descriptor-relative publication, concurrent destination replacement, missing receipt-parent no-mutation, receipt-output parent replacement, foreign receipt-entry preservation, retained model/receipt capability witnesses, foreign witness replacement preservation, and proof that successful capability publication causes zero remote metadata calls and zero model-byte downloads in current V1.
 
 ## Non-authority statement
 
@@ -221,4 +219,4 @@ TRAINING_AUTHORIZED
 TRAINING_READY
 ```
 
-The production real-preflight trust registry remains unchanged until a separately reviewed genuine-evidence admission mutation occurs.
+Current V1 emits no successful acquisition receipt and no real asset evidence. The production real-preflight trust registry remains unchanged until a separately reviewed genuine-evidence admission mutation occurs.
