@@ -4,7 +4,7 @@ import importlib.util
 import json
 import sys
 from pathlib import Path
-from types import ModuleType
+from typing import Any
 
 import pytest
 
@@ -23,7 +23,7 @@ AUTH = ROOT / "specs/mesc-experiment-0/mrl-0802-synthetic-fhir-authorization-v1.
 EVIDENCE = ROOT / "data/mesc-mrl-0802-fhir-v1/evidence"
 
 
-def _load_fixture_cli() -> ModuleType:
+def _load_fixture_cli() -> Any:
     script = ROOT / "scripts/mesc_mrl_0802_fixture_qualify.py"
     spec = importlib.util.spec_from_file_location("mesc_mrl_0802_fixture_cli_test", script)
     if spec is None or spec.loader is None:
