@@ -156,6 +156,7 @@ jobs:
       - name: Format and qualify repair
         run: |
           uv run ruff format scripts/mesc_mrl_0802_fixture_qualify.py scripts/mesc_mrl_0802_synthea_qualify.py src/medscale/mesc/_mrl_0802_synthetic_fhir_corpus_v1.py src/medscale/mesc/_mrl_0802_synthea_fhir_v1.py tests/test_mesc_mrl_0802_synthetic_fhir_corpus_v1.py tests/test_mesc_mrl_0802_synthea_fhir_v1.py
+          uv run ruff check --fix tests/test_mesc_mrl_0802_synthetic_fhir_corpus_v1.py tests/test_mesc_mrl_0802_synthea_fhir_v1.py
           uv run ruff check .
           uv run ruff format --check .
           uv run mypy
