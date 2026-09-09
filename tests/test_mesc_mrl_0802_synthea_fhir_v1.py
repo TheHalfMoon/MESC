@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import json
+import shutil
 import subprocess
 from pathlib import Path
 from types import ModuleType
@@ -349,6 +350,72 @@ def test_authorized_execution_cleans_disposable_clone_after_runner_failure(
         )
     assert len(observed_sources) == 1
     assert not observed_sources[0].exists()
+
+
+def test_authorized_execution_rejects_executable_mode_mutation_even_if_git_filemode_is_disabled(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    authorization = _authorization()
+    rights = _rights()
+    source, revision, tree, hashes = _fake_synthea_checkout(tmp_path)
+    _install_fake_synthea_identity(monkeypatch, revision, tree, hashes)
+    output = tmp_path / "output"
+    output.mkdir()
+    observed_sources: list[Path] = []
+
+    def runner(run_source: Path, run_output: Path) -> None:
+        observed_sources.append(run_source)
+        subprocess.run(
+            ["git", "-C", str(run_source), "config", "core.filemode", "false"], check=True
+        )
+        executable = run_source / "run_synthea"
+        executable.chmod(executable.stat().st_mode | 0o111)
+        _write_fake_synthea_output(run_output)
+
+    with pytest.raises(MRL0802SyntheaCorpusError, match="tracked worktree bytes"):
+        synthea.run_authorized_synthea_corpus(
+            source_root=source,
+            output_root=output,
+            authorization=authorization,
+            rights_review=rights,
+            runner=runner,
+        )
+    assert len(observed_sources) == 1
+    assert not observed_sources[0].exists()
+
+
+def test_authorized_execution_unlinks_replaced_clone_symlink_without_touching_target(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    authorization = _authorization()
+    rights = _rights()
+    source, revision, tree, hashes = _fake_synthea_checkout(tmp_path)
+    _install_fake_synthea_identity(monkeypatch, revision, tree, hashes)
+    output = tmp_path / "output"
+    output.mkdir()
+    external = tmp_path / "external-target"
+    external.mkdir()
+    sentinel = external / "sentinel.txt"
+    sentinel.write_text("preserve\n", encoding="utf-8")
+    observed_sources: list[Path] = []
+
+    def runner(run_source: Path, run_output: Path) -> None:
+        del run_output
+        observed_sources.append(run_source)
+        shutil.rmtree(run_source)
+        run_source.symlink_to(external, target_is_directory=True)
+
+    with pytest.raises(MRL0802SyntheaCorpusError, match="Git source identity"):
+        synthea.run_authorized_synthea_corpus(
+            source_root=source,
+            output_root=output,
+            authorization=authorization,
+            rights_review=rights,
+            runner=runner,
+        )
+    assert len(observed_sources) == 1
+    assert not observed_sources[0].exists()
+    assert sentinel.read_text(encoding="utf-8") == "preserve\n"
 
 
 def test_authorized_execution_rejects_post_run_tracked_source_mutation(

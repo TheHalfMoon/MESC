@@ -185,7 +185,7 @@ def _require_tracked_git_tree(root: Path) -> None:
         ("diff-index", "--cached", "--quiet", "HEAD", "--"),
     ):
         completed = subprocess.run(
-            ["git", "-C", str(root), *arguments],
+            ["git", "-C", str(root), "-c", "core.filemode=true", *arguments],
             check=False,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
@@ -245,7 +245,10 @@ def _run_isolated_synthea_once(
     finally:
         if clone_root.exists() or clone_root.is_symlink():
             try:
-                shutil.rmtree(clone_root)
+                if clone_root.is_symlink():
+                    clone_root.unlink()
+                else:
+                    shutil.rmtree(clone_root)
             except OSError as exc:
                 raise MRL0802SyntheaCorpusError("disposable Synthea clone cleanup failed") from exc
 
