@@ -120,6 +120,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         repository = _require_clean_repository(args.repository_root)
         module = _load_module(repository)
+        output_root = args.output_root.expanduser().resolve(strict=True)
         authorization = module.parse_mrl_0802_synthea_authorization(
             (repository / _AUTH).read_bytes()
         )
@@ -128,12 +129,12 @@ def main(argv: list[str] | None = None) -> int:
         )
         result = module.run_authorized_synthea_corpus(
             source_root=args.synthea_root,
-            output_root=args.output_root,
+            output_root=output_root,
             authorization=authorization,
             rights_review=rights_review,
             repository_root=repository,
         )
-        evidence_root = args.output_root / "evidence"
+        evidence_root = output_root / "evidence"
         evidence_root.mkdir()
         _write_new(evidence_root / "corpus.jsonl", result.corpus_bytes)
         _write_new(evidence_root / "rights.json", result.rights_bytes)
