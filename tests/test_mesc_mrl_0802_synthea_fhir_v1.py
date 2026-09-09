@@ -276,8 +276,13 @@ def test_repository_preimport_rejects_hidden_medscale_mutation(
     repository = tmp_path / "mesc"
     package_file = repository / "src/medscale/__init__.py"
     module_file = repository / "src/medscale/mesc/_mrl_0802_synthea_fhir_v1.py"
-    auth_file = repository / "specs/mesc-experiment-0/mrl-0802-synthetic-fhir-corpus-authorization-v1.json"
-    rights_file = repository / "specs/mesc-experiment-0/mrl-0802-synthetic-fhir-rights-review-v1.json"
+    auth_file = (
+        repository
+        / "specs/mesc-experiment-0/mrl-0802-synthetic-fhir-corpus-authorization-v1.json"
+    )
+    rights_file = (
+        repository / "specs/mesc-experiment-0/mrl-0802-synthetic-fhir-rights-review-v1.json"
+    )
     for path in (package_file, module_file, auth_file, rights_file):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("committed\n", encoding="utf-8")
