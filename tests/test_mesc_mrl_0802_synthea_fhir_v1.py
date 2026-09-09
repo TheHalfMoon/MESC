@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import json
+import subprocess
 from pathlib import Path
 from types import ModuleType
 
@@ -230,7 +231,6 @@ def test_duplicate_patient_identity_fails_closed() -> None:
 def test_ignored_build_state_is_rejected(tmp_path: Path) -> None:
     source = tmp_path / "synthea"
     source.mkdir()
-    import subprocess
 
     subprocess.run(["git", "init", "-q", str(source)], check=True)
     subprocess.run(
@@ -251,8 +251,6 @@ def test_ignored_build_state_is_rejected(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize("flag", ["--assume-unchanged", "--skip-worktree"])
 def test_unsafe_tracked_index_flags_fail_closed(tmp_path: Path, flag: str) -> None:
-    import subprocess
-
     source = tmp_path / "synthea"
     source.mkdir()
     subprocess.run(["git", "init", "-q", str(source)], check=True)
@@ -268,6 +266,49 @@ def test_unsafe_tracked_index_flags_fail_closed(tmp_path: Path, flag: str) -> No
     tracked.write_text("foreign\n", encoding="utf-8")
     with pytest.raises(MRL0802SyntheaCorpusError, match="unsafe Git index flag"):
         _require_pristine_git_tree(source)
+
+
+@pytest.mark.parametrize("flag", ["--assume-unchanged", "--skip-worktree"])
+def test_repository_preimport_rejects_hidden_medscale_mutation(
+    tmp_path: Path, flag: str
+) -> None:
+    cli = _load_synthea_cli()
+    repository = tmp_path / "mesc"
+    package_file = repository / "src/medscale/__init__.py"
+    module_file = repository / "src/medscale/mesc/_mrl_0802_synthea_fhir_v1.py"
+    auth_file = repository / "specs/mesc-experiment-0/mrl-0802-synthetic-fhir-corpus-authorization-v1.json"
+    rights_file = repository / "specs/mesc-experiment-0/mrl-0802-synthetic-fhir-rights-review-v1.json"
+    for path in (package_file, module_file, auth_file, rights_file):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("committed\n", encoding="utf-8")
+
+    subprocess.run(["git", "init", "-q", str(repository)], check=True)
+    subprocess.run(["git", "-C", str(repository), "add", "-f", "."], check=True)
+    subprocess.run(
+        [
+            "git",
+            "-C",
+            str(repository),
+            "-c",
+            "user.name=test",
+            "-c",
+            "user.email=test@example.com",
+            "-c",
+            "commit.gpgsign=false",
+            "commit",
+            "-qm",
+            "base",
+        ],
+        check=True,
+    )
+    subprocess.run(
+        ["git", "-C", str(repository), "update-index", flag, "src/medscale/__init__.py"],
+        check=True,
+    )
+    package_file.write_text("foreign code\n", encoding="utf-8")
+
+    with pytest.raises(cli.EntrypointError, match="unsafe Git index flag"):
+        cli._require_clean_repository(repository)
 
 
 def test_operational_evidence_binds_exact_mesc_git_identity() -> None:
