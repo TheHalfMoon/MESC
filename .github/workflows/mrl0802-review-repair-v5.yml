@@ -1,0 +1,94 @@
+name: MRL0802 Review Repair V5
+
+on:
+  push:
+    branches: [ops/mrl0802-review-repair-20260909]
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    env:
+      TARGET_BRANCH: feat/mrl-0802-synthetic-fhir-corpus-20260909
+      EXPECTED_HEAD: 627b877a7cfa91875d3e6821c8629e61dbb75440
+      OPS_BRANCH: ops/mrl0802-review-repair-20260909
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.TARGET_BRANCH }}
+          fetch-depth: 0
+
+      - name: Verify immutable target
+        run: |
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+          git fetch origin "$TARGET_BRANCH" "$OPS_BRANCH"
+          test "$(git rev-parse FETCH_HEAD)" = "$EXPECTED_HEAD"
+          test "$(git rev-parse origin/$TARGET_BRANCH)" = "$EXPECTED_HEAD"
+
+      - name: Reuse deterministic V4 repair block
+        run: |
+          git show "origin/$OPS_BRANCH:.github/workflows/mrl0802-review-repair-v4.yml" > /tmp/v4.yml
+          python3 - <<'PY'
+          from pathlib import Path
+
+          text = Path('/tmp/v4.yml').read_text(encoding='utf-8')
+          start_marker = "          python3 - <<'PY'\n"
+          end_marker = "          PY\n\n      - uses: astral-sh/setup-uv@"
+          if text.count(start_marker) != 1 or text.count(end_marker) != 1:
+              raise SystemExit('V4 deterministic repair block markers drifted')
+          body = text.split(start_marker, 1)[1].split(end_marker, 1)[0]
+          lines = body.splitlines()
+          dedented = '\n'.join(line[10:] if line.startswith('          ') else line for line in lines) + '\n'
+          Path('/tmp/mrl0802_v4_repair.py').write_text(dedented, encoding='utf-8')
+          PY
+          python3 /tmp/mrl0802_v4_repair.py
+
+      - name: Add strict typing to isolated CLI helper
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('tests/test_mesc_mrl_0802_synthea_fhir_v1.py')
+          text = path.read_text(encoding='utf-8')
+          old = 'import importlib.util\nimport json\n'
+          new = 'import importlib.util\nimport json\nfrom types import ModuleType\n'
+          if text.count(old) != 1:
+              raise SystemExit('Synthea test import marker drifted')
+          text = text.replace(old, new, 1)
+          old_def = 'def _load_synthea_cli():\n'
+          new_def = 'def _load_synthea_cli() -> ModuleType:\n'
+          if text.count(old_def) != 1:
+              raise SystemExit('Synthea helper marker drifted')
+          path.write_text(text.replace(old_def, new_def, 1), encoding='utf-8')
+          PY
+
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          enable-cache: true
+
+      - name: Qualify candidate
+        run: |
+          uv python install 3.11
+          uv sync --frozen
+          uv run python scripts/mesc_mrl_0802_fixture_qualify.py
+          uv run ruff format scripts/mesc_mrl_0802_fixture_qualify.py scripts/mesc_mrl_0802_synthea_qualify.py src/medscale/mesc/_mrl_0802_synthetic_fhir_corpus_v1.py src/medscale/mesc/_mrl_0802_synthea_fhir_v1.py tests/test_mesc_mrl_0802_synthetic_fhir_corpus_v1.py tests/test_mesc_mrl_0802_synthea_fhir_v1.py
+          uv run ruff check --fix tests/test_mesc_mrl_0802_synthetic_fhir_corpus_v1.py tests/test_mesc_mrl_0802_synthea_fhir_v1.py
+          uv run ruff check .
+          uv run ruff format --check .
+          uv run mypy
+          uv run pytest -q tests/test_mesc_mrl_0802_synthetic_fhir_corpus_v1.py tests/test_mesc_mrl_0802_synthea_fhir_v1.py
+          uv run python scripts/mesc_mrl_0802_fixture_qualify.py --check
+          git diff --check
+
+      - name: Guarded fast-forward push
+        run: |
+          git fetch origin "$TARGET_BRANCH"
+          test "$(git rev-parse FETCH_HEAD)" = "$EXPECTED_HEAD"
+          test -n "$(git status --porcelain)"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/mesc-mrl-0802-fhir-v1 specs/mesc-experiment-0/mrl-0802-synthetic-fhir-authorization-v1.json scripts/mesc_mrl_0802_synthea_qualify.py src/medscale/mesc/_mrl_0802_synthetic_fhir_corpus_v1.py src/medscale/mesc/_mrl_0802_synthea_fhir_v1.py tests/test_mesc_mrl_0802_synthetic_fhir_corpus_v1.py tests/test_mesc_mrl_0802_synthea_fhir_v1.py
+          git commit -m "fix(mesc): close MRL-0802 review findings"
+          git push origin "HEAD:refs/heads/$TARGET_BRANCH"
