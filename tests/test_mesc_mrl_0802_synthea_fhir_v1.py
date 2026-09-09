@@ -25,6 +25,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def _load_synthea_cli() -> ModuleType:
+    """Load the qualification CLI under an isolated module identity for regression tests."""
     script = ROOT / "scripts/mesc_mrl_0802_synthea_qualify.py"
     spec = importlib.util.spec_from_file_location("mesc_mrl_0802_synthea_cli_test", script)
     if spec is None or spec.loader is None:
