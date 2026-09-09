@@ -9,6 +9,7 @@ from types import ModuleType
 
 import pytest
 
+import medscale.mesc._mrl_0802_synthea_fhir_v1 as synthea
 from medscale.mesc._mrl_0802_synthea_fhir_v1 import (
     MRL0802SyntheaAuthorization,
     MRL0802SyntheaCorpusError,
@@ -91,6 +92,65 @@ def _raw_patient(index: int, *, gender: str | None = None) -> bytes:
 
 def _run() -> tuple[bytes, ...]:
     return tuple(_raw_patient(index) for index in range(16))
+
+
+def _fake_synthea_checkout(tmp_path: Path) -> tuple[Path, str, str, dict[str, str]]:
+    source = tmp_path / "synthea"
+    source.mkdir()
+    files = {
+        "LICENSE": b"license\n",
+        "NOTICE": b"notice\n",
+        "README.md": b"readme\n",
+        "run_synthea": b"#!/bin/sh\nexit 0\n",
+        "src/main/resources/synthea.properties": b"property=value\n",
+    }
+    (source / ".gitignore").write_text("build/\n.gradle/\n", encoding="utf-8")
+    for relative, payload in files.items():
+        path = source / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(payload)
+    subprocess.run(["git", "init", "-q", str(source)], check=True)
+    subprocess.run(["git", "-C", str(source), "add", "."], check=True)
+    subprocess.run(
+        [
+            "git",
+            "-C",
+            str(source),
+            "-c",
+            "user.name=test",
+            "-c",
+            "user.email=test@example.com",
+            "-c",
+            "commit.gpgsign=false",
+            "commit",
+            "-qm",
+            "base",
+        ],
+        check=True,
+    )
+    revision = subprocess.check_output(
+        ["git", "-C", str(source), "rev-parse", "HEAD"], text=True
+    ).strip()
+    tree = subprocess.check_output(
+        ["git", "-C", str(source), "rev-parse", "HEAD^{tree}"], text=True
+    ).strip()
+    hashes = {relative: hashlib.sha256(payload).hexdigest() for relative, payload in files.items()}
+    return source, revision, tree, hashes
+
+
+def _install_fake_synthea_identity(
+    monkeypatch: pytest.MonkeyPatch, revision: str, tree: str, hashes: dict[str, str]
+) -> None:
+    monkeypatch.setattr(synthea, "_SYNTHEA_REVISION", revision)
+    monkeypatch.setattr(synthea, "_SYNTHEA_TREE", tree)
+    monkeypatch.setattr(synthea, "_SOURCE_FILE_SHA256", hashes)
+
+
+def _write_fake_synthea_output(output: Path) -> None:
+    fhir = output / "fhir"
+    fhir.mkdir()
+    for index, payload in enumerate(_run()):
+        (fhir / f"patient-{index:04d}.json").write_bytes(payload)
 
 
 def test_exact_authorization_and_rights_artifacts_are_admitted() -> None:
@@ -226,6 +286,97 @@ def test_duplicate_patient_identity_fails_closed() -> None:
             authorization=_authorization(),
             rights_review=_rights(),
         )
+
+
+def test_authorized_execution_uses_distinct_pristine_disposable_source_clones(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    authorization = _authorization()
+    rights = _rights()
+    source, revision, tree, hashes = _fake_synthea_checkout(tmp_path)
+    _install_fake_synthea_identity(monkeypatch, revision, tree, hashes)
+    output = tmp_path / "output"
+    output.mkdir()
+    observed_sources: list[Path] = []
+
+    def runner(run_source: Path, run_output: Path) -> None:
+        observed_sources.append(run_source)
+        assert run_source != source
+        assert not (run_source / "build" / "run-a-residue").exists()
+        build = run_source / "build"
+        build.mkdir()
+        marker = "run-a-residue" if len(observed_sources) == 1 else "run-b-residue"
+        (build / marker).write_text("generated\n", encoding="utf-8")
+        _write_fake_synthea_output(run_output)
+
+    result = synthea.run_authorized_synthea_corpus(
+        source_root=source,
+        output_root=output,
+        authorization=authorization,
+        rights_review=rights,
+        runner=runner,
+    )
+
+    assert len(observed_sources) == 2
+    assert observed_sources[0] != observed_sources[1]
+    assert all(not path.exists() for path in observed_sources)
+    assert result.record_ids == tuple(f"synthea-{index:04d}" for index in range(16))
+
+
+def test_authorized_execution_cleans_disposable_clone_after_runner_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    authorization = _authorization()
+    rights = _rights()
+    source, revision, tree, hashes = _fake_synthea_checkout(tmp_path)
+    _install_fake_synthea_identity(monkeypatch, revision, tree, hashes)
+    output = tmp_path / "output"
+    output.mkdir()
+    observed_sources: list[Path] = []
+
+    def runner(run_source: Path, run_output: Path) -> None:
+        del run_output
+        observed_sources.append(run_source)
+        raise MRL0802SyntheaCorpusError("synthetic runner failure")
+
+    with pytest.raises(MRL0802SyntheaCorpusError, match="synthetic runner failure"):
+        synthea.run_authorized_synthea_corpus(
+            source_root=source,
+            output_root=output,
+            authorization=authorization,
+            rights_review=rights,
+            runner=runner,
+        )
+    assert len(observed_sources) == 1
+    assert not observed_sources[0].exists()
+
+
+def test_authorized_execution_rejects_post_run_tracked_source_mutation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    authorization = _authorization()
+    rights = _rights()
+    source, revision, tree, hashes = _fake_synthea_checkout(tmp_path)
+    _install_fake_synthea_identity(monkeypatch, revision, tree, hashes)
+    output = tmp_path / "output"
+    output.mkdir()
+    observed_sources: list[Path] = []
+
+    def runner(run_source: Path, run_output: Path) -> None:
+        observed_sources.append(run_source)
+        (run_source / "README.md").write_text("mutated\n", encoding="utf-8")
+        _write_fake_synthea_output(run_output)
+
+    with pytest.raises(MRL0802SyntheaCorpusError, match="tracked worktree bytes"):
+        synthea.run_authorized_synthea_corpus(
+            source_root=source,
+            output_root=output,
+            authorization=authorization,
+            rights_review=rights,
+            runner=runner,
+        )
+    assert len(observed_sources) == 1
+    assert not observed_sources[0].exists()
 
 
 def test_ignored_build_state_is_rejected(tmp_path: Path) -> None:

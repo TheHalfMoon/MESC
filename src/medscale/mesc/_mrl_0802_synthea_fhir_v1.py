@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import shutil
 import subprocess
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
@@ -152,6 +153,11 @@ def require_exact_synthea_checkout(source_root: Path) -> Path:
     if top != root:
         raise MRL0802SyntheaCorpusError("Synthea source root is not the exact Git work-tree root")
     _require_pristine_git_tree(root)
+    _require_authorized_synthea_identity(root)
+    return root
+
+
+def _require_authorized_synthea_identity(root: Path) -> None:
     if _git(root, "rev-parse", "HEAD") != _SYNTHEA_REVISION:
         raise MRL0802SyntheaCorpusError("Synthea source revision is not authorized")
     if _git(root, "rev-parse", "HEAD^{tree}") != _SYNTHEA_TREE:
@@ -162,10 +168,9 @@ def require_exact_synthea_checkout(source_root: Path) -> Path:
             raise MRL0802SyntheaCorpusError("Synthea source file escaped the authorized root")
         if hashlib.sha256(path.read_bytes()).hexdigest() != expected:
             raise MRL0802SyntheaCorpusError(f"Synthea source file identity mismatch: {relative}")
-    return root
 
 
-def _require_pristine_git_tree(root: Path) -> None:
+def _require_tracked_git_tree(root: Path) -> None:
     tagged = _git(root, "ls-files", "-v", "-z")
     for record in tagged.split("\0"):
         if not record:
@@ -189,12 +194,60 @@ def _require_pristine_git_tree(root: Path) -> None:
             raise MRL0802SyntheaCorpusError(
                 "Synthea tracked worktree bytes must match the exact HEAD tree"
             )
+
+
+def _require_pristine_git_tree(root: Path) -> None:
+    _require_tracked_git_tree(root)
     if _git(root, "status", "--porcelain", "--untracked-files=all"):
         raise MRL0802SyntheaCorpusError("Synthea source work tree must be clean")
     if _git(root, "clean", "-ndx"):
         raise MRL0802SyntheaCorpusError(
             "Synthea source work tree must contain no ignored or untracked build state"
         )
+
+
+def _clone_exact_synthea_checkout(source: Path, clone_root: Path) -> Path:
+    if clone_root.exists() or clone_root.is_symlink():
+        raise MRL0802SyntheaCorpusError("disposable Synthea clone path already exists")
+    completed = subprocess.run(
+        ["git", "clone", "--no-hardlinks", "--no-checkout", "--", str(source), str(clone_root)],
+        check=False,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    if completed.returncode != 0:
+        raise MRL0802SyntheaCorpusError("disposable Synthea clone could not be created")
+    completed = subprocess.run(
+        ["git", "-C", str(clone_root), "checkout", "--detach", _SYNTHEA_REVISION],
+        check=False,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    if completed.returncode != 0:
+        raise MRL0802SyntheaCorpusError(
+            "disposable Synthea clone could not check out the authorized revision"
+        )
+    return require_exact_synthea_checkout(clone_root)
+
+
+def _run_isolated_synthea_once(
+    *,
+    source: Path,
+    clone_root: Path,
+    run_root: Path,
+    execute: SyntheaRunner,
+) -> None:
+    try:
+        clone = _clone_exact_synthea_checkout(source, clone_root)
+        execute(clone, run_root)
+        _require_tracked_git_tree(clone)
+        _require_authorized_synthea_identity(clone)
+    finally:
+        if clone_root.exists() or clone_root.is_symlink():
+            try:
+                shutil.rmtree(clone_root)
+            except OSError as exc:
+                raise MRL0802SyntheaCorpusError("disposable Synthea clone cleanup failed") from exc
 
 
 def run_authorized_synthea_corpus(
@@ -220,8 +273,12 @@ def run_authorized_synthea_corpus(
     run_a.mkdir()
     run_b.mkdir()
     execute = runner or _subprocess_synthea_runner
-    execute(source, run_a)
-    execute(source, run_b)
+    _run_isolated_synthea_once(
+        source=source, clone_root=output / "source-a", run_root=run_a, execute=execute
+    )
+    _run_isolated_synthea_once(
+        source=source, clone_root=output / "source-b", run_root=run_b, execute=execute
+    )
     first_files = _read_fhir_outputs(run_a)
     second_files = _read_fhir_outputs(run_b)
     return qualify_mrl_0802_synthea_runs(
