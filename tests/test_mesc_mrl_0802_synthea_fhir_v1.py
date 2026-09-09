@@ -269,20 +269,19 @@ def test_unsafe_tracked_index_flags_fail_closed(tmp_path: Path, flag: str) -> No
 
 
 @pytest.mark.parametrize("flag", ["--assume-unchanged", "--skip-worktree"])
-def test_repository_preimport_rejects_hidden_medscale_mutation(
-    tmp_path: Path, flag: str
-) -> None:
+def test_repository_preimport_rejects_hidden_medscale_mutation(tmp_path: Path, flag: str) -> None:
     cli = _load_synthea_cli()
     repository = tmp_path / "mesc"
     package_file = repository / "src/medscale/__init__.py"
     module_file = repository / "src/medscale/mesc/_mrl_0802_synthea_fhir_v1.py"
-    auth_file = (
-        repository
-        / "specs/mesc-experiment-0/mrl-0802-synthetic-fhir-corpus-authorization-v1.json"
+    auth_relative = Path(
+        "specs/mesc-experiment-0/mrl-0802-synthetic-fhir-corpus-authorization-v1.json"
     )
-    rights_file = (
-        repository / "specs/mesc-experiment-0/mrl-0802-synthetic-fhir-rights-review-v1.json"
+    rights_relative = Path(
+        "specs/mesc-experiment-0/mrl-0802-synthetic-fhir-rights-review-v1.json"
     )
+    auth_file = repository / auth_relative
+    rights_file = repository / rights_relative
     for path in (package_file, module_file, auth_file, rights_file):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("committed\n", encoding="utf-8")
