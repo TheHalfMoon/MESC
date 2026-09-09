@@ -124,8 +124,35 @@ def _require_clean_repository(root: Path) -> Path:
     top = Path(_git_text(repository, "rev-parse", "--show-toplevel").strip()).resolve(strict=True)
     if top != repository:
         raise EntrypointError("repository_root is not the exact Git work-tree root")
+
+    tagged = _git_text(repository, "ls-files", "-v", "-z")
+    for record in tagged.split("\0"):
+        if not record:
+            continue
+        tag = record[0]
+        if tag == "S" or tag.islower():
+            raise EntrypointError("repository contains an unsafe Git index flag")
+
+    for arguments in (
+        ("diff-files", "--quiet", "--"),
+        ("diff-index", "--cached", "--quiet", "HEAD", "--"),
+    ):
+        completed = subprocess.run(
+            ["git", "-C", str(repository), *arguments],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        if completed.returncode != 0:
+            raise EntrypointError("repository tracked bytes must match exact HEAD before import")
+
     if _git_text(repository, "status", "--porcelain", "--untracked-files=all").strip():
         raise EntrypointError("repository work tree must be clean before corpus execution")
+    if _git_text(repository, "clean", "-ndx").strip():
+        raise EntrypointError(
+            "repository work tree must contain no ignored or untracked state before import"
+        )
+
     for relative in (_MODULE, _AUTH, _RIGHTS):
         path = (repository / relative).resolve(strict=True)
         committed = _git_bytes(repository, "show", f"HEAD:{relative.as_posix()}")
