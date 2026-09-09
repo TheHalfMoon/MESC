@@ -8,6 +8,11 @@
 
 ## 1. North star
 
+Implementation companion: the [2026-09-09 delivery roadmap](../execution/implementation_roadmap_2026-09-09.md)
+and [task backlog](../execution/implementation_backlog_2026-09-09.md) translate this strategy
+into bounded work with proposed acceptance targets. They preserve this program's authority
+boundaries and reuse Experiment-0 rather than creating a parallel tournament.
+
 Build and independently validate the strongest health-focused open-weight research model
 MESC can responsibly produce.
 

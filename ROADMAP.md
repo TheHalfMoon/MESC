@@ -6,6 +6,14 @@ The authoritative scope document is the [Research Vision](docs/vision/MEDSCALE_R
 
 ## Live status and authority
 
+For the concrete delivery sequence, start with the
+[2026-09-09 implementation roadmap](docs/execution/implementation_roadmap_2026-09-09.md)
+and its [task backlog](docs/execution/implementation_backlog_2026-09-09.md).
+They translate the performance-first strategy into scoped deliverables, proposed metrics,
+dependencies, acceptance checks and stop conditions. The
+[OpenMed gap review](docs/architecture/openmed_gap_review_2026-09-09.md) records the comparison
+basis. These planning documents do not change canonical execution eligibility or readiness.
+
 This file cannot authorize execution, training, model promotion, publication, release, or clinical use. For MESC Research Loop V1 work, live status follows this precedence:
 
 ```text

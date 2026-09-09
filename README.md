@@ -73,6 +73,12 @@ The public package surface includes reproducibility primitives, literature datab
 
 Start with the [Documentation Index](docs/README.md) and the [Glossary](docs/glossary.md).
 
+For the next implementation work, use the
+[delivery roadmap](docs/execution/implementation_roadmap_2026-09-09.md),
+[task backlog](docs/execution/implementation_backlog_2026-09-09.md), and
+[OpenMed gap review](docs/architecture/openmed_gap_review_2026-09-09.md).
+Targets in these documents are proposed acceptance criteria, not measured performance claims.
+
 ## Quickstart (development)
 
 MedScale uses [uv](https://docs.astral.sh/uv/) and Python 3.11+.
