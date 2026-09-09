@@ -403,6 +403,20 @@ def test_subprocess_runner_isolates_gradle_user_home(
     assert observed["cwd"] == source
 
 
+def test_post_run_attestation_rejects_staged_tracked_source_mutation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source, revision, tree, hashes = _fake_exact_synthea_repo(tmp_path)
+    monkeypatch.setattr(synthea, "_SYNTHEA_REVISION", revision)
+    monkeypatch.setattr(synthea, "_SYNTHEA_TREE", tree)
+    monkeypatch.setattr(synthea, "_SOURCE_FILE_SHA256", hashes)
+    clone = synthea._clone_exact_synthea_source(source, tmp_path / "clone")
+    (clone / "README.md").write_text("staged mutation\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(clone), "add", "README.md"], check=True)
+    with pytest.raises(MRL0802SyntheaCorpusError, match="mutated tracked source bytes"):
+        synthea._require_tracked_source_unchanged(clone)
+
+
 def test_generation_runs_use_independent_pristine_disposable_sources(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

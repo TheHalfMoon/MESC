@@ -244,14 +244,25 @@ def _clone_exact_synthea_source(source: Path, destination: Path) -> Path:
 
 
 def _require_tracked_source_unchanged(root: Path) -> None:
-    """Require execution to leave every tracked source byte at the authorized revision."""
-    completed = subprocess.run(
-        ["git", "-C", str(root), "diff-files", "--quiet", "--ignore-submodules", "--"],
-        check=False,
-        capture_output=True,
-    )
-    if completed.returncode != 0:
-        raise MRL0802SyntheaCorpusError("Synthea execution mutated tracked source bytes")
+    """Require execution to leave tracked worktree and index state at the authorized revision."""
+    tagged = _git(root, "ls-files", "-v", "-z")
+    for record in tagged.split("\0"):
+        if not record:
+            continue
+        tag = record[0]
+        if tag == "S" or tag.islower():
+            raise MRL0802SyntheaCorpusError("Synthea execution introduced an unsafe Git index flag")
+    for arguments in (
+        ("diff-files", "--quiet", "--ignore-submodules", "--"),
+        ("diff-index", "--cached", "--quiet", "HEAD", "--"),
+    ):
+        completed = subprocess.run(
+            ["git", "-C", str(root), *arguments],
+            check=False,
+            capture_output=True,
+        )
+        if completed.returncode != 0:
+            raise MRL0802SyntheaCorpusError("Synthea execution mutated tracked source bytes")
     if _git(root, "rev-parse", "HEAD") != _SYNTHEA_REVISION:
         raise MRL0802SyntheaCorpusError("Synthea execution changed source revision")
     if _git(root, "rev-parse", "HEAD^{tree}") != _SYNTHEA_TREE:
