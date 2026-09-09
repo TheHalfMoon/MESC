@@ -166,6 +166,29 @@ def require_exact_synthea_checkout(source_root: Path) -> Path:
 
 
 def _require_pristine_git_tree(root: Path) -> None:
+    tagged = _git(root, "ls-files", "-v", "-z")
+    for record in tagged.split("\0"):
+        if not record:
+            continue
+        tag = record[0]
+        if tag == "S" or tag.islower():
+            raise MRL0802SyntheaCorpusError(
+                "Synthea source work tree contains an unsafe Git index flag"
+            )
+    for arguments in (
+        ("diff-files", "--quiet", "--"),
+        ("diff-index", "--cached", "--quiet", "HEAD", "--"),
+    ):
+        completed = subprocess.run(
+            ["git", "-C", str(root), *arguments],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        if completed.returncode != 0:
+            raise MRL0802SyntheaCorpusError(
+                "Synthea tracked worktree bytes must match the exact HEAD tree"
+            )
     if _git(root, "status", "--porcelain", "--untracked-files=all"):
         raise MRL0802SyntheaCorpusError("Synthea source work tree must be clean")
     if _git(root, "clean", "-ndx"):

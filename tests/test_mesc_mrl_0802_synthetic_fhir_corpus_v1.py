@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import sys
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -100,6 +101,15 @@ def test_check_fails_closed_without_rewriting_stale_artifact(
     )
     assert cli.main() == 1
     assert stale_path.read_bytes() == b"stale\n"
+
+
+def test_fixture_full_urls_are_valid_uuid_urns() -> None:
+    for line in FIXTURES.read_text(encoding="utf-8").splitlines():
+        record = json.loads(line)
+        for entry in record["entry"]:
+            full_url = entry["fullUrl"]
+            assert full_url.startswith("urn:uuid:")
+            uuid.UUID(full_url.removeprefix("urn:uuid:"))
 
 
 def test_fixture_bytes_fail_closed_on_mutation() -> None:

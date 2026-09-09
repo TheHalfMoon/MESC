@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import importlib
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -49,6 +51,70 @@ def _git_bytes(root: Path, *arguments: str) -> bytes:
     if completed.returncode != 0:
         raise EntrypointError("repository Git identity cannot be resolved")
     return completed.stdout
+
+
+def _require_authorized_repository_identity(
+    repository: Path, authorization_raw: bytes
+) -> tuple[str, str]:
+    try:
+        document = json.loads(authorization_raw.decode("utf-8"))
+        authorized_base = document["authorized_base"]
+        base_sha = authorized_base["main_sha"]
+        base_tree = authorized_base["main_tree"]
+    except (KeyError, TypeError, UnicodeDecodeError, ValueError) as exc:
+        raise EntrypointError("authorization lacks exact canonical base identity") from exc
+    if type(base_sha) is not str or type(base_tree) is not str:
+        raise EntrypointError("authorization canonical base identity is invalid")
+    if _git_text(repository, "rev-parse", f"{base_sha}^{{tree}}").strip() != base_tree:
+        raise EntrypointError("authorization canonical base tree does not match Git history")
+    ancestry = subprocess.run(
+        ["git", "-C", str(repository), "merge-base", "--is-ancestor", base_sha, "HEAD"],
+        check=False,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    if ancestry.returncode != 0:
+        raise EntrypointError("repository HEAD is outside the authorized canonical-base lineage")
+    return (
+        _git_text(repository, "rev-parse", "HEAD").strip(),
+        _git_text(repository, "rev-parse", "HEAD^{tree}").strip(),
+    )
+
+
+def _canonical_json_bytes(value: object) -> bytes:
+    return (
+        json.dumps(
+            value, ensure_ascii=False, allow_nan=False, separators=(",", ":"), sort_keys=True
+        )
+        + "\n"
+    ).encode("utf-8")
+
+
+def _bind_repository_identity(
+    provenance_bytes: bytes,
+    evidence_bytes: bytes,
+    *,
+    repository_commit: str,
+    repository_tree: str,
+) -> tuple[bytes, bytes, str, str]:
+    provenance = json.loads(provenance_bytes)
+    evidence = json.loads(evidence_bytes)
+    if type(provenance) is not dict or type(evidence) is not dict:
+        raise EntrypointError("generated evidence shape is invalid")
+    provenance["mesc_executor"] = {
+        "repository": "TheHalfMoon/MESC",
+        "commit": repository_commit,
+        "tree": repository_tree,
+    }
+    bound_provenance = _canonical_json_bytes(provenance)
+    provenance_sha256 = hashlib.sha256(bound_provenance).hexdigest()
+    payload = evidence.get("payload")
+    if type(payload) is not dict:
+        raise EntrypointError("generated evidence payload is invalid")
+    payload["provenance_sha256"] = provenance_sha256
+    bound_evidence = _canonical_json_bytes(evidence)
+    evidence_sha256 = hashlib.sha256(bound_evidence).hexdigest()
+    return bound_provenance, bound_evidence, provenance_sha256, evidence_sha256
 
 
 def _require_clean_repository(root: Path) -> Path:
@@ -121,9 +187,11 @@ def main(argv: list[str] | None = None) -> int:
         repository = _require_clean_repository(args.repository_root)
         module = _load_module(repository)
         output_root = args.output_root.expanduser().resolve(strict=True)
-        authorization = module.parse_mrl_0802_synthea_authorization(
-            (repository / _AUTH).read_bytes()
+        authorization_raw = (repository / _AUTH).read_bytes()
+        repository_commit, repository_tree = _require_authorized_repository_identity(
+            repository, authorization_raw
         )
+        authorization = module.parse_mrl_0802_synthea_authorization(authorization_raw)
         rights_review = module.parse_mrl_0802_synthea_rights_review(
             (repository / _RIGHTS).read_bytes()
         )
@@ -134,20 +202,31 @@ def main(argv: list[str] | None = None) -> int:
             rights_review=rights_review,
             repository_root=repository,
         )
+        provenance_bytes, evidence_bytes, provenance_sha256, evidence_sha256 = (
+            _bind_repository_identity(
+                result.provenance_bytes,
+                result.evidence_bytes,
+                repository_commit=repository_commit,
+                repository_tree=repository_tree,
+            )
+        )
+        parsed = module.parse_mrl_real_preflight_evidence(evidence_bytes)
+        if parsed.evidence_sha256 != evidence_sha256:
+            raise EntrypointError("repository-bound evidence failed semantic validation")
         evidence_root = output_root / "evidence"
         evidence_root.mkdir()
         _write_new(evidence_root / "corpus.jsonl", result.corpus_bytes)
         _write_new(evidence_root / "rights.json", result.rights_bytes)
-        _write_new(evidence_root / "provenance.json", result.provenance_bytes)
-        _write_new(evidence_root / "mrl-0802-real-preflight-evidence.json", result.evidence_bytes)
+        _write_new(evidence_root / "provenance.json", provenance_bytes)
+        _write_new(evidence_root / "mrl-0802-real-preflight-evidence.json", evidence_bytes)
     except (EntrypointError, OSError, ValueError) as exc:
         print(f"BLOCKED: {exc}", file=sys.stderr)
         return 1
 
     print(f"corpus_sha256={result.corpus_sha256}")
     print(f"rights_evidence_sha256={result.rights_evidence_sha256}")
-    print(f"provenance_sha256={result.provenance_sha256}")
-    print(f"evidence_sha256={result.evidence_sha256}")
+    print(f"provenance_sha256={provenance_sha256}")
+    print(f"evidence_sha256={evidence_sha256}")
     print(f"raw_run_a_sha256={result.raw_run_a_sha256}")
     print(f"raw_run_b_sha256={result.raw_run_b_sha256}")
     print(f"record_count={len(result.record_ids)}")

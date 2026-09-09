@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import uuid
 from dataclasses import dataclass, field
 from typing import Final, cast
 
@@ -27,7 +28,7 @@ _AUTHORIZED_BASE_TREE: Final = "0f93d3ead71a3b0c069e2c86550af00d0aa55964"
 _ISSUE_BODY_SHA256: Final = "cc44934712f38e3663f38e689c8f3a735dc94ef78d946459a0b7ca96fb7647d9"
 _ISSUE_CREATED_AT: Final = "2026-09-08T22:58:48Z"
 _FIXTURE_PATH: Final = "data/mesc-mrl-0802-fhir-v1/source-fixtures.jsonl"
-_FIXTURE_SHA256: Final = "b1a78c41ce72bb5f48e4f4b16379755e9f1465be8392940ec73140285e0939bc"
+_FIXTURE_SHA256: Final = "042e5107b05f2383b04981a5bf0199610febdf3b01e3f66da8ef5e15d45db380"
 _LICENSE_PATH: Final = "data/mesc-mrl-0802-fhir-v1/LICENSE.md"
 _LICENSE_SHA256: Final = "594a0bb176594fa05559093c38b705524ac0863864415aa9553c58afb91c9f55"
 _SYNTHEA_REVISION: Final = "0185c09ea9d10a822c6f5f3ef9bdcbcbe960c813"
@@ -310,6 +311,15 @@ def _validate_bundle(bundle: dict[str, object]) -> str:
     for entry in entries:
         if type(entry) is not dict or type(entry.get("resource")) is not dict:
             raise MRL0802SyntheticFHIRCorpusError("bundle entries must contain resources")
+        full_url = entry.get("fullUrl")
+        if type(full_url) is not str or not full_url.startswith("urn:uuid:"):
+            raise MRL0802SyntheticFHIRCorpusError("bundle entry fullUrl must be a UUID URN")
+        try:
+            uuid.UUID(full_url.removeprefix("urn:uuid:"))
+        except ValueError as exc:
+            raise MRL0802SyntheticFHIRCorpusError(
+                "bundle entry fullUrl must contain a valid UUID"
+            ) from exc
         resource = cast(dict[str, object], entry["resource"])
         _require_synthetic_tag(resource, label=str(resource.get("resourceType", "resource")))
         _reject_prohibited_fields(resource)

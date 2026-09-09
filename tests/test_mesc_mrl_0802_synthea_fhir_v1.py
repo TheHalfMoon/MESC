@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import hashlib
+import importlib.util
 import json
 from pathlib import Path
+from types import ModuleType
 
 import pytest
 
@@ -19,6 +22,18 @@ from medscale.mesc._mrl_0802_synthea_fhir_v1 import (
 from medscale.mesc._mrl_real_preflight_evidence_v1 import parse_mrl_real_preflight_evidence
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def _load_synthea_cli() -> ModuleType:
+    script = ROOT / "scripts/mesc_mrl_0802_synthea_qualify.py"
+    spec = importlib.util.spec_from_file_location("mesc_mrl_0802_synthea_cli_test", script)
+    if spec is None or spec.loader is None:
+        raise AssertionError("cannot load Synthea qualification CLI")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 AUTH = ROOT / "specs/mesc-experiment-0/mrl-0802-synthetic-fhir-corpus-authorization-v1.json"
 RIGHTS = ROOT / "specs/mesc-experiment-0/mrl-0802-synthetic-fhir-rights-review-v1.json"
 AUTH_SHA256 = "d1aec2915d02da100cf7c941c3ecc89fb584bfb4cc8c3968ecff96bab382c291"
@@ -231,6 +246,54 @@ def test_ignored_build_state_is_rejected(tmp_path: Path) -> None:
     (source / "build/cache.bin").write_bytes(b"stale")
     with pytest.raises(MRL0802SyntheaCorpusError, match="ignored or untracked build state"):
         _require_pristine_git_tree(source)
+
+
+@pytest.mark.parametrize("flag", ["--assume-unchanged", "--skip-worktree"])
+def test_unsafe_tracked_index_flags_fail_closed(tmp_path: Path, flag: str) -> None:
+    import subprocess
+
+    source = tmp_path / "synthea"
+    source.mkdir()
+    subprocess.run(["git", "init", "-q", str(source)], check=True)
+    subprocess.run(
+        ["git", "-C", str(source), "config", "user.email", "test@example.com"], check=True
+    )
+    subprocess.run(["git", "-C", str(source), "config", "user.name", "test"], check=True)
+    tracked = source / "tracked.txt"
+    tracked.write_text("tracked\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(source), "add", "tracked.txt"], check=True)
+    subprocess.run(["git", "-C", str(source), "commit", "-qm", "base"], check=True)
+    subprocess.run(["git", "-C", str(source), "update-index", flag, "tracked.txt"], check=True)
+    tracked.write_text("foreign\n", encoding="utf-8")
+    with pytest.raises(MRL0802SyntheaCorpusError, match="unsafe Git index flag"):
+        _require_pristine_git_tree(source)
+
+
+def test_operational_evidence_binds_exact_mesc_git_identity() -> None:
+    cli = _load_synthea_cli()
+    repository_commit, repository_tree = cli._require_authorized_repository_identity(
+        ROOT, AUTH.read_bytes()
+    )
+    result = qualify_mrl_0802_synthea_runs(
+        _run(), _run(), authorization=_authorization(), rights_review=_rights()
+    )
+    provenance_bytes, evidence_bytes, provenance_sha256, evidence_sha256 = (
+        cli._bind_repository_identity(
+            result.provenance_bytes,
+            result.evidence_bytes,
+            repository_commit=repository_commit,
+            repository_tree=repository_tree,
+        )
+    )
+    provenance = json.loads(provenance_bytes)
+    evidence = json.loads(evidence_bytes)
+    assert provenance["mesc_executor"] == {
+        "repository": "TheHalfMoon/MESC",
+        "commit": repository_commit,
+        "tree": repository_tree,
+    }
+    assert evidence["payload"]["provenance_sha256"] == provenance_sha256
+    assert hashlib.sha256(evidence_bytes).hexdigest() == evidence_sha256
 
 
 def test_external_output_rejects_symlink_traversal(tmp_path: Path) -> None:
