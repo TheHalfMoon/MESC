@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import importlib.util
 import json
 import sys
 from pathlib import Path
+from types import ModuleType
 
 import pytest
 
@@ -14,12 +16,21 @@ from medscale.mesc._mrl_0802_synthetic_fhir_corpus_v1 import (
     parse_mrl_0802_authorization,
 )
 from medscale.mesc._mrl_real_preflight_evidence_v1 import parse_mrl_real_preflight_evidence
-from scripts.mesc_mrl_0802_fixture_qualify import evidence_artifacts, evidence_drift, main
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = ROOT / "data/mesc-mrl-0802-fhir-v1/source-fixtures.jsonl"
 AUTH = ROOT / "specs/mesc-experiment-0/mrl-0802-synthetic-fhir-authorization-v1.json"
 EVIDENCE = ROOT / "data/mesc-mrl-0802-fhir-v1/evidence"
+
+
+def _load_fixture_cli() -> ModuleType:
+    script = ROOT / "scripts/mesc_mrl_0802_fixture_qualify.py"
+    spec = importlib.util.spec_from_file_location("mesc_mrl_0802_fixture_cli_test", script)
+    if spec is None or spec.loader is None:
+        raise AssertionError("cannot load fixture qualification CLI")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def _qualification() -> MRL0802CorpusQualification:
@@ -55,22 +66,24 @@ def test_rights_and_provenance_bind_actual_corpus() -> None:
 
 
 def test_committed_evidence_matches_generated_bytes() -> None:
-    artifacts = evidence_artifacts(_qualification())
+    cli = _load_fixture_cli()
+    artifacts = cli.evidence_artifacts(_qualification())
     assert set(artifacts) == {
         "corpus.jsonl",
         "rights.json",
         "provenance.json",
         "mrl-0802-real-preflight-evidence.json",
     }
-    assert evidence_drift(EVIDENCE, artifacts) == ()
+    assert cli.evidence_drift(EVIDENCE, artifacts) == ()
 
 
 def test_check_fails_closed_without_rewriting_stale_artifact(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    cli = _load_fixture_cli()
     output = tmp_path / "evidence"
     output.mkdir()
-    artifacts = evidence_artifacts(_qualification())
+    artifacts = cli.evidence_artifacts(_qualification())
     for name, payload in artifacts.items():
         (output / name).write_bytes(payload)
     stale_path = output / "provenance.json"
@@ -85,7 +98,7 @@ def test_check_fails_closed_without_rewriting_stale_artifact(
             str(output),
         ],
     )
-    assert main() == 1
+    assert cli.main() == 1
     assert stale_path.read_bytes() == b"stale\n"
 
 
