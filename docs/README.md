@@ -16,6 +16,10 @@ Any hosted rendering/deployment decision remains separately scoped.
 
 ## Reading order
 
+**Implementing next:** [delivery roadmap](execution/implementation_roadmap_2026-09-09.md)
+and [scoped backlog](execution/implementation_backlog_2026-09-09.md), supported by the
+[OpenMed gap review](architecture/openmed_gap_review_2026-09-09.md).
+
 1. [README](../README.md) — what MedScale is, in one page.
 2. [Strategic Blueprint](vision/MEDSCALE_STRATEGIC_BLUEPRINT_V1.md) — the full narrative.
 3. [Research Vision](vision/MEDSCALE_RESEARCH_VISION.md) — scope authority (what is / is not).
