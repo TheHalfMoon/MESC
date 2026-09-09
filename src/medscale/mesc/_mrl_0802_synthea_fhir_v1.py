@@ -257,7 +257,7 @@ def _require_tracked_source_unchanged(root: Path) -> None:
         ("diff-index", "--cached", "--quiet", "HEAD", "--"),
     ):
         completed = subprocess.run(
-            ["git", "-C", str(root), *arguments],
+            ["git", "-C", str(root), "-c", "core.filemode=true", *arguments],
             check=False,
             capture_output=True,
         )

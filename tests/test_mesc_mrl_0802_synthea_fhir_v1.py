@@ -443,6 +443,37 @@ def test_post_run_attestation_rejects_staged_tracked_source_mutation(
         synthea._require_tracked_source_unchanged(clone)
 
 
+def test_post_run_attestation_rejects_executable_mode_mutation_with_filemode_disabled(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source, revision, tree, hashes = _fake_exact_synthea_repo(tmp_path)
+    monkeypatch.setattr(synthea, "_SYNTHEA_REVISION", revision)
+    monkeypatch.setattr(synthea, "_SYNTHEA_TREE", tree)
+    monkeypatch.setattr(synthea, "_SOURCE_FILE_SHA256", hashes)
+    clone = synthea._clone_exact_synthea_source(source, tmp_path / "clone-mode")
+    subprocess.run(["git", "-C", str(clone), "config", "core.filemode", "false"], check=True)
+    executable = clone / "run_synthea"
+    executable.chmod(executable.stat().st_mode | 0o111)
+
+    with pytest.raises(MRL0802SyntheaCorpusError, match="mutated tracked source bytes"):
+        synthea._require_tracked_source_unchanged(clone)
+
+
+def test_disposable_source_cleanup_unlinks_symlink_without_touching_target(tmp_path: Path) -> None:
+    external = tmp_path / "external-target"
+    external.mkdir()
+    sentinel = external / "sentinel.txt"
+    sentinel.write_text("preserve\n", encoding="utf-8")
+    source = tmp_path / "source-link"
+    source.symlink_to(external, target_is_directory=True)
+
+    synthea._remove_disposable_synthea_sources((source,))
+
+    assert not source.exists()
+    assert not source.is_symlink()
+    assert sentinel.read_text(encoding="utf-8") == "preserve\n"
+
+
 def test_generation_runs_use_independent_pristine_disposable_sources(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
