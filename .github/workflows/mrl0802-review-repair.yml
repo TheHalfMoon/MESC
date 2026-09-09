@@ -43,7 +43,6 @@ jobs:
                   raise SystemExit(f"expected exactly one replacement in {path}: {old[:80]!r}")
               path.write_text(text.replace(old, new), encoding="utf-8")
 
-          # Finding A: valid FHIR UUID URNs plus validator coverage.
           fixture_path = root / "data/mesc-mrl-0802-fhir-v1/source-fixtures.jsonl"
           records = [json.loads(line) for line in fixture_path.read_text(encoding="utf-8").splitlines()]
           for record in records:
@@ -83,7 +82,6 @@ jobs:
               encoding="utf-8",
           )
 
-          # Finding E: reject unsafe index flags before trusting a clean Synthea worktree.
           synthea_module = root / "src/medscale/mesc/_mrl_0802_synthea_fhir_v1.py"
           replace_exact(
               synthea_module,
@@ -91,7 +89,6 @@ jobs:
               '''def _require_pristine_git_tree(root: Path) -> None:\n    tagged = _git(root, "ls-files", "-v", "-z")\n    for record in tagged.split("\\0"):\n        if not record:\n            continue\n        tag = record[0]\n        if tag == "S" or tag.islower():\n            raise MRL0802SyntheaCorpusError(\n                "Synthea source work tree contains an unsafe Git index flag"\n            )\n    for arguments in (\n        ("diff-files", "--quiet", "--"),\n        ("diff-index", "--cached", "--quiet", "HEAD", "--"),\n    ):\n        completed = subprocess.run(\n            ["git", "-C", str(root), *arguments],\n            check=False,\n            stdout=subprocess.DEVNULL,\n            stderr=subprocess.DEVNULL,\n        )\n        if completed.returncode != 0:\n            raise MRL0802SyntheaCorpusError(\n                "Synthea tracked worktree bytes must match the exact HEAD tree"\n            )\n    if _git(root, "status", "--porcelain", "--untracked-files=all"):\n        raise MRL0802SyntheaCorpusError("Synthea source work tree must be clean")\n    if _git(root, "clean", "-ndx"):\n        raise MRL0802SyntheaCorpusError(\n            "Synthea source work tree must contain no ignored or untracked build state"\n        )\n''',
           )
 
-          # Finding B: bind operational output to authorized canonical ancestry and exact runtime Git identity.
           entrypoint = root / "scripts/mesc_mrl_0802_synthea_qualify.py"
           replace_exact(entrypoint, "import argparse\nimport importlib\n", "import argparse\nimport hashlib\nimport importlib\nimport json\n")
           replace_exact(
@@ -115,7 +112,6 @@ jobs:
               '''    print(f"provenance_sha256={provenance_sha256}")\n    print(f"evidence_sha256={evidence_sha256}")\n''',
           )
 
-          # Focused regressions.
           fixture_tests = root / "tests/test_mesc_mrl_0802_synthetic_fhir_corpus_v1.py"
           replace_exact(fixture_tests, "import sys\n", "import sys\nimport uuid\n")
           marker = "\ndef test_fixture_bytes_fail_closed_on_mutation() -> None:\n"
@@ -126,18 +122,31 @@ jobs:
           fixture_tests.write_text(text.replace(marker, addition + marker), encoding="utf-8")
 
           synthea_tests = root / "tests/test_mesc_mrl_0802_synthea_fhir_v1.py"
-          replace_exact(
-              synthea_tests,
-              'from medscale.mesc._mrl_real_preflight_evidence_v1 import parse_mrl_real_preflight_evidence\n',
-              'from medscale.mesc._mrl_real_preflight_evidence_v1 import parse_mrl_real_preflight_evidence\nfrom scripts.mesc_mrl_0802_synthea_qualify import (\n    _bind_repository_identity,\n    _require_authorized_repository_identity,\n)\n',
-          )
           marker = "\ndef test_external_output_rejects_symlink_traversal(tmp_path: Path) -> None:\n"
           text = synthea_tests.read_text(encoding="utf-8")
           if text.count(marker) != 1:
               raise SystemExit("Synthea test insertion marker drifted")
-          addition = '''\n@pytest.mark.parametrize("flag", ["--assume-unchanged", "--skip-worktree"])\ndef test_unsafe_tracked_index_flags_fail_closed(tmp_path: Path, flag: str) -> None:\n    import subprocess\n\n    source = tmp_path / "synthea"\n    source.mkdir()\n    subprocess.run(["git", "init", "-q", str(source)], check=True)\n    subprocess.run(\n        ["git", "-C", str(source), "config", "user.email", "test@example.com"], check=True\n    )\n    subprocess.run(["git", "-C", str(source), "config", "user.name", "test"], check=True)\n    tracked = source / "tracked.txt"\n    tracked.write_text("tracked\\n", encoding="utf-8")\n    subprocess.run(["git", "-C", str(source), "add", "tracked.txt"], check=True)\n    subprocess.run(["git", "-C", str(source), "commit", "-qm", "base"], check=True)\n    subprocess.run(["git", "-C", str(source), "update-index", flag, "tracked.txt"], check=True)\n    tracked.write_text("foreign\\n", encoding="utf-8")\n    with pytest.raises(MRL0802SyntheaCorpusError, match="unsafe Git index flag"):\n        _require_pristine_git_tree(source)\n\n\ndef test_operational_evidence_binds_exact_mesc_git_identity() -> None:\n    repository_commit, repository_tree = _require_authorized_repository_identity(\n        ROOT, AUTH.read_bytes()\n    )\n    result = qualify_mrl_0802_synthea_runs(\n        _run(),\n        _run(),\n        authorization=_authorization(),\n        rights_review=_rights(),\n    )\n    provenance_bytes, evidence_bytes, provenance_sha256, evidence_sha256 = (\n        _bind_repository_identity(\n            result.provenance_bytes,\n            result.evidence_bytes,\n            repository_commit=repository_commit,\n            repository_tree=repository_tree,\n        )\n    )\n    provenance = json.loads(provenance_bytes)\n    evidence = json.loads(evidence_bytes)\n    assert provenance["mesc_executor"] == {\n        "repository": "TheHalfMoon/MESC",\n        "commit": repository_commit,\n        "tree": repository_tree,\n    }\n    assert evidence["payload"]["provenance_sha256"] == provenance_sha256\n    assert hashlib.sha256(evidence_bytes).hexdigest() == evidence_sha256\n\n'''
+          addition = '''\n@pytest.mark.parametrize("flag", ["--assume-unchanged", "--skip-worktree"])\ndef test_unsafe_tracked_index_flags_fail_closed(tmp_path: Path, flag: str) -> None:\n    import subprocess\n\n    source = tmp_path / "synthea"\n    source.mkdir()\n    subprocess.run(["git", "init", "-q", str(source)], check=True)\n    subprocess.run(\n        ["git", "-C", str(source), "config", "user.email", "test@example.com"], check=True\n    )\n    subprocess.run(["git", "-C", str(source), "config", "user.name", "test"], check=True)\n    tracked = source / "tracked.txt"\n    tracked.write_text("tracked\\n", encoding="utf-8")\n    subprocess.run(["git", "-C", str(source), "add", "tracked.txt"], check=True)\n    subprocess.run(["git", "-C", str(source), "commit", "-qm", "base"], check=True)\n    subprocess.run(["git", "-C", str(source), "update-index", flag, "tracked.txt"], check=True)\n    tracked.write_text("foreign\\n", encoding="utf-8")\n    with pytest.raises(MRL0802SyntheaCorpusError, match="unsafe Git index flag"):\n        _require_pristine_git_tree(source)\n\n'''
           synthea_tests.write_text(text.replace(marker, addition + marker), encoding="utf-8")
-          replace_exact(synthea_tests, "import json\n", "import hashlib\nimport json\n")
+          PY
+
+      - name: Add isolated CLI identity regression
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path("tests/test_mesc_mrl_0802_synthea_fhir_v1.py")
+          text = path.read_text(encoding="utf-8")
+          text = text.replace("import json\n", "import hashlib\nimport importlib.util\nimport json\n", 1)
+          marker = 'ROOT = Path(__file__).resolve().parents[1]\n'
+          helper = '''ROOT = Path(__file__).resolve().parents[1]\n\ndef _load_synthea_cli():\n    script = ROOT / "scripts/mesc_mrl_0802_synthea_qualify.py"\n    spec = importlib.util.spec_from_file_location("mesc_mrl_0802_synthea_cli_test", script)\n    if spec is None or spec.loader is None:\n        raise AssertionError("cannot load Synthea qualification CLI")\n    module = importlib.util.module_from_spec(spec)\n    spec.loader.exec_module(module)\n    return module\n'''
+          if text.count(marker) != 1:
+              raise SystemExit("ROOT marker drifted")
+          text = text.replace(marker, helper, 1)
+          marker = "\ndef test_external_output_rejects_symlink_traversal(tmp_path: Path) -> None:\n"
+          test = '''\ndef test_operational_evidence_binds_exact_mesc_git_identity() -> None:\n    cli = _load_synthea_cli()\n    repository_commit, repository_tree = cli._require_authorized_repository_identity(\n        ROOT, AUTH.read_bytes()\n    )\n    result = qualify_mrl_0802_synthea_runs(\n        _run(),\n        _run(),\n        authorization=_authorization(),\n        rights_review=_rights(),\n    )\n    provenance_bytes, evidence_bytes, provenance_sha256, evidence_sha256 = (\n        cli._bind_repository_identity(\n            result.provenance_bytes,\n            result.evidence_bytes,\n            repository_commit=repository_commit,\n            repository_tree=repository_tree,\n        )\n    )\n    provenance = json.loads(provenance_bytes)\n    evidence = json.loads(evidence_bytes)\n    assert provenance["mesc_executor"] == {\n        "repository": "TheHalfMoon/MESC",\n        "commit": repository_commit,\n        "tree": repository_tree,\n    }\n    assert evidence["payload"]["provenance_sha256"] == provenance_sha256\n    assert hashlib.sha256(evidence_bytes).hexdigest() == evidence_sha256\n\n'''
+          if text.count(marker) != 1:
+              raise SystemExit("CLI regression insertion marker drifted")
+          path.write_text(text.replace(marker, test + marker, 1), encoding="utf-8")
           PY
 
       - name: Install uv
