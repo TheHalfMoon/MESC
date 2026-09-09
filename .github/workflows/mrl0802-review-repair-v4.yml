@@ -1,0 +1,165 @@
+name: MRL0802 Review Repair V4
+
+on:
+  push:
+    branches: [ops/mrl0802-review-repair-20260909]
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    env:
+      TARGET_BRANCH: feat/mrl-0802-synthetic-fhir-corpus-20260909
+      EXPECTED_HEAD: 627b877a7cfa91875d3e6821c8629e61dbb75440
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.TARGET_BRANCH }}
+          fetch-depth: 0
+
+      - name: Verify immutable target
+        run: |
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+          git fetch origin "$TARGET_BRANCH"
+          test "$(git rev-parse FETCH_HEAD)" = "$EXPECTED_HEAD"
+
+      - name: Apply deterministic repairs
+        run: |
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import uuid
+          from pathlib import Path
+
+          root = Path.cwd()
+
+          def replace_one(path: Path, old: str, new: str) -> None:
+              text = path.read_text(encoding="utf-8")
+              if text.count(old) != 1:
+                  raise SystemExit(f"replacement drift in {path}: {old[:80]!r}")
+              path.write_text(text.replace(old, new), encoding="utf-8")
+
+          fixture = root / "data/mesc-mrl-0802-fhir-v1/source-fixtures.jsonl"
+          records = [json.loads(line) for line in fixture.read_text(encoding="utf-8").splitlines()]
+          for record in records:
+              for entry in record["entry"]:
+                  resource_id = entry["resource"]["id"]
+                  entry["fullUrl"] = "urn:uuid:" + str(
+                      uuid.uuid5(uuid.NAMESPACE_URL, f"urn:mesc:mrl-0802:{resource_id}")
+                  )
+          fixture_bytes = (
+              "".join(
+                  json.dumps(r, ensure_ascii=False, allow_nan=False, separators=(",", ":"), sort_keys=True)
+                  + "\n"
+                  for r in records
+              ).encode("utf-8")
+          )
+          fixture.write_bytes(fixture_bytes)
+          fixture_sha = hashlib.sha256(fixture_bytes).hexdigest()
+
+          fixture_module = root / "src/medscale/mesc/_mrl_0802_synthetic_fhir_corpus_v1.py"
+          replace_one(fixture_module, "import hashlib\nimport json\n", "import hashlib\nimport json\nimport uuid\n")
+          replace_one(
+              fixture_module,
+              '    for entry in entries:\n        if type(entry) is not dict or type(entry.get("resource")) is not dict:\n            raise MRL0802SyntheticFHIRCorpusError("bundle entries must contain resources")\n        resource = cast(dict[str, object], entry["resource"])\n',
+              '    for entry in entries:\n        if type(entry) is not dict or type(entry.get("resource")) is not dict:\n            raise MRL0802SyntheticFHIRCorpusError("bundle entries must contain resources")\n        full_url = entry.get("fullUrl")\n        if type(full_url) is not str or not full_url.startswith("urn:uuid:"):\n            raise MRL0802SyntheticFHIRCorpusError("bundle entry fullUrl must be a UUID URN")\n        try:\n            uuid.UUID(full_url.removeprefix("urn:uuid:"))\n        except ValueError as exc:\n            raise MRL0802SyntheticFHIRCorpusError(\n                "bundle entry fullUrl must contain a valid UUID"\n            ) from exc\n        resource = cast(dict[str, object], entry["resource"])\n',
+          )
+          replace_one(
+              fixture_module,
+              '"b1a78c41ce72bb5f48e4f4b16379755e9f1465be8392940ec73140285e0939bc"',
+              f'"{fixture_sha}"',
+          )
+
+          fixture_auth = root / "specs/mesc-experiment-0/mrl-0802-synthetic-fhir-authorization-v1.json"
+          auth_doc = json.loads(fixture_auth.read_text(encoding="utf-8"))
+          auth_doc["fixture_source"]["sha256"] = fixture_sha
+          fixture_auth.write_text(
+              json.dumps(auth_doc, ensure_ascii=False, allow_nan=False, separators=(",", ":"), sort_keys=True)
+              + "\n",
+              encoding="utf-8",
+          )
+
+          synthea_module = root / "src/medscale/mesc/_mrl_0802_synthea_fhir_v1.py"
+          replace_one(
+              synthea_module,
+              '''def _require_pristine_git_tree(root: Path) -> None:\n    if _git(root, "status", "--porcelain", "--untracked-files=all"):\n        raise MRL0802SyntheaCorpusError("Synthea source work tree must be clean")\n    if _git(root, "clean", "-ndx"):\n        raise MRL0802SyntheaCorpusError(\n            "Synthea source work tree must contain no ignored or untracked build state"\n        )\n''',
+              '''def _require_pristine_git_tree(root: Path) -> None:\n    tagged = _git(root, "ls-files", "-v", "-z")\n    for record in tagged.split("\\0"):\n        if not record:\n            continue\n        tag = record[0]\n        if tag == "S" or tag.islower():\n            raise MRL0802SyntheaCorpusError(\n                "Synthea source work tree contains an unsafe Git index flag"\n            )\n    for arguments in (\n        ("diff-files", "--quiet", "--"),\n        ("diff-index", "--cached", "--quiet", "HEAD", "--"),\n    ):\n        completed = subprocess.run(\n            ["git", "-C", str(root), *arguments],\n            check=False,\n            stdout=subprocess.DEVNULL,\n            stderr=subprocess.DEVNULL,\n        )\n        if completed.returncode != 0:\n            raise MRL0802SyntheaCorpusError(\n                "Synthea tracked worktree bytes must match the exact HEAD tree"\n            )\n    if _git(root, "status", "--porcelain", "--untracked-files=all"):\n        raise MRL0802SyntheaCorpusError("Synthea source work tree must be clean")\n    if _git(root, "clean", "-ndx"):\n        raise MRL0802SyntheaCorpusError(\n            "Synthea source work tree must contain no ignored or untracked build state"\n        )\n''',
+          )
+
+          cli = root / "scripts/mesc_mrl_0802_synthea_qualify.py"
+          replace_one(cli, "import argparse\nimport importlib\n", "import argparse\nimport hashlib\nimport importlib\nimport json\n")
+          replace_one(
+              cli,
+              "def _require_clean_repository(root: Path) -> Path:\n",
+              '''def _require_authorized_repository_identity(\n    repository: Path, authorization_raw: bytes\n) -> tuple[str, str]:\n    try:\n        document = json.loads(authorization_raw.decode("utf-8"))\n        authorized_base = document["authorized_base"]\n        base_sha = authorized_base["main_sha"]\n        base_tree = authorized_base["main_tree"]\n    except (KeyError, TypeError, UnicodeDecodeError, ValueError) as exc:\n        raise EntrypointError("authorization lacks exact canonical base identity") from exc\n    if type(base_sha) is not str or type(base_tree) is not str:\n        raise EntrypointError("authorization canonical base identity is invalid")\n    if _git_text(repository, "rev-parse", f"{base_sha}^{{tree}}").strip() != base_tree:\n        raise EntrypointError("authorization canonical base tree does not match Git history")\n    ancestry = subprocess.run(\n        ["git", "-C", str(repository), "merge-base", "--is-ancestor", base_sha, "HEAD"],\n        check=False,\n        stdout=subprocess.DEVNULL,\n        stderr=subprocess.DEVNULL,\n    )\n    if ancestry.returncode != 0:\n        raise EntrypointError("repository HEAD is outside the authorized canonical-base lineage")\n    return (\n        _git_text(repository, "rev-parse", "HEAD").strip(),\n        _git_text(repository, "rev-parse", "HEAD^{tree}").strip(),\n    )\n\n\ndef _canonical_json_bytes(value: object) -> bytes:\n    return (\n        json.dumps(value, ensure_ascii=False, allow_nan=False, separators=(",", ":"), sort_keys=True)\n        + "\\n"\n    ).encode("utf-8")\n\n\ndef _bind_repository_identity(\n    provenance_bytes: bytes,\n    evidence_bytes: bytes,\n    *,\n    repository_commit: str,\n    repository_tree: str,\n) -> tuple[bytes, bytes, str, str]:\n    provenance = json.loads(provenance_bytes)\n    evidence = json.loads(evidence_bytes)\n    if type(provenance) is not dict or type(evidence) is not dict:\n        raise EntrypointError("generated evidence shape is invalid")\n    provenance["mesc_executor"] = {\n        "repository": "TheHalfMoon/MESC",\n        "commit": repository_commit,\n        "tree": repository_tree,\n    }\n    bound_provenance = _canonical_json_bytes(provenance)\n    provenance_sha256 = hashlib.sha256(bound_provenance).hexdigest()\n    payload = evidence.get("payload")\n    if type(payload) is not dict:\n        raise EntrypointError("generated evidence payload is invalid")\n    payload["provenance_sha256"] = provenance_sha256\n    bound_evidence = _canonical_json_bytes(evidence)\n    evidence_sha256 = hashlib.sha256(bound_evidence).hexdigest()\n    return bound_provenance, bound_evidence, provenance_sha256, evidence_sha256\n\n\ndef _require_clean_repository(root: Path) -> Path:\n''',
+          )
+          replace_one(
+              cli,
+              '''        module = _load_module(repository)\n        output_root = args.output_root.expanduser().resolve(strict=True)\n        authorization = module.parse_mrl_0802_synthea_authorization(\n            (repository / _AUTH).read_bytes()\n        )\n''',
+              '''        module = _load_module(repository)\n        output_root = args.output_root.expanduser().resolve(strict=True)\n        authorization_raw = (repository / _AUTH).read_bytes()\n        repository_commit, repository_tree = _require_authorized_repository_identity(\n            repository, authorization_raw\n        )\n        authorization = module.parse_mrl_0802_synthea_authorization(authorization_raw)\n''',
+          )
+          replace_one(
+              cli,
+              '''        evidence_root = output_root / "evidence"\n        evidence_root.mkdir()\n        _write_new(evidence_root / "corpus.jsonl", result.corpus_bytes)\n        _write_new(evidence_root / "rights.json", result.rights_bytes)\n        _write_new(evidence_root / "provenance.json", result.provenance_bytes)\n        _write_new(evidence_root / "mrl-0802-real-preflight-evidence.json", result.evidence_bytes)\n''',
+              '''        provenance_bytes, evidence_bytes, provenance_sha256, evidence_sha256 = (\n            _bind_repository_identity(\n                result.provenance_bytes,\n                result.evidence_bytes,\n                repository_commit=repository_commit,\n                repository_tree=repository_tree,\n            )\n        )\n        parsed = module.parse_mrl_real_preflight_evidence(evidence_bytes)\n        if parsed.evidence_sha256 != evidence_sha256:\n            raise EntrypointError("repository-bound evidence failed semantic validation")\n        evidence_root = output_root / "evidence"\n        evidence_root.mkdir()\n        _write_new(evidence_root / "corpus.jsonl", result.corpus_bytes)\n        _write_new(evidence_root / "rights.json", result.rights_bytes)\n        _write_new(evidence_root / "provenance.json", provenance_bytes)\n        _write_new(evidence_root / "mrl-0802-real-preflight-evidence.json", evidence_bytes)\n''',
+          )
+          replace_one(
+              cli,
+              '''    print(f"provenance_sha256={result.provenance_sha256}")\n    print(f"evidence_sha256={result.evidence_sha256}")\n''',
+              '''    print(f"provenance_sha256={provenance_sha256}")\n    print(f"evidence_sha256={evidence_sha256}")\n''',
+          )
+
+          fixture_tests = root / "tests/test_mesc_mrl_0802_synthetic_fhir_corpus_v1.py"
+          replace_one(fixture_tests, "import sys\n", "import sys\nimport uuid\n")
+          marker = "\ndef test_fixture_bytes_fail_closed_on_mutation() -> None:\n"
+          text = fixture_tests.read_text(encoding="utf-8")
+          test = '''\ndef test_fixture_full_urls_are_valid_uuid_urns() -> None:\n    for line in FIXTURES.read_text(encoding="utf-8").splitlines():\n        record = json.loads(line)\n        for entry in record["entry"]:\n            full_url = entry["fullUrl"]\n            assert full_url.startswith("urn:uuid:")\n            uuid.UUID(full_url.removeprefix("urn:uuid:"))\n\n'''
+          if text.count(marker) != 1:
+              raise SystemExit("fixture test marker drift")
+          fixture_tests.write_text(text.replace(marker, test + marker), encoding="utf-8")
+
+          synthea_tests = root / "tests/test_mesc_mrl_0802_synthea_fhir_v1.py"
+          text = synthea_tests.read_text(encoding="utf-8")
+          text = text.replace("import json\n", "import hashlib\nimport importlib.util\nimport json\n", 1)
+          root_marker = 'ROOT = Path(__file__).resolve().parents[1]\n'
+          helper = '''ROOT = Path(__file__).resolve().parents[1]\n\ndef _load_synthea_cli():\n    script = ROOT / "scripts/mesc_mrl_0802_synthea_qualify.py"\n    spec = importlib.util.spec_from_file_location("mesc_mrl_0802_synthea_cli_test", script)\n    if spec is None or spec.loader is None:\n        raise AssertionError("cannot load Synthea qualification CLI")\n    module = importlib.util.module_from_spec(spec)\n    spec.loader.exec_module(module)\n    return module\n'''
+          if text.count(root_marker) != 1:
+              raise SystemExit("Synthea ROOT marker drift")
+          text = text.replace(root_marker, helper, 1)
+          marker = "\ndef test_external_output_rejects_symlink_traversal(tmp_path: Path) -> None:\n"
+          tests = '''\n@pytest.mark.parametrize("flag", ["--assume-unchanged", "--skip-worktree"])\ndef test_unsafe_tracked_index_flags_fail_closed(tmp_path: Path, flag: str) -> None:\n    import subprocess\n\n    source = tmp_path / "synthea"\n    source.mkdir()\n    subprocess.run(["git", "init", "-q", str(source)], check=True)\n    subprocess.run(["git", "-C", str(source), "config", "user.email", "test@example.com"], check=True)\n    subprocess.run(["git", "-C", str(source), "config", "user.name", "test"], check=True)\n    tracked = source / "tracked.txt"\n    tracked.write_text("tracked\\n", encoding="utf-8")\n    subprocess.run(["git", "-C", str(source), "add", "tracked.txt"], check=True)\n    subprocess.run(["git", "-C", str(source), "commit", "-qm", "base"], check=True)\n    subprocess.run(["git", "-C", str(source), "update-index", flag, "tracked.txt"], check=True)\n    tracked.write_text("foreign\\n", encoding="utf-8")\n    with pytest.raises(MRL0802SyntheaCorpusError, match="unsafe Git index flag"):\n        _require_pristine_git_tree(source)\n\n\ndef test_operational_evidence_binds_exact_mesc_git_identity() -> None:\n    cli = _load_synthea_cli()\n    repository_commit, repository_tree = cli._require_authorized_repository_identity(ROOT, AUTH.read_bytes())\n    result = qualify_mrl_0802_synthea_runs(\n        _run(), _run(), authorization=_authorization(), rights_review=_rights()\n    )\n    provenance_bytes, evidence_bytes, provenance_sha256, evidence_sha256 = cli._bind_repository_identity(\n        result.provenance_bytes,\n        result.evidence_bytes,\n        repository_commit=repository_commit,\n        repository_tree=repository_tree,\n    )\n    provenance = json.loads(provenance_bytes)\n    evidence = json.loads(evidence_bytes)\n    assert provenance["mesc_executor"] == {\n        "repository": "TheHalfMoon/MESC",\n        "commit": repository_commit,\n        "tree": repository_tree,\n    }\n    assert evidence["payload"]["provenance_sha256"] == provenance_sha256\n    assert hashlib.sha256(evidence_bytes).hexdigest() == evidence_sha256\n\n'''
+          if text.count(marker) != 1:
+              raise SystemExit("Synthea test marker drift")
+          synthea_tests.write_text(text.replace(marker, tests + marker, 1), encoding="utf-8")
+          PY
+
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          enable-cache: true
+
+      - name: Qualify candidate
+        run: |
+          uv python install 3.11
+          uv sync --frozen
+          uv run python scripts/mesc_mrl_0802_fixture_qualify.py
+          uv run ruff format scripts/mesc_mrl_0802_fixture_qualify.py scripts/mesc_mrl_0802_synthea_qualify.py src/medscale/mesc/_mrl_0802_synthetic_fhir_corpus_v1.py src/medscale/mesc/_mrl_0802_synthea_fhir_v1.py tests/test_mesc_mrl_0802_synthetic_fhir_corpus_v1.py tests/test_mesc_mrl_0802_synthea_fhir_v1.py
+          uv run ruff check --fix tests/test_mesc_mrl_0802_synthetic_fhir_corpus_v1.py tests/test_mesc_mrl_0802_synthea_fhir_v1.py
+          uv run ruff check .
+          uv run ruff format --check .
+          uv run mypy
+          uv run pytest -q tests/test_mesc_mrl_0802_synthetic_fhir_corpus_v1.py tests/test_mesc_mrl_0802_synthea_fhir_v1.py
+          uv run python scripts/mesc_mrl_0802_fixture_qualify.py --check
+          git diff --check
+
+      - name: Guarded fast-forward push
+        run: |
+          git fetch origin "$TARGET_BRANCH"
+          test "$(git rev-parse FETCH_HEAD)" = "$EXPECTED_HEAD"
+          test -n "$(git status --porcelain)"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/mesc-mrl-0802-fhir-v1 specs/mesc-experiment-0/mrl-0802-synthetic-fhir-authorization-v1.json scripts/mesc_mrl_0802_synthea_qualify.py src/medscale/mesc/_mrl_0802_synthetic_fhir_corpus_v1.py src/medscale/mesc/_mrl_0802_synthea_fhir_v1.py tests/test_mesc_mrl_0802_synthetic_fhir_corpus_v1.py tests/test_mesc_mrl_0802_synthea_fhir_v1.py
+          git commit -m "fix(mesc): close MRL-0802 review findings"
+          git push origin "HEAD:refs/heads/$TARGET_BRANCH"
