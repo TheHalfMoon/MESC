@@ -1,1 +1,1 @@
-{"records":[],"schema_version":"MRL-REAL-PREFLIGHT-EVIDENCE-INDEX-V1"}
+{"records":[{"evidence_path":"specs/mesc-research-loop-v1/real-preflight-evidence/MRL-0802.json","evidence_sha256":"d6e8b486503e7883a4d997885e8e84dd3d25d44f40576a26b2980a81655781b6","task_id":"MRL-0802"}],"schema_version":"MRL-REAL-PREFLIGHT-EVIDENCE-INDEX-V1"}

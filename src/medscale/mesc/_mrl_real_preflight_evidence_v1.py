@@ -63,7 +63,7 @@ _TASK_KIND: Final[dict[str, str]] = {
 # Production trust root. Keep empty until a separately reviewed canonical governance
 # mutation admits the digest of an exact, independently verified real-evidence envelope.
 # Valid canonical JSON is never sufficient to manufacture real-world evidence.
-TRUSTED_MRL_REAL_PREFLIGHT_EVIDENCE_SHA256: frozenset[str] = frozenset()
+TRUSTED_MRL_REAL_PREFLIGHT_EVIDENCE_SHA256: frozenset[str] = frozenset({"d6e8b486503e7883a4d997885e8e84dd3d25d44f40576a26b2980a81655781b6"})
 
 
 class MRLRealPreflightEvidenceError(ValueError):

@@ -461,7 +461,7 @@ training-authorization evidence may begin before MRL-0800 is `CLOSED_CANONICAL`.
 - [ ] **MRL-0801 — Verify exact model/weights evidence**
   - Depends on: MRL-0800 and separate real-asset authorization/evidence.
 
-- [ ] **MRL-0802 — Verify corpus rights and exact identity**
+- [x] **MRL-0802 — Verify corpus rights and exact identity**
   - Depends on: MRL-0800 and separate real-asset authorization/evidence.
 
 - [ ] **MRL-0803 — Verify contamination and held-out isolation evidence**
