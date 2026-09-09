@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import hashlib
 import json
 import subprocess
@@ -138,32 +139,57 @@ def _task_kind_mismatch_evidence() -> bytes:
 def _bind_real_trust_source(repository: Path, digest: str) -> None:
     path = repository / _REAL_TRUST_SOURCE
     text = path.read_text(encoding="utf-8")
-    empty = "TRUSTED_MRL_REAL_PREFLIGHT_EVIDENCE_SHA256: frozenset[str] = frozenset()"
-    trusted = (
-        f'TRUSTED_MRL_REAL_PREFLIGHT_EVIDENCE_SHA256: frozenset[str] = frozenset({{"{digest}"}})'
+    module = ast.parse(text)
+    assignments = [
+        node
+        for node in module.body
+        if isinstance(node, ast.AnnAssign)
+        and isinstance(node.target, ast.Name)
+        and node.target.id == "TRUSTED_MRL_REAL_PREFLIGHT_EVIDENCE_SHA256"
+        and node.value is not None
+    ]
+    assert len(assignments) == 1
+    assignment = assignments[0]
+    assert isinstance(assignment.value, ast.Call)
+    assert isinstance(assignment.value.func, ast.Name)
+    assert assignment.value.func.id == "frozenset"
+    assert len(assignment.value.args) == 1
+    existing = ast.literal_eval(assignment.value.args[0])
+    assert isinstance(existing, set)
+    trusted = sorted({*existing, digest})
+    lines = text.splitlines(keepends=True)
+    replacement = (
+        "TRUSTED_MRL_REAL_PREFLIGHT_EVIDENCE_SHA256: frozenset[str] = frozenset(\n"
+        "    {\n" + "".join(f'        "{value}",\n' for value in trusted) + "    }\n"
+        ")\n"
     )
-    assert text.count(empty) == 1
-    assert trusted not in text
-    path.write_text(text.replace(empty, trusted), encoding="utf-8")
+    assert assignment.end_lineno is not None
+    lines[assignment.lineno - 1 : assignment.end_lineno] = [replacement]
+    path.write_text("".join(lines), encoding="utf-8")
+
+
+def _runtime_trust_with(digest: str) -> frozenset[str]:
+    return frozenset({*real_evidence.TRUSTED_MRL_REAL_PREFLIGHT_EVIDENCE_SHA256, digest})
 
 
 def _write_index(repository: Path, raw: bytes, *, digest: str | None = None) -> str:
     actual = hashlib.sha256(raw).hexdigest()
     indexed_digest = actual if digest is None else digest
-    (repository / _INDEX).write_bytes(
-        canonical_json_bytes(
-            {
-                "records": [
-                    {
-                        "evidence_path": _SLOT.as_posix(),
-                        "evidence_sha256": indexed_digest,
-                        "task_id": "MRL-0806",
-                    }
-                ],
-                "schema_version": "MRL-REAL-PREFLIGHT-EVIDENCE-INDEX-V1",
-            }
-        )
+    path = repository / _INDEX
+    document = json.loads(path.read_bytes())
+    assert isinstance(document, dict)
+    records = document["records"]
+    assert isinstance(records, list)
+    assert not any(isinstance(row, dict) and row.get("task_id") == "MRL-0806" for row in records)
+    records.append(
+        {
+            "evidence_path": _SLOT.as_posix(),
+            "evidence_sha256": indexed_digest,
+            "task_id": "MRL-0806",
+        }
     )
+    records.sort(key=lambda row: row["task_id"] if isinstance(row, dict) else "")
+    path.write_bytes(canonical_json_bytes(document))
     return actual
 
 
@@ -225,7 +251,7 @@ def test_canonical_bound_trusted_real_evidence_can_be_derived_closed(
     monkeypatch.setattr(
         real_evidence,
         "TRUSTED_MRL_REAL_PREFLIGHT_EVIDENCE_SHA256",
-        frozenset({digest}),
+        _runtime_trust_with(digest),
     )
 
     rendered = generate_machine_state(repository, tmp_path / "canonical")
@@ -251,7 +277,7 @@ def test_branch_local_bound_trusted_evidence_does_not_claim_canonical_closure(
     monkeypatch.setattr(
         real_evidence,
         "TRUSTED_MRL_REAL_PREFLIGHT_EVIDENCE_SHA256",
-        frozenset({digest}),
+        _runtime_trust_with(digest),
     )
 
     rendered = generate_machine_state(repository, tmp_path / "branch")
@@ -277,7 +303,7 @@ def test_runtime_only_real_trust_mutation_fails_closed(
     monkeypatch.setattr(
         real_evidence,
         "TRUSTED_MRL_REAL_PREFLIGHT_EVIDENCE_SHA256",
-        frozenset({digest}),
+        _runtime_trust_with(digest),
     )
 
     with pytest.raises(MachineStateGenerationError, match="does not match the bound Git source"):
