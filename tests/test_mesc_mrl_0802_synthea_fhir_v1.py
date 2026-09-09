@@ -277,9 +277,7 @@ def test_repository_preimport_rejects_hidden_medscale_mutation(tmp_path: Path, f
     auth_relative = Path(
         "specs/mesc-experiment-0/mrl-0802-synthetic-fhir-corpus-authorization-v1.json"
     )
-    rights_relative = Path(
-        "specs/mesc-experiment-0/mrl-0802-synthetic-fhir-rights-review-v1.json"
-    )
+    rights_relative = Path("specs/mesc-experiment-0/mrl-0802-synthetic-fhir-rights-review-v1.json")
     auth_file = repository / auth_relative
     rights_file = repository / rights_relative
     for path in (package_file, module_file, auth_file, rights_file):
