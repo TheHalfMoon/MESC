@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import json
+import shutil
 import subprocess
 from pathlib import Path
 from types import ModuleType
@@ -401,6 +402,31 @@ def test_subprocess_runner_isolates_gradle_user_home(
     assert isinstance(environment, dict)
     assert environment["GRADLE_USER_HOME"] == str(source / ".gradle-user-home")
     assert observed["cwd"] == source
+
+
+def test_disposable_source_cleanup_attempts_all_sources_before_failing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source_a = tmp_path / "source-a"
+    source_b = tmp_path / "source-b"
+    source_a.mkdir()
+    source_b.mkdir()
+    attempted: list[Path] = []
+    real_rmtree = shutil.rmtree
+
+    def controlled_rmtree(path: Path, *, ignore_errors: bool) -> None:
+        attempted.append(path)
+        if path == source_a:
+            raise OSError("cleanup-a-failed")
+        real_rmtree(path, ignore_errors=ignore_errors)
+
+    monkeypatch.setattr(shutil, "rmtree", controlled_rmtree)
+    with pytest.raises(MRL0802SyntheaCorpusError, match="source cleanup failed"):
+        synthea._remove_disposable_synthea_sources((source_a, source_b))
+
+    assert attempted == [source_a, source_b]
+    assert source_a.exists()
+    assert not source_b.exists()
 
 
 def test_post_run_attestation_rejects_staged_tracked_source_mutation(

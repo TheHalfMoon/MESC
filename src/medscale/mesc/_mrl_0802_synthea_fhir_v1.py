@@ -269,6 +269,25 @@ def _require_tracked_source_unchanged(root: Path) -> None:
         raise MRL0802SyntheaCorpusError("Synthea execution changed source tree identity")
 
 
+def _remove_disposable_synthea_sources(sources: Sequence[Path | None]) -> None:
+    """Attempt cleanup of every transaction-owned source clone and fail closed afterward."""
+    cleanup_errors: list[OSError] = []
+    for source in sources:
+        if source is None:
+            continue
+        try:
+            if source.is_symlink():
+                source.unlink()
+            elif source.exists():
+                shutil.rmtree(source, ignore_errors=False)
+        except OSError as exc:
+            cleanup_errors.append(exc)
+    if cleanup_errors:
+        raise MRL0802SyntheaCorpusError(
+            "disposable Synthea source cleanup failed"
+        ) from cleanup_errors[0]
+
+
 def run_authorized_synthea_corpus(
     *,
     source_root: Path,
@@ -304,9 +323,7 @@ def run_authorized_synthea_corpus(
         first_files = _read_fhir_outputs(run_a)
         second_files = _read_fhir_outputs(run_b)
     finally:
-        for disposable_source in (source_a, source_b):
-            if disposable_source is not None and disposable_source.exists():
-                shutil.rmtree(disposable_source, ignore_errors=False)
+        _remove_disposable_synthea_sources((source_a, source_b))
     return qualify_mrl_0802_synthea_runs(
         first_files,
         second_files,
