@@ -401,6 +401,7 @@ def test_subprocess_runner_isolates_gradle_user_home(
     environment = observed["env"]
     assert isinstance(environment, dict)
     assert environment["GRADLE_USER_HOME"] == str(source / ".gradle-user-home")
+    assert environment["GRADLE_OPTS"] == "-Dorg.gradle.daemon=false"
     assert observed["cwd"] == source
 
 
