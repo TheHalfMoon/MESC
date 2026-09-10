@@ -542,6 +542,9 @@ def _subprocess_synthea_runner(source_root: Path, output_root: Path) -> None:
     command = [str(source_root / "run_synthea"), *synthea_generation_arguments(output_root)]
     environment = os.environ.copy()
     environment["GRADLE_USER_HOME"] = str(source_root / ".gradle-user-home")
+    # The disposable source is deleted immediately after each run. A persistent Gradle
+    # daemon can outlive that deletion and recreate transaction-owned state afterward.
+    environment["GRADLE_OPTS"] = "-Dorg.gradle.daemon=false"
     completed = subprocess.run(
         command,
         cwd=source_root,
