@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import shutil
 import subprocess
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
@@ -197,6 +199,95 @@ def _require_pristine_git_tree(root: Path) -> None:
         )
 
 
+def _clone_exact_synthea_source(source: Path, destination: Path) -> Path:
+    """Create one disposable pristine clone for a single generation run."""
+    if destination.exists() or destination.is_symlink():
+        raise MRL0802SyntheaCorpusError("disposable Synthea source destination already exists")
+    try:
+        completed = subprocess.run(
+            [
+                "git",
+                "clone",
+                "--quiet",
+                "--no-hardlinks",
+                "--no-checkout",
+                str(source),
+                str(destination),
+            ],
+            check=False,
+            capture_output=True,
+        )
+        if completed.returncode != 0:
+            raise MRL0802SyntheaCorpusError("disposable Synthea source clone failed")
+        checkout = subprocess.run(
+            [
+                "git",
+                "-C",
+                str(destination),
+                "checkout",
+                "--quiet",
+                "--detach",
+                _SYNTHEA_REVISION,
+            ],
+            check=False,
+            capture_output=True,
+        )
+        if checkout.returncode != 0:
+            raise MRL0802SyntheaCorpusError("disposable Synthea source checkout failed")
+        return require_exact_synthea_checkout(destination)
+    except BaseException:
+        if destination.is_symlink():
+            destination.unlink()
+        elif destination.exists():
+            shutil.rmtree(destination, ignore_errors=False)
+        raise
+
+
+def _require_tracked_source_unchanged(root: Path) -> None:
+    """Require execution to leave tracked worktree and index state at the authorized revision."""
+    tagged = _git(root, "ls-files", "-v", "-z")
+    for record in tagged.split("\0"):
+        if not record:
+            continue
+        tag = record[0]
+        if tag == "S" or tag.islower():
+            raise MRL0802SyntheaCorpusError("Synthea execution introduced an unsafe Git index flag")
+    for arguments in (
+        ("diff-files", "--quiet", "--ignore-submodules", "--"),
+        ("diff-index", "--cached", "--quiet", "HEAD", "--"),
+    ):
+        completed = subprocess.run(
+            ["git", "-C", str(root), "-c", "core.filemode=true", *arguments],
+            check=False,
+            capture_output=True,
+        )
+        if completed.returncode != 0:
+            raise MRL0802SyntheaCorpusError("Synthea execution mutated tracked source bytes")
+    if _git(root, "rev-parse", "HEAD") != _SYNTHEA_REVISION:
+        raise MRL0802SyntheaCorpusError("Synthea execution changed source revision")
+    if _git(root, "rev-parse", "HEAD^{tree}") != _SYNTHEA_TREE:
+        raise MRL0802SyntheaCorpusError("Synthea execution changed source tree identity")
+
+
+def _remove_disposable_synthea_sources(sources: Sequence[Path | None]) -> None:
+    """Attempt cleanup of every transaction-owned source clone and fail closed afterward."""
+    cleanup_errors: list[OSError] = []
+    for source in sources:
+        if source is None:
+            continue
+        try:
+            if source.is_symlink():
+                source.unlink()
+            elif source.exists():
+                shutil.rmtree(source, ignore_errors=False)
+        except OSError as exc:
+            cleanup_errors.append(exc)
+    if cleanup_errors:
+        raise MRL0802SyntheaCorpusError(
+            "disposable Synthea source cleanup failed"
+        ) from cleanup_errors[0]
+
+
 def run_authorized_synthea_corpus(
     *,
     source_root: Path,
@@ -206,7 +297,7 @@ def run_authorized_synthea_corpus(
     repository_root: Path | None = None,
     runner: SyntheaRunner | None = None,
 ) -> MRL0802SyntheaCorpusQualification:
-    """Run the exact Synthea plan twice and qualify byte-identical projected output."""
+    """Run two isolated pristine Synthea generations and qualify projected identity."""
     if type(authorization) is not MRL0802SyntheaAuthorization:
         raise MRL0802SyntheaCorpusError("authorization type is invalid")
     if type(rights_review) is not MRL0802SyntheaRightsReview:
@@ -219,11 +310,20 @@ def run_authorized_synthea_corpus(
     run_b = output / "run-b"
     run_a.mkdir()
     run_b.mkdir()
+    source_a: Path | None = None
+    source_b: Path | None = None
     execute = runner or _subprocess_synthea_runner
-    execute(source, run_a)
-    execute(source, run_b)
-    first_files = _read_fhir_outputs(run_a)
-    second_files = _read_fhir_outputs(run_b)
+    try:
+        source_a = _clone_exact_synthea_source(source, output / ".source-run-a")
+        source_b = _clone_exact_synthea_source(source, output / ".source-run-b")
+        execute(source_a, run_a)
+        _require_tracked_source_unchanged(source_a)
+        execute(source_b, run_b)
+        _require_tracked_source_unchanged(source_b)
+        first_files = _read_fhir_outputs(run_a)
+        second_files = _read_fhir_outputs(run_b)
+    finally:
+        _remove_disposable_synthea_sources((source_a, source_b))
     return qualify_mrl_0802_synthea_runs(
         first_files,
         second_files,
@@ -440,6 +540,8 @@ def _raw_run_identity(raw_files: Sequence[bytes]) -> str:
 
 def _subprocess_synthea_runner(source_root: Path, output_root: Path) -> None:
     command = [str(source_root / "run_synthea"), *synthea_generation_arguments(output_root)]
+    environment = os.environ.copy()
+    environment["GRADLE_USER_HOME"] = str(source_root / ".gradle-user-home")
     completed = subprocess.run(
         command,
         cwd=source_root,
@@ -448,6 +550,7 @@ def _subprocess_synthea_runner(source_root: Path, output_root: Path) -> None:
         stderr=subprocess.STDOUT,
         text=True,
         encoding="utf-8",
+        env=environment,
     )
     if completed.returncode != 0:
         raise MRL0802SyntheaCorpusError("Synthea generation failed")

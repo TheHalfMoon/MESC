@@ -3,12 +3,14 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import json
+import shutil
 import subprocess
 from pathlib import Path
 from types import ModuleType
 
 import pytest
 
+from medscale.mesc import _mrl_0802_synthea_fhir_v1 as synthea
 from medscale.mesc._mrl_0802_synthea_fhir_v1 import (
     MRL0802SyntheaAuthorization,
     MRL0802SyntheaCorpusError,
@@ -18,6 +20,7 @@ from medscale.mesc._mrl_0802_synthea_fhir_v1 import (
     parse_mrl_0802_synthea_authorization,
     parse_mrl_0802_synthea_rights_review,
     qualify_mrl_0802_synthea_runs,
+    run_authorized_synthea_corpus,
     synthea_generation_arguments,
 )
 from medscale.mesc._mrl_real_preflight_evidence_v1 import parse_mrl_real_preflight_evidence
@@ -338,6 +341,182 @@ def test_operational_evidence_binds_exact_mesc_git_identity() -> None:
     }
     assert evidence["payload"]["provenance_sha256"] == provenance_sha256
     assert hashlib.sha256(evidence_bytes).hexdigest() == evidence_sha256
+
+
+def _fake_exact_synthea_repo(tmp_path: Path) -> tuple[Path, str, str, dict[str, str]]:
+    source = tmp_path / "synthea-source"
+    source.mkdir()
+    subprocess.run(["git", "init", "-q", str(source)], check=True)
+    subprocess.run(
+        ["git", "-C", str(source), "config", "user.email", "test@example.com"], check=True
+    )
+    subprocess.run(["git", "-C", str(source), "config", "user.name", "test"], check=True)
+    paths = (
+        "LICENSE",
+        "NOTICE",
+        "README.md",
+        "run_synthea",
+        "src/main/resources/synthea.properties",
+    )
+    for relative in paths:
+        path = source / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(f"fixture:{relative}\n", encoding="utf-8")
+    (source / ".gitignore").write_text(
+        ".gradle/\nbuild/\nsrc/main/resources/version.txt\n", encoding="utf-8"
+    )
+    subprocess.run(["git", "-C", str(source), "add", "."], check=True)
+    subprocess.run(["git", "-C", str(source), "commit", "-qm", "fixture"], check=True)
+    revision = subprocess.check_output(
+        ["git", "-C", str(source), "rev-parse", "HEAD"], text=True
+    ).strip()
+    tree = subprocess.check_output(
+        ["git", "-C", str(source), "rev-parse", "HEAD^{tree}"], text=True
+    ).strip()
+    hashes = {
+        relative: hashlib.sha256((source / relative).read_bytes()).hexdigest() for relative in paths
+    }
+    return source, revision, tree, hashes
+
+
+def test_subprocess_runner_isolates_gradle_user_home(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = tmp_path / "source"
+    output = tmp_path / "output"
+    source.mkdir()
+    output.mkdir()
+    (source / "run_synthea").write_text("#!/bin/sh\n", encoding="utf-8")
+    observed: dict[str, object] = {}
+
+    def fake_run(command: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        observed["command"] = command
+        observed["cwd"] = kwargs.get("cwd")
+        observed["env"] = kwargs.get("env")
+        return subprocess.CompletedProcess(args=[], returncode=0, stdout="")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    synthea._subprocess_synthea_runner(source, output)
+
+    environment = observed["env"]
+    assert isinstance(environment, dict)
+    assert environment["GRADLE_USER_HOME"] == str(source / ".gradle-user-home")
+    assert observed["cwd"] == source
+
+
+def test_disposable_source_cleanup_attempts_all_sources_before_failing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source_a = tmp_path / "source-a"
+    source_b = tmp_path / "source-b"
+    source_a.mkdir()
+    source_b.mkdir()
+    attempted: list[Path] = []
+    real_rmtree = shutil.rmtree
+
+    def controlled_rmtree(path: Path, *, ignore_errors: bool) -> None:
+        attempted.append(path)
+        if path == source_a:
+            raise OSError("cleanup-a-failed")
+        real_rmtree(path, ignore_errors=ignore_errors)
+
+    monkeypatch.setattr(shutil, "rmtree", controlled_rmtree)
+    with pytest.raises(MRL0802SyntheaCorpusError, match="source cleanup failed"):
+        synthea._remove_disposable_synthea_sources((source_a, source_b))
+
+    assert attempted == [source_a, source_b]
+    assert source_a.exists()
+    assert not source_b.exists()
+
+
+def test_post_run_attestation_rejects_staged_tracked_source_mutation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source, revision, tree, hashes = _fake_exact_synthea_repo(tmp_path)
+    monkeypatch.setattr(synthea, "_SYNTHEA_REVISION", revision)
+    monkeypatch.setattr(synthea, "_SYNTHEA_TREE", tree)
+    monkeypatch.setattr(synthea, "_SOURCE_FILE_SHA256", hashes)
+    clone = synthea._clone_exact_synthea_source(source, tmp_path / "clone")
+    (clone / "README.md").write_text("staged mutation\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(clone), "add", "README.md"], check=True)
+    with pytest.raises(MRL0802SyntheaCorpusError, match="mutated tracked source bytes"):
+        synthea._require_tracked_source_unchanged(clone)
+
+
+def test_post_run_attestation_rejects_executable_mode_mutation_with_filemode_disabled(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source, revision, tree, hashes = _fake_exact_synthea_repo(tmp_path)
+    monkeypatch.setattr(synthea, "_SYNTHEA_REVISION", revision)
+    monkeypatch.setattr(synthea, "_SYNTHEA_TREE", tree)
+    monkeypatch.setattr(synthea, "_SOURCE_FILE_SHA256", hashes)
+    clone = synthea._clone_exact_synthea_source(source, tmp_path / "clone-mode")
+    subprocess.run(["git", "-C", str(clone), "config", "core.filemode", "false"], check=True)
+    executable = clone / "run_synthea"
+    executable.chmod(executable.stat().st_mode | 0o111)
+
+    with pytest.raises(MRL0802SyntheaCorpusError, match="mutated tracked source bytes"):
+        synthea._require_tracked_source_unchanged(clone)
+
+
+def test_disposable_source_cleanup_unlinks_symlink_without_touching_target(tmp_path: Path) -> None:
+    external = tmp_path / "external-target"
+    external.mkdir()
+    sentinel = external / "sentinel.txt"
+    sentinel.write_text("preserve\n", encoding="utf-8")
+    source = tmp_path / "source-link"
+    source.symlink_to(external, target_is_directory=True)
+
+    synthea._remove_disposable_synthea_sources((source,))
+
+    assert not source.exists()
+    assert not source.is_symlink()
+    assert sentinel.read_text(encoding="utf-8") == "preserve\n"
+
+
+def test_generation_runs_use_independent_pristine_disposable_sources(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    authorization = _authorization()
+    rights_review = _rights()
+    source, revision, tree, hashes = _fake_exact_synthea_repo(tmp_path)
+    monkeypatch.setattr(synthea, "_SYNTHEA_REVISION", revision)
+    monkeypatch.setattr(synthea, "_SYNTHEA_TREE", tree)
+    monkeypatch.setattr(synthea, "_SOURCE_FILE_SHA256", hashes)
+    output = tmp_path / "output"
+    output.mkdir()
+    seen_sources: list[Path] = []
+
+    def runner(run_source: Path, run_output: Path) -> None:
+        seen_sources.append(run_source)
+        assert run_source != source
+        assert not (run_source / ".gradle").exists()
+        assert not (run_source / "build").exists()
+        (run_source / ".gradle").mkdir()
+        (run_source / ".gradle/state.bin").write_bytes(b"run-state")
+        (run_source / "build").mkdir()
+        (run_source / "build/cache.bin").write_bytes(b"cache")
+        fhir = run_output / "fhir"
+        fhir.mkdir()
+        for index, payload in enumerate(_run()):
+            (fhir / f"{index:02d}.json").write_bytes(payload)
+
+    result = run_authorized_synthea_corpus(
+        source_root=source,
+        output_root=output,
+        authorization=authorization,
+        rights_review=rights_review,
+        runner=runner,
+    )
+
+    assert len(seen_sources) == 2
+    assert seen_sources[0] != seen_sources[1]
+    assert not seen_sources[0].exists()
+    assert not seen_sources[1].exists()
+    assert not (source / ".gradle").exists()
+    assert not (source / "build").exists()
+    _require_pristine_git_tree(source)
+    assert len(result.record_ids) == 16
 
 
 def test_external_output_rejects_symlink_traversal(tmp_path: Path) -> None:
