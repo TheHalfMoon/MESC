@@ -60,10 +60,12 @@ _TASK_KIND: Final[dict[str, str]] = {
     "MRL-0808": "mesc.mrl.real_preflight.sandbox.v1",
 }
 
-# Production trust root. Keep empty until a separately reviewed canonical governance
-# mutation admits the digest of an exact, independently verified real-evidence envelope.
+# Production trust root. Mutate only through separately reviewed canonical governance
+# to admit exact independently verified real-evidence envelope digests.
 # Valid canonical JSON is never sufficient to manufacture real-world evidence.
-TRUSTED_MRL_REAL_PREFLIGHT_EVIDENCE_SHA256: frozenset[str] = frozenset()
+TRUSTED_MRL_REAL_PREFLIGHT_EVIDENCE_SHA256: frozenset[str] = frozenset(
+    {"1d6d14590a19c20bcd794e4c0ddbd2fa5e1c767b70e9d199fc169aeaaa86b762"}
+)
 
 
 class MRLRealPreflightEvidenceError(ValueError):

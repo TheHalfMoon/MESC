@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import hashlib
 import json
 import subprocess
@@ -138,32 +139,47 @@ def _task_kind_mismatch_evidence() -> bytes:
 def _bind_real_trust_source(repository: Path, digest: str) -> None:
     path = repository / _REAL_TRUST_SOURCE
     text = path.read_text(encoding="utf-8")
-    empty = "TRUSTED_MRL_REAL_PREFLIGHT_EVIDENCE_SHA256: frozenset[str] = frozenset()"
-    trusted = (
-        f'TRUSTED_MRL_REAL_PREFLIGHT_EVIDENCE_SHA256: frozenset[str] = frozenset({{"{digest}"}})'
+    tree = ast.parse(text)
+    assignment = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.AnnAssign)
+        and isinstance(node.target, ast.Name)
+        and node.target.id == "TRUSTED_MRL_REAL_PREFLIGHT_EVIDENCE_SHA256"
     )
-    assert text.count(empty) == 1
-    assert trusted not in text
-    path.write_text(text.replace(empty, trusted), encoding="utf-8")
+    assert isinstance(assignment.value, ast.Call)
+    assert isinstance(assignment.value.func, ast.Name)
+    assert assignment.value.func.id == "frozenset"
+    assert len(assignment.value.args) == 1
+    values = ast.literal_eval(assignment.value.args[0])
+    assert isinstance(values, set)
+    updated = sorted({*values, digest})
+    rendered = (
+        "TRUSTED_MRL_REAL_PREFLIGHT_EVIDENCE_SHA256: frozenset[str] = frozenset(\n"
+        "    {\n" + "".join(f'        "{value}",\n' for value in updated) + "    }\n" + ")\n"
+    )
+    lines = text.splitlines(keepends=True)
+    assert assignment.end_lineno is not None
+    lines[assignment.lineno - 1 : assignment.end_lineno] = rendered.splitlines(keepends=True)
+    path.write_text("".join(lines), encoding="utf-8")
 
 
 def _write_index(repository: Path, raw: bytes, *, digest: str | None = None) -> str:
     actual = hashlib.sha256(raw).hexdigest()
     indexed_digest = actual if digest is None else digest
-    (repository / _INDEX).write_bytes(
-        canonical_json_bytes(
-            {
-                "records": [
-                    {
-                        "evidence_path": _SLOT.as_posix(),
-                        "evidence_sha256": indexed_digest,
-                        "task_id": "MRL-0806",
-                    }
-                ],
-                "schema_version": "MRL-REAL-PREFLIGHT-EVIDENCE-INDEX-V1",
-            }
-        )
+    document = json.loads((repository / _INDEX).read_bytes())
+    records = document["records"]
+    assert isinstance(records, list)
+    assert not any(isinstance(row, dict) and row.get("task_id") == "MRL-0806" for row in records)
+    records.append(
+        {
+            "evidence_path": _SLOT.as_posix(),
+            "evidence_sha256": indexed_digest,
+            "task_id": "MRL-0806",
+        }
     )
+    records.sort(key=lambda row: row["task_id"])
+    (repository / _INDEX).write_bytes(canonical_json_bytes(document))
     return actual
 
 
@@ -207,7 +223,7 @@ def _task(project_state: bytes, task_id: str) -> dict[str, object]:
     return row
 
 
-def test_empty_index_and_absent_slots_preserve_live_real_evidence_state(tmp_path: Path) -> None:
+def test_absent_0806_slot_preserves_live_real_evidence_state(tmp_path: Path) -> None:
     rendered = generate_machine_state(_REPOSITORY_ROOT, tmp_path / "state")
     row = _task(rendered.project_state, "MRL-0806")
     assert row["state"] == "PLANNED"
@@ -225,7 +241,7 @@ def test_canonical_bound_trusted_real_evidence_can_be_derived_closed(
     monkeypatch.setattr(
         real_evidence,
         "TRUSTED_MRL_REAL_PREFLIGHT_EVIDENCE_SHA256",
-        frozenset({digest}),
+        real_evidence.TRUSTED_MRL_REAL_PREFLIGHT_EVIDENCE_SHA256 | {digest},
     )
 
     rendered = generate_machine_state(repository, tmp_path / "canonical")
@@ -251,7 +267,7 @@ def test_branch_local_bound_trusted_evidence_does_not_claim_canonical_closure(
     monkeypatch.setattr(
         real_evidence,
         "TRUSTED_MRL_REAL_PREFLIGHT_EVIDENCE_SHA256",
-        frozenset({digest}),
+        real_evidence.TRUSTED_MRL_REAL_PREFLIGHT_EVIDENCE_SHA256 | {digest},
     )
 
     rendered = generate_machine_state(repository, tmp_path / "branch")
