@@ -190,21 +190,32 @@ def test_project_state_matches_frozen_schema_without_freezing_live_gate_states(
 
     for task_id in ("MRL-0299", "MRL-0399", "MRL-0799", "MRL-0800"):
         assert task_id in indexed
-    # MRL-0802 was admitted with canonical real-preflight evidence (PR #398), so
-    # it renders CLOSED_CANONICAL only on canonical main. On unmerged branches the
-    # real-evidence closure guard keeps it PLANNED by design.
+    # MRL-0801 and MRL-0802 have canonical trusted real-preflight evidence, so
+    # they render CLOSED_CANONICAL only on canonical main. On unmerged branches the
+    # real-evidence closure guard keeps them PLANNED by design.
     snapshot = load_canonical_snapshot(_REPOSITORY_ROOT)
     if rendered.commit_sha == snapshot.canonical_main_sha:
-        mrl_0802 = indexed["MRL-0802"]
-        assert mrl_0802["state"] == "CLOSED_CANONICAL"
-        assert mrl_0802["evidence_refs"] == sorted(
-            [
-                f"canonical-main:{snapshot.canonical_main_sha}",
-                "real-preflight-evidence:1d6d14590a19c20bcd794e4c0ddbd2fa5e1c767b70e9d199fc169aeaaa86b762",
-                "real-preflight-path:specs/mesc-research-loop-v1/real-preflight-evidence/MRL-0802.json",
-            ]
-        )
-        planned_real_evidence = _REAL_EVIDENCE - {"MRL-0802"}
+        expected_closed = {
+            "MRL-0801": (
+                "c03792530e497857c700b64b1ee9950ede595006d35b577b7b8c573624c6c8b9",
+                "specs/mesc-research-loop-v1/real-preflight-evidence/MRL-0801.json",
+            ),
+            "MRL-0802": (
+                "1d6d14590a19c20bcd794e4c0ddbd2fa5e1c767b70e9d199fc169aeaaa86b762",
+                "specs/mesc-research-loop-v1/real-preflight-evidence/MRL-0802.json",
+            ),
+        }
+        for task_id, (digest, path) in expected_closed.items():
+            task = indexed[task_id]
+            assert task["state"] == "CLOSED_CANONICAL"
+            assert task["evidence_refs"] == sorted(
+                [
+                    f"canonical-main:{snapshot.canonical_main_sha}",
+                    f"real-preflight-evidence:{digest}",
+                    f"real-preflight-path:{path}",
+                ]
+            )
+        planned_real_evidence = _REAL_EVIDENCE - expected_closed.keys()
     else:
         planned_real_evidence = _REAL_EVIDENCE
     for task_id in planned_real_evidence:
