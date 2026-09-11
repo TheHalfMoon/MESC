@@ -191,8 +191,15 @@ def test_project_state_matches_frozen_schema_without_freezing_live_gate_states(
     for task_id in ("MRL-0299", "MRL-0399", "MRL-0799", "MRL-0800"):
         assert task_id in indexed
     for task_id in _REAL_EVIDENCE:
-        assert indexed[task_id]["state"] == "PLANNED"
-        assert indexed[task_id]["evidence_refs"] == []
+        assert task_id in indexed
+        state = indexed[task_id]["state"]
+        evidence_refs = indexed[task_id]["evidence_refs"]
+        assert state in {"PLANNED", "CLOSED_CANONICAL"}
+        assert isinstance(evidence_refs, list)
+        if state == "PLANNED":
+            assert evidence_refs == []
+        else:
+            assert len(evidence_refs) == 3
     assert project["can_authorize"] is False
     admit_project_state_projection(_REPOSITORY_ROOT, rendered.project_state)
 
