@@ -190,7 +190,14 @@ def test_project_state_matches_frozen_schema_without_freezing_live_gate_states(
 
     for task_id in ("MRL-0299", "MRL-0399", "MRL-0799", "MRL-0800"):
         assert task_id in indexed
-    for task_id in _REAL_EVIDENCE:
+    mrl_0802 = indexed["MRL-0802"]
+    assert mrl_0802["state"] == "CLOSED_CANONICAL"
+    assert mrl_0802["evidence_refs"] == [
+        f"canonical-main:{rendered.commit_sha}",
+        "real-preflight-evidence:1d6d14590a19c20bcd794e4c0ddbd2fa5e1c767b70e9d199fc169aeaaa86b762",
+        "real-preflight-path:specs/mesc-research-loop-v1/real-preflight-evidence/MRL-0802.json",
+    ]
+    for task_id in _REAL_EVIDENCE - {"MRL-0802"}:
         assert indexed[task_id]["state"] == "PLANNED"
         assert indexed[task_id]["evidence_refs"] == []
     assert project["can_authorize"] is False
