@@ -26,6 +26,11 @@ _TASK_RE: Final = re.compile(r"^- \[([ x])\] \*\*(MRL-[0-9]{4}) — ")
 _REVIEW_REQUIRED_TASKS: Final = frozenset(
     {"MRL-0100", "MRL-0101", "MRL-0102", "MRL-0103", "MRL-0109"}
 )
+# MRL-0801..MRL-0808 close exclusively through the admitted real-preflight
+# evidence path (specs/mesc-research-loop-v1/real-preflight-evidence-index-v1.json).
+# Historical repository-only closeout evidence can never close a real-evidence
+# task, so merge-shape transitions must not emit closeout records for them.
+_REAL_EVIDENCE_TASKS: Final = frozenset(f"MRL-08{n:02d}" for n in range(1, 9))
 _TRUSTED_INDEPENDENT_REVIEWERS: Final = frozenset({"coderabbitai[bot]", "qodo-code-review[bot]"})
 
 
@@ -236,6 +241,8 @@ def _transitions(root: Path, canonical_main: str) -> dict[tuple[str, str], list[
     result: dict[tuple[str, str], list[str]] = {}
     for task_id, checked in sorted(canonical_states.items()):
         if not checked:
+            continue
+        if task_id in _REAL_EVIDENCE_TASKS:
             continue
         found: tuple[str, str] | None = None
         for commit, parents in history:
