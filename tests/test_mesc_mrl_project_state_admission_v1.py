@@ -254,6 +254,7 @@ def test_indeterminate_real_evidence_task_cannot_supply_its_own_answer(
     forged = copy.deepcopy(document)
     target = _task(forged, "MRL-0801")
     target["state"] = "ELIGIBLE"
+    target["evidence_refs"] = []
     with pytest.raises(
         MachineStateGenerationError,
         match="independent canonical recomputation",
