@@ -64,7 +64,10 @@ _TASK_KIND: Final[dict[str, str]] = {
 # to admit exact independently verified real-evidence envelope digests.
 # Valid canonical JSON is never sufficient to manufacture real-world evidence.
 TRUSTED_MRL_REAL_PREFLIGHT_EVIDENCE_SHA256: frozenset[str] = frozenset(
-    {"1d6d14590a19c20bcd794e4c0ddbd2fa5e1c767b70e9d199fc169aeaaa86b762"}
+    {
+        "1d6d14590a19c20bcd794e4c0ddbd2fa5e1c767b70e9d199fc169aeaaa86b762",
+        "c03792530e497857c700b64b1ee9950ede595006d35b577b7b8c573624c6c8b9",
+    }
 )
 
 

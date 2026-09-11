@@ -458,7 +458,7 @@ training-authorization evidence may begin before MRL-0800 is `CLOSED_CANONICAL`.
     itself; each later task still requires its own external evidence/authority.
   - Exit: `MRL_REAL_PREFLIGHT_ENTERED`.
 
-- [ ] **MRL-0801 — Verify exact model/weights evidence**
+- [x] **MRL-0801 — Verify exact model/weights evidence**
   - Depends on: MRL-0800 and separate real-asset authorization/evidence.
 
 - [x] **MRL-0802 — Verify corpus rights and exact identity**
