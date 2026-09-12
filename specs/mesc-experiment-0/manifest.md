@@ -19,6 +19,15 @@ This package intentionally separates protocol preparation from real execution ev
 
 - `../../notebooks/MESC_Experiment_0_Colab.ipynb`
 
+## Runtime qualification producer
+
+- `mrl-0804-runtime-authorization-v1.json`
+- `mrl-0804-runtime-v1.md`
+- `../../scripts/mesc_mrl_0804_gpu_probe.py`
+- `../../scripts/mesc_mrl_0804_runtime_qualify.py`
+- `../../src/medscale/mesc/_mrl_0804_runtime_v1.py`
+- `../../tests/test_mesc_mrl_0804_runtime_v1.py`
+
 ## Verification
 
 - `../../tools/verify_mesc_experiment_0_evidence.py`
