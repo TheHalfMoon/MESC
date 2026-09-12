@@ -6,8 +6,10 @@ from __future__ import annotations
 import argparse
 import importlib
 import json
+import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from types import ModuleType
 from typing import Any
@@ -219,6 +221,24 @@ def _read_verification_artifacts(output_root: Path) -> dict[str, bytes]:
     return supplied
 
 
+def _publish_bundle_atomically(output_root: Path, result: Any) -> None:
+    parent = output_root.parent
+    stage = Path(tempfile.mkdtemp(prefix=f".{output_root.name}.mrl0803-stage-", dir=parent))
+    published = False
+    try:
+        for field, filename in _ARTIFACTS.items():
+            _write_new(stage / filename, getattr(result, field))
+        if output_root.is_symlink() or not output_root.is_dir():
+            raise EntrypointError("production output_root changed before atomic publication")
+        if any(output_root.iterdir()):
+            raise EntrypointError("production output_root changed before atomic publication")
+        stage.replace(output_root)
+        published = True
+    finally:
+        if not published and stage.exists():
+            shutil.rmtree(stage)
+
+
 def _print_result(result: Any) -> None:
     print(f"split_manifest_sha256={result.split_manifest_sha256}")
     print(f"lineage_report_sha256={result.lineage_report_sha256}")
@@ -259,8 +279,7 @@ def main(argv: list[str] | None = None) -> int:
                 repository_commit=repository_commit,
                 repository_tree=repository_tree,
             )
-            for field, filename in _ARTIFACTS.items():
-                _write_new(output_root / filename, getattr(result, field))
+            _publish_bundle_atomically(output_root, result)
     except (EntrypointError, OSError, ValueError) as exc:
         print(f"BLOCKED: {exc}", file=sys.stderr)
         return 1

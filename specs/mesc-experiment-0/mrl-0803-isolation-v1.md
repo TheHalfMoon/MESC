@@ -98,3 +98,9 @@ After this producer is independently reviewed, merged, and post-merge qualified,
 output must be regenerated from the exact admitted corpus and independently recomputed.
 Only then may a separate exact-digest trust-admission mutation be considered under Issue
 #407.
+
+## Publication atomicity
+
+Production writes are staged outside the final output directory and published with one atomic
+directory replacement only after every artifact is complete. Failed staging leaves the final
+output directory unchanged and empty. Verification rejects symlinks and unexpected artifacts.

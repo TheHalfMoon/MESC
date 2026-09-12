@@ -400,10 +400,28 @@ def _assign_tiers(
         for identity, patient_ids in sorted(grouped.items())
     )
     tier1_count, tier2_count, tier3_count = authorization.tier_counts
-    tier3_groups = _choose_group_subset(groups, tier3_count, "TIER_3_SEALED")
-    remaining = tuple(group for group in groups if group not in tier3_groups)
-    tier2_groups = _choose_group_subset(remaining, tier2_count, "TIER_2_REPLICATION")
-    tier1_groups = tuple(group for group in remaining if group not in tier2_groups)
+    selected: (
+        tuple[
+            tuple[_HouseholdGroup, ...],
+            tuple[_HouseholdGroup, ...],
+            tuple[_HouseholdGroup, ...],
+        ]
+        | None
+    ) = None
+    for tier3_groups in _group_subset_candidates(groups, tier3_count, "TIER_3_SEALED"):
+        remaining = tuple(group for group in groups if group not in tier3_groups)
+        tier2_candidates = _group_subset_candidates(
+            remaining, tier2_count, "TIER_2_REPLICATION", required=False
+        )
+        if not tier2_candidates:
+            continue
+        tier2_groups = tier2_candidates[0]
+        tier1_groups = tuple(group for group in remaining if group not in tier2_groups)
+        selected = (tier1_groups, tier2_groups, tier3_groups)
+        break
+    if selected is None:
+        raise MRL0803IsolationError("household grouping cannot satisfy the authorized tier counts")
+    tier1_groups, tier2_groups, tier3_groups = selected
     assignments = {
         "TIER_1_SEARCH": _group_patient_ids(tier1_groups),
         "TIER_2_REPLICATION": _group_patient_ids(tier2_groups),
@@ -422,9 +440,13 @@ def _assign_tiers(
     return assignments
 
 
-def _choose_group_subset(
-    groups: tuple[_HouseholdGroup, ...], target_count: int, tier: str
-) -> tuple[_HouseholdGroup, ...]:
+def _group_subset_candidates(
+    groups: tuple[_HouseholdGroup, ...],
+    target_count: int,
+    tier: str,
+    *,
+    required: bool = True,
+) -> tuple[tuple[_HouseholdGroup, ...], ...]:
     candidates: list[tuple[str, tuple[str, ...], tuple[_HouseholdGroup, ...]]] = []
     for size in range(1, len(groups) + 1):
         for subset in itertools.combinations(groups, size):
@@ -437,11 +459,12 @@ def _choose_group_subset(
                 )
             ).hexdigest()
             candidates.append((score, identities, subset))
-    if not candidates:
+    if not candidates and required:
         raise MRL0803IsolationError(
             f"household grouping cannot satisfy authorized count for {tier}"
         )
-    return min(candidates, key=lambda item: (item[0], item[1]))[2]
+    candidates.sort(key=lambda item: (item[0], item[1]))
+    return tuple(item[2] for item in candidates)
 
 
 def _group_patient_ids(groups: tuple[_HouseholdGroup, ...]) -> tuple[str, ...]:

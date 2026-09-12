@@ -311,3 +311,87 @@ def test_cli_verification_requires_exact_artifact_set(tmp_path: Path) -> None:
 
     with pytest.raises(cli.EntrypointError, match="exactly the expected artifacts"):
         cli._require_output_root(output, _ROOT, verify_existing=True)
+
+
+def test_household_partition_backtracks_from_infeasible_best_tier3_candidate() -> None:
+    authorization = isolation.parse_mrl_0803_isolation_authorization(_AUTH_PATH.read_bytes())
+    sizes = (1, 1, 2, 3, 3, 6)
+    by_id: dict[str, dict[str, object]] = {}
+    household_by_id: dict[str, str] = {}
+    records: list[dict[str, object]] = []
+    cursor = 0
+    for group_index, size in enumerate(sizes):
+        household = f"g{group_index}-0"
+        for _ in range(size):
+            patient_id = f"partition-patient-{cursor:02d}"
+            record: dict[str, object] = {"id": patient_id, "resourceType": "Patient"}
+            records.append(record)
+            by_id[patient_id] = record
+            household_by_id[patient_id] = household
+            cursor += 1
+    parsed = isolation._ParsedCorpus(
+        records=tuple(records), by_id=by_id, household_by_id=household_by_id
+    )
+
+    groups = tuple(
+        isolation._HouseholdGroup(
+            identity=f"g{index}-0",
+            patient_ids=tuple(
+                patient_id
+                for patient_id, household in household_by_id.items()
+                if household == f"g{index}-0"
+            ),
+        )
+        for index in range(len(sizes))
+    )
+    first_tier3 = isolation._group_subset_candidates(groups, 4, "TIER_3_SEALED")[0]
+    assert tuple(group.identity for group in first_tier3) == ("g0-0", "g1-0", "g2-0")
+    remaining = tuple(group for group in groups if group not in first_tier3)
+    assert (
+        isolation._group_subset_candidates(remaining, 4, "TIER_2_REPLICATION", required=False) == ()
+    )
+
+    assignments = isolation._assign_tiers(parsed, authorization)
+    assert tuple(len(assignments[tier]) for tier in isolation._TIERS) == (8, 4, 4)
+    assert set().union(*(set(assignments[tier]) for tier in isolation._TIERS)) == set(by_id)
+
+
+def test_cli_atomic_publication_leaves_output_empty_on_late_write_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cli = _load_cli()
+    _, _, result = _qualify(monkeypatch)
+    output = tmp_path / "output"
+    output.mkdir()
+    original_write = cli._write_new
+    calls = 0
+
+    def fail_late(path: Path, payload: bytes) -> None:
+        nonlocal calls
+        calls += 1
+        if calls == 4:
+            raise OSError("injected late publication failure")
+        original_write(path, payload)
+
+    monkeypatch.setattr(cli, "_write_new", fail_late)
+    with pytest.raises(OSError, match="injected late publication failure"):
+        cli._publish_bundle_atomically(output, result)
+
+    assert tuple(output.iterdir()) == ()
+    assert tuple(tmp_path.glob(".output.mrl0803-stage-*")) == ()
+
+
+def test_cli_atomic_publication_commits_complete_bundle_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cli = _load_cli()
+    _, _, result = _qualify(monkeypatch)
+    output = tmp_path / "output"
+    output.mkdir()
+
+    cli._publish_bundle_atomically(output, result)
+
+    assert {path.name for path in output.iterdir()} == set(cli._ARTIFACTS.values())
+    assert tuple(tmp_path.glob(".output.mrl0803-stage-*")) == ()
+    for field, filename in cli._ARTIFACTS.items():
+        assert (output / filename).read_bytes() == getattr(result, field)
