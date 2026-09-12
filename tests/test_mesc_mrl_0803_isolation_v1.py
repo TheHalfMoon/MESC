@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
 from pathlib import Path
+from types import ModuleType
 
 import pytest
 
@@ -18,6 +20,16 @@ from medscale.mesc._mrl_real_preflight_evidence_v1 import (
 
 _ROOT = Path(__file__).resolve().parents[1]
 _AUTH_PATH = _ROOT / "specs/mesc-experiment-0/mrl-0803-isolation-authorization-v1.json"
+
+
+def _load_cli() -> ModuleType:
+    script = _ROOT / "scripts/mesc_mrl_0803_isolation_qualify.py"
+    spec = importlib.util.spec_from_file_location("mesc_mrl_0803_isolation_cli_test", script)
+    if spec is None or spec.loader is None:
+        raise AssertionError("cannot load MRL-0803 isolation CLI")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def _records() -> tuple[dict[str, object], ...]:
@@ -249,3 +261,53 @@ def test_bundle_verification_recomputes_every_byte(monkeypatch: pytest.MonkeyPat
             tier3_bytes=result.tier3_bytes,
             evidence_bytes=result.evidence_bytes + b" ",
         )
+
+
+def test_cli_requires_external_corpus_and_output_root(tmp_path: Path) -> None:
+    cli = _load_cli()
+    external = tmp_path / "corpus.jsonl"
+    external.write_bytes(b"{}\n")
+
+    assert cli._require_external_file(external, _ROOT, label="corpus") == external.resolve()
+    with pytest.raises(cli.EntrypointError, match="outside the repository"):
+        cli._require_external_file(_AUTH_PATH, _ROOT, label="corpus")
+    with pytest.raises(cli.EntrypointError, match="outside the repository"):
+        cli._require_output_root(_ROOT / "tests", _ROOT, verify_existing=False)
+
+
+def test_cli_write_new_refuses_overwrite(tmp_path: Path) -> None:
+    cli = _load_cli()
+    artifact = tmp_path / "artifact.json"
+    cli._write_new(artifact, b"first")
+    assert artifact.read_bytes() == b"first"
+    with pytest.raises(FileExistsError):
+        cli._write_new(artifact, b"second")
+
+
+def test_cli_verification_rejects_symlink_artifact(tmp_path: Path) -> None:
+    cli = _load_cli()
+    output = tmp_path / "verify"
+    output.mkdir()
+    target = tmp_path / "target.json"
+    target.write_bytes(b"{}\n")
+    filenames = tuple(cli._ARTIFACTS.values())
+    for filename in filenames:
+        (output / filename).write_bytes(b"{}\n")
+    (output / filenames[0]).unlink()
+    (output / filenames[0]).symlink_to(target)
+
+    checked = cli._require_output_root(output, _ROOT, verify_existing=True)
+    with pytest.raises(cli.EntrypointError, match="non-symlink"):
+        cli._read_verification_artifacts(checked)
+
+
+def test_cli_verification_requires_exact_artifact_set(tmp_path: Path) -> None:
+    cli = _load_cli()
+    output = tmp_path / "verify"
+    output.mkdir()
+    for filename in cli._ARTIFACTS.values():
+        (output / filename).write_bytes(b"{}\n")
+    (output / "unexpected.json").write_bytes(b"{}\n")
+
+    with pytest.raises(cli.EntrypointError, match="exactly the expected artifacts"):
+        cli._require_output_root(output, _ROOT, verify_existing=True)

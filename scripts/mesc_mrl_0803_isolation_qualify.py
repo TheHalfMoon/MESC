@@ -207,6 +207,18 @@ def _write_new(path: Path, payload: bytes) -> None:
         stream.write(payload)
 
 
+def _read_verification_artifacts(output_root: Path) -> dict[str, bytes]:
+    supplied: dict[str, bytes] = {}
+    for field, filename in _ARTIFACTS.items():
+        artifact = output_root / filename
+        if artifact.is_symlink() or not artifact.is_file():
+            raise EntrypointError(
+                f"verification artifact must be a regular non-symlink file: {filename}"
+            )
+        supplied[field] = artifact.read_bytes()
+    return supplied
+
+
 def _print_result(result: Any) -> None:
     print(f"split_manifest_sha256={result.split_manifest_sha256}")
     print(f"lineage_report_sha256={result.lineage_report_sha256}")
@@ -232,14 +244,7 @@ def main(argv: list[str] | None = None) -> int:
         authorization = module.parse_mrl_0803_isolation_authorization(authorization_raw)
         corpus_bytes = corpus_path.read_bytes()
         if args.verify_existing:
-            supplied: dict[str, bytes] = {}
-            for field, filename in _ARTIFACTS.items():
-                artifact = output_root / filename
-                if artifact.is_symlink() or not artifact.is_file():
-                    raise EntrypointError(
-                        f"verification artifact must be a regular non-symlink file: {filename}"
-                    )
-                supplied[field] = artifact.read_bytes()
+            supplied = _read_verification_artifacts(output_root)
             result = module.verify_mrl_0803_isolation_bundle(
                 corpus_bytes,
                 authorization=authorization,
