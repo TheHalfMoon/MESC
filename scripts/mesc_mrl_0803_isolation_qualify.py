@@ -6,7 +6,9 @@ from __future__ import annotations
 import argparse
 import importlib
 import json
+import os
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -210,15 +212,74 @@ def _write_new(path: Path, payload: bytes) -> None:
 
 
 def _read_verification_artifacts(output_root: Path) -> dict[str, bytes]:
-    supplied: dict[str, bytes] = {}
-    for field, filename in _ARTIFACTS.items():
-        artifact = output_root / filename
-        if artifact.is_symlink() or not artifact.is_file():
+    if not hasattr(os, "O_NOFOLLOW") or not hasattr(os, "O_DIRECTORY"):
+        raise EntrypointError("verification requires retained non-symlink descriptor support")
+    directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    try:
+        directory_fd = os.open(output_root, directory_flags)
+    except OSError as exc:
+        raise EntrypointError(
+            "verification output_root must support retained non-symlink descriptor access"
+        ) from exc
+    try:
+        directory_stat = os.fstat(directory_fd)
+        if not stat.S_ISDIR(directory_stat.st_mode):
+            raise EntrypointError("verification output_root descriptor must be a directory")
+        if set(os.listdir(directory_fd)) != set(_ARTIFACTS.values()):  # noqa: PTH208
             raise EntrypointError(
-                f"verification artifact must be a regular non-symlink file: {filename}"
+                "verification output_root must contain exactly the expected artifacts"
             )
-        supplied[field] = artifact.read_bytes()
-    return supplied
+
+        supplied: dict[str, bytes] = {}
+        for field, filename in _ARTIFACTS.items():
+            try:
+                artifact_fd = os.open(
+                    filename,
+                    os.O_RDONLY | os.O_NOFOLLOW,
+                    dir_fd=directory_fd,
+                )
+            except OSError as exc:
+                raise EntrypointError(
+                    f"verification artifact must be a regular non-symlink file: {filename}"
+                ) from exc
+            try:
+                before = os.fstat(artifact_fd)
+                if not stat.S_ISREG(before.st_mode):
+                    raise EntrypointError(
+                        f"verification artifact must be a regular non-symlink file: {filename}"
+                    )
+                chunks: list[bytes] = []
+                while True:
+                    chunk = os.read(artifact_fd, 1024 * 1024)
+                    if not chunk:
+                        break
+                    chunks.append(chunk)
+                payload = b"".join(chunks)
+                after = os.fstat(artifact_fd)
+                stable_identity = (
+                    before.st_dev,
+                    before.st_ino,
+                    before.st_size,
+                    before.st_mtime_ns,
+                    before.st_ctime_ns,
+                ) == (
+                    after.st_dev,
+                    after.st_ino,
+                    after.st_size,
+                    after.st_mtime_ns,
+                    after.st_ctime_ns,
+                )
+                if not stable_identity or len(payload) != after.st_size:
+                    raise EntrypointError(
+                        "verification artifact changed while retained descriptor was read: "
+                        f"{filename}"
+                    )
+                supplied[field] = payload
+            finally:
+                os.close(artifact_fd)
+        return supplied
+    finally:
+        os.close(directory_fd)
 
 
 def _publish_bundle_atomically(output_root: Path, result: Any) -> None:

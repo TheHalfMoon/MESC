@@ -103,4 +103,9 @@ Only then may a separate exact-digest trust-admission mutation be considered und
 
 Production writes are staged outside the final output directory and published with one atomic
 directory replacement only after every artifact is complete. Failed staging leaves the final
-output directory unchanged and empty. Verification rejects symlinks and unexpected artifacts.
+output directory unchanged and empty. Verification retains a no-follow descriptor for the
+output directory, revalidates the exact artifact set through that descriptor, opens every
+artifact descriptor-relative with `O_NOFOLLOW`, requires a regular file via `fstat()`, and
+reads only from the retained descriptor. Descriptor identity/size/timestamps must remain stable
+across the read. Verification therefore rejects symlink swaps, unexpected artifacts, and
+mid-read mutation instead of relying on check-then-open path semantics.

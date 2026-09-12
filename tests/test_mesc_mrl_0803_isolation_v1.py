@@ -301,6 +301,41 @@ def test_cli_verification_rejects_symlink_artifact(tmp_path: Path) -> None:
         cli._read_verification_artifacts(checked)
 
 
+def test_cli_verification_blocks_symlink_swap_after_directory_validation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cli = _load_cli()
+    output = tmp_path / "verify"
+    output.mkdir()
+    for filename in cli._ARTIFACTS.values():
+        (output / filename).write_bytes(b"{}\n")
+    target = tmp_path / "target.json"
+    target.write_bytes(b"attacker-controlled\n")
+    first_filename = next(iter(cli._ARTIFACTS.values()))
+    first_path = output / first_filename
+    real_open = cli.os.open
+    swapped = False
+
+    def swap_before_descriptor_open(
+        path: object, flags: int, mode: int = 0o777, *, dir_fd: int | None = None
+    ) -> int:
+        nonlocal swapped
+        if path == first_filename and dir_fd is not None and not swapped:
+            swapped = True
+            first_path.unlink()
+            first_path.symlink_to(target)
+        descriptor = real_open(path, flags, mode, dir_fd=dir_fd)
+        if not isinstance(descriptor, int):
+            raise AssertionError("os.open must return an integer descriptor")
+        return descriptor
+
+    monkeypatch.setattr(cli.os, "open", swap_before_descriptor_open)
+    checked = cli._require_output_root(output, _ROOT, verify_existing=True)
+    with pytest.raises(cli.EntrypointError, match="regular non-symlink"):
+        cli._read_verification_artifacts(checked)
+    assert swapped is True
+
+
 def test_cli_verification_requires_exact_artifact_set(tmp_path: Path) -> None:
     cli = _load_cli()
     output = tmp_path / "verify"
