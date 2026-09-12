@@ -66,6 +66,7 @@ _TASK_KIND: Final[dict[str, str]] = {
 TRUSTED_MRL_REAL_PREFLIGHT_EVIDENCE_SHA256: frozenset[str] = frozenset(
     {
         "1d6d14590a19c20bcd794e4c0ddbd2fa5e1c767b70e9d199fc169aeaaa86b762",
+        "629d8d39a6ea44e753b6d83e07116b12213a74c14f395bea700224fc6781c8e2",
         "c03792530e497857c700b64b1ee9950ede595006d35b577b7b8c573624c6c8b9",
     }
 )
