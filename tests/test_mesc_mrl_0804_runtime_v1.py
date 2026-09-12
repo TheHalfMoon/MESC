@@ -7,7 +7,7 @@ import importlib.util
 import json
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
@@ -132,7 +132,7 @@ def _rewrite(raw: bytes, **updates: object) -> bytes:
     document = json.loads(raw)
     document.update(updates)
     probe = _load_probe()
-    return probe.canonical_json_bytes(document)
+    return cast(bytes, probe.canonical_json_bytes(document))
 
 
 def test_committed_authorization_is_exact_and_fail_closed() -> None:
