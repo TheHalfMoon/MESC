@@ -1,6 +1,7 @@
 name: Optional Extras / Backends
 
 on:
+  workflow_dispatch:
   push:
     branches: [main]
   pull_request:
