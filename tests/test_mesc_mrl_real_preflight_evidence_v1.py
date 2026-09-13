@@ -274,8 +274,13 @@ def test_canonical_mrl_0804_provider_attestation_trust_root_is_exact() -> None:
     )
     assert snapshot.admits(_MRL0804_PROVIDER_ATTESTATION_SHA)
 
-    raw = _raw("MRL-0804", "mesc.mrl.real_preflight.runtime.v1", _runtime())
-    with pytest.raises(evidence.MRLRealPreflightEvidenceError, match="not trusted"):
+    payload = _runtime()
+    payload["provider_attestation_sha256"] = _MRL0804_PROVIDER_ATTESTATION_SHA
+    raw = _raw("MRL-0804", "mesc.mrl.real_preflight.runtime.v1", payload)
+    with pytest.raises(
+        evidence.MRLRealPreflightEvidenceError,
+        match="real-preflight evidence digest is not trusted",
+    ):
         evidence.admit_mrl_real_preflight_evidence(raw, expected_task_id="MRL-0804")
 
 
