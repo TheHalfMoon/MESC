@@ -190,7 +190,7 @@ def test_project_state_matches_frozen_schema_without_freezing_live_gate_states(
 
     for task_id in ("MRL-0299", "MRL-0399", "MRL-0799", "MRL-0800"):
         assert task_id in indexed
-    # MRL-0801..MRL-0803 have canonical trusted real-preflight evidence, so
+    # MRL-0801..MRL-0804 have canonical trusted real-preflight evidence, so
     # they render CLOSED_CANONICAL only on canonical main. On unmerged branches the
     # real-evidence closure guard keeps them PLANNED by design.
     snapshot = load_canonical_snapshot(_REPOSITORY_ROOT)
@@ -207,6 +207,10 @@ def test_project_state_matches_frozen_schema_without_freezing_live_gate_states(
             "MRL-0803": (
                 "629d8d39a6ea44e753b6d83e07116b12213a74c14f395bea700224fc6781c8e2",
                 "specs/mesc-research-loop-v1/real-preflight-evidence/MRL-0803.json",
+            ),
+            "MRL-0804": (
+                "f630a852319ca1ce6bd66b3203ce80c092e0695cabec3bb8456e29a94f8cd3f0",
+                "specs/mesc-research-loop-v1/real-preflight-evidence/MRL-0804.json",
             ),
         }
         for task_id, (digest, path) in expected_closed.items():
