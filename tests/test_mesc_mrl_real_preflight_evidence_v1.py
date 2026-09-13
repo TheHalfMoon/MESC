@@ -20,6 +20,9 @@ _SHA_D = "d" * 64
 _SHA_E = "e" * 64
 _SHA_F = "f" * 64
 _GIT_A = "1" * 40
+_MRL0804_PROVIDER_ATTESTATION_SHA = (
+    "e5054d04f1c05ce600738a9004f0c198" + "f36f98839f080adc2127fd0da2f876b2"
+)
 
 
 def _model_weights() -> dict[str, object]:
@@ -262,6 +265,18 @@ def test_mrl_0804_requires_both_evidence_and_provider_attestation_trust(
     )
     admitted = evidence.admit_mrl_real_preflight_evidence(raw, expected_task_id="MRL-0804")
     assert admitted.evidence_sha256 == evidence_digest
+
+
+def test_canonical_mrl_0804_provider_attestation_trust_root_is_exact() -> None:
+    snapshot = evidence.mrl_0804_provider_attestation_trust_snapshot()
+    assert snapshot.trusted_provider_attestation_sha256 == frozenset(
+        {_MRL0804_PROVIDER_ATTESTATION_SHA}
+    )
+    assert snapshot.admits(_MRL0804_PROVIDER_ATTESTATION_SHA)
+
+    raw = _raw("MRL-0804", "mesc.mrl.real_preflight.runtime.v1", _runtime())
+    with pytest.raises(evidence.MRLRealPreflightEvidenceError, match="not trusted"):
+        evidence.admit_mrl_real_preflight_evidence(raw, expected_task_id="MRL-0804")
 
 
 def test_noncanonical_json_is_rejected() -> None:
