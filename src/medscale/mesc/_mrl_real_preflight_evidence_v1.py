@@ -75,8 +75,10 @@ TRUSTED_MRL_REAL_PREFLIGHT_EVIDENCE_SHA256: frozenset[str] = frozenset(
 )
 
 # MRL-0804 additionally requires a separately reviewed provider/control-plane
-# attestation digest. The producer PR intentionally leaves this registry empty.
-TRUSTED_MRL0804_PROVIDER_ATTESTATION_SHA256: frozenset[str] = frozenset()
+# attestation digest. Admit only exact independently verified canonical evidence.
+TRUSTED_MRL0804_PROVIDER_ATTESTATION_SHA256: frozenset[str] = frozenset(
+    {"e5054d04f1c05ce600738a9004f0c198f36f98839f080adc2127fd0da2f876b2"}
+)
 
 
 class MRLRealPreflightEvidenceError(ValueError):
