@@ -8,8 +8,11 @@ import base64
 import hashlib
 import importlib
 import json
+import os
 import platform
 import re
+import sys
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -19,10 +22,11 @@ _PROBE_ID = "MESC-MRL-0804-CUDA-INTEGER-SMOKE"
 _PROBE_VERSION = "v1"
 _SHA256 = re.compile(r"^[0-9a-f]{64}$", flags=re.ASCII)
 _GIT_SHA = re.compile(r"^[0-9a-f]{40}$", flags=re.ASCII)
+_HF_JOB_ID = re.compile(r"^[0-9a-f]{24}$", flags=re.ASCII)
 
 
 def canonical_json_bytes(value: object) -> bytes:
-    """Serialize the closed probe payload using the repository canonical JSON byte shape."""
+    """Serialize the closed probe payload using repository canonical JSON bytes."""
     return (
         json.dumps(
             value,
@@ -37,9 +41,6 @@ def canonical_json_bytes(value: object) -> bytes:
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--provider", choices=("GOOGLE_COLAB", "HUGGING_FACE_JOBS"), required=True)
-    parser.add_argument("--provider-flavor", required=True)
-    parser.add_argument("--runner-class", choices=("colab", "other"), required=True)
     parser.add_argument("--repository-sha", required=True)
     parser.add_argument("--repository-tree", required=True)
     parser.add_argument("--dependency-lock-sha256", required=True)
@@ -64,11 +65,41 @@ def _exact_source_digest() -> str:
     return hashlib.sha256(Path(__file__).resolve(strict=True).read_bytes()).hexdigest()
 
 
+def _detect_provider_identity(environment: Mapping[str, str]) -> tuple[str, str, str, str, str]:
+    """Return an observed provider label; canonical authority comes from later attestation."""
+    job_id = environment.get("JOB_ID", "")
+    accelerator = environment.get("ACCELERATOR", "")
+    if job_id or accelerator:
+        if _HF_JOB_ID.fullmatch(job_id) is None or not accelerator.strip():
+            raise RuntimeError("Hugging Face Jobs provider environment is incomplete or invalid")
+        return ("HUGGING_FACE_JOBS", accelerator, "MedScale", "other", job_id)
+
+    colab_release = environment.get("COLAB_RELEASE_TAG", "")
+    colab_runtime_id = environment.get("MESC_COLAB_RUNTIME_ID", "")
+    if colab_release:
+        if not colab_runtime_id.strip() or colab_runtime_id != colab_runtime_id.strip():
+            raise RuntimeError(
+                "Colab setup must supply the control-plane runtime identity before smoke"
+            )
+        return ("GOOGLE_COLAB", "DYNAMIC_ASSIGNED", "GOOGLE", "colab", colab_runtime_id)
+
+    raise RuntimeError("hosted provider identity is unavailable; local CUDA cannot qualify")
+
+
+def _deny_network_audit(event: str, args: tuple[object, ...]) -> None:
+    """Fail closed if the isolated smoke attempts network or child-process execution."""
+    del args
+    if event.startswith("socket.") or event in {"subprocess.Popen", "os.system"}:
+        raise RuntimeError(f"MRL-0804 isolated smoke prohibited audit event: {event}")
+
+
 def build_probe_artifacts(
     *,
     torch_module: Any,
     provider: str,
     provider_flavor: str,
+    provider_owner: str,
+    provider_execution_id: str,
     runner_class: str,
     repository_sha: str,
     repository_tree: str,
@@ -78,8 +109,13 @@ def build_probe_artifacts(
     """Run one bounded integer CUDA smoke and return canonical observation/smoke bytes."""
     if provider not in {"GOOGLE_COLAB", "HUGGING_FACE_JOBS"}:
         raise ValueError("provider is not supported by the MRL-0804 probe")
-    if not provider_flavor.strip() or provider_flavor != provider_flavor.strip():
-        raise ValueError("provider_flavor must be exact non-empty text")
+    for value, label in (
+        (provider_flavor, "provider_flavor"),
+        (provider_owner, "provider_owner"),
+        (provider_execution_id, "provider_execution_id"),
+    ):
+        if not value.strip() or value != value.strip():
+            raise ValueError(f"{label} must be exact non-empty text")
     if runner_class not in {"colab", "other"}:
         raise ValueError("runner_class is invalid")
     repository_sha = _require_git_sha(repository_sha, label="repository_sha")
@@ -126,13 +162,7 @@ def build_probe_artifacts(
         "repository_tree": repository_tree,
         "runner_class": runner_class,
     }
-    smoke = canonical_json_bytes(
-        {
-            **common,
-            "disposition": disposition,
-            "kind": _SMOKE_KIND,
-        }
-    )
+    smoke = canonical_json_bytes({**common, "disposition": disposition, "kind": _SMOKE_KIND})
     observation = canonical_json_bytes(
         {
             "cuda_available": True,
@@ -147,7 +177,9 @@ def build_probe_artifacts(
             "probe_source_sha256": probe_source_sha256,
             "probe_version": _PROBE_VERSION,
             "provider": provider,
+            "provider_execution_id": provider_execution_id,
             "provider_flavor": provider_flavor,
+            "provider_owner": provider_owner,
             "python_version": python_version,
             "remote_code_allowed": False,
             "repository_sha": repository_sha,
@@ -180,13 +212,21 @@ def main() -> int:
     output_root = args.output_root.expanduser().resolve()
     output_root.mkdir(parents=True, exist_ok=False)
 
+    provider, flavor, owner, runner, execution_id = _detect_provider_identity(os.environ)
+
+    # Provider scheduling and dependency setup may use network before this point. Import
+    # torch before the isolated boundary because some installations perform subprocess
+    # or dynamic-library setup during import. The smoke itself begins after the hook.
     torch_module = importlib.import_module("torch")
+    sys.addaudithook(_deny_network_audit)
 
     observation, smoke = build_probe_artifacts(
         torch_module=torch_module,
-        provider=args.provider,
-        provider_flavor=args.provider_flavor,
-        runner_class=args.runner_class,
+        provider=provider,
+        provider_flavor=flavor,
+        provider_owner=owner,
+        provider_execution_id=execution_id,
+        runner_class=runner,
         repository_sha=repository_sha,
         repository_tree=repository_tree,
         dependency_lock_sha256=lock_sha,

@@ -21,6 +21,7 @@ _LOCK = Path("uv.lock")
 _ARTIFACTS = {
     "observation": "runtime-observation.json",
     "smoke": "runtime-smoke.json",
+    "provider_attestation": "provider-attestation.json",
     "identity": "runtime-identity.json",
     "qualification": "runtime-qualification-receipt.json",
     "evidence": "mrl-0804-real-preflight-evidence.json",
@@ -37,6 +38,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--output-root", type=Path, required=True)
     parser.add_argument("--observation", type=Path)
     parser.add_argument("--smoke", type=Path)
+    parser.add_argument("--provider-attestation", type=Path)
     parser.add_argument("--verify-existing", action="store_true")
     return parser
 
@@ -200,6 +202,7 @@ def _produce(
     output_root: Path,
     observation_path: Path,
     smoke_path: Path,
+    provider_attestation_path: Path,
     repository_sha: str,
     repository_tree: str,
     lock_sha: str,
@@ -209,9 +212,14 @@ def _produce(
     authorization = module.parse_mrl_0804_runtime_authorization(authorization_raw)
     observation = _read_regular_file(observation_path, label="observation")
     smoke = _read_regular_file(smoke_path, label="smoke")
+    provider_attestation = _read_regular_file(
+        provider_attestation_path,
+        label="provider attestation",
+    )
     result = module.qualify_mrl_0804_runtime(
         observation,
         smoke,
+        provider_attestation,
         authorization=authorization,
         repository_sha=repository_sha,
         repository_tree=repository_tree,
@@ -221,6 +229,7 @@ def _produce(
     payloads = {
         "observation": result.observation_bytes,
         "smoke": result.smoke_receipt_bytes,
+        "provider_attestation": result.provider_attestation_bytes,
         "identity": result.runtime_identity_bytes,
         "qualification": result.qualification_receipt_bytes,
         "evidence": result.evidence_bytes,
@@ -247,6 +256,7 @@ def _verify(
     return module.verify_mrl_0804_runtime_bundle(
         payloads["observation"],
         payloads["smoke"],
+        payloads["provider_attestation"],
         authorization=authorization,
         repository_sha=repository_sha,
         repository_tree=repository_tree,
@@ -270,8 +280,15 @@ def main() -> int:
     )
 
     if args.verify_existing:
-        if args.observation is not None or args.smoke is not None:
-            raise EntrypointError("verification mode reads observation/smoke from the exact bundle")
+        if (
+            args.observation is not None
+            or args.smoke is not None
+            or args.provider_attestation is not None
+        ):
+            raise EntrypointError(
+                "verification mode reads observation/smoke/provider attestation "
+                "from the exact bundle"
+            )
         result = _verify(
             repository=repository,
             module=module,
@@ -283,16 +300,24 @@ def main() -> int:
         )
         mode = "VERIFY_EXISTING"
     else:
-        if args.observation is None or args.smoke is None:
-            raise EntrypointError("production mode requires --observation and --smoke")
+        if args.observation is None or args.smoke is None or args.provider_attestation is None:
+            raise EntrypointError(
+                "production mode requires --observation, --smoke, and --provider-attestation"
+            )
         observation_path = _require_external_file(args.observation, repository, label="observation")
         smoke_path = _require_external_file(args.smoke, repository, label="smoke")
+        provider_attestation_path = _require_external_file(
+            args.provider_attestation,
+            repository,
+            label="provider attestation",
+        )
         result = _produce(
             repository=repository,
             module=module,
             output_root=output_root,
             observation_path=observation_path,
             smoke_path=smoke_path,
+            provider_attestation_path=provider_attestation_path,
             repository_sha=repository_sha,
             repository_tree=repository_tree,
             lock_sha=lock_sha,
@@ -307,6 +332,7 @@ def main() -> int:
                 "evidence_sha256": result.evidence_sha256,
                 "mode": mode,
                 "probe_source_sha256": probe_sha,
+                "provider_attestation_sha256": result.provider_attestation_sha256,
                 "qualification_receipt_sha256": result.qualification_receipt_sha256,
                 "repository_sha": repository_sha,
                 "repository_tree": repository_tree,

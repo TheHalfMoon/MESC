@@ -42,6 +42,9 @@ MRLRealPreflightTask = Literal[
 
 _SCHEMA_VERSION: Final = "MRL-REAL-PREFLIGHT-EVIDENCE-V1"
 _TRUST_REGISTRY_VERSION: Final = "MRL-REAL-PREFLIGHT-EVIDENCE-TRUST-V1"
+_MRL_0804_PROVIDER_ATTESTATION_TRUST_REGISTRY_VERSION: Final = (
+    "MRL-0804-PROVIDER-ATTESTATION-TRUST-V1"
+)
 _MRL_0801_MODEL_WEIGHTS_SET_KIND: Final = "mesc.mrl.real_preflight.model_weights_set.v1"
 _MRL_0805_NO_TRAINING_KIND: Final = "mesc.mrl.real_preflight.no_training_evaluation_authority.v1"
 _SHA256: Final = re.compile(r"^[0-9a-f]{64}$", flags=re.ASCII)
@@ -71,6 +74,10 @@ TRUSTED_MRL_REAL_PREFLIGHT_EVIDENCE_SHA256: frozenset[str] = frozenset(
     }
 )
 
+# MRL-0804 additionally requires a separately reviewed provider/control-plane
+# attestation digest. The producer PR intentionally leaves this registry empty.
+TRUSTED_MRL0804_PROVIDER_ATTESTATION_SHA256: frozenset[str] = frozenset()
+
 
 class MRLRealPreflightEvidenceError(ValueError):
     """Raised when real-preflight evidence cannot be validated fail-closed."""
@@ -90,6 +97,22 @@ class MRLRealPreflightTrustSnapshot:
             type(value) is str
             and _SHA256.fullmatch(value) is not None
             and value in self.trusted_evidence_sha256
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class MRL0804ProviderAttestationTrustSnapshot:
+    """Immutable view of the separately controlled MRL-0804 provider trust root."""
+
+    registry_version: str
+    trusted_provider_attestation_sha256: frozenset[str]
+    registry_sha256: str
+
+    def admits(self, value: str) -> bool:
+        return (
+            type(value) is str
+            and _SHA256.fullmatch(value) is not None
+            and value in self.trusted_provider_attestation_sha256
         )
 
 
@@ -161,6 +184,26 @@ def mrl_real_preflight_trust_snapshot() -> MRLRealPreflightTrustSnapshot:
     )
 
 
+def mrl_0804_provider_attestation_trust_snapshot() -> MRL0804ProviderAttestationTrustSnapshot:
+    """Return the validated provider-attestation trust snapshot for MRL-0804."""
+    registry = TRUSTED_MRL0804_PROVIDER_ATTESTATION_SHA256
+    if type(registry) is not frozenset:
+        raise MRLRealPreflightEvidenceError(
+            "MRL-0804 provider attestation trust registry must be an exact frozenset"
+        )
+    for value in registry:
+        _require_sha256(value, field="trusted MRL-0804 provider attestation digest")
+    payload = {
+        "registry_version": _MRL_0804_PROVIDER_ATTESTATION_TRUST_REGISTRY_VERSION,
+        "trusted_provider_attestation_sha256": sorted(registry),
+    }
+    return MRL0804ProviderAttestationTrustSnapshot(
+        registry_version=_MRL_0804_PROVIDER_ATTESTATION_TRUST_REGISTRY_VERSION,
+        trusted_provider_attestation_sha256=registry,
+        registry_sha256=hashlib.sha256(canonical_json_bytes(payload)).hexdigest(),
+    )
+
+
 def parse_mrl_real_preflight_evidence(raw: bytes) -> MRLRealPreflightEvidence:
     """Parse canonical evidence bytes without granting trust or task closure."""
     return MRLRealPreflightEvidence(raw)
@@ -184,6 +227,15 @@ def admit_mrl_real_preflight_evidence(
         raise MRLRealPreflightEvidenceError(
             "real-preflight evidence digest is not trusted by the canonical registry"
         )
+    if evidence.task_id == "MRL-0804":
+        document = _parse_canonical_object(raw)
+        payload = cast(dict[str, object], document["payload"])
+        provider_attestation_sha256 = cast(str, payload["provider_attestation_sha256"])
+        provider_snapshot = mrl_0804_provider_attestation_trust_snapshot()
+        if not provider_snapshot.admits(provider_attestation_sha256):
+            raise MRLRealPreflightEvidenceError(
+                "MRL-0804 provider attestation digest is not trusted by the canonical registry"
+            )
     if evidence.task_id == "MRL-0805" and evidence.kind == _TASK_KIND["MRL-0805"]:
         document = _parse_canonical_object(raw)
         payload = cast(dict[str, object], document["payload"])
@@ -389,6 +441,7 @@ def _validate_runtime(payload: dict[str, object]) -> None:
         {
             "network_accessed",
             "platform_qualified",
+            "provider_attestation_sha256",
             "remote_code_allowed",
             "runtime_identity_sha256",
             "runtime_qualification_receipt_sha256",
@@ -400,6 +453,7 @@ def _validate_runtime(payload: dict[str, object]) -> None:
     _require_false(payload["network_accessed"], field="network_accessed")
     _require_false(payload["remote_code_allowed"], field="remote_code_allowed")
     for field_name in (
+        "provider_attestation_sha256",
         "runtime_identity_sha256",
         "runtime_qualification_receipt_sha256",
         "smoke_receipt_sha256",
@@ -807,12 +861,15 @@ def _reject_nonstandard_json_constant(value: str) -> None:
 
 
 __all__ = [
+    "TRUSTED_MRL0804_PROVIDER_ATTESTATION_SHA256",
     "TRUSTED_MRL_REAL_PREFLIGHT_EVIDENCE_SHA256",
+    "MRL0804ProviderAttestationTrustSnapshot",
     "MRLRealPreflightEvidence",
     "MRLRealPreflightEvidenceError",
     "MRLRealPreflightTask",
     "MRLRealPreflightTrustSnapshot",
     "admit_mrl_real_preflight_evidence",
+    "mrl_0804_provider_attestation_trust_snapshot",
     "mrl_real_preflight_trust_snapshot",
     "parse_mrl_real_preflight_evidence",
 ]

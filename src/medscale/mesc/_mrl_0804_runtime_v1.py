@@ -21,9 +21,10 @@ from medscale.mesc._training_runtime_qualification_v1 import (
 )
 from medscale.modelkit.manifests import RunnerClass
 
-_AUTHORIZATION_SHA256: Final = "afef2cf4959e2f308f9422f8a6632f4ef0a16ec18056f25ae6aa58946403f277"
+_AUTHORIZATION_SHA256: Final = "24dd748eee6d87808fa40d18b4ee1733439860fa1207e072063db191c2e2fb2f"
 _AUTH_SCHEMA: Final = "MESC-MRL-0804-RUNTIME-AUTHORIZATION-V1"
 _OBSERVATION_SCHEMA: Final = "MESC-MRL-0804-RUNTIME-OBSERVATION-V1"
+_PROVIDER_ATTESTATION_SCHEMA: Final = "MESC-MRL-0804-PROVIDER-ATTESTATION-V1"
 _IDENTITY_SCHEMA: Final = "MESC-MRL-0804-RUNTIME-IDENTITY-V1"
 _EXPECTED_TASK: Final = "MRL-0804"
 _EXPECTED_KIND: Final = "mesc.mrl.real_preflight.runtime.v1"
@@ -41,6 +42,7 @@ class AuthorizedRuntimeProvider:
 
     provider: str
     provider_flavor: str
+    provider_owner: str
     runner_class: RunnerClass
     requires_free_or_quota_backed: bool
 
@@ -81,6 +83,7 @@ class MRL0804RuntimeAuthorization:
                 AuthorizedRuntimeProvider(
                     provider=_require_text(row["provider"], label="provider"),
                     provider_flavor=_require_text(row["provider_flavor"], label="provider_flavor"),
+                    provider_owner=_require_text(row["provider_owner"], label="provider_owner"),
                     runner_class=runner,
                     requires_free_or_quota_backed=_require_bool(
                         row["requires_free_or_quota_backed"],
@@ -133,6 +136,8 @@ class MRL0804RuntimeObservation:
     canonical_bytes: bytes = field(repr=False)
     provider: str = field(init=False)
     provider_flavor: str = field(init=False)
+    provider_owner: str = field(init=False)
+    provider_execution_id: str = field(init=False)
     runner_class: RunnerClass = field(init=False)
     python_version: str = field(init=False)
     os_name: str = field(init=False)
@@ -168,7 +173,9 @@ class MRL0804RuntimeObservation:
                 "probe_source_sha256",
                 "probe_version",
                 "provider",
+                "provider_execution_id",
                 "provider_flavor",
+                "provider_owner",
                 "python_version",
                 "remote_code_allowed",
                 "repository_sha",
@@ -204,6 +211,16 @@ class MRL0804RuntimeObservation:
             self,
             "provider_flavor",
             _require_text(document["provider_flavor"], label="provider_flavor"),
+        )
+        object.__setattr__(
+            self,
+            "provider_owner",
+            _require_text(document["provider_owner"], label="provider_owner"),
+        )
+        object.__setattr__(
+            self,
+            "provider_execution_id",
+            _require_text(document["provider_execution_id"], label="provider_execution_id"),
         )
         object.__setattr__(self, "runner_class", runner)
         object.__setattr__(
@@ -265,17 +282,156 @@ class MRL0804RuntimeObservation:
 
 
 @dataclass(frozen=True, slots=True)
+class MRL0804ProviderAttestation:
+    """Independently reviewed provider/control-plane attestation for one hosted run."""
+
+    canonical_bytes: bytes = field(repr=False)
+    provider: str = field(init=False)
+    provider_flavor: str = field(init=False)
+    provider_owner: str = field(init=False)
+    provider_execution_id: str = field(init=False)
+    provider_status: str = field(init=False)
+    monetary_cost_microunits: int = field(init=False)
+    observation_sha256: str = field(init=False)
+    smoke_receipt_sha256: str = field(init=False)
+    repository_sha: str = field(init=False)
+    repository_tree: str = field(init=False)
+    dependency_lock_sha256: str = field(init=False)
+    probe_source_sha256: str = field(init=False)
+    verification_method: str = field(init=False)
+    verification_ref: str = field(init=False)
+
+    def __post_init__(self) -> None:
+        document = _parse_canonical_object(
+            self.canonical_bytes,
+            label="provider attestation",
+        )
+        _require_exact_keys(
+            document,
+            {
+                "dependency_lock_sha256",
+                "monetary_cost_microunits",
+                "observation_sha256",
+                "probe_source_sha256",
+                "provider",
+                "provider_execution_id",
+                "provider_flavor",
+                "provider_owner",
+                "provider_status",
+                "repository_sha",
+                "repository_tree",
+                "schema_version",
+                "smoke_receipt_sha256",
+                "verification_method",
+                "verification_ref",
+            },
+            label="provider attestation",
+        )
+        if document["schema_version"] != _PROVIDER_ATTESTATION_SCHEMA:
+            raise MRL0804RuntimeError("provider attestation schema_version is invalid")
+        if document["provider_status"] != "COMPLETED":
+            raise MRL0804RuntimeError("provider attestation provider_status must be COMPLETED")
+        cost = document["monetary_cost_microunits"]
+        if type(cost) is not int or cost != 0:
+            raise MRL0804RuntimeError("provider attestation monetary cost must be exactly zero")
+
+        object.__setattr__(
+            self,
+            "provider",
+            _require_text(document["provider"], label="provider"),
+        )
+        object.__setattr__(
+            self,
+            "provider_flavor",
+            _require_text(document["provider_flavor"], label="provider_flavor"),
+        )
+        object.__setattr__(
+            self,
+            "provider_owner",
+            _require_text(document["provider_owner"], label="provider_owner"),
+        )
+        object.__setattr__(
+            self,
+            "provider_execution_id",
+            _require_text(
+                document["provider_execution_id"],
+                label="provider_execution_id",
+            ),
+        )
+        object.__setattr__(self, "provider_status", "COMPLETED")
+        object.__setattr__(self, "monetary_cost_microunits", cost)
+        object.__setattr__(
+            self,
+            "observation_sha256",
+            _require_sha256(document["observation_sha256"], "observation_sha256"),
+        )
+        object.__setattr__(
+            self,
+            "smoke_receipt_sha256",
+            _require_sha256(
+                document["smoke_receipt_sha256"],
+                "smoke_receipt_sha256",
+            ),
+        )
+        object.__setattr__(
+            self,
+            "repository_sha",
+            _require_git_sha(document["repository_sha"], "repository_sha"),
+        )
+        object.__setattr__(
+            self,
+            "repository_tree",
+            _require_git_sha(document["repository_tree"], "repository_tree"),
+        )
+        object.__setattr__(
+            self,
+            "dependency_lock_sha256",
+            _require_sha256(
+                document["dependency_lock_sha256"],
+                "dependency_lock_sha256",
+            ),
+        )
+        object.__setattr__(
+            self,
+            "probe_source_sha256",
+            _require_sha256(
+                document["probe_source_sha256"],
+                "probe_source_sha256",
+            ),
+        )
+        object.__setattr__(
+            self,
+            "verification_method",
+            _require_text(
+                document["verification_method"],
+                label="verification_method",
+            ),
+        )
+        object.__setattr__(
+            self,
+            "verification_ref",
+            _require_text(document["verification_ref"], label="verification_ref"),
+        )
+
+    @property
+    def attestation_sha256(self) -> str:
+        return hashlib.sha256(self.canonical_bytes).hexdigest()
+
+
+@dataclass(frozen=True, slots=True)
 class MRL0804RuntimeQualification:
     """Deterministic MRL-0804 output bundle assembled from genuine external evidence."""
 
     observation_bytes: bytes = field(repr=False)
     smoke_receipt_bytes: bytes = field(repr=False)
+    provider_attestation_bytes: bytes = field(repr=False)
     runtime_identity_bytes: bytes = field(repr=False)
     qualification_receipt_bytes: bytes = field(repr=False)
     evidence_bytes: bytes = field(repr=False)
     runtime_identity_sha256: str
     qualification_receipt_sha256: str
     smoke_receipt_sha256: str
+    provider_attestation_sha256: str
     evidence_sha256: str
 
 
@@ -289,9 +445,15 @@ def parse_mrl_0804_runtime_observation(raw: bytes) -> MRL0804RuntimeObservation:
     return MRL0804RuntimeObservation(raw)
 
 
+def parse_mrl_0804_provider_attestation(raw: bytes) -> MRL0804ProviderAttestation:
+    """Parse exact canonical provider attestation bytes without granting trust."""
+    return MRL0804ProviderAttestation(raw)
+
+
 def qualify_mrl_0804_runtime(
     observation_raw: bytes,
     smoke_raw: bytes,
+    provider_attestation_raw: bytes,
     *,
     authorization: MRL0804RuntimeAuthorization,
     repository_sha: str,
@@ -308,9 +470,19 @@ def qualify_mrl_0804_runtime(
     probe_source_sha256 = _require_sha256(probe_source_sha256, "probe_source_sha256")
 
     observation = MRL0804RuntimeObservation(observation_raw)
+    provider_attestation = MRL0804ProviderAttestation(provider_attestation_raw)
     provider = authorization.provider_for(observation.provider, observation.provider_flavor)
     if observation.runner_class is not provider.runner_class:
         raise MRL0804RuntimeError("runtime runner_class does not match provider authorization")
+    if observation.provider_owner != provider.provider_owner:
+        raise MRL0804RuntimeError("runtime provider_owner does not match provider authorization")
+    if (
+        provider_attestation.provider != observation.provider
+        or provider_attestation.provider_flavor != observation.provider_flavor
+        or provider_attestation.provider_owner != observation.provider_owner
+        or provider_attestation.provider_execution_id != observation.provider_execution_id
+    ):
+        raise MRL0804RuntimeError("provider attestation does not match runtime provider identity")
     if (
         observation.repository_sha != repository_sha
         or observation.repository_tree != repository_tree
@@ -334,6 +506,24 @@ def qualify_mrl_0804_runtime(
         raise MRL0804RuntimeError("runtime qualification smoke must not access the network")
     if observation.remote_code_allowed:
         raise MRL0804RuntimeError("runtime qualification smoke must not allow remote code")
+
+    observation_sha256 = observation.observation_sha256
+    smoke_input_sha256 = hashlib.sha256(smoke_raw).hexdigest()
+    if provider_attestation.observation_sha256 != observation_sha256:
+        raise MRL0804RuntimeError("provider attestation does not bind the runtime observation")
+    if provider_attestation.smoke_receipt_sha256 != smoke_input_sha256:
+        raise MRL0804RuntimeError("provider attestation does not bind the runtime smoke receipt")
+    if (
+        provider_attestation.repository_sha != repository_sha
+        or provider_attestation.repository_tree != repository_tree
+    ):
+        raise MRL0804RuntimeError(
+            "provider attestation does not bind the exact repository identity"
+        )
+    if provider_attestation.dependency_lock_sha256 != dependency_lock_sha256:
+        raise MRL0804RuntimeError("provider attestation does not bind the exact dependency lock")
+    if provider_attestation.probe_source_sha256 != probe_source_sha256:
+        raise MRL0804RuntimeError("provider attestation does not bind the exact probe source")
 
     try:
         smoke = TrainingRuntimeSmokeEvidence(smoke_raw)
@@ -369,11 +559,14 @@ def qualify_mrl_0804_runtime(
             "network_accessed": observation.network_accessed,
             "observation_sha256": observation.observation_sha256,
             "os_name": observation.os_name,
+            "provider_attestation_sha256": provider_attestation.attestation_sha256,
             "probe_id": observation.probe_id,
             "probe_source_sha256": observation.probe_source_sha256,
             "probe_version": observation.probe_version,
             "provider": observation.provider,
+            "provider_execution_id": observation.provider_execution_id,
             "provider_flavor": observation.provider_flavor,
+            "provider_owner": observation.provider_owner,
             "python_version": observation.python_version,
             "remote_code_allowed": observation.remote_code_allowed,
             "repository_sha": observation.repository_sha,
@@ -394,6 +587,7 @@ def qualify_mrl_0804_runtime(
             "payload": {
                 "network_accessed": False,
                 "platform_qualified": True,
+                "provider_attestation_sha256": provider_attestation.attestation_sha256,
                 "remote_code_allowed": False,
                 "runtime_identity_sha256": runtime_identity_sha256,
                 "runtime_qualification_receipt_sha256": qualification_receipt_sha256,
@@ -410,12 +604,14 @@ def qualify_mrl_0804_runtime(
     return MRL0804RuntimeQualification(
         observation_bytes=observation.canonical_bytes,
         smoke_receipt_bytes=smoke.canonical_bytes,
+        provider_attestation_bytes=provider_attestation.canonical_bytes,
         runtime_identity_bytes=runtime_identity_bytes,
         qualification_receipt_bytes=qualification_receipt_bytes,
         evidence_bytes=evidence_bytes,
         runtime_identity_sha256=runtime_identity_sha256,
         qualification_receipt_sha256=qualification_receipt_sha256,
         smoke_receipt_sha256=smoke_sha256,
+        provider_attestation_sha256=provider_attestation.attestation_sha256,
         evidence_sha256=hashlib.sha256(evidence_bytes).hexdigest(),
     )
 
@@ -423,6 +619,7 @@ def qualify_mrl_0804_runtime(
 def verify_mrl_0804_runtime_bundle(
     observation_raw: bytes,
     smoke_raw: bytes,
+    provider_attestation_raw: bytes,
     *,
     authorization: MRL0804RuntimeAuthorization,
     repository_sha: str,
@@ -437,6 +634,7 @@ def verify_mrl_0804_runtime_bundle(
     expected = qualify_mrl_0804_runtime(
         observation_raw,
         smoke_raw,
+        provider_attestation_raw,
         authorization=authorization,
         repository_sha=repository_sha,
         repository_tree=repository_tree,
@@ -444,6 +642,11 @@ def verify_mrl_0804_runtime_bundle(
         probe_source_sha256=probe_source_sha256,
     )
     supplied = (
+        (
+            "provider attestation",
+            provider_attestation_raw,
+            expected.provider_attestation_bytes,
+        ),
         ("runtime identity", runtime_identity_bytes, expected.runtime_identity_bytes),
         (
             "qualification receipt",
@@ -570,11 +773,18 @@ def _validate_authorization(document: dict[str, object]) -> None:
         row = _require_object(row_value, label=f"runtime_policy.providers[{index}]")
         _require_exact_keys(
             row,
-            {"provider", "provider_flavor", "requires_free_or_quota_backed", "runner_class"},
+            {
+                "provider",
+                "provider_flavor",
+                "provider_owner",
+                "requires_free_or_quota_backed",
+                "runner_class",
+            },
             label=f"runtime_policy.providers[{index}]",
         )
         provider = _require_text(row["provider"], label="provider")
         flavor = _require_text(row["provider_flavor"], label="provider_flavor")
+        _require_text(row["provider_owner"], label="provider_owner")
         _require_bool(row["requires_free_or_quota_backed"], label="requires_free_or_quota_backed")
         runner = _require_text(row["runner_class"], label="runner_class")
         try:

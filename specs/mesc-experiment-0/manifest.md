@@ -27,6 +27,8 @@ This package intentionally separates protocol preparation from real execution ev
 - `../../scripts/mesc_mrl_0804_runtime_qualify.py`
 - `../../src/medscale/mesc/_mrl_0804_runtime_v1.py`
 - `../../tests/test_mesc_mrl_0804_runtime_v1.py`
+- `../../src/medscale/mesc/_mrl_real_preflight_evidence_v1.py`
+- `../../tests/test_mesc_mrl_real_preflight_evidence_v1.py`
 
 ## Verification
 
