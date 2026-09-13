@@ -62,6 +62,7 @@ def _runtime() -> dict[str, object]:
     return {
         "network_accessed": False,
         "platform_qualified": True,
+        "provider_attestation_sha256": _SHA_D,
         "remote_code_allowed": False,
         "runtime_identity_sha256": _SHA_A,
         "runtime_qualification_receipt_sha256": _SHA_B,
@@ -236,6 +237,31 @@ def test_exact_trust_digest_admits_only_the_matching_evidence(
             raw,
             expected_task_id="MRL-0802",
         )
+
+
+def test_mrl_0804_requires_both_evidence_and_provider_attestation_trust(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    raw = _raw("MRL-0804", "mesc.mrl.real_preflight.runtime.v1", _runtime())
+    evidence_digest = hashlib.sha256(raw).hexdigest()
+    monkeypatch.setattr(
+        evidence,
+        "TRUSTED_MRL_REAL_PREFLIGHT_EVIDENCE_SHA256",
+        frozenset({evidence_digest}),
+    )
+    with pytest.raises(
+        evidence.MRLRealPreflightEvidenceError,
+        match="provider attestation digest is not trusted",
+    ):
+        evidence.admit_mrl_real_preflight_evidence(raw, expected_task_id="MRL-0804")
+
+    monkeypatch.setattr(
+        evidence,
+        "TRUSTED_MRL0804_PROVIDER_ATTESTATION_SHA256",
+        frozenset({_SHA_D}),
+    )
+    admitted = evidence.admit_mrl_real_preflight_evidence(raw, expected_task_id="MRL-0804")
+    assert admitted.evidence_sha256 == evidence_digest
 
 
 def test_noncanonical_json_is_rejected() -> None:

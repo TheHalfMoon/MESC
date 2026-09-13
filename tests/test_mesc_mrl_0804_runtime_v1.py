@@ -1,0 +1,581 @@
+"""Regression tests for the MRL-0804 hosted-runtime evidence producer."""
+
+from __future__ import annotations
+
+import ast
+import hashlib
+import importlib.util
+import json
+import subprocess
+from collections.abc import Iterator
+from contextlib import contextmanager
+from pathlib import Path
+from types import ModuleType, SimpleNamespace
+from typing import Any, cast
+
+import pytest
+
+from medscale.mesc import _mrl_0804_runtime_v1 as runtime
+from medscale.mesc import _mrl_real_preflight_evidence_v1 as preflight
+from medscale.mesc._mrl_real_preflight_evidence_v1 import (
+    MRLRealPreflightEvidenceError,
+    admit_mrl_real_preflight_evidence,
+    parse_mrl_real_preflight_evidence,
+)
+
+_ROOT = Path(__file__).resolve().parents[1]
+_AUTH = _ROOT / "specs/mesc-experiment-0/mrl-0804-runtime-authorization-v1.json"
+_PROBE = _ROOT / "scripts/mesc_mrl_0804_gpu_probe.py"
+_QUALIFIER = _ROOT / "scripts/mesc_mrl_0804_runtime_qualify.py"
+_EXECUTION_ID = "0123456789abcdef01234567"
+
+
+def _load_qualifier() -> ModuleType:
+    spec = importlib.util.spec_from_file_location("mesc_mrl_0804_qualifier_test", _QUALIFIER)
+    if spec is None or spec.loader is None:
+        raise AssertionError("cannot load MRL-0804 runtime qualifier")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _load_probe() -> ModuleType:
+    spec = importlib.util.spec_from_file_location("mesc_mrl_0804_gpu_probe_test", _PROBE)
+    if spec is None or spec.loader is None:
+        raise AssertionError("cannot load MRL-0804 GPU probe")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+class _FakeTensor:
+    def __init__(self, values: list[int]) -> None:
+        self.values = values
+
+    def __mul__(self, value: int) -> _FakeTensor:
+        return _FakeTensor([item * value for item in self.values])
+
+    def __add__(self, value: int) -> _FakeTensor:
+        return _FakeTensor([item + value for item in self.values])
+
+    def cpu(self) -> _FakeTensor:
+        return self
+
+    def tolist(self) -> list[int]:
+        return list(self.values)
+
+
+class _FakeCuda:
+    def __init__(self, *, available: bool = True, count: int = 1) -> None:
+        self.available = available
+        self.count = count
+        self.synchronized = False
+
+    def is_available(self) -> bool:
+        return self.available
+
+    def device_count(self) -> int:
+        return self.count
+
+    def get_device_name(self, index: int) -> str:
+        assert index < self.count
+        return "NVIDIA A10G"
+
+    def get_device_properties(self, index: int) -> SimpleNamespace:
+        assert index < self.count
+        return SimpleNamespace(total_memory=24 * 1024**3)
+
+    def synchronize(self) -> None:
+        self.synchronized = True
+
+
+class _FakeTorch:
+    __version__ = "2.9.0+cu128"
+    int64 = object()
+
+    def __init__(self, *, available: bool = True, count: int = 1) -> None:
+        self.cuda = _FakeCuda(available=available, count=count)
+        self.version = SimpleNamespace(cuda="12.8")
+
+    def arange(self, start: int, stop: int, *, dtype: object, device: str) -> _FakeTensor:
+        assert dtype is self.int64
+        assert device == "cuda"
+        return _FakeTensor(list(range(start, stop)))
+
+
+def _authorization() -> runtime.MRL0804RuntimeAuthorization:
+    return runtime.parse_mrl_0804_runtime_authorization(_AUTH.read_bytes())
+
+
+def _provider_owner(provider: str) -> str:
+    return "GOOGLE" if provider == "GOOGLE_COLAB" else "MedScale"
+
+
+def _probe_bytes(
+    *,
+    provider: str = "HUGGING_FACE_JOBS",
+    flavor: str = "zero-a10g",
+    runner_class: str = "other",
+    torch_module: Any | None = None,
+) -> tuple[bytes, bytes, bytes, str]:
+    authorization = _authorization()
+    probe = _load_probe()
+    probe_sha = hashlib.sha256(_PROBE.read_bytes()).hexdigest()
+    owner = _provider_owner(provider)
+    observation, smoke = probe.build_probe_artifacts(
+        torch_module=_FakeTorch() if torch_module is None else torch_module,
+        provider=provider,
+        provider_flavor=flavor,
+        provider_owner=owner,
+        provider_execution_id=_EXECUTION_ID,
+        runner_class=runner_class,
+        repository_sha=authorization.main_sha,
+        repository_tree=authorization.main_tree,
+        dependency_lock_sha256=authorization.dependency_lock_sha256,
+        probe_source_sha256=probe_sha,
+    )
+    attestation = cast(
+        bytes,
+        probe.canonical_json_bytes(
+            {
+                "dependency_lock_sha256": authorization.dependency_lock_sha256,
+                "monetary_cost_microunits": 0,
+                "observation_sha256": hashlib.sha256(observation).hexdigest(),
+                "probe_source_sha256": probe_sha,
+                "provider": provider,
+                "provider_execution_id": _EXECUTION_ID,
+                "provider_flavor": flavor,
+                "provider_owner": owner,
+                "provider_status": "COMPLETED",
+                "repository_sha": authorization.main_sha,
+                "repository_tree": authorization.main_tree,
+                "schema_version": "MESC-MRL-0804-PROVIDER-ATTESTATION-V1",
+                "smoke_receipt_sha256": hashlib.sha256(smoke).hexdigest(),
+                "verification_method": "INDEPENDENT_CONTROL_PLANE_REVIEW",
+                "verification_ref": "test-control-plane-ref",
+            }
+        ),
+    )
+    return observation, smoke, attestation, probe_sha
+
+
+@contextmanager
+def _trust_attestation(attestation: bytes) -> Iterator[None]:
+    previous = preflight.TRUSTED_MRL0804_PROVIDER_ATTESTATION_SHA256
+    digest = hashlib.sha256(attestation).hexdigest()
+    preflight.TRUSTED_MRL0804_PROVIDER_ATTESTATION_SHA256 = frozenset({digest})
+    try:
+        yield
+    finally:
+        preflight.TRUSTED_MRL0804_PROVIDER_ATTESTATION_SHA256 = previous
+
+
+def _qualify() -> runtime.MRL0804RuntimeQualification:
+    authorization = _authorization()
+    observation, smoke, attestation, probe_sha = _probe_bytes()
+    with _trust_attestation(attestation):
+        return runtime.qualify_mrl_0804_runtime(
+            observation,
+            smoke,
+            attestation,
+            authorization=authorization,
+            repository_sha=authorization.main_sha,
+            repository_tree=authorization.main_tree,
+            dependency_lock_sha256=authorization.dependency_lock_sha256,
+            probe_source_sha256=probe_sha,
+        )
+
+
+def _rewrite(raw: bytes, **updates: object) -> bytes:
+    document = json.loads(raw)
+    document.update(updates)
+    probe = _load_probe()
+    return cast(bytes, probe.canonical_json_bytes(document))
+
+
+def test_committed_authorization_is_exact_and_fail_closed() -> None:
+    authorization = _authorization()
+    assert authorization.authorization_sha256 == hashlib.sha256(_AUTH.read_bytes()).hexdigest()
+    assert authorization.main_sha == "daa2e83774b7bc210014e4e160bcf1203e943a4e"
+    assert authorization.main_tree == "dce64b8c75cb10773d21388b7c1cc83be4434b79"
+    assert authorization.required_gpu_count == 1
+    identities = {
+        (row.provider, row.provider_flavor, row.provider_owner) for row in authorization.providers
+    }
+    assert identities == {
+        ("GOOGLE_COLAB", "DYNAMIC_ASSIGNED", "GOOGLE"),
+        ("HUGGING_FACE_JOBS", "zero-a10g", "MedScale"),
+    }
+    hf = authorization.provider_for("HUGGING_FACE_JOBS", "zero-a10g")
+    assert hf.requires_free_or_quota_backed is True
+
+
+def test_hosted_gpu_probe_and_qualification_are_deterministic() -> None:
+    first = _qualify()
+    second = _qualify()
+    assert first == second
+    parsed = parse_mrl_real_preflight_evidence(first.evidence_bytes)
+    assert parsed.task_id == "MRL-0804"
+    assert parsed.subject_sha256 == first.runtime_identity_sha256
+    assert first.smoke_receipt_sha256 == hashlib.sha256(first.smoke_receipt_bytes).hexdigest()
+    assert (
+        first.provider_attestation_sha256
+        == hashlib.sha256(first.provider_attestation_bytes).hexdigest()
+    )
+    with pytest.raises(MRLRealPreflightEvidenceError, match="not trusted"):
+        admit_mrl_real_preflight_evidence(first.evidence_bytes, expected_task_id="MRL-0804")
+
+
+def test_untrusted_provider_attestation_cannot_emit_platform_qualified_evidence() -> None:
+    authorization = _authorization()
+    observation, smoke, attestation, probe_sha = _probe_bytes()
+    with pytest.raises(runtime.MRL0804RuntimeError, match="attestation digest is not trusted"):
+        runtime.qualify_mrl_0804_runtime(
+            observation,
+            smoke,
+            attestation,
+            authorization=authorization,
+            repository_sha=authorization.main_sha,
+            repository_tree=authorization.main_tree,
+            dependency_lock_sha256=authorization.dependency_lock_sha256,
+            probe_source_sha256=probe_sha,
+        )
+
+
+def test_bundle_verifier_recomputes_exact_bytes_and_rejects_tampering() -> None:
+    authorization = _authorization()
+    observation, smoke, attestation, probe_sha = _probe_bytes()
+    result = _qualify()
+    with _trust_attestation(attestation):
+        verified = runtime.verify_mrl_0804_runtime_bundle(
+            observation,
+            smoke,
+            attestation,
+            authorization=authorization,
+            repository_sha=authorization.main_sha,
+            repository_tree=authorization.main_tree,
+            dependency_lock_sha256=authorization.dependency_lock_sha256,
+            probe_source_sha256=probe_sha,
+            runtime_identity_bytes=result.runtime_identity_bytes,
+            qualification_receipt_bytes=result.qualification_receipt_bytes,
+            evidence_bytes=result.evidence_bytes,
+        )
+    assert verified == result
+    with (
+        _trust_attestation(attestation),
+        pytest.raises(runtime.MRL0804RuntimeError, match="supplied real-preflight evidence"),
+    ):
+        runtime.verify_mrl_0804_runtime_bundle(
+            observation,
+            smoke,
+            attestation,
+            authorization=authorization,
+            repository_sha=authorization.main_sha,
+            repository_tree=authorization.main_tree,
+            dependency_lock_sha256=authorization.dependency_lock_sha256,
+            probe_source_sha256=probe_sha,
+            runtime_identity_bytes=result.runtime_identity_bytes,
+            qualification_receipt_bytes=result.qualification_receipt_bytes,
+            evidence_bytes=result.evidence_bytes.replace(b'"PASS"', b'"FAIL"', 1),
+        )
+
+
+def test_provider_attestation_cost_and_binding_fail_closed() -> None:
+    authorization = _authorization()
+    observation, smoke, attestation, probe_sha = _probe_bytes()
+    paid = _rewrite(attestation, monetary_cost_microunits=1)
+    with pytest.raises(runtime.MRL0804RuntimeError, match="monetary cost must be exactly zero"):
+        runtime.qualify_mrl_0804_runtime(
+            observation,
+            smoke,
+            paid,
+            authorization=authorization,
+            repository_sha=authorization.main_sha,
+            repository_tree=authorization.main_tree,
+            dependency_lock_sha256=authorization.dependency_lock_sha256,
+            probe_source_sha256=probe_sha,
+        )
+    mismatched = _rewrite(attestation, observation_sha256="f" * 64)
+    with pytest.raises(runtime.MRL0804RuntimeError, match="does not bind the runtime observation"):
+        runtime.qualify_mrl_0804_runtime(
+            observation,
+            smoke,
+            mismatched,
+            authorization=authorization,
+            repository_sha=authorization.main_sha,
+            repository_tree=authorization.main_tree,
+            dependency_lock_sha256=authorization.dependency_lock_sha256,
+            probe_source_sha256=probe_sha,
+        )
+
+
+def test_unauthorized_provider_flavor_fails_closed() -> None:
+    authorization = _authorization()
+    observation, smoke, attestation, probe_sha = _probe_bytes(flavor="a10g-small")
+    with pytest.raises(runtime.MRL0804RuntimeError, match="not exactly authorized"):
+        runtime.qualify_mrl_0804_runtime(
+            observation,
+            smoke,
+            attestation,
+            authorization=authorization,
+            repository_sha=authorization.main_sha,
+            repository_tree=authorization.main_tree,
+            dependency_lock_sha256=authorization.dependency_lock_sha256,
+            probe_source_sha256=probe_sha,
+        )
+
+
+def test_network_remote_code_and_source_drift_fail_closed() -> None:
+    authorization = _authorization()
+    observation, smoke, attestation, probe_sha = _probe_bytes()
+    for field in ("network_accessed", "remote_code_allowed"):
+        bad_observation = _rewrite(observation, **{field: True})
+        with pytest.raises(runtime.MRL0804RuntimeError, match="must not"):
+            runtime.qualify_mrl_0804_runtime(
+                bad_observation,
+                smoke,
+                attestation,
+                authorization=authorization,
+                repository_sha=authorization.main_sha,
+                repository_tree=authorization.main_tree,
+                dependency_lock_sha256=authorization.dependency_lock_sha256,
+                probe_source_sha256=probe_sha,
+            )
+    with pytest.raises(runtime.MRL0804RuntimeError, match="probe source"):
+        runtime.qualify_mrl_0804_runtime(
+            observation,
+            smoke,
+            attestation,
+            authorization=authorization,
+            repository_sha=authorization.main_sha,
+            repository_tree=authorization.main_tree,
+            dependency_lock_sha256=authorization.dependency_lock_sha256,
+            probe_source_sha256="f" * 64,
+        )
+
+
+def test_gpu_count_and_cuda_unavailability_fail_at_probe_boundary() -> None:
+    probe = _load_probe()
+    authorization = _authorization()
+    probe_sha = hashlib.sha256(_PROBE.read_bytes()).hexdigest()
+    common = {
+        "provider": "HUGGING_FACE_JOBS",
+        "provider_flavor": "zero-a10g",
+        "provider_owner": "MedScale",
+        "provider_execution_id": _EXECUTION_ID,
+        "runner_class": "other",
+        "repository_sha": authorization.main_sha,
+        "repository_tree": authorization.main_tree,
+        "dependency_lock_sha256": authorization.dependency_lock_sha256,
+        "probe_source_sha256": probe_sha,
+    }
+    with pytest.raises(RuntimeError, match="CUDA is unavailable"):
+        probe.build_probe_artifacts(torch_module=_FakeTorch(available=False), **common)
+    with pytest.raises(RuntimeError, match="exactly one hosted GPU"):
+        probe.build_probe_artifacts(torch_module=_FakeTorch(count=2), **common)
+
+
+def test_provider_detection_is_observation_only_and_fails_closed_locally() -> None:
+    probe = _load_probe()
+    assert probe._detect_provider_identity(
+        {"JOB_ID": _EXECUTION_ID, "ACCELERATOR": "zero-a10g"}
+    ) == ("HUGGING_FACE_JOBS", "zero-a10g", "MedScale", "other", _EXECUTION_ID)
+    assert probe._detect_provider_identity(
+        {"COLAB_RELEASE_TAG": "release", "MESC_COLAB_RUNTIME_ID": "runtime-123"}
+    ) == ("GOOGLE_COLAB", "DYNAMIC_ASSIGNED", "GOOGLE", "colab", "runtime-123")
+    with pytest.raises(RuntimeError, match="local CUDA cannot qualify"):
+        probe._detect_provider_identity({})
+    with pytest.raises(RuntimeError, match="control-plane runtime identity"):
+        probe._detect_provider_identity({"COLAB_RELEASE_TAG": "release"})
+
+
+def test_smoke_audit_boundary_rejects_network_and_process_launch() -> None:
+    probe = _load_probe()
+    for event in ("socket.connect", "subprocess.Popen", "os.system"):
+        with pytest.raises(RuntimeError, match="prohibited audit event"):
+            probe._deny_network_audit(event, ())
+    probe._deny_network_audit("open", ())
+
+
+def test_probe_contains_no_model_loading_or_training_primitives() -> None:
+    source = _PROBE.read_text(encoding="utf-8")
+    for token in (
+        "transformers",
+        "from_pretrained",
+        "AutoModel",
+        "AutoTokenizer",
+        "SFTTrainer",
+        "optimizer.step",
+        ".backward(",
+        "unsloth",
+    ):
+        assert token not in source
+
+    tree = ast.parse(source)
+    imports = {
+        alias.name.split(".")[0]
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Import)
+        for alias in node.names
+    }
+    imports.update(
+        node.module.split(".")[0]
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom) and node.module is not None
+    )
+    assert imports.isdisjoint({"socket", "subprocess", "urllib", "requests", "httpx"})
+
+
+def _git(repo: Path, *arguments: str) -> str:
+    completed = subprocess.run(
+        ["git", "-C", str(repo), *arguments],
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    return completed.stdout.strip()
+
+
+def _commit_all(repo: Path, message: str) -> str:
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-m", message)
+    return _git(repo, "rev-parse", "HEAD")
+
+
+def _fake_runtime_parser_module() -> ModuleType:
+    module = ModuleType("mrl0804_fake_runtime_parser")
+
+    def parse_observation(raw: bytes) -> SimpleNamespace:
+        document = json.loads(raw.decode("utf-8"))
+        return SimpleNamespace(
+            repository_sha=document["repository_sha"],
+            repository_tree=document["repository_tree"],
+        )
+
+    def parse_authorization(raw: bytes) -> SimpleNamespace:
+        document = json.loads(raw.decode("utf-8"))
+        base = document["authorized_base"]
+        return SimpleNamespace(main_sha=base["main_sha"], main_tree=base["main_tree"])
+
+    module.__dict__["parse_mrl_0804_runtime_observation"] = parse_observation
+    module.__dict__["parse_mrl_0804_runtime_authorization"] = parse_authorization
+    return module
+
+
+def _seed_runtime_source(repo: Path) -> tuple[str, str]:
+    (repo / "root.txt").write_text("root\n", encoding="utf-8")
+    root_sha = _commit_all(repo, "root")
+    root_tree = _git(repo, "rev-parse", "HEAD^{tree}")
+    for relative, content in (
+        ("src/medscale/mesc/_mrl_0804_runtime_v1.py", "stable module\n"),
+        ("scripts/mesc_mrl_0804_runtime_qualify.py", "stable qualifier\n"),
+        ("scripts/mesc_mrl_0804_gpu_probe.py", "stable probe\n"),
+        ("uv.lock", "stable lock\n"),
+    ):
+        target = repo / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(content, encoding="utf-8")
+    auth = repo / "specs/mesc-experiment-0/mrl-0804-runtime-authorization-v1.json"
+    auth.parent.mkdir(parents=True, exist_ok=True)
+    auth.write_text(
+        json.dumps(
+            {"authorized_base": {"main_sha": root_sha, "main_tree": root_tree}},
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+    source_sha = _commit_all(repo, "runtime source")
+    source_tree = _git(repo, "rev-parse", "HEAD^{tree}")
+    return source_sha, source_tree
+
+
+def _new_test_repo(tmp_path: Path) -> Path:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-b", "main")
+    _git(repo, "config", "user.email", "mrl0804@example.invalid")
+    _git(repo, "config", "user.name", "MRL0804 Test")
+    return repo
+
+
+def test_qualifier_accepts_immutable_first_parent_runtime_source(tmp_path: Path) -> None:
+    qualifier = _load_qualifier()
+    parser_module = _fake_runtime_parser_module()
+    repo = _new_test_repo(tmp_path)
+    source_sha, source_tree = _seed_runtime_source(repo)
+    (repo / "trust-root.txt").write_text("provider attestation admitted\n", encoding="utf-8")
+    verifier_sha = _commit_all(repo, "provider trust admission")
+    observation = json.dumps(
+        {"repository_sha": source_sha, "repository_tree": source_tree},
+        sort_keys=True,
+    ).encode("utf-8")
+
+    resolved = qualifier._require_runtime_source(
+        repo,
+        parser_module,
+        observation,
+        verifier_sha=verifier_sha,
+    )
+
+    assert resolved[0] == source_sha
+    assert resolved[1] == source_tree
+    expected_auth = (
+        repo / "specs/mesc-experiment-0/mrl-0804-runtime-authorization-v1.json"
+    ).read_bytes()
+    assert resolved[2] == expected_auth
+    assert resolved[3] == hashlib.sha256((repo / "uv.lock").read_bytes()).hexdigest()
+    assert (
+        resolved[4]
+        == hashlib.sha256((repo / "scripts/mesc_mrl_0804_gpu_probe.py").read_bytes()).hexdigest()
+    )
+
+
+def test_qualifier_rejects_second_parent_runtime_source(tmp_path: Path) -> None:
+    qualifier = _load_qualifier()
+    parser_module = _fake_runtime_parser_module()
+    repo = _new_test_repo(tmp_path)
+    source_base, _ = _seed_runtime_source(repo)
+    _git(repo, "branch", "side", source_base)
+    _git(repo, "checkout", "side")
+    (repo / "side.txt").write_text("side runtime\n", encoding="utf-8")
+    side_sha = _commit_all(repo, "side runtime")
+    side_tree = _git(repo, "rev-parse", "HEAD^{tree}")
+    _git(repo, "checkout", "main")
+    (repo / "main.txt").write_text("main governance\n", encoding="utf-8")
+    _commit_all(repo, "main governance")
+    _git(repo, "merge", "--no-ff", "side", "-m", "merge side")
+    verifier_sha = _git(repo, "rev-parse", "HEAD")
+    observation = json.dumps(
+        {"repository_sha": side_sha, "repository_tree": side_tree},
+        sort_keys=True,
+    ).encode("utf-8")
+
+    with pytest.raises(
+        qualifier.EntrypointError,
+        match="canonical first-parent lineage",
+    ):
+        qualifier._require_runtime_source(
+            repo,
+            parser_module,
+            observation,
+            verifier_sha=verifier_sha,
+        )
+
+
+def test_qualifier_rejects_first_parent_runtime_semantics_drift(tmp_path: Path) -> None:
+    qualifier = _load_qualifier()
+    parser_module = _fake_runtime_parser_module()
+    repo = _new_test_repo(tmp_path)
+    source_sha, source_tree = _seed_runtime_source(repo)
+    qualifier_path = repo / "scripts/mesc_mrl_0804_runtime_qualify.py"
+    qualifier_path.write_text("drifted qualifier\n", encoding="utf-8")
+    verifier_sha = _commit_all(repo, "qualifier semantics drift")
+    observation = json.dumps(
+        {"repository_sha": source_sha, "repository_tree": source_tree}, sort_keys=True
+    ).encode("utf-8")
+
+    with pytest.raises(qualifier.EntrypointError, match="runtime qualification semantics drifted"):
+        qualifier._require_runtime_source(
+            repo, parser_module, observation, verifier_sha=verifier_sha
+        )
