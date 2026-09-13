@@ -13,7 +13,10 @@ from dataclasses import dataclass, field
 from typing import Final, cast
 
 from medscale.mesc._canonical_json_v1 import canonical_json_bytes
-from medscale.mesc._mrl_real_preflight_evidence_v1 import parse_mrl_real_preflight_evidence
+from medscale.mesc._mrl_real_preflight_evidence_v1 import (
+    mrl_0804_provider_attestation_trust_snapshot,
+    parse_mrl_real_preflight_evidence,
+)
 from medscale.mesc._training_runtime_qualification_v1 import (
     TrainingRuntimeQualificationError,
     TrainingRuntimeSmokeEvidence,
@@ -461,7 +464,7 @@ def qualify_mrl_0804_runtime(
     dependency_lock_sha256: str,
     probe_source_sha256: str,
 ) -> MRL0804RuntimeQualification:
-    """Validate one hosted runtime and build an untrusted MRL-0804 evidence candidate."""
+    """Build MRL-0804 evidence only after exact provider-attestation trust admission."""
     if type(authorization) is not MRL0804RuntimeAuthorization:
         raise MRL0804RuntimeError("authorization must be an exact MRL0804RuntimeAuthorization")
     repository_sha = _require_git_sha(repository_sha, "repository_sha")
@@ -580,6 +583,11 @@ def qualify_mrl_0804_runtime(
     runtime_identity_sha256 = hashlib.sha256(runtime_identity_bytes).hexdigest()
     qualification_receipt_bytes = canonical_json_bytes(receipt.to_dict())
     qualification_receipt_sha256 = hashlib.sha256(qualification_receipt_bytes).hexdigest()
+    provider_trust = mrl_0804_provider_attestation_trust_snapshot()
+    if not provider_trust.admits(provider_attestation.attestation_sha256):
+        raise MRL0804RuntimeError(
+            "provider attestation digest is not trusted for platform qualification"
+        )
     evidence_bytes = canonical_json_bytes(
         {
             "disposition": "PASS",

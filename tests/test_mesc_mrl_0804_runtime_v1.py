@@ -6,6 +6,8 @@ import ast
 import hashlib
 import importlib.util
 import json
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
 from typing import Any, cast
@@ -13,6 +15,7 @@ from typing import Any, cast
 import pytest
 
 from medscale.mesc import _mrl_0804_runtime_v1 as runtime
+from medscale.mesc import _mrl_real_preflight_evidence_v1 as preflight
 from medscale.mesc._mrl_real_preflight_evidence_v1 import (
     MRLRealPreflightEvidenceError,
     admit_mrl_real_preflight_evidence,
@@ -145,19 +148,31 @@ def _probe_bytes(
     return observation, smoke, attestation, probe_sha
 
 
+@contextmanager
+def _trust_attestation(attestation: bytes) -> Iterator[None]:
+    previous = preflight.TRUSTED_MRL0804_PROVIDER_ATTESTATION_SHA256
+    digest = hashlib.sha256(attestation).hexdigest()
+    preflight.TRUSTED_MRL0804_PROVIDER_ATTESTATION_SHA256 = frozenset({digest})
+    try:
+        yield
+    finally:
+        preflight.TRUSTED_MRL0804_PROVIDER_ATTESTATION_SHA256 = previous
+
+
 def _qualify() -> runtime.MRL0804RuntimeQualification:
     authorization = _authorization()
     observation, smoke, attestation, probe_sha = _probe_bytes()
-    return runtime.qualify_mrl_0804_runtime(
-        observation,
-        smoke,
-        attestation,
-        authorization=authorization,
-        repository_sha=authorization.main_sha,
-        repository_tree=authorization.main_tree,
-        dependency_lock_sha256=authorization.dependency_lock_sha256,
-        probe_source_sha256=probe_sha,
-    )
+    with _trust_attestation(attestation):
+        return runtime.qualify_mrl_0804_runtime(
+            observation,
+            smoke,
+            attestation,
+            authorization=authorization,
+            repository_sha=authorization.main_sha,
+            repository_tree=authorization.main_tree,
+            dependency_lock_sha256=authorization.dependency_lock_sha256,
+            probe_source_sha256=probe_sha,
+        )
 
 
 def _rewrite(raw: bytes, **updates: object) -> bytes:
@@ -200,25 +215,45 @@ def test_hosted_gpu_probe_and_qualification_are_deterministic() -> None:
         admit_mrl_real_preflight_evidence(first.evidence_bytes, expected_task_id="MRL-0804")
 
 
+def test_untrusted_provider_attestation_cannot_emit_platform_qualified_evidence() -> None:
+    authorization = _authorization()
+    observation, smoke, attestation, probe_sha = _probe_bytes()
+    with pytest.raises(runtime.MRL0804RuntimeError, match="attestation digest is not trusted"):
+        runtime.qualify_mrl_0804_runtime(
+            observation,
+            smoke,
+            attestation,
+            authorization=authorization,
+            repository_sha=authorization.main_sha,
+            repository_tree=authorization.main_tree,
+            dependency_lock_sha256=authorization.dependency_lock_sha256,
+            probe_source_sha256=probe_sha,
+        )
+
+
 def test_bundle_verifier_recomputes_exact_bytes_and_rejects_tampering() -> None:
     authorization = _authorization()
     observation, smoke, attestation, probe_sha = _probe_bytes()
     result = _qualify()
-    verified = runtime.verify_mrl_0804_runtime_bundle(
-        observation,
-        smoke,
-        attestation,
-        authorization=authorization,
-        repository_sha=authorization.main_sha,
-        repository_tree=authorization.main_tree,
-        dependency_lock_sha256=authorization.dependency_lock_sha256,
-        probe_source_sha256=probe_sha,
-        runtime_identity_bytes=result.runtime_identity_bytes,
-        qualification_receipt_bytes=result.qualification_receipt_bytes,
-        evidence_bytes=result.evidence_bytes,
-    )
+    with _trust_attestation(attestation):
+        verified = runtime.verify_mrl_0804_runtime_bundle(
+            observation,
+            smoke,
+            attestation,
+            authorization=authorization,
+            repository_sha=authorization.main_sha,
+            repository_tree=authorization.main_tree,
+            dependency_lock_sha256=authorization.dependency_lock_sha256,
+            probe_source_sha256=probe_sha,
+            runtime_identity_bytes=result.runtime_identity_bytes,
+            qualification_receipt_bytes=result.qualification_receipt_bytes,
+            evidence_bytes=result.evidence_bytes,
+        )
     assert verified == result
-    with pytest.raises(runtime.MRL0804RuntimeError, match="supplied real-preflight evidence"):
+    with (
+        _trust_attestation(attestation),
+        pytest.raises(runtime.MRL0804RuntimeError, match="supplied real-preflight evidence"),
+    ):
         runtime.verify_mrl_0804_runtime_bundle(
             observation,
             smoke,

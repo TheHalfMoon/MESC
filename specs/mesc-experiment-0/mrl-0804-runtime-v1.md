@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This package produces deterministic, **untrusted** MRL-0804 runtime/GPU qualification evidence from a bounded hosted-GPU smoke plus independently reviewed provider/control-plane evidence. It does not load a model or tokenizer, run Experiment-0 scientific evaluation, perform inference, mutate weights, train, promote, release, or deploy a model.
+This package validates bounded hosted-GPU runtime material and can emit MRL-0804 real-preflight evidence only after the exact provider-attestation digest has already been admitted by the separate canonical provider-attestation trust registry. It does not load a model or tokenizer, run Experiment-0 scientific evaluation, perform inference, mutate weights, train, promote, release, or deploy a model.
 
 The committed authorization is `mrl-0804-runtime-authorization-v1.json`. Its exact SHA-256 is bound in the producer implementation. The control-plane entry point also requires a clean exact Git work tree descended from the authorized canonical MRL-0803 base.
 
@@ -92,7 +92,7 @@ Independent control-plane review supplies:
 provider-attestation.json
 ```
 
-The exact control-plane qualifier emits the six-artifact bundle:
+After provider-attestation trust admission, the exact control-plane qualifier may emit the six-artifact bundle:
 
 ```text
 runtime-observation.json
@@ -107,7 +107,7 @@ Verify-existing mode recomputes the full deterministic bundle and requires byte-
 
 ## MRL-0804 evidence envelope
 
-A candidate envelope uses:
+A real-preflight envelope is emitted only after provider-attestation trust admission and uses:
 
 ```text
 kind = mesc.mrl.real_preflight.runtime.v1
@@ -122,18 +122,20 @@ smoke_receipt_sha256 = exact bounded GPU smoke receipt
 
 Schema validity is not trust admission.
 
-## Dual trust boundary
+## Staged trust boundary
 
-MRL-0804 admission requires two separately controlled exact digests:
+MRL-0804 uses two separately controlled trust roots in dependency order:
 
 ```text
-TRUSTED_MRL_REAL_PREFLIGHT_EVIDENCE_SHA256
-TRUSTED_MRL0804_PROVIDER_ATTESTATION_SHA256
+1. TRUSTED_MRL0804_PROVIDER_ATTESTATION_SHA256
+2. TRUSTED_MRL_REAL_PREFLIGHT_EVIDENCE_SHA256
 ```
 
-The producer PR intentionally adds **no MRL-0804 digest** to either registry. A later trust-admission PR may add the exact evidence digest and exact provider-attestation digest only after genuine hosted execution and independent verification.
+The qualifier fails closed before emitting any `platform_qualified = true` real-preflight evidence unless the exact provider-attestation digest is already present in the first registry. Therefore, a structurally valid or locally fabricated attestation cannot self-certify a hosted platform.
 
-The producer must not mutate the real-preflight evidence index, the MRL-0804 checklist state, or any project-completion state.
+After genuine hosted execution and independent verification, a first governance mutation may admit only the exact provider-attestation digest. Only from that canonical state may the qualifier produce the deterministic real-preflight evidence envelope. A later, separate governance mutation may then admit the exact evidence digest.
+
+The producer PR intentionally adds no MRL-0804 digest to either registry and must not mutate the real-preflight evidence index, the MRL-0804 checklist state, or any project-completion state.
 
 ## Explicit non-authority
 
