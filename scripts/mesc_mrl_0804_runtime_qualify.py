@@ -189,10 +189,69 @@ def _write_new(path: Path, payload: bytes) -> None:
         stream.write(payload)
 
 
-def _exact_source_identities(repository: Path) -> tuple[str, str]:
-    lock_sha = hashlib.sha256((repository / _LOCK).read_bytes()).hexdigest()
-    probe_sha = hashlib.sha256((repository / _PROBE).read_bytes()).hexdigest()
-    return lock_sha, probe_sha
+def _git_is_ancestor(repository: Path, ancestor: str, descendant: str) -> bool:
+    completed = subprocess.run(
+        ["git", "-C", str(repository), "merge-base", "--is-ancestor", ancestor, descendant],
+        check=False,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    return completed.returncode == 0
+
+
+def _git_source_blob(repository: Path, source_sha: str, relative: Path) -> bytes:
+    listing = _git_text(repository, "ls-tree", source_sha, "--", relative.as_posix()).strip()
+    fields = listing.split(maxsplit=3)
+    if len(fields) != 4 or fields[0] not in {"100644", "100755"} or fields[1] != "blob":
+        raise EntrypointError(f"runtime source is not a regular Git blob: {relative.as_posix()}")
+    return _git_bytes(repository, "show", f"{source_sha}:{relative.as_posix()}")
+
+
+def _require_runtime_source(
+    repository: Path,
+    module: ModuleType,
+    observation_raw: bytes,
+    *,
+    verifier_sha: str,
+) -> tuple[str, str, bytes, str, str]:
+    observation = module.parse_mrl_0804_runtime_observation(observation_raw)
+    source_sha = observation.repository_sha
+    source_tree = observation.repository_tree
+    if _git_text(repository, "rev-parse", f"{source_sha}^{{commit}}").strip() != source_sha:
+        raise EntrypointError("runtime source commit cannot be resolved exactly")
+    if _git_text(repository, "rev-parse", f"{source_sha}^{{tree}}").strip() != source_tree:
+        raise EntrypointError("runtime source tree does not match the observation")
+    if not _git_is_ancestor(repository, source_sha, verifier_sha):
+        raise EntrypointError("runtime source is not an ancestor of the canonical verifier")
+    first_parent = frozenset(
+        _git_text(repository, "rev-list", "--first-parent", verifier_sha).splitlines()
+    )
+    if source_sha not in first_parent:
+        raise EntrypointError("runtime source is not on canonical first-parent lineage")
+    for relative in (_MODULE, _SCRIPT):
+        source_bytes = _git_source_blob(repository, source_sha, relative)
+        if source_bytes != (repository / relative).read_bytes():
+            raise EntrypointError(
+                f"runtime qualification semantics drifted since source: {relative.as_posix()}"
+            )
+    authorization_raw = _git_source_blob(repository, source_sha, _AUTH)
+    authorization = module.parse_mrl_0804_runtime_authorization(authorization_raw)
+    authorization_tree = _git_text(
+        repository, "rev-parse", f"{authorization.main_sha}^{{tree}}"
+    ).strip()
+    if authorization_tree != authorization.main_tree:
+        raise EntrypointError("runtime authorization base tree does not match Git history")
+    if not _git_is_ancestor(repository, authorization.main_sha, source_sha):
+        raise EntrypointError("runtime source predates the authorized canonical base")
+    lock_raw = _git_source_blob(repository, source_sha, _LOCK)
+    probe_raw = _git_source_blob(repository, source_sha, _PROBE)
+    return (
+        source_sha,
+        source_tree,
+        authorization_raw,
+        hashlib.sha256(lock_raw).hexdigest(),
+        hashlib.sha256(probe_raw).hexdigest(),
+    )
 
 
 def _produce(
@@ -203,12 +262,12 @@ def _produce(
     observation_path: Path,
     smoke_path: Path,
     provider_attestation_path: Path,
+    authorization_raw: bytes,
     repository_sha: str,
     repository_tree: str,
     lock_sha: str,
     probe_sha: str,
 ) -> Any:
-    authorization_raw = (repository / _AUTH).read_bytes()
     authorization = module.parse_mrl_0804_runtime_authorization(authorization_raw)
     observation = _read_regular_file(observation_path, label="observation")
     smoke = _read_regular_file(smoke_path, label="smoke")
@@ -244,12 +303,13 @@ def _verify(
     repository: Path,
     module: ModuleType,
     output_root: Path,
+    authorization_raw: bytes,
     repository_sha: str,
     repository_tree: str,
     lock_sha: str,
     probe_sha: str,
 ) -> Any:
-    authorization = module.parse_mrl_0804_runtime_authorization((repository / _AUTH).read_bytes())
+    authorization = module.parse_mrl_0804_runtime_authorization(authorization_raw)
     payloads = {
         key: _read_regular_file(output_root / name, label=name) for key, name in _ARTIFACTS.items()
     }
@@ -271,9 +331,8 @@ def _verify(
 def main() -> int:
     args = _parser().parse_args()
     repository = _require_clean_repository(args.repository_root)
-    authorization_raw = (repository / _AUTH).read_bytes()
-    repository_sha, repository_tree = _require_authorized_lineage(repository, authorization_raw)
-    lock_sha, probe_sha = _exact_source_identities(repository)
+    verifier_authorization_raw = (repository / _AUTH).read_bytes()
+    verifier_sha, _ = _require_authorized_lineage(repository, verifier_authorization_raw)
     module = _load_module(repository)
     output_root = _require_output_root(
         args.output_root, repository, verify_existing=args.verify_existing
@@ -289,10 +348,22 @@ def main() -> int:
                 "verification mode reads observation/smoke/provider attestation "
                 "from the exact bundle"
             )
+        observation_preview = _read_regular_file(
+            output_root / _ARTIFACTS["observation"], label="runtime-observation.json"
+        )
+        repository_sha, repository_tree, authorization_raw, lock_sha, probe_sha = (
+            _require_runtime_source(
+                repository,
+                module,
+                observation_preview,
+                verifier_sha=verifier_sha,
+            )
+        )
         result = _verify(
             repository=repository,
             module=module,
             output_root=output_root,
+            authorization_raw=authorization_raw,
             repository_sha=repository_sha,
             repository_tree=repository_tree,
             lock_sha=lock_sha,
@@ -311,6 +382,15 @@ def main() -> int:
             repository,
             label="provider attestation",
         )
+        observation_preview = _read_regular_file(observation_path, label="observation")
+        repository_sha, repository_tree, authorization_raw, lock_sha, probe_sha = (
+            _require_runtime_source(
+                repository,
+                module,
+                observation_preview,
+                verifier_sha=verifier_sha,
+            )
+        )
         result = _produce(
             repository=repository,
             module=module,
@@ -318,6 +398,7 @@ def main() -> int:
             observation_path=observation_path,
             smoke_path=smoke_path,
             provider_attestation_path=provider_attestation_path,
+            authorization_raw=authorization_raw,
             repository_sha=repository_sha,
             repository_tree=repository_tree,
             lock_sha=lock_sha,

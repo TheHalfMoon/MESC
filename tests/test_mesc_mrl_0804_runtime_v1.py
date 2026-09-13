@@ -6,6 +6,7 @@ import ast
 import hashlib
 import importlib.util
 import json
+import subprocess
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -25,7 +26,17 @@ from medscale.mesc._mrl_real_preflight_evidence_v1 import (
 _ROOT = Path(__file__).resolve().parents[1]
 _AUTH = _ROOT / "specs/mesc-experiment-0/mrl-0804-runtime-authorization-v1.json"
 _PROBE = _ROOT / "scripts/mesc_mrl_0804_gpu_probe.py"
+_QUALIFIER = _ROOT / "scripts/mesc_mrl_0804_runtime_qualify.py"
 _EXECUTION_ID = "0123456789abcdef01234567"
+
+
+def _load_qualifier() -> ModuleType:
+    spec = importlib.util.spec_from_file_location("mesc_mrl_0804_qualifier_test", _QUALIFIER)
+    if spec is None or spec.loader is None:
+        raise AssertionError("cannot load MRL-0804 runtime qualifier")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def _load_probe() -> ModuleType:
@@ -413,3 +424,158 @@ def test_probe_contains_no_model_loading_or_training_primitives() -> None:
         if isinstance(node, ast.ImportFrom) and node.module is not None
     )
     assert imports.isdisjoint({"socket", "subprocess", "urllib", "requests", "httpx"})
+
+
+def _git(repo: Path, *arguments: str) -> str:
+    completed = subprocess.run(
+        ["git", "-C", str(repo), *arguments],
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    return completed.stdout.strip()
+
+
+def _commit_all(repo: Path, message: str) -> str:
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-m", message)
+    return _git(repo, "rev-parse", "HEAD")
+
+
+def _fake_runtime_parser_module() -> ModuleType:
+    module = ModuleType("mrl0804_fake_runtime_parser")
+
+    def parse_observation(raw: bytes) -> SimpleNamespace:
+        document = json.loads(raw.decode("utf-8"))
+        return SimpleNamespace(
+            repository_sha=document["repository_sha"],
+            repository_tree=document["repository_tree"],
+        )
+
+    def parse_authorization(raw: bytes) -> SimpleNamespace:
+        document = json.loads(raw.decode("utf-8"))
+        base = document["authorized_base"]
+        return SimpleNamespace(main_sha=base["main_sha"], main_tree=base["main_tree"])
+
+    module.__dict__["parse_mrl_0804_runtime_observation"] = parse_observation
+    module.__dict__["parse_mrl_0804_runtime_authorization"] = parse_authorization
+    return module
+
+
+def _seed_runtime_source(repo: Path) -> tuple[str, str]:
+    (repo / "root.txt").write_text("root\n", encoding="utf-8")
+    root_sha = _commit_all(repo, "root")
+    root_tree = _git(repo, "rev-parse", "HEAD^{tree}")
+    for relative, content in (
+        ("src/medscale/mesc/_mrl_0804_runtime_v1.py", "stable module\n"),
+        ("scripts/mesc_mrl_0804_runtime_qualify.py", "stable qualifier\n"),
+        ("scripts/mesc_mrl_0804_gpu_probe.py", "stable probe\n"),
+        ("uv.lock", "stable lock\n"),
+    ):
+        target = repo / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(content, encoding="utf-8")
+    auth = repo / "specs/mesc-experiment-0/mrl-0804-runtime-authorization-v1.json"
+    auth.parent.mkdir(parents=True, exist_ok=True)
+    auth.write_text(
+        json.dumps(
+            {"authorized_base": {"main_sha": root_sha, "main_tree": root_tree}},
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+    source_sha = _commit_all(repo, "runtime source")
+    source_tree = _git(repo, "rev-parse", "HEAD^{tree}")
+    return source_sha, source_tree
+
+
+def _new_test_repo(tmp_path: Path) -> Path:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-b", "main")
+    _git(repo, "config", "user.email", "mrl0804@example.invalid")
+    _git(repo, "config", "user.name", "MRL0804 Test")
+    return repo
+
+
+def test_qualifier_accepts_immutable_first_parent_runtime_source(tmp_path: Path) -> None:
+    qualifier = _load_qualifier()
+    parser_module = _fake_runtime_parser_module()
+    repo = _new_test_repo(tmp_path)
+    source_sha, source_tree = _seed_runtime_source(repo)
+    (repo / "trust-root.txt").write_text("provider attestation admitted\n", encoding="utf-8")
+    verifier_sha = _commit_all(repo, "provider trust admission")
+    observation = json.dumps(
+        {"repository_sha": source_sha, "repository_tree": source_tree},
+        sort_keys=True,
+    ).encode("utf-8")
+
+    resolved = qualifier._require_runtime_source(
+        repo,
+        parser_module,
+        observation,
+        verifier_sha=verifier_sha,
+    )
+
+    assert resolved[0] == source_sha
+    assert resolved[1] == source_tree
+    expected_auth = (
+        repo / "specs/mesc-experiment-0/mrl-0804-runtime-authorization-v1.json"
+    ).read_bytes()
+    assert resolved[2] == expected_auth
+    assert resolved[3] == hashlib.sha256((repo / "uv.lock").read_bytes()).hexdigest()
+    assert (
+        resolved[4]
+        == hashlib.sha256((repo / "scripts/mesc_mrl_0804_gpu_probe.py").read_bytes()).hexdigest()
+    )
+
+
+def test_qualifier_rejects_second_parent_runtime_source(tmp_path: Path) -> None:
+    qualifier = _load_qualifier()
+    parser_module = _fake_runtime_parser_module()
+    repo = _new_test_repo(tmp_path)
+    source_base, _ = _seed_runtime_source(repo)
+    _git(repo, "branch", "side", source_base)
+    _git(repo, "checkout", "side")
+    (repo / "side.txt").write_text("side runtime\n", encoding="utf-8")
+    side_sha = _commit_all(repo, "side runtime")
+    side_tree = _git(repo, "rev-parse", "HEAD^{tree}")
+    _git(repo, "checkout", "main")
+    (repo / "main.txt").write_text("main governance\n", encoding="utf-8")
+    _commit_all(repo, "main governance")
+    _git(repo, "merge", "--no-ff", "side", "-m", "merge side")
+    verifier_sha = _git(repo, "rev-parse", "HEAD")
+    observation = json.dumps(
+        {"repository_sha": side_sha, "repository_tree": side_tree},
+        sort_keys=True,
+    ).encode("utf-8")
+
+    with pytest.raises(
+        qualifier.EntrypointError,
+        match="canonical first-parent lineage",
+    ):
+        qualifier._require_runtime_source(
+            repo,
+            parser_module,
+            observation,
+            verifier_sha=verifier_sha,
+        )
+
+
+def test_qualifier_rejects_first_parent_runtime_semantics_drift(tmp_path: Path) -> None:
+    qualifier = _load_qualifier()
+    parser_module = _fake_runtime_parser_module()
+    repo = _new_test_repo(tmp_path)
+    source_sha, source_tree = _seed_runtime_source(repo)
+    qualifier_path = repo / "scripts/mesc_mrl_0804_runtime_qualify.py"
+    qualifier_path.write_text("drifted qualifier\n", encoding="utf-8")
+    verifier_sha = _commit_all(repo, "qualifier semantics drift")
+    observation = json.dumps(
+        {"repository_sha": source_sha, "repository_tree": source_tree}, sort_keys=True
+    ).encode("utf-8")
+
+    with pytest.raises(qualifier.EntrypointError, match="runtime qualification semantics drifted"):
+        qualifier._require_runtime_source(
+            repo, parser_module, observation, verifier_sha=verifier_sha
+        )

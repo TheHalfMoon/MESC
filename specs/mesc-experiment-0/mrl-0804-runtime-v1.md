@@ -77,6 +77,8 @@ The control-plane qualifier recomputes and binds:
 
 The hosted probe must be acquired from an exact canonical commit, and its bytes must match the expected committed probe digest before execution.
 
+A later canonical governance commit may verify a bundle produced by an earlier runtime-source commit only when that source commit is on the verifier commit's first-parent canonical lineage. The verifier reads the authorization, dependency lock, and probe bytes from that immutable source commit and requires the runtime qualification module and control-plane qualifier bytes to remain unchanged. This permits later provider-attestation trust admission without rebinding the historical runtime execution to the trust-admission commit. Side-branch or second-parent runtime sources fail closed.
+
 ## External custody outputs
 
 The hosted probe emits:
