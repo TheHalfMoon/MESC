@@ -326,3 +326,25 @@ def test_control_plane_qualifier_rejects_output_root_symlink(tmp_path: Path) -> 
 
     with pytest.raises(qualifier.EntrypointError, match="non-symlink"):
         qualifier._require_output_root(link, _ROOT, verify_existing=False)
+
+
+def test_control_plane_qualifier_rejects_verify_artifact_symlink(tmp_path: Path) -> None:
+    qualifier = _load_qualifier()
+    output = tmp_path / "evidence"
+    output.mkdir()
+    receipt_target = tmp_path / "receipt-target.json"
+    receipt_target.write_bytes(b"{}\n")
+    (output / qualifier._OUTPUTS["receipt"]).symlink_to(receipt_target)
+    (output / qualifier._OUTPUTS["evidence"]).write_bytes(b"{}\n")
+
+    with pytest.raises(qualifier.EntrypointError, match="regular non-symlink"):
+        qualifier._require_output_root(output, _ROOT, verify_existing=True)
+
+
+def test_control_plane_qualifier_rejects_verify_artifact_directory(tmp_path: Path) -> None:
+    qualifier = _load_qualifier()
+    (tmp_path / qualifier._OUTPUTS["receipt"]).mkdir()
+    (tmp_path / qualifier._OUTPUTS["evidence"]).write_bytes(b"{}\n")
+
+    with pytest.raises(qualifier.EntrypointError, match="regular non-symlink"):
+        qualifier._require_output_root(tmp_path, _ROOT, verify_existing=True)

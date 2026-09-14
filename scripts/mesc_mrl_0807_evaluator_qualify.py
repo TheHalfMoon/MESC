@@ -248,6 +248,8 @@ def _require_output_root(path: Path, repository: Path, *, verify_existing: bool)
             raise EntrypointError(
                 "verification output_root must contain exactly expected artifacts"
             )
+        if any(entry.is_symlink() or not entry.is_file() for entry in entries):
+            raise EntrypointError("verification artifacts must be regular non-symlink files")
     elif entries:
         raise EntrypointError("production output_root must be empty")
     return output
