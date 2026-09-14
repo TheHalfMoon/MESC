@@ -97,14 +97,14 @@ def test_frozen_artifact_hash_chain_binds_exact_implementation() -> None:
 
 
 def test_patient_projection_set_f1_is_exact_and_ignores_out_of_projection_fields() -> None:
-    reference = {
+    reference: dict[str, object] = {
         "resourceType": "Patient",
         "id": "p1",
         "gender": "female",
         "birthDate": "1980-01-01",
         "address": [{"city": "Boston", "state": "Massachusetts"}],
     }
-    exact = dict(reference)
+    exact: dict[str, object] = dict(reference)
     exact["meta"] = {"profile": ["ignored"]}
     perfect = freeze.score_patient_projection(reference, exact)
     assert perfect.is_perfect
