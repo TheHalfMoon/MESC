@@ -16,6 +16,7 @@ import pytest
 from medscale.mesc import _mrl_0805_no_training_authority_v1 as authority
 from medscale.mesc import _mrl_real_preflight_evidence_v1 as preflight
 from medscale.mesc import _training_authorization_trust_v1 as training_trust
+from medscale.mesc._canonical_json_v1 import canonical_json_bytes
 
 _ROOT = Path(__file__).resolve().parents[1]
 _AUTH = _ROOT / "specs/mesc-experiment-0/mrl-0805-no-training-evaluation-authorization-v1.json"
@@ -51,7 +52,7 @@ def _mutated_authorization(
 ) -> bytes:
     document = json.loads(_AUTH.read_text(encoding="utf-8"))
     mutate(document)
-    raw = authority.canonical_json_bytes(document)
+    raw = canonical_json_bytes(document)
     monkeypatch.setattr(authority, "_AUTHORIZATION_SHA256", hashlib.sha256(raw).hexdigest())
     return raw
 
