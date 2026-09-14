@@ -9,7 +9,7 @@ import json
 import subprocess
 from pathlib import Path
 from types import ModuleType
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
@@ -310,3 +310,42 @@ def test_live_issue_validator_rejects_body_drift(monkeypatch: pytest.MonkeyPatch
     monkeypatch.setattr(qualifier, "_run", fake_run)
     with pytest.raises(qualifier.EntrypointError, match="body digest"):
         qualifier._require_live_issue()
+
+
+_PROGRAM_BINDING_PATHS = (
+    "specs/mesc-experiment-0/candidate-roster-v1.json",
+    "specs/mesc-experiment-0/decision-contract.md",
+    "specs/mesc-experiment-0/evidence-contract.md",
+    "specs/mesc-experiment-0/tournament-contract.md",
+)
+
+
+def test_qualified_head_program_bindings_match_authorization() -> None:
+    qualifier = _load_qualifier()
+    qualifier._require_program_bindings(
+        _ROOT,
+        _AUTH.read_bytes(),
+        head=_BASE_SHA,
+    )
+
+
+@pytest.mark.parametrize("relative", _PROGRAM_BINDING_PATHS)
+def test_each_qualified_head_program_binding_fails_closed_on_hash_drift(
+    monkeypatch: pytest.MonkeyPatch,
+    relative: str,
+) -> None:
+    qualifier = _load_qualifier()
+    original_git_bytes = qualifier._git_bytes
+
+    def fake_git_bytes(root: Path, *arguments: str) -> bytes:
+        if arguments == ("show", f"{_BASE_SHA}:{relative}"):
+            return b"tampered-qualified-head-bytes"
+        return cast(bytes, original_git_bytes(root, *arguments))
+
+    monkeypatch.setattr(qualifier, "_git_bytes", fake_git_bytes)
+    with pytest.raises(qualifier.EntrypointError, match="digest does not match authorization"):
+        qualifier._require_program_bindings(
+            _ROOT,
+            _AUTH.read_bytes(),
+            head=_BASE_SHA,
+        )

@@ -35,6 +35,13 @@ _ARTIFACTS: Final = {
     "receipt": "execution-authority-receipt.json",
     "evidence": "mrl-0805-real-preflight-evidence.json",
 }
+_PROGRAM_FILES: Final = {
+    Path("specs/mesc-experiment-0/candidate-roster-v1.json"): "candidate_roster_sha256",
+    Path("specs/mesc-experiment-0/decision-contract.md"): "decision_contract_sha256",
+    Path("specs/mesc-experiment-0/evidence-contract.md"): "evidence_contract_sha256",
+    Path("specs/mesc-experiment-0/tournament-contract.md"): "tournament_contract_sha256",
+}
+_EXPECTED_STRATEGY_DECISION: Final = "ADR-0036"
 
 
 class EntrypointError(RuntimeError):
@@ -150,6 +157,41 @@ def _require_authorized_lineage(
     return authorization
 
 
+def _git_regular_blob(repository: Path, head: str, relative: Path) -> bytes:
+    listing = _git_text(repository, "ls-tree", head, "--", relative.as_posix()).strip()
+    fields = listing.split(maxsplit=3)
+    if len(fields) != 4 or fields[0] not in {"100644", "100755"} or fields[1] != "blob":
+        raise EntrypointError(
+            f"qualified HEAD program binding is not a regular Git blob: {relative.as_posix()}"
+        )
+    return _git_bytes(repository, "show", f"{head}:{relative.as_posix()}")
+
+
+def _require_program_bindings(repository: Path, authorization_raw: bytes, *, head: str) -> None:
+    try:
+        document = json.loads(authorization_raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise EntrypointError(
+            "authorization cannot be decoded for program binding verification"
+        ) from exc
+    if type(document) is not dict:
+        raise EntrypointError("authorization program binding source must be an object")
+    program = document.get("program_bindings")
+    if type(program) is not dict:
+        raise EntrypointError("authorization program_bindings are malformed")
+    if program.get("strategy_decision_id") != _EXPECTED_STRATEGY_DECISION:
+        raise EntrypointError("authorization strategy_decision_id is invalid")
+    for relative, field_name in _PROGRAM_FILES.items():
+        expected = program.get(field_name)
+        if type(expected) is not str:
+            raise EntrypointError(f"authorization {field_name} is malformed")
+        actual = hashlib.sha256(_git_regular_blob(repository, head, relative)).hexdigest()
+        if actual != expected:
+            raise EntrypointError(
+                f"qualified HEAD {relative.as_posix()} digest does not match authorization"
+            )
+
+
 def _strict_object(raw: str, *, label: str) -> dict[str, object]:
     try:
         value = json.loads(raw)
@@ -243,6 +285,7 @@ def main() -> int:
     module = _load_module(repository)
     authorization_raw = _read_regular(repository / _AUTH, label="authorization")
     _require_authorized_lineage(repository, module, authorization_raw, head=head)
+    _require_program_bindings(repository, authorization_raw, head=head)
     output_root = _require_output_root(
         args.output_root,
         repository,
