@@ -470,7 +470,7 @@ training-authorization evidence may begin before MRL-0800 is `CLOSED_CANONICAL`.
 - [x] **MRL-0804 — Verify runtime/GPU qualification**
   - Depends on: MRL-0800 and real runtime evidence.
 
-- [ ] **MRL-0805 — Verify applicable training authorization**
+- [x] **MRL-0805 — Verify applicable training authorization**
   - Depends on: MRL-0800, independent authority artifact/trust path, and current training
     governance.
 
