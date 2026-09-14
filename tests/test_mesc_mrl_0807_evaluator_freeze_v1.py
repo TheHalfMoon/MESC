@@ -279,3 +279,28 @@ def test_producer_does_not_admit_trust_or_close_task() -> None:
 def test_control_plane_qualifier_binds_actual_module_source() -> None:
     qualifier = _load_qualifier()
     qualifier._require_committed_bindings(_ROOT)
+
+
+def test_control_plane_qualifier_uses_live_remote_main(monkeypatch: pytest.MonkeyPatch) -> None:
+    qualifier = _load_qualifier()
+
+    class Completed:
+        returncode = 0
+        stdout = "0" * 40 + "\trefs/heads/main\n"
+
+    monkeypatch.setattr(qualifier, "_run", lambda arguments, cwd=None: Completed())
+    assert qualifier._live_remote_main(_ROOT) == "0" * 40
+
+
+def test_control_plane_qualifier_rejects_ambiguous_live_remote_main(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    qualifier = _load_qualifier()
+
+    class Completed:
+        returncode = 0
+        stdout = "0" * 40 + "\trefs/heads/main\n" + "1" * 40 + "\trefs/heads/main\n"
+
+    monkeypatch.setattr(qualifier, "_run", lambda arguments, cwd=None: Completed())
+    with pytest.raises(qualifier.EntrypointError, match="ambiguous"):
+        qualifier._live_remote_main(_ROOT)

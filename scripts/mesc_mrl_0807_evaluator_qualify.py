@@ -71,6 +71,22 @@ def _git(root: Path, *args: str) -> str:
     return completed.stdout.strip()
 
 
+def _live_remote_main(root: Path) -> str:
+    completed = _run(["git", "-C", str(root), "ls-remote", "--heads", "origin", "refs/heads/main"])
+    if completed.returncode != 0:
+        raise EntrypointError("live remote main identity cannot be resolved")
+    lines = [line for line in completed.stdout.splitlines() if line]
+    if len(lines) != 1:
+        raise EntrypointError("live remote main response is ambiguous")
+    fields = lines[0].split("\t")
+    if len(fields) != 2 or fields[1] != "refs/heads/main":
+        raise EntrypointError("live remote main response is malformed")
+    sha = fields[0]
+    if len(sha) != 40 or any(character not in "0123456789abcdef" for character in sha):
+        raise EntrypointError("live remote main SHA is malformed")
+    return sha
+
+
 def _require_clean_repository(root: Path) -> tuple[Path, str, str]:
     repository = root.expanduser().resolve(strict=True)
     if Path(_git(repository, "rev-parse", "--show-toplevel")).resolve(strict=True) != repository:
@@ -81,8 +97,8 @@ def _require_clean_repository(root: Path) -> tuple[Path, str, str]:
         raise EntrypointError("repository must contain no ignored or untracked state")
     head = _git(repository, "rev-parse", "HEAD")
     tree = _git(repository, "rev-parse", "HEAD^{tree}")
-    if head != _git(repository, "rev-parse", "origin/main"):
-        raise EntrypointError("repository HEAD must equal origin/main")
+    if head != _live_remote_main(repository):
+        raise EntrypointError("repository HEAD must equal live remote main")
     ancestry = _run(
         ["git", "-C", str(repository), "merge-base", "--is-ancestor", _EXPECTED_BASE, head]
     )
