@@ -304,3 +304,25 @@ def test_control_plane_qualifier_rejects_ambiguous_live_remote_main(
     monkeypatch.setattr(qualifier, "_run", lambda arguments, cwd=None: Completed())
     with pytest.raises(qualifier.EntrypointError, match="ambiguous"):
         qualifier._live_remote_main(_ROOT)
+
+
+def test_control_plane_qualifier_rejects_validator_symlink(tmp_path: Path) -> None:
+    qualifier = _load_qualifier()
+    target = tmp_path / "validator_cli.jar"
+    target.write_bytes(b"not-the-real-validator")
+    link = tmp_path / "validator-link.jar"
+    link.symlink_to(target)
+
+    with pytest.raises(qualifier.EntrypointError, match="non-symlink"):
+        qualifier._require_validator(link, _ROOT)
+
+
+def test_control_plane_qualifier_rejects_output_root_symlink(tmp_path: Path) -> None:
+    qualifier = _load_qualifier()
+    target = tmp_path / "evidence"
+    target.mkdir()
+    link = tmp_path / "evidence-link"
+    link.symlink_to(target, target_is_directory=True)
+
+    with pytest.raises(qualifier.EntrypointError, match="non-symlink"):
+        qualifier._require_output_root(link, _ROOT, verify_existing=False)

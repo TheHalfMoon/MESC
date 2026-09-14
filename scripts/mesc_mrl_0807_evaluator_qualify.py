@@ -105,8 +105,11 @@ def _require_clean_repository(root: Path) -> tuple[Path, str, str]:
     if ancestry.returncode != 0:
         raise EntrypointError("repository HEAD is outside the authorized predecessor lineage")
     for relative in (_MODULE, _AUTH, _EVALUATOR, _CONTRACT, _SEALED, _SCRIPT):
-        path = (repository / relative).resolve(strict=True)
-        if path.is_symlink() or not path.is_file():
+        candidate = repository / relative
+        if candidate.is_symlink():
+            raise EntrypointError(f"required source is not a regular file: {relative.as_posix()}")
+        path = candidate.resolve(strict=True)
+        if not path.is_file():
             raise EntrypointError(f"required source is not a regular file: {relative.as_posix()}")
         shown = subprocess.run(
             ["git", "-C", str(repository), "show", f"HEAD:{relative.as_posix()}"],
@@ -207,8 +210,11 @@ def _require_committed_bindings(repository: Path) -> None:
 
 
 def _require_validator(path: Path, repository: Path) -> tuple[str, int]:
-    validator = path.expanduser().resolve(strict=True)
-    if validator.is_symlink() or not validator.is_file():
+    candidate = path.expanduser()
+    if candidate.is_symlink():
+        raise EntrypointError("validator_cli must be a regular non-symlink file")
+    validator = candidate.resolve(strict=True)
+    if not validator.is_file():
         raise EntrypointError("validator_cli must be a regular non-symlink file")
     try:
         validator.relative_to(repository)
@@ -224,9 +230,12 @@ def _require_validator(path: Path, repository: Path) -> tuple[str, int]:
 
 
 def _require_output_root(path: Path, repository: Path, *, verify_existing: bool) -> Path:
-    output = path.expanduser().resolve(strict=True)
-    if output.is_symlink() or not output.is_dir():
-        raise EntrypointError("output_root must be an existing regular directory")
+    candidate = path.expanduser()
+    if candidate.is_symlink():
+        raise EntrypointError("output_root must be an existing non-symlink directory")
+    output = candidate.resolve(strict=True)
+    if not output.is_dir():
+        raise EntrypointError("output_root must be an existing non-symlink directory")
     try:
         output.relative_to(repository)
     except ValueError:
