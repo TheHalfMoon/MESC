@@ -479,7 +479,7 @@ training-authorization evidence may begin before MRL-0800 is `CLOSED_CANONICAL`.
   - Acceptance: compute/resource/adaptive-query/result-exposure budgets are exact and
     externally frozen.
 
-- [ ] **MRL-0807 — Freeze evaluator and sealed Tier 3 identities**
+- [x] **MRL-0807 — Freeze evaluator and sealed Tier 3 identities**
   - Depends on: MRL-0800 plus real evaluation assets.
   - Acceptance: evidence contract remains non-promotional; model promotion is outside MRL
     pending the dedicated ADR required by ADR-0033.
