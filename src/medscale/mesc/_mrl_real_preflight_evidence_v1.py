@@ -68,6 +68,7 @@ _TASK_KIND: Final[dict[str, str]] = {
 # Valid canonical JSON is never sufficient to manufacture real-world evidence.
 TRUSTED_MRL_REAL_PREFLIGHT_EVIDENCE_SHA256: frozenset[str] = frozenset(
     {
+        "1316c1ef2236203d4ad703cb269f8e30afc6d3dfe6d7a2df68128ec2a2edabab",
         "1d6d14590a19c20bcd794e4c0ddbd2fa5e1c767b70e9d199fc169aeaaa86b762",
         "48e528b2c73d689805634f733628cc3f3e93d10b93afee7d765900c45fe42116",
         "629d8d39a6ea44e753b6d83e07116b12213a74c14f395bea700224fc6781c8e2",

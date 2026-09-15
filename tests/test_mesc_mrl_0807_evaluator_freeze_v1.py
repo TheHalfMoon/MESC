@@ -269,11 +269,31 @@ def test_external_validator_custody_identity_is_exact() -> None:
 
 def test_producer_does_not_admit_trust_or_close_task() -> None:
     result = _qualify()
-    assert result.evidence_sha256 not in preflight.TRUSTED_MRL_REAL_PREFLIGHT_EVIDENCE_SHA256
-    slot = (_ROOT / "specs/mesc-research-loop-v1/real-preflight-evidence/MRL-0807.json").read_text()
-    assert '"state":"ABSENT"' in slot
+    trusted = preflight.TRUSTED_MRL_REAL_PREFLIGHT_EVIDENCE_SHA256
+    assert result.evidence_sha256 not in trusted
+
+    slot_path = _ROOT / "specs/mesc-research-loop-v1/real-preflight-evidence/MRL-0807.json"
+    slot_bytes = slot_path.read_bytes()
+    slot = json.loads(slot_bytes)
     tasks = (_ROOT / "specs/mesc-research-loop-v1/tasks.md").read_text()
-    assert "- [ ] **MRL-0807 — Freeze evaluator and sealed Tier 3 identities**" in tasks
+
+    if slot.get("state") == "ABSENT":
+        assert slot == {
+            "schema_version": "MRL-REAL-PREFLIGHT-EVIDENCE-SLOT-V1",
+            "state": "ABSENT",
+            "task_id": "MRL-0807",
+        }
+        assert "- [ ] **MRL-0807 — Freeze evaluator and sealed Tier 3 identities**" in tasks
+        return
+
+    admitted_digest = hashlib.sha256(slot_bytes).hexdigest()
+    assert slot["schema_version"] == "MRL-REAL-PREFLIGHT-EVIDENCE-V1"
+    assert slot["task_id"] == "MRL-0807"
+    assert slot["kind"] == "mesc.mrl.real_preflight.evaluators.v1"
+    assert slot["disposition"] == "PASS"
+    assert admitted_digest in trusted
+    assert admitted_digest != result.evidence_sha256
+    assert "- [x] **MRL-0807 — Freeze evaluator and sealed Tier 3 identities**" in tasks
 
 
 def test_control_plane_qualifier_binds_actual_module_source() -> None:
