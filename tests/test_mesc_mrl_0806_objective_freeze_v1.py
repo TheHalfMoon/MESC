@@ -60,6 +60,11 @@ def _candidate() -> MRL0806Qualification:
     )
 
 
+def test_authorization_explicitly_denies_clinical_authority() -> None:
+    authorization = json.loads(_AUTH.read_bytes())
+    assert authorization["policy"]["clinical_authority_present"] is False
+
+
 def test_frozen_objective_and_protocol_match_exact_authorized_identities() -> None:
     objective = build_mrl_0806_rq1_objective()
     assert objective.semantic_bytes == _OBJECTIVE.read_bytes()

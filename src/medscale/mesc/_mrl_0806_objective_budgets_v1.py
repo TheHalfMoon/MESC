@@ -42,7 +42,7 @@ from medscale.mesc._mrl_research_objective_v1 import (
     TierResultExposure,
 )
 
-_AUTHORIZATION_SHA256: Final = "29670b8171f0c829ed9bbf9057dca4888a352ba9ecba5d89fd3e492f2a9e2825"
+_AUTHORIZATION_SHA256: Final = "81f976547a7591d7b9624e15666d92c7a4ba4d2965859364828b0bc14d7f25bb"
 _AUTH_SCHEMA: Final = "MESC-MRL-0806-OBJECTIVE-BUDGETS-AUTHORIZATION-V1"
 _TASK: Final = "MRL-0806"
 _KIND: Final = "mesc.mrl.real_preflight.objective_budgets.v1"
@@ -451,6 +451,7 @@ def _validate_authorization(raw: bytes) -> dict[str, object]:
         "objective_budget_freeze_authorized",
     }
     required_false = {
+        "clinical_authority_present",
         "gpu_execution_authorized",
         "model_loading_authorized",
         "paid_compute_spend_authorized",
