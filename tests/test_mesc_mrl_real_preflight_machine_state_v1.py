@@ -64,6 +64,7 @@ def _clone_repository(tmp_path: Path) -> Path:
     )
     _run_git(clone, "config", "user.name", "MRL Real Evidence Fixture")
     _run_git(clone, "config", "user.email", "mrl-real-evidence@example.invalid")
+    _normalize_0806_to_pre_admission(clone)
     _run_git(
         clone,
         "update-ref",
@@ -71,6 +72,41 @@ def _clone_repository(tmp_path: Path) -> Path:
         _git_text(clone, "rev-parse", "HEAD"),
     )
     return clone
+
+
+def _normalize_0806_to_pre_admission(repository: Path) -> None:
+    index_path = repository / _INDEX
+    document = json.loads(index_path.read_bytes())
+    records = document["records"]
+    assert isinstance(records, list)
+    admitted = [
+        row for row in records if isinstance(row, dict) and row.get("task_id") == "MRL-0806"
+    ]
+    if not admitted:
+        return
+    assert len(admitted) == 1
+    document["records"] = [
+        row for row in records if not (isinstance(row, dict) and row.get("task_id") == "MRL-0806")
+    ]
+    index_path.write_bytes(canonical_json_bytes(document))
+    (repository / _SLOT).write_bytes(
+        canonical_json_bytes(
+            {
+                "schema_version": "MRL-REAL-PREFLIGHT-EVIDENCE-SLOT-V1",
+                "state": "ABSENT",
+                "task_id": "MRL-0806",
+            }
+        )
+    )
+    tasks = repository / _TASKS
+    text = tasks.read_text(encoding="utf-8")
+    checked = "- [x] **MRL-0806 — Freeze real research objective and all budgets**"
+    unchecked = "- [ ] **MRL-0806 — Freeze real research objective and all budgets**"
+    assert text.count(checked) == 1
+    assert text.count(unchecked) == 0
+    tasks.write_text(text.replace(checked, unchecked), encoding="utf-8")
+    _run_git(repository, "add", _INDEX.as_posix(), _SLOT.as_posix(), _TASKS.as_posix())
+    _run_git(repository, "commit", "--quiet", "-m", "test: restore synthetic pre-MRL-0806 baseline")
 
 
 def _objective_evidence() -> bytes:
@@ -223,11 +259,31 @@ def _task(project_state: bytes, task_id: str) -> dict[str, object]:
     return row
 
 
-def test_absent_0806_slot_preserves_live_real_evidence_state(tmp_path: Path) -> None:
+def test_0806_slot_preserves_live_real_evidence_state(tmp_path: Path) -> None:
     rendered = generate_machine_state(_REPOSITORY_ROOT, tmp_path / "state")
     row = _task(rendered.project_state, "MRL-0806")
-    assert row["state"] == "PLANNED"
-    assert row["evidence_refs"] == []
+    slot_raw = (_REPOSITORY_ROOT / _SLOT).read_bytes()
+    slot = json.loads(slot_raw)
+    if slot == {
+        "schema_version": "MRL-REAL-PREFLIGHT-EVIDENCE-SLOT-V1",
+        "state": "ABSENT",
+        "task_id": "MRL-0806",
+    }:
+        assert row["state"] == "PLANNED"
+        assert row["evidence_refs"] == []
+        return
+    head = _git_text(_REPOSITORY_ROOT, "rev-parse", "HEAD")
+    canonical_main = _git_text(_REPOSITORY_ROOT, "rev-parse", "refs/remotes/origin/main")
+    if head != canonical_main:
+        assert row["state"] == "PLANNED"
+        assert row["evidence_refs"] == []
+        return
+    digest = hashlib.sha256(slot_raw).hexdigest()
+    assert row["state"] == "CLOSED_CANONICAL"
+    evidence_refs = row["evidence_refs"]
+    assert isinstance(evidence_refs, list)
+    assert f"real-preflight-evidence:{digest}" in evidence_refs
+    assert f"real-preflight-path:{_SLOT.as_posix()}" in evidence_refs
 
 
 def test_canonical_bound_trusted_real_evidence_can_be_derived_closed(

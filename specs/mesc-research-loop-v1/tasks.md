@@ -474,7 +474,7 @@ training-authorization evidence may begin before MRL-0800 is `CLOSED_CANONICAL`.
   - Depends on: MRL-0800, independent authority artifact/trust path, and current training
     governance.
 
-- [ ] **MRL-0806 — Freeze real research objective and all budgets**
+- [x] **MRL-0806 — Freeze real research objective and all budgets**
   - Depends on: MRL-0800 plus selected real experiment.
   - Acceptance: compute/resource/adaptive-query/result-exposure budgets are exact and
     externally frozen.
