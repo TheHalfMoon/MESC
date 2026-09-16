@@ -16,7 +16,10 @@ import pytest
 
 import medscale.mesc._mrl_0808_sandbox_v1 as sandbox
 from medscale.mesc._canonical_json_v1 import canonical_json_bytes
-from medscale.mesc._mrl_real_preflight_evidence_v1 import parse_mrl_real_preflight_evidence
+from medscale.mesc._mrl_real_preflight_evidence_v1 import (
+    TRUSTED_MRL_REAL_PREFLIGHT_EVIDENCE_SHA256,
+    parse_mrl_real_preflight_evidence,
+)
 
 _ROOT = Path(__file__).resolve().parents[1]
 _AUTH = _ROOT / "specs/mesc-experiment-0/mrl-0808-sandbox-authorization-v1.json"
@@ -320,19 +323,23 @@ def test_authorization_and_policy_bytes_are_exact_owner_bounded_and_non_scientif
         assert auth["policy"][field] is False
 
 
-def test_canonical_attestation_trust_does_not_admit_outer_evidence() -> None:
+def test_canonical_attestation_and_outer_evidence_are_admitted_in_stages() -> None:
     assert (
         frozenset({"e4727cde04b710891c022658f28e787ea9300905db6dcde79d7139ec1ba7a90c"})
         == sandbox.TRUSTED_MRL0808_RUNTIME_SANDBOX_ATTESTATION_SHA256
     )
-    assert _read_json(_SLOT) == {
-        "schema_version": "MRL-REAL-PREFLIGHT-EVIDENCE-SLOT-V1",
-        "state": "ABSENT",
-        "task_id": "MRL-0808",
-    }
+    slot_bytes = _SLOT.read_bytes()
+    slot = json.loads(slot_bytes)
+    admitted_digest = hashlib.sha256(slot_bytes).hexdigest()
+    assert slot["schema_version"] == "MRL-REAL-PREFLIGHT-EVIDENCE-V1"
+    assert slot["task_id"] == "MRL-0808"
+    assert slot["kind"] == "mesc.mrl.real_preflight.sandbox.v1"
+    assert slot["disposition"] == "PASS"
+    assert admitted_digest == "d65558e910cfaf63d41c1c52db1524039943eef00fd6692c576bf8ed1c8ebf77"
+    assert admitted_digest in TRUSTED_MRL_REAL_PREFLIGHT_EVIDENCE_SHA256
     tasks = _TASKS.read_text(encoding="utf-8")
-    assert "- [ ] **MRL-0808 — Verify real execution sandbox**" in tasks
-    assert "- [x] **MRL-0808 — Verify real execution sandbox**" not in tasks
+    assert "- [x] **MRL-0808 — Verify real execution sandbox**" in tasks
+    assert "- [ ] **MRL-0808 — Verify real execution sandbox**" not in tasks
 
 
 def test_trusted_synthetic_bundle_is_deterministic_and_outer_parser_compatible(

@@ -484,7 +484,7 @@ training-authorization evidence may begin before MRL-0800 is `CLOSED_CANONICAL`.
   - Acceptance: evidence contract remains non-promotional; model promotion is outside MRL
     pending the dedicated ADR required by ADR-0033.
 
-- [ ] **MRL-0808 — Verify real execution sandbox**
+- [x] **MRL-0808 — Verify real execution sandbox**
   - Depends on: MRL-0800 and real runtime/sandbox evidence.
 
 - [ ] **MRL-0809 — Exact-head preflight qualification**
