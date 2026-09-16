@@ -862,6 +862,11 @@ def test_launcher_declares_minimal_root_bounded_output_and_stop_controls() -> No
     assert '"--share-net"' not in source
     assert "sandbox-control-evidence.json" in source
     assert "MAXIMUM_TOTAL_BYTES" in supervisor
+    assert '"/proc/self/mountinfo"' not in supervisor
+    assert '"/usr/bin/stat"' in supervisor
+    assert '"nvidia-smi"' not in supervisor
+    assert "MESC_MRL0808_NVIDIA_DEVICE_NODES" in supervisor
+    assert 'resolved.relative_to("/usr")' in source
     launcher = _load_script(_LAUNCHER, "mrl0808_launcher_prefix_test")
     prefix, _ = launcher.sandbox_prefix(
         bwrap=Path("/usr/bin/bwrap"),
@@ -870,6 +875,20 @@ def test_launcher_declares_minimal_root_bounded_output_and_stop_controls() -> No
         weights=Path("/weights"),
         nvidia_nodes=(Path("/dev/nvidia0"),),
     )
+    assert "--proc" not in prefix
+    proc_mount = [
+        index
+        for index in range(len(prefix) - 3)
+        if prefix[index : index + 4]
+        == ["--size", str(launcher.PROC_TMPFS_BYTES), "--tmpfs", "/proc"]
+    ]
+    proc_remount = [
+        index
+        for index in range(len(prefix) - 1)
+        if prefix[index : index + 2] == ["--remount-ro", "/proc"]
+    ]
+    assert len(proc_mount) == len(proc_remount) == 1
+    assert proc_remount[0] > proc_mount[0]
     root_remount = [
         index
         for index in range(len(prefix) - 1)
@@ -880,6 +899,19 @@ def test_launcher_declares_minimal_root_bounded_output_and_stop_controls() -> No
     assert not any(
         prefix[index : index + 3] == ["--ro-bind", "/", "/"] for index in range(len(prefix) - 2)
     )
+
+
+def test_launcher_sandbox_env_binds_nonsecret_gpu_and_device_identity() -> None:
+    launcher = _load_script(_LAUNCHER, "mrl0808_launcher_env_test")
+    env = launcher.sandbox_env(
+        "a" * 64,
+        "b" * 64,
+        gpu_observation="Tesla T4, GPU-test, 15360",
+        nvidia_nodes=(Path("/dev/nvidia0"), Path("/dev/nvidiactl")),
+    )
+    assert env["PATH"] == "/usr/bin:/bin"
+    assert env["MESC_MRL0808_GPU_OBSERVATION"] == "Tesla T4, GPU-test, 15360"
+    assert env["MESC_MRL0808_NVIDIA_DEVICE_NODES"] == '["/dev/nvidia0","/dev/nvidiactl"]'
 
 
 def test_qualifier_ast_normalization_allows_only_attestation_trust_registry_change() -> None:

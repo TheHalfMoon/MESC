@@ -9,6 +9,7 @@ import errno
 import hashlib
 import json
 import os
+import stat
 import subprocess
 import sys
 from pathlib import Path
@@ -88,17 +89,19 @@ def write_new(path: Path, raw: bytes) -> None:
 
 
 def output_mount() -> tuple[str, int]:
-    """Return the output mount type and reported capacity."""
-    mount_type: str | None = None
-    for line in Path("/proc/self/mountinfo").read_text(encoding="utf-8").splitlines():
-        parts = line.split()
-        if len(parts) < 10 or parts[4] != str(OUTPUT_ROOT):
-            continue
-        separator = parts.index("-")
-        mount_type = parts[separator + 1]
-        break
-    if mount_type is None:
+    """Return the output mount type and reported capacity without relying on procfs."""
+    if OUTPUT_ROOT.stat().st_dev == OUTPUT_ROOT.parent.stat().st_dev:
         raise SupervisorError("sandbox output root is not a distinct mount")
+    completed = subprocess.run(
+        ["/usr/bin/stat", "-f", "-c", "%T", str(OUTPUT_ROOT)],
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    mount_type = completed.stdout.strip()
+    if completed.returncode != 0 or not mount_type:
+        raise SupervisorError("cannot resolve sandbox output filesystem type")
     stats = os.statvfs(OUTPUT_ROOT)
     capacity = stats.f_frsize * stats.f_blocks
     return mount_type, capacity
@@ -141,20 +144,35 @@ def denied_write(path: Path) -> bool:
 
 
 def gpu_observation() -> str:
-    """Prove the qualified GPU remains visible inside the sandbox."""
-    completed = subprocess.run(
-        ["nvidia-smi", "--query-gpu=name,uuid,memory.total", "--format=csv,noheader,nounits"],
-        check=False,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-    )
-    if completed.returncode != 0:
-        raise SupervisorError("nvidia-smi is not usable inside the sandbox")
-    lines = [line.strip() for line in completed.stdout.splitlines() if line.strip()]
-    if len(lines) != 1:
-        raise SupervisorError("exactly one GPU must remain visible inside the sandbox")
-    return lines[0]
+    """Prove the launcher's exact NVIDIA device set remains visible inside the sandbox."""
+    expected_gpu = os.environ.get("MESC_MRL0808_GPU_OBSERVATION", "").strip()
+    raw_nodes = os.environ.get("MESC_MRL0808_NVIDIA_DEVICE_NODES", "")
+    if not expected_gpu or not raw_nodes:
+        raise SupervisorError("sandbox GPU identity environment is incomplete")
+    try:
+        parsed_nodes = json.loads(raw_nodes)
+    except (TypeError, ValueError) as exc:
+        raise SupervisorError("sandbox NVIDIA device-node identity is invalid") from exc
+    if type(parsed_nodes) is not list or not parsed_nodes:
+        raise SupervisorError("sandbox NVIDIA device-node identity must be a non-empty list")
+    expected_nodes = [str(value) for value in parsed_nodes]
+    if expected_nodes != sorted(set(expected_nodes)) or any(
+        not value.startswith("/dev/nvidia") for value in expected_nodes
+    ):
+        raise SupervisorError("sandbox NVIDIA device-node identity escaped frozen scope")
+    actual_nodes: list[str] = []
+    for candidate in sorted(Path("/dev").glob("nvidia*")):
+        candidates = candidate.rglob("*") if candidate.is_dir() else (candidate,)
+        for path in candidates:
+            try:
+                mode = path.stat().st_mode
+            except OSError:
+                continue
+            if stat.S_ISCHR(mode):
+                actual_nodes.append(str(path))
+    if sorted(set(actual_nodes)) != expected_nodes:
+        raise SupervisorError("sandbox NVIDIA device-node set drifted")
+    return expected_gpu
 
 
 def normal() -> int:
