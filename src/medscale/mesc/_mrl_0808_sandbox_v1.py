@@ -47,9 +47,11 @@ _EXPECTED_OUTPUT_POLICY: Final = "2b6c79b5662d3e91f107bf24d00155b8df0b4a1c96b0ad
 _EXPECTED_STOP_POLICY: Final = "607720d456b0dfdc26b6058bfc3bd71f18bdd539e52fab1c0b32780c4c1b6194"
 _EXPECTED_SANDBOX_POLICY: Final = "169255451b232a530875e221f39096fd103f3429b5d5125f54229f1b347c8316"
 
-# Offline prototype trust root: intentionally empty. A later separately reviewed
-# canonical mutation may admit exactly one independently verified attestation digest.
-TRUSTED_MRL0808_RUNTIME_SANDBOX_ATTESTATION_SHA256: frozenset[str] = frozenset()
+# Canonical runtime-attestation trust root. Mutate only through separately reviewed
+# governance to admit exact independently verified attestation digests.
+TRUSTED_MRL0808_RUNTIME_SANDBOX_ATTESTATION_SHA256: frozenset[str] = frozenset(
+    {"e4727cde04b710891c022658f28e787ea9300905db6dcde79d7139ec1ba7a90c"}
+)
 
 
 class MRL0808SandboxError(ValueError):

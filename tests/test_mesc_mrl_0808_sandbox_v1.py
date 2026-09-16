@@ -320,8 +320,11 @@ def test_authorization_and_policy_bytes_are_exact_owner_bounded_and_non_scientif
         assert auth["policy"][field] is False
 
 
-def test_producer_starts_with_empty_attestation_trust_and_does_not_admit_outer_evidence() -> None:
-    assert frozenset() == sandbox.TRUSTED_MRL0808_RUNTIME_SANDBOX_ATTESTATION_SHA256
+def test_canonical_attestation_trust_does_not_admit_outer_evidence() -> None:
+    assert (
+        frozenset({"e4727cde04b710891c022658f28e787ea9300905db6dcde79d7139ec1ba7a90c"})
+        == sandbox.TRUSTED_MRL0808_RUNTIME_SANDBOX_ATTESTATION_SHA256
+    )
     assert _read_json(_SLOT) == {
         "schema_version": "MRL-REAL-PREFLIGHT-EVIDENCE-SLOT-V1",
         "state": "ABSENT",
