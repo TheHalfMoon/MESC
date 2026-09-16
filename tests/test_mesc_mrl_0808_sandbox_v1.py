@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import fcntl
 import hashlib
 import importlib.util
 import json
@@ -543,6 +544,13 @@ def test_challenge_cli_consumes_once_and_cancelled_challenge_cannot_be_consumed(
         "--ledger-dir",
         str(ledger),
     )
+    files["observation"].write_bytes(_mutate(bundle["observation"], "monetary_cost_microunits", 1))
+    invalid = _run_script(_CHALLENGE, *consume_args)
+    assert invalid.returncode != 0
+    assert "monetary_cost_microunits must be integer zero" in invalid.stderr
+    assert not (ledger / f"{issued['challenge']}.consumed.json").exists()
+    files["observation"].write_bytes(bundle["observation"])
+
     first = _run_script(_CHALLENGE, *consume_args)
     assert first.returncode == 0, first.stderr
     second = _run_script(_CHALLENGE, *consume_args)
@@ -651,22 +659,39 @@ def test_challenge_cli_rejects_forged_issuance_and_serializes_terminal_transitio
     assert "issuance must not be a symlink" in linked_run.stderr
 
     lock = ledger / f".{challenge}.terminal-transition.lock"
-    lock.mkdir()
-    blocked = _run_script(
+    lock_fd = os.open(lock, os.O_RDWR | os.O_CREAT, 0o600)
+    fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    try:
+        blocked = _run_script(
+            _CHALLENGE,
+            "cancel",
+            "--issuance",
+            str(issuance),
+            "--reason",
+            "must serialize terminal transition",
+            "--ledger-dir",
+            str(ledger),
+        )
+    finally:
+        fcntl.flock(lock_fd, fcntl.LOCK_UN)
+        os.close(lock_fd)
+    assert blocked.returncode != 0
+    assert "terminal transition already in progress" in blocked.stderr
+    assert not (ledger / f"{challenge}.cancelled.json").exists()
+    assert not (ledger / f"{challenge}.consumed.json").exists()
+
+    recovered = _run_script(
         _CHALLENGE,
         "cancel",
         "--issuance",
         str(issuance),
         "--reason",
-        "must serialize terminal transition",
+        "lock file must not remain terminally blocking",
         "--ledger-dir",
         str(ledger),
     )
-    assert blocked.returncode != 0
-    assert "terminal transition already in progress" in blocked.stderr
-    assert not (ledger / f"{challenge}.cancelled.json").exists()
-    assert not (ledger / f"{challenge}.consumed.json").exists()
-    lock.rmdir()
+    assert recovered.returncode == 0, recovered.stderr
+    assert (ledger / f"{challenge}.cancelled.json").exists()
 
 
 def test_attestation_renderer_requires_consumed_challenge_and_exact_custody(tmp_path: Path) -> None:
@@ -835,7 +860,6 @@ def test_launcher_declares_minimal_root_bounded_output_and_stop_controls() -> No
     ):
         assert token in source or token in supervisor
     assert '"--share-net"' not in source
-    assert '"--ro-bind",\n        "/",' not in source
     assert "sandbox-control-evidence.json" in source
     assert "MAXIMUM_TOTAL_BYTES" in supervisor
     launcher = _load_script(_LAUNCHER, "mrl0808_launcher_prefix_test")
@@ -853,6 +877,9 @@ def test_launcher_declares_minimal_root_bounded_output_and_stop_controls() -> No
     ]
     assert len(root_remount) == 1
     assert root_remount[0] > prefix.index("/mesc-run/output")
+    assert not any(
+        prefix[index : index + 3] == ["--ro-bind", "/", "/"] for index in range(len(prefix) - 2)
+    )
 
 
 def test_qualifier_ast_normalization_allows_only_attestation_trust_registry_change() -> None:

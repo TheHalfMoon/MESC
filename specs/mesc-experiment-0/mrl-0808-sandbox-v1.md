@@ -152,8 +152,10 @@ sandbox-cleanup-receipt.json
 
 and the independently known provider execution identity. Issuance paths must be direct
 non-symlink files whose filename binds the exact challenge. `consume` and `cancel` serialize
-through one atomic per-challenge terminal-transition lock before testing or writing terminal
-state. A successful consumption writes one `CONSUMED` receipt binding all four digests. The
+through one non-blocking advisory per-challenge terminal-transition lock before testing or
+writing terminal state. The operating system releases the lock on process exit, so a stale
+lock-file inode cannot permanently strand an issued challenge. A successful consumption writes
+one `CONSUMED` receipt binding all four digests. The
 same challenge cannot be consumed twice. A cancelled challenge cannot be consumed, and a
 consumed challenge cannot subsequently be cancelled.
 

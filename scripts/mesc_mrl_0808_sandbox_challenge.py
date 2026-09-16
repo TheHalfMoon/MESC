@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import fcntl
 import hashlib
 import json
 import os
@@ -15,6 +16,7 @@ from pathlib import Path
 from typing import cast
 
 from medscale.mesc._canonical_json_v1 import canonical_json_bytes
+from medscale.mesc._mrl_0808_sandbox_v1 import MRL0808SandboxError, _parse_observation
 
 SHA64 = re.compile(r"^[0-9a-f]{64}$")
 SHA40 = re.compile(r"^[0-9a-f]{40}$")
@@ -123,15 +125,23 @@ def validated_issuance(path: str, ledger: Path) -> tuple[dict[str, object], str]
 @contextlib.contextmanager
 def terminal_transition(ledger: Path, challenge: str) -> Iterator[None]:
     lock = ledger / f".{challenge}.terminal-transition.lock"
+    flags = os.O_RDWR | os.O_CREAT | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
     try:
-        lock.mkdir(mode=0o700)
-    except FileExistsError as exc:
-        raise SystemExit("challenge terminal transition already in progress") from exc
+        fd = os.open(lock, flags, 0o600)
+    except OSError as exc:
+        raise SystemExit("challenge terminal transition lock cannot be opened safely") from exc
+    locked = False
     try:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as exc:
+            raise SystemExit("challenge terminal transition already in progress") from exc
+        locked = True
         yield
     finally:
-        with contextlib.suppress(FileNotFoundError):
-            lock.rmdir()
+        if locked:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+        os.close(fd)
 
 
 def issue(args: argparse.Namespace) -> None:
@@ -166,6 +176,10 @@ def consume(args: argparse.Namespace) -> None:
         if consumed.exists():
             raise SystemExit("challenge is already consumed")
         observation, observation_raw = load(Path(args.observation))
+        try:
+            observation = _parse_observation(observation_raw)
+        except MRL0808SandboxError as exc:
+            raise SystemExit(f"invalid sandbox observation: {exc}") from exc
         context, context_raw = load(Path(args.runtime_context))
         control, control_raw = load(Path(args.sandbox_control_evidence))
         cleanup, cleanup_raw = load(Path(args.cleanup_receipt))
