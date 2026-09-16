@@ -70,7 +70,7 @@ scientific/control probe boundary uses bubblewrap with:
 direct host-root bind = forbidden
 /usr, /sys, /etc/ld.so.cache = explicit read-only runtime support
 /dev = fresh device filesystem + explicit NVIDIA character devices, then remounted read-only
-/proc = fresh procfs, then remounted read-only
+/proc = empty bounded 4 KiB tmpfs, then remounted read-only; provider procfs is never exposed
 /mesc-run/repository = read-only
 /mesc-run/inputs = read-only, exactly one declared synthetic marker
 /mesc-run/model-weights = read-only and empty for qualification
@@ -82,11 +82,13 @@ direct host-root bind = forbidden
 
 The launcher does not use `--share-net`; the isolated process receives a separate network
 namespace. The model-visible environment contains only the bounded PATH/Python control
-variables and exact frozen MRL policy identities. Reusable credentials are not forwarded.
+variables, exact frozen MRL policy identities, and non-secret GPU/device identities needed
+for in-sandbox device verification. Reusable credentials are not forwarded.
 
-If bubblewrap is unavailable or the hosted kernel/provider does not permit the required
-namespace/mount controls, qualification is `BLOCKED`; the producer must not downgrade to a
-weaker container/config-only claim.
+The model-visible `/proc` intentionally exposes no provider process table. This avoids
+binding provider procfs while preserving a read-only virtual root on hosted kernels that
+forbid nested procfs mounts. If bubblewrap or any required namespace/mount control remains
+unavailable, qualification is `BLOCKED`; the producer must not downgrade to a weaker claim.
 
 ## Synthetic control probe
 

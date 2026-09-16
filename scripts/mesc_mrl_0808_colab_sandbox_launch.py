@@ -28,6 +28,7 @@ RUNTIME_EVID: Final = "f630a852319ca1ce6bd66b3203ce80c092e0695cabec3bb8456e29a94
 RUNTIME_ID: Final = "05b19593f7c9c1f03df39a100189da653695bad1b13d24c921dd1fecd7fe0b45"
 MAX_OUTPUT_BYTES: Final = 67_108_864
 MAX_SCRATCH_BYTES: Final = 268_435_456
+PROC_TMPFS_BYTES: Final = 4_096
 SYNTHETIC_INPUT_NAME: Final = "mrl0808-synthetic-input.txt"
 SYNTHETIC_INPUT_BYTES: Final = b"MESC-MRL-0808-SYNTHETIC-READ-PROBE-V1\n"
 PROBE: Final = Path("scripts/mesc_mrl_0808_sandbox_probe.py")
@@ -203,6 +204,21 @@ def nvidia_device_nodes() -> tuple[Path, ...]:
     return unique
 
 
+def sandbox_python() -> str:
+    """Return the exact executable Python path already covered by the /usr bind."""
+    raw = shutil.which("python3")
+    if raw is None:
+        raise LauncherError("qualified hosted runtime exposes no python3 executable")
+    resolved = Path(raw).resolve(strict=True)
+    if not resolved.is_file() or not os.access(resolved, os.X_OK):
+        raise LauncherError("qualified hosted runtime python3 is not executable")
+    try:
+        resolved.relative_to("/usr")
+    except ValueError as exc:
+        raise LauncherError("qualified hosted runtime python3 escaped /usr support root") from exc
+    return str(resolved)
+
+
 def runtime_symlink_args() -> tuple[list[str], dict[str, str]]:
     """Recreate only standard runtime symlinks needed beneath the empty sandbox root."""
     args: list[str] = []
@@ -246,7 +262,9 @@ def sandbox_prefix(
         "--ro-bind",
         "/etc/ld.so.cache",
         "/etc/ld.so.cache",
-        "--proc",
+        "--size",
+        str(PROC_TMPFS_BYTES),
+        "--tmpfs",
         "/proc",
         "--dev",
         "/dev",
@@ -290,11 +308,21 @@ def sandbox_prefix(
     return args, symlink_identities
 
 
-def sandbox_env(challenge: str, runtime_context_sha256: str) -> dict[str, str]:
+def sandbox_env(
+    challenge: str,
+    runtime_context_sha256: str,
+    *,
+    gpu_observation: str,
+    nvidia_nodes: tuple[Path, ...],
+) -> dict[str, str]:
     """Return the complete model-visible environment for the control probe."""
     return {
-        "PATH": "/usr/local/bin:/usr/bin:/bin",
+        "PATH": "/usr/bin:/bin",
         "PYTHONDONTWRITEBYTECODE": "1",
+        "MESC_MRL0808_GPU_OBSERVATION": gpu_observation,
+        "MESC_MRL0808_NVIDIA_DEVICE_NODES": json.dumps(
+            [str(path) for path in nvidia_nodes], separators=(",", ":")
+        ),
         "MESC_MRL0808_CHALLENGE": challenge,
         "MESC_MRL0808_SANDBOX_POLICY_SHA256": POLICY,
         "MESC_MRL0808_NETWORK_POLICY_SHA256": NETWORK,
@@ -502,12 +530,16 @@ def main() -> None:
     }
     context_raw = canonical_json_bytes(context)
     context_sha = hashlib.sha256(context_raw).hexdigest()
-    env = sandbox_env(args.challenge, context_sha)
+    python_executable = sandbox_python()
+    env = sandbox_env(
+        args.challenge,
+        context_sha,
+        gpu_observation=gpu_lines[0],
+        nvidia_nodes=devices,
+    )
     supervisor_path = "/mesc-run/repository/" + SUPERVISOR.as_posix()
 
-    normal = run_sandbox(
-        prefix, env, ["/usr/bin/env", "python3", supervisor_path, "--mode", "normal"]
-    )
+    normal = run_sandbox(prefix, env, [python_executable, supervisor_path, "--mode", "normal"])
     if normal.returncode != 0:
         raise LauncherError(
             "sandbox supervisor failed: " + normal.stderr.decode("utf-8", "replace")[-4000:]
@@ -524,14 +556,14 @@ def main() -> None:
     undeclared = run_sandbox(
         prefix,
         env,
-        ["/usr/bin/env", "python3", supervisor_path, "--mode", "undeclared-output"],
+        [python_executable, supervisor_path, "--mode", "undeclared-output"],
     )
     if undeclared.returncode != 43 or b"MRL0808_UNDECLARED_OUTPUT_BLOCKED" not in undeclared.stderr:
         raise LauncherError("undeclared output-class challenge was not blocked")
     budget = run_sandbox(
         prefix,
         env,
-        ["/usr/bin/env", "python3", supervisor_path, "--mode", "output-budget"],
+        [python_executable, supervisor_path, "--mode", "output-budget"],
     )
     if budget.returncode != 42 or b"MRL0808_OUTPUT_BUDGET_BLOCKED" not in budget.stderr:
         raise LauncherError("output byte-budget challenge was not blocked")
@@ -546,8 +578,8 @@ def main() -> None:
     )
     violation = run_sandbox(
         prefix,
-        {"PATH": "/usr/local/bin:/usr/bin:/bin", "PYTHONDONTWRITEBYTECODE": "1"},
-        ["/usr/bin/env", "python3", "-c", violation_code],
+        {"PATH": "/usr/bin:/bin", "PYTHONDONTWRITEBYTECODE": "1"},
+        [python_executable, "-c", violation_code],
     )
     if violation.returncode == 0 or forbidden_host.exists():
         raise LauncherError("forbidden repository write was not stopped")
