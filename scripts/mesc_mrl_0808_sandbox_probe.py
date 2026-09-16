@@ -25,6 +25,8 @@ _INPUTS = _ROOT / "inputs"
 _WEIGHTS = _ROOT / "model-weights"
 _SCRATCH = _ROOT / "scratch"
 _OUTPUT = _ROOT / "output"
+_SYNTHETIC_INPUT = _INPUTS / "mrl0808-synthetic-input.txt"
+_SYNTHETIC_INPUT_BYTES: Final = b"MESC-MRL-0808-SYNTHETIC-READ-PROBE-V1\n"
 _CREDENTIAL_NAMES: Final = (
     "AWS_ACCESS_KEY_ID",
     "AWS_SECRET_ACCESS_KEY",
@@ -46,9 +48,16 @@ _CONTROL_SOCKETS: Final = (
 
 
 def canonical(value: object) -> bytes:
-    return json.dumps(
-        value, ensure_ascii=True, allow_nan=False, separators=(",", ":"), sort_keys=True
-    ).encode("ascii")
+    return (
+        json.dumps(
+            value,
+            ensure_ascii=False,
+            allow_nan=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8")
+        + b"\n"
+    )
 
 
 def required_env(name: str) -> str:
@@ -110,6 +119,10 @@ def main() -> int:
         if not path.exists() or not path.is_dir() or path.is_symlink():
             raise RuntimeError(f"required sandbox path missing/unsafe: {path}")
 
+    try:
+        synthetic_input_read_allowed = _SYNTHETIC_INPUT.read_bytes() == _SYNTHETIC_INPUT_BYTES
+    except OSError:
+        synthetic_input_read_allowed = False
     credential_env_empty = all(not os.environ.get(name) for name in _CREDENTIAL_NAMES)
     control_sockets_absent = all(not path.exists() for path in _CONTROL_SOCKETS)
     scratch_write_allowed = write_probe(_SCRATCH / ".mrl0808-write-probe", b"scratch")
@@ -136,6 +149,7 @@ def main() -> int:
         "repository_read_only_enforced": repository_write_denied,
         "root_write_denied": root_write_denied,
         "scratch_write_allowed": scratch_write_allowed,
+        "synthetic_input_read_allowed": synthetic_input_read_allowed,
         "tmp_write_denied": tmp_write_denied,
         "home_write_denied": home_write_denied,
     }

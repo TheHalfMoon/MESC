@@ -27,6 +27,7 @@ _POLICIES = {
     "sandbox": _ROOT / "specs/mesc-experiment-0/mrl-0808-sandbox-policy-v1.json",
 }
 _PROBE = _ROOT / "scripts/mesc_mrl_0808_sandbox_probe.py"
+_SUPERVISOR = _ROOT / "scripts/mesc_mrl_0808_sandbox_supervisor.py"
 _LAUNCHER = _ROOT / "scripts/mesc_mrl_0808_colab_sandbox_launch.py"
 _CHALLENGE = _ROOT / "scripts/mesc_mrl_0808_sandbox_challenge.py"
 _ATTEST = _ROOT / "scripts/mesc_mrl_0808_sandbox_attest.py"
@@ -39,12 +40,12 @@ _CHALLENGE_HEX = "3" * 64
 _PROVIDER_ID = "colab-runtime-test-001"
 
 _EXPECTED_SHA = {
-    _AUTH: "967820d67e2791d84f73eee4f1016929b154ede783dd744fbc0fe0880cb447ec",
+    _AUTH: "838c7ed0b8aafd9f85a89d96846486660d0f54ba0e50c0ebec1a415a6b328575",
     _POLICIES["network"]: "4ba5dc099d7e5ad648bbd473a73a1e91693fe6b139286f26b0e80831b0e0732f",
-    _POLICIES["mutation"]: "238ef158fe54e47cc6115502bec60763c7149f74130ea35e57a84e70da2f02c8",
-    _POLICIES["output"]: "7d890a8608485c58391bc1c422590b0aa1d17a35b63f3ed1f0decba5f18b726e",
+    _POLICIES["mutation"]: "044c61563880e630e079fad1e762aa5c9d3af505099a801070ef57d750633691",
+    _POLICIES["output"]: "2b6c79b5662d3e91f107bf24d00155b8df0b4a1c96b0ad48284451afd0cbb8ea",
     _POLICIES["stop"]: "607720d456b0dfdc26b6058bfc3bd71f18bdd539e52fab1c0b32780c4c1b6194",
-    _POLICIES["sandbox"]: "b156b8c6813880f7062b9f7ce6dcf053f1fb761d6ad0ba562aa753403b13d0bd",
+    _POLICIES["sandbox"]: "169255451b232a530875e221f39096fd103f3429b5d5125f54229f1b347c8316",
 }
 
 
@@ -72,8 +73,12 @@ def _synthetic_bundle(
         "bubblewrap_binary_sha256": "4" * 64,
         "bubblewrap_version": "bubblewrap 0.11.0",
         "colab_release_tag": "colab-test-release",
+        "direct_host_root_bind": False,
         "gpu_observation": "Tesla T4, GPU-test, 15360",
         "kernel_release": "6.1.0-test",
+        "model_weights_directory_empty": True,
+        "nvidia_device_nodes": ["/dev/nvidia0", "/dev/nvidiactl"],
+        "output_tmpfs_maximum_bytes": 67_108_864,
         "provider": "GOOGLE_COLAB",
         "provider_execution_id": _PROVIDER_ID,
         "provider_flavor": "DYNAMIC_ASSIGNED",
@@ -81,7 +86,15 @@ def _synthetic_bundle(
         "python_version": "3.11.15",
         "repository_sha": repository_sha,
         "repository_tree": repository_tree,
+        "runtime_support_read_only_roots": ["/etc/ld.so.cache", "/sys", "/usr"],
+        "runtime_support_symlinks": {
+            "/bin": "usr/bin",
+            "/lib": "usr/lib",
+            "/sbin": "usr/sbin",
+        },
         "schema_version": "MESC-MRL-0808-RUNTIME-CONTEXT-V1",
+        "scratch_tmpfs_maximum_bytes": 268_435_456,
+        "synthetic_input_sha256": _sha(b"MESC-MRL-0808-SYNTHETIC-READ-PROBE-V1\n"),
     }
     context_raw = _canonical(context)
     context_sha = _sha(context_raw)
@@ -98,6 +111,7 @@ def _synthetic_bundle(
         "repository_read_only_enforced": True,
         "root_write_denied": True,
         "scratch_write_allowed": True,
+        "synthetic_input_read_allowed": True,
         "tmp_write_denied": True,
     }
     observation = {
@@ -121,19 +135,49 @@ def _synthetic_bundle(
     }
     observation_raw = _canonical(observation)
     observation_sha = _sha(observation_raw)
+    control = {
+        "allowed_artifact_names": [
+            "sandbox-observation.json",
+            "sandbox-control-evidence.json",
+        ],
+        "challenge": challenge,
+        "dev_directory_write_denied": True,
+        "forbidden_host_data_roots_absent": True,
+        "gpu_observation": context["gpu_observation"],
+        "gpu_visible_inside_sandbox": True,
+        "maximum_total_bytes": 67_108_864,
+        "output_filesystem_type": "tmpfs",
+        "output_mount_capacity_bytes": 67_108_864,
+        "output_root": "/mesc-run/output",
+        "output_root_capacity_enforced": True,
+        "proc_write_denied": True,
+        "runtime_context_sha256": context_sha,
+        "runtime_support_roots_present": True,
+        "schema_version": "MESC-MRL-0808-SANDBOX-CONTROL-EVIDENCE-V1",
+        "undeclared_artifact_present": False,
+    }
+    control_raw = _canonical(control)
+    control_sha = _sha(control_raw)
     cleanup = {
         "challenge": challenge,
+        "collected_bytes_before_cleanup": len(context_raw)
+        + len(observation_raw)
+        + len(control_raw),
         "forbidden_repository_write_absent": True,
+        "minimal_runtime_root_enforced": True,
         "normal_probe_exit_code": 0,
         "observation_sha256": observation_sha,
-        "output_empty_after_cleanup": True,
+        "output_budget_challenge_blocked": True,
+        "output_tmpfs_destroyed_after_namespace_exit": True,
         "repository_sha": repository_sha,
         "repository_tree": repository_tree,
         "runtime_context_sha256": context_sha,
+        "sandbox_control_evidence_sha256": control_sha,
         "sandbox_policy_sha256": _EXPECTED_SHA[_POLICIES["sandbox"]],
         "schema_version": "MESC-MRL-0808-SANDBOX-CLEANUP-RECEIPT-V1",
-        "scratch_empty_after_cleanup": True,
+        "scratch_tmpfs_destroyed_after_namespace_exit": True,
         "state": "COMPLETED",
+        "undeclared_output_challenge_blocked": True,
         "violation_probe_stopped": True,
     }
     cleanup_raw = _canonical(cleanup)
@@ -142,6 +186,7 @@ def _synthetic_bundle(
         "challenge": challenge,
         "cleanup_receipt_sha256": cleanup_sha,
         "observation_sha256": observation_sha,
+        "sandbox_control_evidence_sha256": control_sha,
         "predecessor_runtime_evidence_sha256": sandbox._EXPECTED_RUNTIME_EVIDENCE,
         "predecessor_runtime_identity_sha256": sandbox._EXPECTED_RUNTIME_IDENTITY,
         "provider_execution_id": _PROVIDER_ID,
@@ -160,6 +205,7 @@ def _synthetic_bundle(
         "challenge_receipt_sha256": _sha(challenge_raw),
         "challenge_state": "CONSUMED",
         "cleanup_receipt_sha256": cleanup_sha,
+        "sandbox_control_evidence_sha256": control_sha,
         "independent_verification_method": "control-plane-session-review",
         "independent_verification_reference": "synthetic-test-reference",
         "monetary_cost_microunits": 0,
@@ -177,6 +223,7 @@ def _synthetic_bundle(
     return {
         "runtime_context": context_raw,
         "observation": observation_raw,
+        "control": control_raw,
         "cleanup": cleanup_raw,
         "challenge": challenge_raw,
         "attestation": _canonical(attestation),
@@ -201,6 +248,7 @@ def _qualify(
         sandbox_policy_bytes=_POLICIES["sandbox"].read_bytes(),
         runtime_context_bytes=bundle["runtime_context"],
         observation_bytes=bundle["observation"],
+        sandbox_control_evidence_bytes=bundle["control"],
         cleanup_receipt_bytes=bundle["cleanup"],
         challenge_receipt_bytes=bundle["challenge"],
         runtime_attestation_bytes=bundle["attestation"],
@@ -292,6 +340,7 @@ def test_trusted_synthetic_bundle_is_deterministic_and_outer_parser_compatible(
     assert first == second
     assert first.runtime_context_sha256 == _sha(bundle["runtime_context"])
     assert first.cleanup_receipt_sha256 == _sha(bundle["cleanup"])
+    assert first.sandbox_control_evidence_sha256 == _sha(bundle["control"])
     assert first.attestation_sha256 == _sha(bundle["attestation"])
     parsed = parse_mrl_real_preflight_evidence(first.evidence_bytes)
     assert parsed.task_id == "MRL-0808"
@@ -316,6 +365,7 @@ def test_untrusted_attestation_cannot_emit_sandbox_qualified_evidence() -> None:
             sandbox_policy_bytes=_POLICIES["sandbox"].read_bytes(),
             runtime_context_bytes=bundle["runtime_context"],
             observation_bytes=bundle["observation"],
+            sandbox_control_evidence_bytes=bundle["control"],
             cleanup_receipt_bytes=bundle["cleanup"],
             challenge_receipt_bytes=bundle["challenge"],
             runtime_attestation_bytes=bundle["attestation"],
@@ -345,6 +395,7 @@ def test_policy_byte_drift_fails_closed(policy_name: str, monkeypatch: pytest.Mo
             sandbox_policy_bytes=policy_bytes["sandbox"],
             runtime_context_bytes=bundle["runtime_context"],
             observation_bytes=bundle["observation"],
+            sandbox_control_evidence_bytes=bundle["control"],
             cleanup_receipt_bytes=bundle["cleanup"],
             challenge_receipt_bytes=bundle["challenge"],
             runtime_attestation_bytes=bundle["attestation"],
@@ -379,6 +430,20 @@ def test_runtime_context_provider_or_repository_drift_fails_closed(
             _qualify(bundle, monkeypatch)
 
 
+def test_sandbox_control_evidence_drift_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
+    bundle = _synthetic_bundle()
+    bundle["control"] = _mutate(bundle["control"], "output_root_capacity_enforced", False)
+    with pytest.raises(
+        sandbox.MRL0808SandboxError, match="output_root_capacity_enforced must be true"
+    ):
+        _qualify(bundle, monkeypatch)
+
+    bundle = _synthetic_bundle()
+    bundle["control"] = _mutate(bundle["control"], "maximum_total_bytes", 67_108_865)
+    with pytest.raises(sandbox.MRL0808SandboxError, match="output budget drifted"):
+        _qualify(bundle, monkeypatch)
+
+
 def test_cleanup_or_challenge_replay_semantics_fail_closed(monkeypatch: pytest.MonkeyPatch) -> None:
     bundle = _synthetic_bundle()
     bundle["cleanup"] = _mutate(bundle["cleanup"], "violation_probe_stopped", False)
@@ -405,6 +470,38 @@ def test_attestation_cost_provider_or_cleanup_binding_fails_closed(
             _qualify(bundle, monkeypatch)
 
 
+def test_launcher_rejects_symlink_directory_and_source_endpoints(tmp_path: Path) -> None:
+    launcher = _load_script(_LAUNCHER, "mrl0808_launcher_symlink_test")
+    real = tmp_path / "real"
+    real.mkdir()
+    link = tmp_path / "link"
+    link.symlink_to(real, target_is_directory=True)
+
+    assert launcher.existing_dir(real, "real") == real.resolve()
+    with pytest.raises(launcher.LauncherError, match="must be a real directory"):
+        launcher.existing_dir(link, "linked")
+
+    source_root = tmp_path / "source-root"
+    source_root.mkdir()
+    target = tmp_path / "launcher.py"
+    target.write_text("# synthetic\n", encoding="utf-8")
+    source = source_root / launcher.LAUNCHER
+    source.parent.mkdir(parents=True)
+    source.symlink_to(target)
+    with pytest.raises(launcher.LauncherError, match="required source is unsafe"):
+        launcher.require_exact_sources(source_root)
+
+    with pytest.raises(launcher.LauncherError, match="must remain outside repository"):
+        launcher.require_outside_repository(_ROOT / "specs", _ROOT, "custody")
+    launcher.require_outside_repository(tmp_path, _ROOT, "custody")
+
+
+def test_challenge_ledger_must_remain_outside_repository() -> None:
+    challenge = _load_script(_CHALLENGE, "mrl0808_challenge_external_ledger_test")
+    with pytest.raises(SystemExit, match="verifier ledger must remain outside repository"):
+        challenge.verifier_ledger(str(_ROOT))
+
+
 def test_challenge_cli_consumes_once_and_cancelled_challenge_cannot_be_consumed(
     tmp_path: Path,
 ) -> None:
@@ -425,7 +522,7 @@ def test_challenge_cli_consumes_once_and_cancelled_challenge_cannot_be_consumed(
     issued = _read_json(issuance)
     bundle = _synthetic_bundle(challenge=issued["challenge"])
     files: dict[str, Path] = {}
-    for name in ("runtime_context", "observation", "cleanup"):
+    for name in ("runtime_context", "observation", "control", "cleanup"):
         path = tmp_path / f"{name}.json"
         path.write_bytes(bundle[name])
         files[name] = path
@@ -437,6 +534,8 @@ def test_challenge_cli_consumes_once_and_cancelled_challenge_cannot_be_consumed(
         str(files["observation"]),
         "--runtime-context",
         str(files["runtime_context"]),
+        "--sandbox-control-evidence",
+        str(files["control"]),
         "--cleanup-receipt",
         str(files["cleanup"]),
         "--provider-execution-id",
@@ -476,7 +575,7 @@ def test_challenge_cli_consumes_once_and_cancelled_challenge_cannot_be_consumed(
     assert cancelled.returncode == 0, cancelled.stderr
     issue2 = _read_json(issuance2)
     bundle2 = _synthetic_bundle(challenge=issue2["challenge"])
-    for name in ("runtime_context", "observation", "cleanup"):
+    for name in ("runtime_context", "observation", "control", "cleanup"):
         (tmp_path / f"second-{name}.json").write_bytes(bundle2[name])
     denied = _run_script(
         _CHALLENGE,
@@ -487,6 +586,8 @@ def test_challenge_cli_consumes_once_and_cancelled_challenge_cannot_be_consumed(
         str(tmp_path / "second-observation.json"),
         "--runtime-context",
         str(tmp_path / "second-runtime_context.json"),
+        "--sandbox-control-evidence",
+        str(tmp_path / "second-control.json"),
         "--cleanup-receipt",
         str(tmp_path / "second-cleanup.json"),
         "--provider-execution-id",
@@ -498,10 +599,80 @@ def test_challenge_cli_consumes_once_and_cancelled_challenge_cannot_be_consumed(
     assert "cancelled" in denied.stderr
 
 
+def test_challenge_cli_rejects_forged_issuance_and_serializes_terminal_transition(
+    tmp_path: Path,
+) -> None:
+    ledger = tmp_path / "ledger"
+    ledger.mkdir()
+    issued_run = _run_script(
+        _CHALLENGE,
+        "issue",
+        "--repository-sha",
+        _REPO_SHA,
+        "--repository-tree",
+        _REPO_TREE,
+        "--ledger-dir",
+        str(ledger),
+    )
+    assert issued_run.returncode == 0, issued_run.stderr
+    issuance = Path(issued_run.stdout.strip())
+    issued = _read_json(issuance)
+    challenge = issued["challenge"]
+
+    forged = ledger / "forged-issued.json"
+    forged.write_bytes(issuance.read_bytes())
+
+    forged_run = _run_script(
+        _CHALLENGE,
+        "cancel",
+        "--issuance",
+        str(forged),
+        "--reason",
+        "must reject forged ledger entry",
+        "--ledger-dir",
+        str(ledger),
+    )
+    assert forged_run.returncode != 0
+    assert "filename does not bind challenge" in forged_run.stderr
+
+    issuance_link = ledger / "issuance-link.json"
+    issuance_link.symlink_to(issuance)
+    linked_run = _run_script(
+        _CHALLENGE,
+        "cancel",
+        "--issuance",
+        str(issuance_link),
+        "--reason",
+        "must reject symlink issuance",
+        "--ledger-dir",
+        str(ledger),
+    )
+    assert linked_run.returncode != 0
+    assert "issuance must not be a symlink" in linked_run.stderr
+
+    lock = ledger / f".{challenge}.terminal-transition.lock"
+    lock.mkdir()
+    blocked = _run_script(
+        _CHALLENGE,
+        "cancel",
+        "--issuance",
+        str(issuance),
+        "--reason",
+        "must serialize terminal transition",
+        "--ledger-dir",
+        str(ledger),
+    )
+    assert blocked.returncode != 0
+    assert "terminal transition already in progress" in blocked.stderr
+    assert not (ledger / f"{challenge}.cancelled.json").exists()
+    assert not (ledger / f"{challenge}.consumed.json").exists()
+    lock.rmdir()
+
+
 def test_attestation_renderer_requires_consumed_challenge_and_exact_custody(tmp_path: Path) -> None:
     bundle = _synthetic_bundle()
     paths: dict[str, Path] = {}
-    for name in ("runtime_context", "observation", "cleanup", "challenge"):
+    for name in ("runtime_context", "observation", "control", "cleanup", "challenge"):
         path = tmp_path / f"{name}.json"
         path.write_bytes(bundle[name])
         paths[name] = path
@@ -514,6 +685,8 @@ def test_attestation_renderer_requires_consumed_challenge_and_exact_custody(tmp_
         str(paths["observation"]),
         "--runtime-context",
         str(paths["runtime_context"]),
+        "--sandbox-control-evidence",
+        str(paths["control"]),
         "--cleanup-receipt",
         str(paths["cleanup"]),
         "--repository-sha",
@@ -533,11 +706,89 @@ def test_attestation_renderer_requires_consumed_challenge_and_exact_custody(tmp_
     rendered = _read_json(output)
     assert rendered["challenge_state"] == "CONSUMED"
     assert rendered["cleanup_receipt_sha256"] == _sha(bundle["cleanup"])
+    assert rendered["sandbox_control_evidence_sha256"] == _sha(bundle["control"])
     assert rendered["runtime_context_sha256"] == _sha(bundle["runtime_context"])
 
 
+def test_qualifier_rejects_symlink_repository_external_and_output_boundaries(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    qualifier = _load_script(_QUALIFIER, "mrl0808_qualifier_symlink_test")
+
+    real_repo = tmp_path / "real-repo"
+    real_repo.mkdir()
+    repo_link = tmp_path / "repo-link"
+    repo_link.symlink_to(real_repo, target_is_directory=True)
+    with pytest.raises(qualifier.EntrypointError, match="repository-root must not be a symlink"):
+        qualifier.clean_root(repo_link)
+
+    real_file = tmp_path / "real.json"
+    real_file.write_text("{}\n", encoding="utf-8")
+    file_link = tmp_path / "file-link.json"
+    file_link.symlink_to(real_file)
+    with pytest.raises(qualifier.EntrypointError, match="regular non-symlink file"):
+        qualifier.external(file_link, real_repo, "runtime context")
+
+    real_output = tmp_path / "real-output"
+    real_output.mkdir()
+    output_link = tmp_path / "output-link"
+    output_link.symlink_to(real_output, target_is_directory=True)
+    with pytest.raises(qualifier.EntrypointError, match="existing non-symlink directory"):
+        qualifier.output_root(output_link, real_repo, False)
+
+    fake_root = tmp_path / "fake-root"
+    fake_root.mkdir()
+    source_target = tmp_path / "source.py"
+    source_target.write_text("# synthetic\n", encoding="utf-8")
+    source_path = fake_root / qualifier.MODULE
+    source_path.parent.mkdir(parents=True)
+    source_path.symlink_to(source_target)
+
+    def fake_git_text(_root: Path, *args: str) -> str:
+        if args == ("rev-parse", "--show-toplevel"):
+            return str(fake_root)
+        if args == ("status", "--porcelain", "--untracked-files=all"):
+            return ""
+        if args == ("clean", "-ndx"):
+            return ""
+        raise AssertionError(args)
+
+    monkeypatch.setattr(qualifier, "git_text", fake_git_text)
+    with pytest.raises(qualifier.EntrypointError, match="unsafe required source"):
+        qualifier.clean_root(fake_root)
+
+
+def test_attestation_renderer_requires_external_non_symlink_custody(tmp_path: Path) -> None:
+    attest = _load_script(_ATTEST, "mrl0808_attest_external_test")
+    with pytest.raises(SystemExit, match="must remain outside repository"):
+        attest.external_file(str(_AUTH), "authorization")
+    with pytest.raises(SystemExit, match="output must remain outside repository"):
+        attest.external_output(str(_ROOT / "runtime-sandbox-attestation.json"))
+
+    external = tmp_path / "external.json"
+    external.write_text("{}\n", encoding="utf-8")
+    link = tmp_path / "external-link.json"
+    link.symlink_to(external)
+    with pytest.raises(SystemExit, match="non-symlink external file"):
+        attest.external_file(str(link), "runtime context")
+
+
+def test_supervisor_undeclared_output_challenge_has_complete_declared_set_plus_extra(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    supervisor = _load_script(_SUPERVISOR, "mrl0808_supervisor_extra_output_test")
+    monkeypatch.setattr(supervisor, "OUTPUT_ROOT", tmp_path)
+    assert supervisor.undeclared_output_challenge() == 43
+    assert {path.name for path in tmp_path.iterdir()} == {
+        supervisor.OBSERVATION_NAME,
+        supervisor.CONTROL_NAME,
+        "undeclared-output.bin",
+    }
+
+
 def test_probe_and_launcher_contain_no_model_loading_training_or_paid_compute_primitives() -> None:
-    for path in (_PROBE, _LAUNCHER, _CHALLENGE, _ATTEST, _QUALIFIER):
+    for path in (_PROBE, _SUPERVISOR, _LAUNCHER, _CHALLENGE, _ATTEST, _QUALIFIER):
         source = path.read_text(encoding="utf-8")
         for token in (
             "AutoModel",
@@ -560,25 +811,48 @@ def test_probe_and_launcher_contain_no_model_loading_training_or_paid_compute_pr
     assert probe_imports.isdisjoint({"subprocess", "requests", "httpx", "urllib"})
 
 
-def test_launcher_declares_real_namespace_mount_environment_and_stop_controls() -> None:
+def test_launcher_declares_minimal_root_bounded_output_and_stop_controls() -> None:
     source = _LAUNCHER.read_text(encoding="utf-8")
+    supervisor = _SUPERVISOR.read_text(encoding="utf-8")
     for token in (
         '"--unshare-all"',
         '"--clearenv"',
         '"--die-with-parent"',
         '"--new-session"',
-        '"--ro-bind"',
+        '"--remount-ro"',
+        '"--size"',
+        '"--tmpfs"',
         '"/mesc-run/repository"',
         '"/mesc-run/model-weights"',
         '"/mesc-run/inputs"',
         '"/mesc-run/scratch"',
         '"/mesc-run/output"',
         ".mrl0808-forbidden-write",
-        "sandbox left unexpected scratch/output residue",
+        "MRL0808_UNDECLARED_OUTPUT_BLOCKED",
+        "MRL0808_OUTPUT_BUDGET_BLOCKED",
+        "mrl0808-synthetic-input.txt",
+        "model-weights directory must remain empty",
     ):
-        assert token in source
+        assert token in source or token in supervisor
     assert '"--share-net"' not in source
-    assert '"--bind",\n            str(root)' not in source
+    assert '"--ro-bind",\n        "/",' not in source
+    assert "sandbox-control-evidence.json" in source
+    assert "MAXIMUM_TOTAL_BYTES" in supervisor
+    launcher = _load_script(_LAUNCHER, "mrl0808_launcher_prefix_test")
+    prefix, _ = launcher.sandbox_prefix(
+        bwrap=Path("/usr/bin/bwrap"),
+        repository=Path("/repo"),
+        inputs=Path("/inputs"),
+        weights=Path("/weights"),
+        nvidia_nodes=(Path("/dev/nvidia0"),),
+    )
+    root_remount = [
+        index
+        for index in range(len(prefix) - 1)
+        if prefix[index : index + 2] == ["--remount-ro", "/"]
+    ]
+    assert len(root_remount) == 1
+    assert root_remount[0] > prefix.index("/mesc-run/output")
 
 
 def test_qualifier_ast_normalization_allows_only_attestation_trust_registry_change() -> None:

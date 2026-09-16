@@ -40,19 +40,21 @@ All authoritative JSON below uses the repository canonical JSON byte contract, i
 terminal LF inside the SHA-256 identity.
 
 ```text
-MRL0808_AUTHORIZATION_SHA256 = 967820d67e2791d84f73eee4f1016929b154ede783dd744fbc0fe0880cb447ec
+MRL0808_AUTHORIZATION_SHA256 = 838c7ed0b8aafd9f85a89d96846486660d0f54ba0e50c0ebec1a415a6b328575
 NETWORK_POLICY_SHA256 = 4ba5dc099d7e5ad648bbd473a73a1e91693fe6b139286f26b0e80831b0e0732f
-MUTATION_PATHS_SHA256 = 238ef158fe54e47cc6115502bec60763c7149f74130ea35e57a84e70da2f02c8
-OUTPUT_DESTINATIONS_SHA256 = 7d890a8608485c58391bc1c422590b0aa1d17a35b63f3ed1f0decba5f18b726e
+MUTATION_PATHS_SHA256 = 044c61563880e630e079fad1e762aa5c9d3af505099a801070ef57d750633691
+OUTPUT_DESTINATIONS_SHA256 = 2b6c79b5662d3e91f107bf24d00155b8df0b4a1c96b0ad48284451afd0cbb8ea
 STOP_CONDITIONS_SHA256 = 607720d456b0dfdc26b6058bfc3bd71f18bdd539e52fab1c0b32780c4c1b6194
-SANDBOX_POLICY_SHA256 = b156b8c6813880f7062b9f7ce6dcf053f1fb761d6ad0ba562aa753403b13d0bd
+SANDBOX_POLICY_SHA256 = 169255451b232a530875e221f39096fd103f3429b5d5125f54229f1b347c8316
 ```
 
 Any byte drift fails closed.
 
 ## Isolation boundary
 
-The hosted launcher requires Linux and the exact clean canonical `main` checkout. It requires
+The hosted launcher requires Linux and the exact clean canonical `main` checkout. Synthetic
+input staging, empty model-weight staging, and evidence custody must resolve outside the
+producer repository. It requires
 an independently obtained Colab runtime/session identity and records the actual GPU
 observation, kernel, Python, Colab release family, bubblewrap version, and exact bubblewrap
 binary SHA-256 into `runtime-context.json`.
@@ -65,16 +67,17 @@ scientific/control probe boundary uses bubblewrap with:
 --die-with-parent
 --new-session
 --clearenv
-host filesystem = read-only
-/home = empty read-only
-/root = empty read-only
-/run = empty read-only
-/tmp = empty read-only
+direct host-root bind = forbidden
+/usr, /sys, /etc/ld.so.cache = explicit read-only runtime support
+/dev = fresh device filesystem + explicit NVIDIA character devices, then remounted read-only
+/proc = fresh procfs, then remounted read-only
 /mesc-run/repository = read-only
-/mesc-run/inputs = read-only
-/mesc-run/model-weights = read-only
-/mesc-run/scratch = writable
-/mesc-run/output = writable
+/mesc-run/inputs = read-only, exactly one declared synthetic marker
+/mesc-run/model-weights = read-only and empty for qualification
+/mesc-run/scratch = bounded 256 MiB tmpfs
+/mesc-run/output = bounded 64 MiB tmpfs
+/ = remounted read-only after scratch/output submount creation; only declared tmpfs submounts remain writable
+/content, /home, /mnt, /root, /run, /var = not mounted
 ```
 
 The launcher does not use `--share-net`; the isolated process receives a separate network
@@ -90,7 +93,8 @@ weaker container/config-only claim.
 `scripts/mesc_mrl_0808_sandbox_probe.py` is control-only. It loads no model, tokenizer,
 corpus, evaluator, or sealed Tier-3 content. From inside the sandbox it proves:
 
-- repository, input, and model-weight roots reject writes;
+- the exact declared synthetic input is readable;
+- repository, input, and empty model-weight roots reject writes;
 - scratch and output roots accept bounded temporary writes;
 - root, home, and `/tmp` reject writes;
 - DNS is unavailable;
@@ -109,24 +113,32 @@ sandbox process that deliberately attempts a forbidden repository write. Qualifi
 requires that process to terminate non-zero and that the forbidden file never appear in the
 host repository.
 
-After the violation probe, the launcher additionally requires both run-scoped scratch and
-output directories to be empty. It then emits `sandbox-cleanup-receipt.json`, binding:
+The in-sandbox supervisor also validates the output tmpfs capacity and exact artifact-class
+set, emits `sandbox-control-evidence.json`, and runs separate disposable challenges proving
+that an extra undeclared output class is blocked even when the complete declared artifact set
+is present, and that writing beyond the frozen 64 MiB output
+budget terminates with ENOSPC. The run-scoped tmpfs mounts are destroyed when each namespace
+exits. The launcher then emits `sandbox-cleanup-receipt.json`, binding:
 
 - the exact challenge;
-- exact observation and runtime-context digests;
+- exact runtime-context, observation, and sandbox-control-evidence digests;
 - exact repository SHA/tree;
 - exact sandbox policy identity;
 - normal probe exit code zero;
-- stopped violation probe;
-- absent forbidden write;
-- empty scratch/output state.
+- stopped forbidden-write violation probe;
+- blocked undeclared-output challenge;
+- blocked output-budget challenge;
+- absent forbidden repository write;
+- destruction of the run-scoped scratch/output tmpfs namespaces;
+- minimal runtime-root enforcement.
 
 A cleanup or stop-control mismatch fails closed before challenge consumption or attestation.
 
 ## One-time verifier challenge
 
-`scripts/mesc_mrl_0808_sandbox_challenge.py` maintains an external verifier ledger. A fresh
-challenge begins as `ISSUED` and is bound to the exact producer-source repository SHA/tree,
+`scripts/mesc_mrl_0808_sandbox_challenge.py` maintains an external verifier ledger. The ledger
+path is mechanically rejected if it resolves inside the producer repository. A fresh challenge
+begins as `ISSUED` and is bound to the exact producer-source repository SHA/tree,
 MRL-0804 runtime evidence/identity, and sandbox policy identity.
 
 Consumption requires exact canonical bytes for:
@@ -134,26 +146,31 @@ Consumption requires exact canonical bytes for:
 ```text
 runtime-context.json
 sandbox-observation.json
+sandbox-control-evidence.json
 sandbox-cleanup-receipt.json
 ```
 
-and the independently known provider execution identity. A successful consumption writes one
-`CONSUMED` receipt binding all three digests. The same challenge cannot be consumed twice.
-A cancelled challenge cannot be consumed, and a consumed challenge cannot subsequently be
-cancelled.
+and the independently known provider execution identity. Issuance paths must be direct
+non-symlink files whose filename binds the exact challenge. `consume` and `cancel` serialize
+through one atomic per-challenge terminal-transition lock before testing or writing terminal
+state. A successful consumption writes one `CONSUMED` receipt binding all four digests. The
+same challenge cannot be consumed twice. A cancelled challenge cannot be consumed, and a
+consumed challenge cannot subsequently be cancelled.
 
 Challenge ledger files remain external custody and are never production trust by themselves.
 
 ## Independent runtime-sandbox attestation
 
 `scripts/mesc_mrl_0808_sandbox_attest.py` renders an **untrusted** canonical attestation only
-after an independent control-plane review has verified the hosted execution/session. It
+after an independent control-plane review has verified the hosted execution/session. Every
+input and the attestation output are mechanically required to remain outside the producer
+repository and symlink endpoints are rejected. It
 binds:
 
 - Google Colab / dynamic-assigned / owner Google;
 - exact provider execution identity;
 - exact consumed challenge receipt;
-- exact runtime context, observation, and cleanup receipt digests;
+- exact runtime context, observation, sandbox-control-evidence, and cleanup receipt digests;
 - exact producer repository SHA/tree;
 - zero monetary cost;
 - independent verification method and reference.
@@ -180,7 +197,7 @@ After genuine hosted execution and independent verification, the dependency orde
 3. merge that PR under ordinary guarded governance;
 4. run the qualifier from fresh exact canonical main against the immutable producer-source
    custody;
-5. independently `--verify-existing` the deterministic seven-artifact qualification bundle;
+5. independently `--verify-existing` the deterministic nine-artifact qualification bundle;
 6. admit only the exact MRL-0808 real-preflight evidence digest through a separate minimal
    evidence/index/checklist PR;
 7. require fresh post-admission canonical-main qualification before closing #424.
@@ -210,6 +227,7 @@ After attestation trust admission, the qualifier emits exactly:
 ```text
 runtime-context.json
 sandbox-observation.json
+sandbox-control-evidence.json
 sandbox-cleanup-receipt.json
 challenge-receipt.json
 runtime-sandbox-attestation.json
@@ -236,8 +254,8 @@ stop_conditions_frozen = true
 ```
 
 Its `runtime_sandbox_evidence_sha256` binds the trusted attestation, one-time consumed
-challenge, runtime context, observation, and cleanup proof. Its subject is the deterministic
-sandbox-qualification receipt.
+challenge, runtime context, observation, sandbox-control evidence, and cleanup proof. Its
+subject is the deterministic sandbox-qualification receipt.
 
 ## Producer non-admission
 

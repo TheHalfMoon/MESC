@@ -24,12 +24,14 @@ POLICIES = {
     "sandbox": Path("specs/mesc-experiment-0/mrl-0808-sandbox-policy-v1.json"),
 }
 PROBE = Path("scripts/mesc_mrl_0808_sandbox_probe.py")
+SUPERVISOR = Path("scripts/mesc_mrl_0808_sandbox_supervisor.py")
 CHALLENGE = Path("scripts/mesc_mrl_0808_sandbox_challenge.py")
 ATTEST = Path("scripts/mesc_mrl_0808_sandbox_attest.py")
 SCRIPT = Path("scripts/mesc_mrl_0808_sandbox_qualify.py")
 ARTIFACTS = {
     "runtime_context": "runtime-context.json",
     "observation": "sandbox-observation.json",
+    "control": "sandbox-control-evidence.json",
     "cleanup": "sandbox-cleanup-receipt.json",
     "challenge": "challenge-receipt.json",
     "attestation": "runtime-sandbox-attestation.json",
@@ -65,7 +67,10 @@ def git_bytes(root: Path, *args: str) -> bytes:
 
 
 def clean_root(root: Path) -> Path:
-    r = root.expanduser().resolve(strict=True)
+    candidate = root.expanduser()
+    if candidate.is_symlink():
+        raise EntrypointError("repository-root must not be a symlink")
+    r = candidate.resolve(strict=True)
     top = Path(git_text(r, "rev-parse", "--show-toplevel").strip()).resolve(strict=True)
     if top != r:
         raise EntrypointError("repository-root is not exact work-tree root")
@@ -74,9 +79,12 @@ def clean_root(root: Path) -> Path:
         or git_text(r, "clean", "-ndx").strip()
     ):
         raise EntrypointError("repository must be clean with no ignored/untracked state")
-    for rel in (MODULE, AUTH, *POLICIES.values(), PROBE, CHALLENGE, ATTEST, SCRIPT):
-        p = (r / rel).resolve(strict=True)
-        if p.is_symlink() or not p.is_file():
+    for rel in (MODULE, AUTH, *POLICIES.values(), PROBE, SUPERVISOR, CHALLENGE, ATTEST, SCRIPT):
+        source = r / rel
+        if source.is_symlink():
+            raise EntrypointError(f"unsafe required source: {rel}")
+        p = source.resolve(strict=True)
+        if not p.is_file():
             raise EntrypointError(f"unsafe required source: {rel}")
         if p.read_bytes() != git_bytes(r, "show", f"HEAD:{rel.as_posix()}"):
             raise EntrypointError(f"working bytes differ from HEAD: {rel}")
@@ -84,8 +92,11 @@ def clean_root(root: Path) -> Path:
 
 
 def external(path: Path, root: Path, label: str) -> Path:
-    p = path.expanduser().resolve(strict=True)
-    if p.is_symlink() or not p.is_file():
+    candidate = path.expanduser()
+    if candidate.is_symlink():
+        raise EntrypointError(f"{label} must be regular non-symlink file")
+    p = candidate.resolve(strict=True)
+    if not p.is_file():
         raise EntrypointError(f"{label} must be regular non-symlink file")
     try:
         p.relative_to(root)
@@ -109,9 +120,12 @@ def stable_read(p: Path, label: str) -> bytes:
 
 
 def output_root(path: Path, root: Path, verify: bool) -> Path:
-    p = path.expanduser().resolve(strict=True)
-    if p.is_symlink() or not p.is_dir():
-        raise EntrypointError("output-root must be existing directory")
+    candidate = path.expanduser()
+    if candidate.is_symlink():
+        raise EntrypointError("output-root must be existing non-symlink directory")
+    p = candidate.resolve(strict=True)
+    if not p.is_dir():
+        raise EntrypointError("output-root must be existing non-symlink directory")
     try:
         p.relative_to(root)
         raise EntrypointError("output-root must be outside repository")
@@ -195,6 +209,7 @@ def produce(
     out: Path,
     runtime_context: bytes,
     observation: bytes,
+    control: bytes,
     cleanup: bytes,
     challenge: bytes,
     attestation: bytes,
@@ -214,6 +229,7 @@ def produce(
         sandbox_policy_bytes=(root / POLICIES["sandbox"]).read_bytes(),
         observation_bytes=observation,
         runtime_context_bytes=runtime_context,
+        sandbox_control_evidence_bytes=control,
         cleanup_receipt_bytes=cleanup,
         challenge_receipt_bytes=challenge,
         runtime_attestation_bytes=attestation,
@@ -228,6 +244,7 @@ def produce(
     payloads = {
         "runtime_context": runtime_context,
         "observation": observation,
+        "control": control,
         "cleanup": cleanup,
         "challenge": challenge,
         "attestation": attestation,
@@ -251,6 +268,7 @@ def verify(root: Path, out: Path) -> Any:
             t,
             payload["runtime_context"],
             payload["observation"],
+            payload["control"],
             payload["cleanup"],
             payload["challenge"],
             payload["attestation"],
@@ -267,6 +285,7 @@ def main() -> None:
     p.add_argument("--output-root", type=Path, required=True)
     p.add_argument("--runtime-context", type=Path)
     p.add_argument("--observation", type=Path)
+    p.add_argument("--sandbox-control-evidence", type=Path)
     p.add_argument("--cleanup-receipt", type=Path)
     p.add_argument("--challenge-receipt", type=Path)
     p.add_argument("--runtime-attestation", type=Path)
@@ -285,18 +304,23 @@ def main() -> None:
         if not (
             a.runtime_context
             and a.observation
+            and a.sandbox_control_evidence
             and a.cleanup_receipt
             and a.challenge_receipt
             and a.runtime_attestation
         ):
             raise EntrypointError(
-                "production requires runtime context, observation, cleanup receipt, "
-                "challenge receipt, and runtime attestation"
+                "production requires runtime context, observation, sandbox-control evidence, "
+                "cleanup receipt, challenge receipt, and runtime attestation"
             )
         runtime_context = stable_read(
             external(a.runtime_context, root, "runtime context"), "runtime context"
         )
         observation = stable_read(external(a.observation, root, "observation"), "observation")
+        control = stable_read(
+            external(a.sandbox_control_evidence, root, "sandbox-control evidence"),
+            "sandbox-control evidence",
+        )
         cleanup = stable_read(
             external(a.cleanup_receipt, root, "cleanup receipt"), "cleanup receipt"
         )
@@ -306,7 +330,9 @@ def main() -> None:
         attestation = stable_read(
             external(a.runtime_attestation, root, "attestation"), "attestation"
         )
-        result = produce(root, out, runtime_context, observation, cleanup, challenge, attestation)
+        result = produce(
+            root, out, runtime_context, observation, control, cleanup, challenge, attestation
+        )
     print("MRL0808_SANDBOX_QUALIFICATION=PASS")
     print("RUNTIME_SANDBOX_EVIDENCE_SHA256=" + result.runtime_sandbox_evidence_sha256)
     print("RECEIPT_SHA256=" + result.receipt_sha256)

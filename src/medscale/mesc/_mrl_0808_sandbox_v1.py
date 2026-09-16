@@ -26,11 +26,12 @@ _ATTESTATION_SCHEMA: Final = "MESC-MRL-0808-RUNTIME-SANDBOX-ATTESTATION-V1"
 _CHALLENGE_RECEIPT_SCHEMA: Final = "MESC-MRL-0808-SANDBOX-CHALLENGE-RECEIPT-V1"
 _RUNTIME_CONTEXT_SCHEMA: Final = "MESC-MRL-0808-RUNTIME-CONTEXT-V1"
 _CLEANUP_RECEIPT_SCHEMA: Final = "MESC-MRL-0808-SANDBOX-CLEANUP-RECEIPT-V1"
+_CONTROL_EVIDENCE_SCHEMA: Final = "MESC-MRL-0808-SANDBOX-CONTROL-EVIDENCE-V1"
 _RECEIPT_SCHEMA: Final = "MESC-MRL-0808-SANDBOX-QUALIFICATION-RECEIPT-V1"
 _EVIDENCE_SCHEMA: Final = "MRL-REAL-PREFLIGHT-EVIDENCE-V1"
 _EVIDENCE_KIND: Final = "mesc.mrl.real_preflight.sandbox.v1"
 _TASK: Final = "MRL-0808"
-_EXPECTED_AUTHORIZATION: Final = "967820d67e2791d84f73eee4f1016929b154ede783dd744fbc0fe0880cb447ec"
+_EXPECTED_AUTHORIZATION: Final = "838c7ed0b8aafd9f85a89d96846486660d0f54ba0e50c0ebec1a415a6b328575"
 _EXPECTED_RUNTIME_EVIDENCE: Final = (
     "f630a852319ca1ce6bd66b3203ce80c092e0695cabec3bb8456e29a94f8cd3f0"
 )
@@ -40,11 +41,11 @@ _EXPECTED_RUNTIME_IDENTITY: Final = (
 _EXPECTED_0806_EVIDENCE: Final = "27ed7a990b6408b8972980d576da3692801dfdb3f7bd444beda1b0135f7d7de2"
 _EXPECTED_NETWORK_POLICY: Final = "4ba5dc099d7e5ad648bbd473a73a1e91693fe6b139286f26b0e80831b0e0732f"
 _EXPECTED_MUTATION_POLICY: Final = (
-    "238ef158fe54e47cc6115502bec60763c7149f74130ea35e57a84e70da2f02c8"
+    "044c61563880e630e079fad1e762aa5c9d3af505099a801070ef57d750633691"
 )
-_EXPECTED_OUTPUT_POLICY: Final = "7d890a8608485c58391bc1c422590b0aa1d17a35b63f3ed1f0decba5f18b726e"
+_EXPECTED_OUTPUT_POLICY: Final = "2b6c79b5662d3e91f107bf24d00155b8df0b4a1c96b0ad48284451afd0cbb8ea"
 _EXPECTED_STOP_POLICY: Final = "607720d456b0dfdc26b6058bfc3bd71f18bdd539e52fab1c0b32780c4c1b6194"
-_EXPECTED_SANDBOX_POLICY: Final = "b156b8c6813880f7062b9f7ce6dcf053f1fb761d6ad0ba562aa753403b13d0bd"
+_EXPECTED_SANDBOX_POLICY: Final = "169255451b232a530875e221f39096fd103f3429b5d5125f54229f1b347c8316"
 
 # Offline prototype trust root: intentionally empty. A later separately reviewed
 # canonical mutation may admit exactly one independently verified attestation digest.
@@ -66,6 +67,7 @@ class SandboxQualification:
     observation_sha256: str
     runtime_context_sha256: str
     cleanup_receipt_sha256: str
+    sandbox_control_evidence_sha256: str
     runtime_sandbox_evidence_sha256: str
     receipt_sha256: str
     evidence_sha256: str
@@ -167,8 +169,12 @@ def _parse_runtime_context(
             "bubblewrap_binary_sha256",
             "bubblewrap_version",
             "colab_release_tag",
+            "direct_host_root_bind",
             "gpu_observation",
             "kernel_release",
+            "model_weights_directory_empty",
+            "nvidia_device_nodes",
+            "output_tmpfs_maximum_bytes",
             "provider",
             "provider_execution_id",
             "provider_flavor",
@@ -176,7 +182,11 @@ def _parse_runtime_context(
             "python_version",
             "repository_sha",
             "repository_tree",
+            "runtime_support_read_only_roots",
+            "runtime_support_symlinks",
             "schema_version",
+            "scratch_tmpfs_maximum_bytes",
+            "synthetic_input_sha256",
         },
         label="runtime context",
     )
@@ -188,6 +198,10 @@ def _parse_runtime_context(
         or document["provider_owner"] != "GOOGLE"
     ):
         raise MRL0808SandboxError("runtime context is not the qualified Google Colab class")
+    if document["direct_host_root_bind"] is not False:
+        raise MRL0808SandboxError("runtime context must deny direct host-root binding")
+    if document["model_weights_directory_empty"] is not True:
+        raise MRL0808SandboxError("sandbox qualification must expose no model weights")
     if _git_sha(document["repository_sha"], field="repository_sha") != repository_sha:
         raise MRL0808SandboxError("runtime context repository SHA drifted")
     if _git_sha(document["repository_tree"], field="repository_tree") != repository_tree:
@@ -202,6 +216,37 @@ def _parse_runtime_context(
         "python_version",
     ):
         _text(document[field_name], field=field_name)
+    if document["output_tmpfs_maximum_bytes"] != 67_108_864:
+        raise MRL0808SandboxError("runtime context output tmpfs budget drifted")
+    if document["scratch_tmpfs_maximum_bytes"] != 268_435_456:
+        raise MRL0808SandboxError("runtime context scratch tmpfs budget drifted")
+    expected_synthetic_input = hashlib.sha256(
+        b"MESC-MRL-0808-SYNTHETIC-READ-PROBE-V1\n"
+    ).hexdigest()
+    if (
+        _sha(document["synthetic_input_sha256"], field="synthetic_input_sha256")
+        != expected_synthetic_input
+    ):
+        raise MRL0808SandboxError("runtime context synthetic-input identity drifted")
+    if document["runtime_support_read_only_roots"] != ["/etc/ld.so.cache", "/sys", "/usr"]:
+        raise MRL0808SandboxError("runtime support root allowlist drifted")
+    nodes = document["nvidia_device_nodes"]
+    if type(nodes) is not list or not nodes:
+        raise MRL0808SandboxError("runtime context must bind explicit NVIDIA device nodes")
+    for index, node in enumerate(nodes):
+        text = _text(node, field=f"nvidia_device_nodes[{index}]")
+        if not text.startswith("/dev/nvidia"):
+            raise MRL0808SandboxError("runtime context contains non-NVIDIA device node")
+    symlinks = document["runtime_support_symlinks"]
+    if type(symlinks) is not dict:
+        raise MRL0808SandboxError("runtime support symlinks must be one object")
+    for link_path, target in cast(dict[str, object], symlinks).items():
+        path_text = _text(link_path, field="runtime_support_symlink_path")
+        target_text = _text(target, field=f"runtime_support_symlinks[{path_text}]")
+        if path_text not in {"/bin", "/sbin", "/lib", "/lib64"}:
+            raise MRL0808SandboxError("runtime support symlink path escaped frozen allowlist")
+        if target_text.startswith("/") and target_text != "DIRECT_READ_ONLY_BIND":
+            raise MRL0808SandboxError("runtime support symlink target must remain relative")
     return document
 
 
@@ -210,6 +255,7 @@ def _parse_cleanup_receipt(
     observation: dict[str, object],
     observation_sha: str,
     runtime_context_sha: str,
+    control_evidence_sha: str,
     *,
     repository_sha: str,
     repository_tree: str,
@@ -219,17 +265,22 @@ def _parse_cleanup_receipt(
         document,
         {
             "challenge",
+            "collected_bytes_before_cleanup",
             "forbidden_repository_write_absent",
+            "minimal_runtime_root_enforced",
             "normal_probe_exit_code",
             "observation_sha256",
-            "output_empty_after_cleanup",
+            "output_budget_challenge_blocked",
+            "output_tmpfs_destroyed_after_namespace_exit",
             "repository_sha",
             "repository_tree",
             "runtime_context_sha256",
+            "sandbox_control_evidence_sha256",
             "sandbox_policy_sha256",
             "schema_version",
-            "scratch_empty_after_cleanup",
+            "scratch_tmpfs_destroyed_after_namespace_exit",
             "state",
+            "undeclared_output_challenge_blocked",
             "violation_probe_stopped",
         },
         label="cleanup receipt",
@@ -245,6 +296,11 @@ def _parse_cleanup_receipt(
         != runtime_context_sha
     ):
         raise MRL0808SandboxError("cleanup receipt runtime context mismatch")
+    if (
+        _sha(document["sandbox_control_evidence_sha256"], field="sandbox_control_evidence_sha256")
+        != control_evidence_sha
+    ):
+        raise MRL0808SandboxError("cleanup receipt sandbox-control evidence mismatch")
     if _git_sha(document["repository_sha"], field="repository_sha") != repository_sha:
         raise MRL0808SandboxError("cleanup receipt repository SHA drifted")
     if _git_sha(document["repository_tree"], field="repository_tree") != repository_tree:
@@ -255,10 +311,16 @@ def _parse_cleanup_receipt(
     ):
         raise MRL0808SandboxError("cleanup receipt sandbox policy drifted")
     _zero(document["normal_probe_exit_code"], field="normal_probe_exit_code")
+    collected = document["collected_bytes_before_cleanup"]
+    if type(collected) is not int or collected <= 0 or collected > 67_108_864:
+        raise MRL0808SandboxError("cleanup receipt collected-byte budget invalid")
     for field_name in (
         "forbidden_repository_write_absent",
-        "output_empty_after_cleanup",
-        "scratch_empty_after_cleanup",
+        "minimal_runtime_root_enforced",
+        "output_budget_challenge_blocked",
+        "output_tmpfs_destroyed_after_namespace_exit",
+        "scratch_tmpfs_destroyed_after_namespace_exit",
+        "undeclared_output_challenge_blocked",
         "violation_probe_stopped",
     ):
         _true(document[field_name], field=field_name)
@@ -322,6 +384,7 @@ def _parse_observation(raw: bytes) -> dict[str, object]:
         "repository_read_only_enforced",
         "root_write_denied",
         "scratch_write_allowed",
+        "synthetic_input_read_allowed",
         "tmp_write_denied",
     }
     _keys(cast(dict[str, object], controls), expected_controls, label="controls")
@@ -339,12 +402,82 @@ def _parse_observation(raw: bytes) -> dict[str, object]:
     return document
 
 
+def _parse_control_evidence(
+    raw: bytes,
+    observation: dict[str, object],
+    *,
+    runtime_context_sha: str,
+    expected_gpu: str,
+) -> dict[str, object]:
+    document = _document(raw, label="sandbox control evidence")
+    _keys(
+        document,
+        {
+            "allowed_artifact_names",
+            "challenge",
+            "dev_directory_write_denied",
+            "forbidden_host_data_roots_absent",
+            "gpu_observation",
+            "gpu_visible_inside_sandbox",
+            "maximum_total_bytes",
+            "output_filesystem_type",
+            "output_mount_capacity_bytes",
+            "output_root",
+            "output_root_capacity_enforced",
+            "proc_write_denied",
+            "runtime_context_sha256",
+            "runtime_support_roots_present",
+            "schema_version",
+            "undeclared_artifact_present",
+        },
+        label="sandbox control evidence",
+    )
+    if document["schema_version"] != _CONTROL_EVIDENCE_SCHEMA:
+        raise MRL0808SandboxError("sandbox control evidence schema drifted")
+    if _sha(document["challenge"], field="challenge") != cast(str, observation["challenge"]):
+        raise MRL0808SandboxError("sandbox control evidence challenge mismatch")
+    if (
+        _sha(document["runtime_context_sha256"], field="runtime_context_sha256")
+        != runtime_context_sha
+    ):
+        raise MRL0808SandboxError("sandbox control evidence runtime context mismatch")
+    if _text(document["gpu_observation"], field="gpu_observation") != expected_gpu:
+        raise MRL0808SandboxError("sandbox control evidence GPU identity drifted")
+    if document["allowed_artifact_names"] != [
+        "sandbox-observation.json",
+        "sandbox-control-evidence.json",
+    ]:
+        raise MRL0808SandboxError("sandbox control evidence allowed-artifact set drifted")
+    if document["maximum_total_bytes"] != 67_108_864:
+        raise MRL0808SandboxError("sandbox control evidence output budget drifted")
+    if (
+        document["output_filesystem_type"] != "tmpfs"
+        or document["output_root"] != "/mesc-run/output"
+    ):
+        raise MRL0808SandboxError("sandbox control evidence output mount identity drifted")
+    capacity = document["output_mount_capacity_bytes"]
+    if type(capacity) is not int or capacity <= 0 or capacity > 67_108_864:
+        raise MRL0808SandboxError("sandbox control evidence output mount capacity invalid")
+    for field_name in (
+        "dev_directory_write_denied",
+        "forbidden_host_data_roots_absent",
+        "gpu_visible_inside_sandbox",
+        "output_root_capacity_enforced",
+        "proc_write_denied",
+        "runtime_support_roots_present",
+    ):
+        _true(document[field_name], field=field_name)
+    _false(document["undeclared_artifact_present"], field="undeclared_artifact_present")
+    return document
+
+
 def _parse_challenge_receipt(
     raw: bytes,
     observation: dict[str, object],
     observation_sha: str,
     runtime_context_sha: str,
     cleanup_receipt_sha: str,
+    control_evidence_sha: str,
     *,
     repository_sha: str,
     repository_tree: str,
@@ -356,6 +489,7 @@ def _parse_challenge_receipt(
             "challenge",
             "cleanup_receipt_sha256",
             "observation_sha256",
+            "sandbox_control_evidence_sha256",
             "predecessor_runtime_evidence_sha256",
             "predecessor_runtime_identity_sha256",
             "provider_execution_id",
@@ -387,6 +521,11 @@ def _parse_challenge_receipt(
         != cleanup_receipt_sha
     ):
         raise MRL0808SandboxError("challenge receipt does not bind exact cleanup receipt")
+    if (
+        _sha(document["sandbox_control_evidence_sha256"], field="sandbox_control_evidence_sha256")
+        != control_evidence_sha
+    ):
+        raise MRL0808SandboxError("challenge receipt does not bind exact sandbox-control evidence")
     if _git_sha(document["repository_sha"], field="repository_sha") != repository_sha:
         raise MRL0808SandboxError("challenge receipt repository SHA drifted")
     if _git_sha(document["repository_tree"], field="repository_tree") != repository_tree:
@@ -424,6 +563,7 @@ def _parse_attestation(
     challenge_receipt_sha: str,
     runtime_context: dict[str, object],
     cleanup_receipt_sha: str,
+    control_evidence_sha: str,
 ) -> dict[str, object]:
     document = _document(raw, label="runtime-sandbox attestation")
     _keys(
@@ -434,6 +574,7 @@ def _parse_attestation(
             "challenge_receipt_sha256",
             "challenge_state",
             "cleanup_receipt_sha256",
+            "sandbox_control_evidence_sha256",
             "independent_verification_method",
             "independent_verification_reference",
             "monetary_cost_microunits",
@@ -488,6 +629,11 @@ def _parse_attestation(
         != cleanup_receipt_sha
     ):
         raise MRL0808SandboxError("attestation does not bind exact cleanup receipt")
+    if (
+        _sha(document["sandbox_control_evidence_sha256"], field="sandbox_control_evidence_sha256")
+        != control_evidence_sha
+    ):
+        raise MRL0808SandboxError("attestation does not bind exact sandbox-control evidence")
     if document["provider_execution_id"] != challenge_receipt["provider_execution_id"]:
         raise MRL0808SandboxError(
             "attestation provider execution identity does not match challenge receipt"
@@ -517,6 +663,7 @@ def qualify_mrl_0808_sandbox(
     sandbox_policy_bytes: bytes,
     observation_bytes: bytes,
     runtime_context_bytes: bytes,
+    sandbox_control_evidence_bytes: bytes,
     cleanup_receipt_bytes: bytes,
     challenge_receipt_bytes: bytes,
     runtime_attestation_bytes: bytes,
@@ -543,11 +690,19 @@ def qualify_mrl_0808_sandbox(
         != runtime_context_sha
     ):
         raise MRL0808SandboxError("observation does not bind exact runtime context")
+    _parse_control_evidence(
+        sandbox_control_evidence_bytes,
+        observation,
+        runtime_context_sha=runtime_context_sha,
+        expected_gpu=cast(str, runtime_context["gpu_observation"]),
+    )
+    control_evidence_sha = hashlib.sha256(sandbox_control_evidence_bytes).hexdigest()
     _parse_cleanup_receipt(
         cleanup_receipt_bytes,
         observation,
         observation_sha,
         runtime_context_sha,
+        control_evidence_sha,
         repository_sha=repo_sha,
         repository_tree=repo_tree,
     )
@@ -558,6 +713,7 @@ def qualify_mrl_0808_sandbox(
         observation_sha,
         runtime_context_sha,
         cleanup_receipt_sha,
+        control_evidence_sha,
         repository_sha=repo_sha,
         repository_tree=repo_tree,
     )
@@ -570,6 +726,7 @@ def qualify_mrl_0808_sandbox(
         challenge_receipt_sha,
         runtime_context,
         cleanup_receipt_sha,
+        control_evidence_sha,
     )
     if attestation["repository_sha"] != repo_sha or attestation["repository_tree"] != repo_tree:
         raise MRL0808SandboxError("runtime-sandbox attestation repository identity drifted")
@@ -582,6 +739,7 @@ def qualify_mrl_0808_sandbox(
         "challenge": observation["challenge"],
         "challenge_receipt_sha256": challenge_receipt_sha,
         "cleanup_receipt_sha256": cleanup_receipt_sha,
+        "sandbox_control_evidence_sha256": control_evidence_sha,
         "observation_sha256": observation_sha,
         "runtime_context_sha256": runtime_context_sha,
         "policy_sha256": _EXPECTED_SANDBOX_POLICY,
@@ -596,6 +754,7 @@ def qualify_mrl_0808_sandbox(
         "allowed_mutation_paths_sha256": _EXPECTED_MUTATION_POLICY,
         "challenge_receipt_sha256": challenge_receipt_sha,
         "cleanup_receipt_sha256": cleanup_receipt_sha,
+        "sandbox_control_evidence_sha256": control_evidence_sha,
         "network_policy_sha256": _EXPECTED_NETWORK_POLICY,
         "output_destinations_sha256": _EXPECTED_OUTPUT_POLICY,
         "predecessor_mrl_0804_evidence_sha256": _EXPECTED_RUNTIME_EVIDENCE,
@@ -639,6 +798,7 @@ def qualify_mrl_0808_sandbox(
         observation_sha256=observation_sha,
         runtime_context_sha256=runtime_context_sha,
         cleanup_receipt_sha256=cleanup_receipt_sha,
+        sandbox_control_evidence_sha256=control_evidence_sha,
         runtime_sandbox_evidence_sha256=runtime_sandbox_sha,
         receipt_sha256=receipt_sha,
         evidence_sha256=hashlib.sha256(evidence_bytes).hexdigest(),

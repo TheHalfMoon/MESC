@@ -15,11 +15,50 @@ from medscale.mesc._canonical_json_v1 import canonical_json_bytes
 
 SHA40 = re.compile(r"^[0-9a-f]{40}$")
 SHA64 = re.compile(r"^[0-9a-f]{64}$")
-POLICY = "b156b8c6813880f7062b9f7ce6dcf053f1fb761d6ad0ba562aa753403b13d0bd"
+POLICY = "169255451b232a530875e221f39096fd103f3429b5d5125f54229f1b347c8316"
+REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+
+
+def external_file(raw_path: str, label: str) -> Path:
+    candidate = Path(raw_path).expanduser()
+    if candidate.is_symlink():
+        raise SystemExit(f"{label} must be a regular non-symlink external file")
+    path = candidate.resolve(strict=True)
+    if not path.is_file():
+        raise SystemExit(f"{label} must be a regular non-symlink external file")
+    try:
+        path.relative_to(REPOSITORY_ROOT)
+    except ValueError:
+        return path
+    raise SystemExit(f"{label} must remain outside repository")
+
+
+def external_output(raw_path: str) -> Path:
+    candidate = Path(raw_path).expanduser()
+    if candidate.is_symlink():
+        raise SystemExit("attestation output must be a non-symlink external path")
+    parent = candidate.parent.resolve(strict=True)
+    if not parent.is_dir():
+        raise SystemExit("attestation output parent must be an existing directory")
+    path = parent / candidate.name
+    try:
+        path.relative_to(REPOSITORY_ROOT)
+    except ValueError:
+        return path
+    raise SystemExit("attestation output must remain outside repository")
 
 
 def load(path: Path) -> tuple[dict[str, object], bytes]:
+    before = path.stat(follow_symlinks=False)
     raw = path.read_bytes()
+    after = path.stat(follow_symlinks=False)
+    if (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns) != (
+        after.st_dev,
+        after.st_ino,
+        after.st_size,
+        after.st_mtime_ns,
+    ) or len(raw) != after.st_size:
+        raise SystemExit(f"input changed while read: {path}")
     obj = json.loads(raw.decode("utf-8"))
     if type(obj) is not dict or canonical_json_bytes(obj) != raw:
         raise SystemExit(f"non-canonical input: {path}")
@@ -31,6 +70,7 @@ def main() -> None:
     parser.add_argument("--challenge-receipt", required=True)
     parser.add_argument("--observation", required=True)
     parser.add_argument("--runtime-context", required=True)
+    parser.add_argument("--sandbox-control-evidence", required=True)
     parser.add_argument("--cleanup-receipt", required=True)
     parser.add_argument("--repository-sha", required=True)
     parser.add_argument("--repository-tree", required=True)
@@ -45,12 +85,16 @@ def main() -> None:
     ):
         raise SystemExit("invalid repository identity")
 
-    receipt, receipt_raw = load(Path(args.challenge_receipt))
-    observation, observation_raw = load(Path(args.observation))
-    context, context_raw = load(Path(args.runtime_context))
-    cleanup, cleanup_raw = load(Path(args.cleanup_receipt))
+    receipt, receipt_raw = load(external_file(args.challenge_receipt, "challenge receipt"))
+    observation, observation_raw = load(external_file(args.observation, "observation"))
+    context, context_raw = load(external_file(args.runtime_context, "runtime context"))
+    control, control_raw = load(
+        external_file(args.sandbox_control_evidence, "sandbox-control evidence")
+    )
+    cleanup, cleanup_raw = load(external_file(args.cleanup_receipt, "cleanup receipt"))
     observation_sha = hashlib.sha256(observation_raw).hexdigest()
     context_sha = hashlib.sha256(context_raw).hexdigest()
+    control_sha = hashlib.sha256(control_raw).hexdigest()
     cleanup_sha = hashlib.sha256(cleanup_raw).hexdigest()
     receipt_sha = hashlib.sha256(receipt_raw).hexdigest()
     provider = args.provider_execution_id.strip()
@@ -65,6 +109,8 @@ def main() -> None:
         raise SystemExit("challenge/runtime-context mismatch")
     if receipt.get("cleanup_receipt_sha256") != cleanup_sha:
         raise SystemExit("challenge/cleanup-receipt mismatch")
+    if receipt.get("sandbox_control_evidence_sha256") != control_sha:
+        raise SystemExit("challenge/sandbox-control-evidence mismatch")
     if (
         receipt.get("repository_sha") != args.repository_sha
         or receipt.get("repository_tree") != args.repository_tree
@@ -74,6 +120,13 @@ def main() -> None:
         or cleanup.get("repository_tree") != args.repository_tree
     ):
         raise SystemExit("repository binding mismatch")
+    if (
+        control.get("challenge") != receipt.get("challenge")
+        or control.get("runtime_context_sha256") != context_sha
+        or control.get("gpu_observation") != context.get("gpu_observation")
+        or cleanup.get("sandbox_control_evidence_sha256") != control_sha
+    ):
+        raise SystemExit("sandbox-control evidence binding mismatch")
     if (
         receipt.get("sandbox_policy_sha256") != POLICY
         or observation.get("sandbox_policy_sha256") != POLICY
@@ -113,6 +166,7 @@ def main() -> None:
         "challenge_receipt_sha256": receipt_sha,
         "challenge_state": "CONSUMED",
         "cleanup_receipt_sha256": cleanup_sha,
+        "sandbox_control_evidence_sha256": control_sha,
         "independent_verification_method": method,
         "independent_verification_reference": reference,
         "monetary_cost_microunits": 0,
@@ -128,7 +182,7 @@ def main() -> None:
         "schema_version": "MESC-MRL-0808-RUNTIME-SANDBOX-ATTESTATION-V1",
     }
     raw = canonical_json_bytes(doc)
-    out = Path(args.output)
+    out = external_output(args.output)
     try:
         fd = os.open(out, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     except FileExistsError as exc:
