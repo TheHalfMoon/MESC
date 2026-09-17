@@ -13,8 +13,8 @@
 *.json  text eol=lf
 
 # Preserve the exact official HL7 R4 source bytes used by the MRL-0809 compiler.
-specs/mesc-experiment-0/fhir-r4/patient.profile.json -text
-specs/mesc-experiment-0/fhir-r4/address.profile.json -text
+specs/mesc-experiment-0/fhir-r4/patient.profile.json -text -eol
+specs/mesc-experiment-0/fhir-r4/address.profile.json -text -eol
 *.cff   text eol=lf
 *.txt   text eol=lf
 LICENSE text eol=lf
