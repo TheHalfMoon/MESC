@@ -102,7 +102,10 @@ def output_mount() -> tuple[str, int]:
     mount_type = completed.stdout.strip()
     if completed.returncode != 0 or not mount_type:
         raise SupervisorError("cannot resolve sandbox output filesystem type")
-    stats = os.statvfs(OUTPUT_ROOT)  # type: ignore[attr-defined]  # POSIX sandbox only
+    statvfs = getattr(os, "statvfs", None)
+    if statvfs is None:
+        raise SupervisorError("sandbox output filesystem capacity is unavailable")
+    stats = statvfs(OUTPUT_ROOT)
     capacity = stats.f_frsize * stats.f_blocks
     return mount_type, capacity
 
