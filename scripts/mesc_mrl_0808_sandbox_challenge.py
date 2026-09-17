@@ -13,7 +13,7 @@ import re
 import secrets
 from collections.abc import Iterator
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 from medscale.mesc._canonical_json_v1 import canonical_json_bytes
 from medscale.mesc._mrl_0808_sandbox_v1 import MRL0808SandboxError, _parse_observation
@@ -130,17 +130,18 @@ def terminal_transition(ledger: Path, challenge: str) -> Iterator[None]:
         fd = os.open(lock, flags, 0o600)
     except OSError as exc:
         raise SystemExit("challenge terminal transition lock cannot be opened safely") from exc
+    fcntl_runtime = cast(Any, fcntl)
     locked = False
     try:
         try:
-            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            fcntl_runtime.flock(fd, fcntl_runtime.LOCK_EX | fcntl_runtime.LOCK_NB)
         except BlockingIOError as exc:
             raise SystemExit("challenge terminal transition already in progress") from exc
         locked = True
         yield
     finally:
         if locked:
-            fcntl.flock(fd, fcntl.LOCK_UN)
+            fcntl_runtime.flock(fd, fcntl_runtime.LOCK_UN)
         os.close(fd)
 
 
