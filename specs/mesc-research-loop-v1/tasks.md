@@ -491,6 +491,10 @@ training-authorization evidence may begin before MRL-0800 is `CLOSED_CANONICAL`.
   - Depends on: MRL-0801..0808 and MRL-0800.
   - Acceptance: current machine-state projection is bound to the exact candidate commit
     and cannot substitute for underlying canonical gate evidence.
+  - Closeout rule: on an unmerged branch, this checked state is a closeout candidate only
+    and cannot establish `CLOSED_CANONICAL`; closure requires fresh exact-head CI, CodeQL,
+    zero unresolved material review threads, expected-head merge to canonical `main`, and
+    separately bound canonical closeout evidence.
 
 ### MRL-8 gate
 
