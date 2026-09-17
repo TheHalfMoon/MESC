@@ -14,7 +14,7 @@ import importlib
 from dataclasses import dataclass
 from typing import Any, Protocol
 
-from medscale.backends.common import BackendError
+from medscale.backends.common import BackendError, BackendUnsupportedGrammarError
 from medscale.backends.transformers.validation import (
     TransformersGenerationConfig,
     validate_generation_config,
@@ -131,6 +131,10 @@ class TransformersTextGenerator:
         return self._ref
 
     def generate(self, request: GenerationRequest) -> GenerationResult:
+        if request.grammar is not None:
+            raise BackendUnsupportedGrammarError(
+                "the generic Transformers backend cannot enforce GenerationRequest.grammar"
+            )
         encoded = self._encode(request.prompt)
         output_ids = self._generate(encoded)
         if output_ids[: len(encoded.input_ids)] != encoded.input_ids:

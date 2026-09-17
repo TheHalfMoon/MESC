@@ -11,6 +11,7 @@ from dataclasses import dataclass
 __all__ = [
     "BackendError",
     "BackendMissingDependencyError",
+    "BackendUnsupportedGrammarError",
     "BackendUnsupportedModelError",
     "GenerationConfig",
     "ModelBackend",
@@ -27,6 +28,10 @@ class BackendMissingDependencyError(BackendError):
 
 class BackendUnsupportedModelError(BackendError):
     """A backend cannot serve the requested model."""
+
+
+class BackendUnsupportedGrammarError(BackendError):
+    """A backend cannot honor the requested grammar and must fail closed."""
 
 
 @dataclass(frozen=True)

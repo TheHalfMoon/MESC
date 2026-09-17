@@ -48,6 +48,11 @@ backends-transformers = [
 backends-llamacpp = [
   "llama-cpp-python>=0.3.21; sys_platform != 'win32'",
 ]
+rq1-grammar = [
+  "torch==2.13.0",
+  "transformers==5.16.1",
+  "xgrammar==0.2.7",
+]
 training-hf-sft = [
   "accelerate==1.14.0",
   "bitsandbytes==0.50.2",
@@ -115,6 +120,7 @@ known-first-party = ["medscale"]
 # weaken that guarantee. E501/RUF100/RUF021 are style-only for this bounded executor and remain
 # review-visible while the contents API preserves the descriptor-hardening source bytes.
 "src/medscale/mesc/_mrl_0801_hf_acquisition_v1.py" = ["PTH106", "PTH116", "PTH208", "E501", "RUF100", "RUF021"]
+"src/medscale/mesc/_mrl_0809_fhir_gbnf_v1.py" = ["E501"]
 
 [tool.ruff.format]
 # Preserve the notebook's explicit Colab cell layout while continuing to lint every code cell.
