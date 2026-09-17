@@ -487,7 +487,7 @@ training-authorization evidence may begin before MRL-0800 is `CLOSED_CANONICAL`.
 - [x] **MRL-0808 — Verify real execution sandbox**
   - Depends on: MRL-0800 and real runtime/sandbox evidence.
 
-- [ ] **MRL-0809 — Exact-head preflight qualification**
+- [x] **MRL-0809 — Exact-head preflight qualification**
   - Depends on: MRL-0801..0808 and MRL-0800.
   - Acceptance: current machine-state projection is bound to the exact candidate commit
     and cannot substitute for underlying canonical gate evidence.
