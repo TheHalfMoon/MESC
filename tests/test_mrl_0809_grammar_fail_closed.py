@@ -33,7 +33,7 @@ class _UntouchedRuntime:
 
     def generate(self, encoded: EncodedInput, *, max_new_tokens: int) -> tuple[int, ...]:
         self.touched = True
-        return encoded.input_ids + (2,)
+        return (*encoded.input_ids, 2)
 
     def decode(self, token_ids: tuple[int, ...]) -> str:
         self.touched = True
