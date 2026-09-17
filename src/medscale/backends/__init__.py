@@ -11,6 +11,7 @@ from __future__ import annotations
 from medscale.backends.common import (
     BackendError,
     BackendMissingDependencyError,
+    BackendUnsupportedGrammarError,
     BackendUnsupportedModelError,
     GenerationConfig,
     ModelBackend,
@@ -19,6 +20,7 @@ from medscale.backends.common import (
 __all__ = [
     "BackendError",
     "BackendMissingDependencyError",
+    "BackendUnsupportedGrammarError",
     "BackendUnsupportedModelError",
     "GenerationConfig",
     "ModelBackend",

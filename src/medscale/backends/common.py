@@ -11,6 +11,7 @@ from dataclasses import dataclass
 __all__ = [
     "BackendError",
     "BackendMissingDependencyError",
+    "BackendUnsupportedGrammarError",
     "BackendUnsupportedModelError",
     "GenerationConfig",
     "ModelBackend",
@@ -23,6 +24,10 @@ class BackendError(Exception):
 
 class BackendMissingDependencyError(BackendError):
     """An optional dependency is missing for the requested backend."""
+
+
+class BackendUnsupportedGrammarError(BackendError):
+    """A backend cannot enforce the requested grammar contract."""
 
 
 class BackendUnsupportedModelError(BackendError):

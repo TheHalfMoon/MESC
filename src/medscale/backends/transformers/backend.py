@@ -14,7 +14,7 @@ import importlib
 from dataclasses import dataclass
 from typing import Any, Protocol
 
-from medscale.backends.common import BackendError
+from medscale.backends.common import BackendError, BackendUnsupportedGrammarError
 from medscale.backends.transformers.validation import (
     TransformersGenerationConfig,
     validate_generation_config,
@@ -131,6 +131,11 @@ class TransformersTextGenerator:
         return self._ref
 
     def generate(self, request: GenerationRequest) -> GenerationResult:
+        if request.grammar is not None:
+            raise BackendUnsupportedGrammarError(
+                "B0 Transformers backend cannot enforce grammar-constrained generation; "
+                "use a dedicated grammar-capable backend"
+            )
         encoded = self._encode(request.prompt)
         output_ids = self._generate(encoded)
         if output_ids[: len(encoded.input_ids)] != encoded.input_ids:
@@ -220,7 +225,7 @@ def _resolve_pad_eos(tokenizer: Any) -> tuple[int, int]:
     assert isinstance(eos, int)
     pad = getattr(tokenizer, "pad_token_id", None)
     if not _valid_token_id(pad):
-        pad = eos  # use eos as pad only because eos is validated above
+        pad = eos
     assert isinstance(pad, int)
     return pad, eos
 
@@ -325,7 +330,7 @@ def build_transformers_runtime(config: TransformersGenerationConfig) -> Transfor
         )
     except TransformersLoadError:
         raise
-    except Exception as exc:  # normalize any load failure to a typed error
+    except Exception as exc:
         raise TransformersLoadError(
             f"failed to load {config.model_id} at model={config.model_revision} "
             f"tokenizer={config.tokenizer_revision} locally: {exc}"
