@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from medscale.backends.common import BackendUnsupportedGrammarError
 from medscale.backends.llamacpp.validation import validate_package_installed
 from medscale.modelkit.interfaces import (
     FinishReason,
@@ -27,6 +28,11 @@ class LlamaCppTextGenerator:
         self.model = ref
 
     def generate(self, request: GenerationRequest) -> GenerationResult:
+        if request.grammar is not None:
+            raise BackendUnsupportedGrammarError(
+                "llama.cpp placeholder backend cannot enforce grammar-constrained "
+                "GenerationRequest.grammar"
+            )
         return GenerationResult(
             text=f"[llama.cpp:{self.model.model_id}] {request.prompt}",
             model=self.model,

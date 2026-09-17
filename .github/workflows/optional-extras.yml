@@ -8,8 +8,15 @@ on:
     paths:
       - '.github/workflows/optional-extras.yml'
       - 'src/medscale/backends/**'
+      - 'specs/mesc-experiment-0/fhir-r4/address.profile.json'
+      - 'specs/mesc-experiment-0/fhir-r4/patient.profile.json'
+      - '.gitattributes'
+      - 'src/medscale/mesc/_mrl_0809_*.py'
+      - 'specs/mesc-experiment-0/mrl-0809-*'
       - 'pyproject.toml'
+      - 'uv.lock'
       - 'tests/test_modelkit_backends.py'
+      - 'tests/test_mesc_mrl_0809_*.py'
 
 jobs:
   backends-transformers:
@@ -49,3 +56,19 @@ jobs:
         run: uv run python -c 'import medscale.backends'
       - name: Run core verification
         run: uv run ruff check . && uv run mypy src tests
+
+  rq1-grammar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+      - name: Install exact RQ1 grammar extra
+        run: uv sync --extra rq1-grammar --frozen
+      - name: Run RQ1 grammar prerequisite and XGrammar integration tests
+        run: >-
+          uv run pytest
+          tests/test_mesc_mrl_0809_prerequisites_v1.py
+          tests/test_mesc_mrl_0809_xgrammar_integration_v1.py
+          -q --no-header
