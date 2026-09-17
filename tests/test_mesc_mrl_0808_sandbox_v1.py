@@ -670,7 +670,7 @@ def test_challenge_cli_rejects_forged_issuance_and_serializes_terminal_transitio
 
     lock = ledger / f".{challenge}.terminal-transition.lock"
     lock_fd = os.open(lock, os.O_RDWR | os.O_CREAT, 0o600)
-    fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)  # type: ignore[attr-defined]  # POSIX lock contract
     try:
         blocked = _run_script(
             _CHALLENGE,
@@ -683,7 +683,7 @@ def test_challenge_cli_rejects_forged_issuance_and_serializes_terminal_transitio
             str(ledger),
         )
     finally:
-        fcntl.flock(lock_fd, fcntl.LOCK_UN)
+        fcntl.flock(lock_fd, fcntl.LOCK_UN)  # type: ignore[attr-defined]  # POSIX lock contract
         os.close(lock_fd)
     assert blocked.returncode != 0
     assert "terminal transition already in progress" in blocked.stderr

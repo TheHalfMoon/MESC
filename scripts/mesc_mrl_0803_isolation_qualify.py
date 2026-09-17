@@ -214,7 +214,7 @@ def _write_new(path: Path, payload: bytes) -> None:
 def _read_verification_artifacts(output_root: Path) -> dict[str, bytes]:
     if not hasattr(os, "O_NOFOLLOW") or not hasattr(os, "O_DIRECTORY"):
         raise EntrypointError("verification requires retained non-symlink descriptor support")
-    directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW  # type: ignore[attr-defined]  # POSIX descriptor contract
     try:
         directory_fd = os.open(output_root, directory_flags)
     except OSError as exc:

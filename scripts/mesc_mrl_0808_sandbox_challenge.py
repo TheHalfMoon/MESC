@@ -133,14 +133,14 @@ def terminal_transition(ledger: Path, challenge: str) -> Iterator[None]:
     locked = False
     try:
         try:
-            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)  # type: ignore[attr-defined]  # POSIX lock contract
         except BlockingIOError as exc:
             raise SystemExit("challenge terminal transition already in progress") from exc
         locked = True
         yield
     finally:
         if locked:
-            fcntl.flock(fd, fcntl.LOCK_UN)
+            fcntl.flock(fd, fcntl.LOCK_UN)  # type: ignore[attr-defined]  # POSIX lock contract
         os.close(fd)
 
 
