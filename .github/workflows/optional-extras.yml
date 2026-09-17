@@ -8,6 +8,9 @@ on:
     paths:
       - '.github/workflows/optional-extras.yml'
       - 'src/medscale/backends/**'
+      - 'specs/mesc-experiment-0/fhir-r4/address.profile.json'
+      - 'specs/mesc-experiment-0/fhir-r4/patient.profile.json'
+      - '.gitattributes'
       - 'src/medscale/mesc/_mrl_0809_*.py'
       - 'specs/mesc-experiment-0/mrl-0809-*'
       - 'pyproject.toml'

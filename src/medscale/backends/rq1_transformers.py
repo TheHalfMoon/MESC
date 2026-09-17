@@ -11,10 +11,10 @@ from typing import Any, Final, Literal, Protocol
 
 from medscale.backends.common import BackendError, BackendUnsupportedGrammarError
 from medscale.backends.transformers.backend import EncodedInput
-from medscale.mesc._mrl_0809_fhir_gbnf_v1 import RQ1_PATIENT_GBNF_SHA256
 from medscale.modelkit.interfaces import FinishReason, GenerationRequest, GenerationResult, ModelRef
 
 _XGRAMMAR_VERSION: Final = "0.2.7"
+_RQ1_PATIENT_GBNF_SHA256: Final = "b63ff5003471f3af8c3624e508f08a418f7e9f7f6ed18ecf743d7f6ad8b7f16c"
 _SHA40: Final = re.compile(r"^[0-9a-f]{40}$")
 _RQ1_SEEDS: Final = frozenset({17, 29, 43})
 _RQ1_MAX_NEW_TOKENS: Final = 512
@@ -167,19 +167,23 @@ class RQ1TransformersTextGenerator:
 
     def generate(self, request: GenerationRequest) -> GenerationResult:
         self._validate_request(request)
-        processors: tuple[Any, ...] = ()
-        if request.grammar is not None:
-            grammar_bytes = request.grammar.encode("utf-8")
-            if hashlib.sha256(grammar_bytes).hexdigest() != RQ1_PATIENT_GBNF_SHA256:
-                raise BackendUnsupportedGrammarError(
-                    "RQ1 constrained lane accepts only the exact frozen Patient grammar"
-                )
-            try:
-                processors = (self._grammar_factory.create(request.grammar, runtime=self._runtime),)
-            except (BackendUnsupportedGrammarError, RQ1GrammarCompileError):
-                raise
-            except Exception as exc:
-                raise RQ1GrammarCompileError("grammar processor construction failed") from exc
+        if request.grammar is None:
+            raise BackendUnsupportedGrammarError(
+                "RQ1 constrained lane requires the exact frozen Patient grammar; "
+                "unconstrained generation is not admitted"
+            )
+        grammar_bytes = request.grammar.encode("utf-8")
+        if hashlib.sha256(grammar_bytes).hexdigest() != _RQ1_PATIENT_GBNF_SHA256:
+            raise BackendUnsupportedGrammarError(
+                "RQ1 constrained lane accepts only the exact frozen Patient grammar"
+            )
+        processors: tuple[Any, ...]
+        try:
+            processors = (self._grammar_factory.create(request.grammar, runtime=self._runtime),)
+        except (BackendUnsupportedGrammarError, RQ1GrammarCompileError):
+            raise
+        except Exception as exc:
+            raise RQ1GrammarCompileError("grammar processor construction failed") from exc
         try:
             encoded = self._runtime.encode(request.prompt)
             output = tuple(

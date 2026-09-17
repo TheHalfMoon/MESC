@@ -65,10 +65,12 @@ class _RQ1Runtime:
 
     def __init__(self, *, prefix: bool = True) -> None:
         self.prefix = prefix
+        self.encoded_prompts: list[str] = []
         self.calls: list[dict[str, object]] = []
         self.decoded: tuple[int, ...] | None = None
 
     def encode(self, text: str) -> EncodedInput:
+        self.encoded_prompts.append(text)
         return EncodedInput((1, 2), (1, 1))
 
     def generate(
@@ -260,6 +262,7 @@ def test_rq1_adapter_passes_exact_frozen_processor_and_deterministic_flags() -> 
     )
     result = generator.generate(request)
     assert result.text == "{}"
+    assert runtime.encoded_prompts == ["synthetic"]
     assert runtime.decoded == (7, 8)
     assert factory.calls == 1
     assert runtime.calls == [
@@ -287,6 +290,18 @@ def test_rq1_adapter_rejects_unfrozen_grammar_and_request_drift() -> None:
         generator.generate(GenerationRequest(prompt="p", seed=17, stop=("x",)))
 
 
+def test_rq1_adapter_rejects_absent_grammar_before_runtime_access() -> None:
+    runtime = _RQ1Runtime()
+    generator = RQ1TransformersTextGenerator(
+        _rq1_config(), runtime=runtime, grammar_factory=_GrammarFactory()
+    )
+    with pytest.raises(BackendUnsupportedGrammarError, match="requires the exact frozen"):
+        generator.generate(GenerationRequest(prompt="p", seed=17))
+    assert runtime.encoded_prompts == []
+    assert runtime.calls == []
+    assert runtime.decoded is None
+
+
 def test_rq1_adapter_maps_processor_failure_and_prefix_mismatch() -> None:
     generator = RQ1TransformersTextGenerator(
         _rq1_config(), runtime=_RQ1Runtime(), grammar_factory=_GrammarFactory(fail=True)
@@ -295,9 +310,13 @@ def test_rq1_adapter_maps_processor_failure_and_prefix_mismatch() -> None:
         generator.generate(
             GenerationRequest(prompt="p", seed=17, grammar=_GBNF.read_text(encoding="utf-8"))
         )
-    generator = RQ1TransformersTextGenerator(_rq1_config(), runtime=_RQ1Runtime(prefix=False))
+    generator = RQ1TransformersTextGenerator(
+        _rq1_config(), runtime=_RQ1Runtime(prefix=False), grammar_factory=_GrammarFactory()
+    )
     with pytest.raises(RQ1GenerationError, match="exact prompt"):
-        generator.generate(GenerationRequest(prompt="p", seed=17))
+        generator.generate(
+            GenerationRequest(prompt="p", seed=17, grammar=_GBNF.read_text(encoding="utf-8"))
+        )
 
 
 def test_runtime_feasibility_receipt_accepts_exact_dual_candidate_pass() -> None:
