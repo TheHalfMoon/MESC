@@ -30,7 +30,8 @@ class LlamaCppTextGenerator:
     def generate(self, request: GenerationRequest) -> GenerationResult:
         if request.grammar is not None:
             raise BackendUnsupportedGrammarError(
-                "llama.cpp placeholder backend cannot enforce grammar-constrained generation"
+                "llama.cpp placeholder backend cannot enforce grammar-constrained "
+                "GenerationRequest.grammar"
             )
         return GenerationResult(
             text=f"[llama.cpp:{self.model.model_id}] {request.prompt}",

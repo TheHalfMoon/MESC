@@ -489,8 +489,14 @@ training-authorization evidence may begin before MRL-0800 is `CLOSED_CANONICAL`.
 
 - [ ] **MRL-0809 — Exact-head preflight qualification**
   - Depends on: MRL-0801..0808 and MRL-0800.
+  - Prerequisite gate: the exact static RQ1 prerequisite manifest must validate and a
+    separately admitted, trusted runtime-feasibility PASS must bind both frozen candidates,
+    the canonical producer lineage, dependency lock, hosted runtime identity, and zero-cost
+    no-training/no-mutation/no-fallback constraints.
   - Acceptance: current machine-state projection is bound to the exact candidate commit
     and cannot substitute for underlying canonical gate evidence.
+  - Producer state: trust root empty and runtime-feasibility slot `ABSENT`; therefore this
+    task remains `PLANNED` until the separate runtime-feasibility admission succeeds.
 
 ### MRL-8 gate
 

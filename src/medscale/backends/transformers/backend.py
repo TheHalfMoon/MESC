@@ -133,8 +133,8 @@ class TransformersTextGenerator:
     def generate(self, request: GenerationRequest) -> GenerationResult:
         if request.grammar is not None:
             raise BackendUnsupportedGrammarError(
-                "B0 Transformers backend cannot enforce grammar-constrained generation; "
-                "use a dedicated grammar-capable backend"
+                "generic Transformers backend cannot enforce grammar-constrained "
+                "GenerationRequest.grammar; use the dedicated RQ1 grammar-capable backend"
             )
         encoded = self._encode(request.prompt)
         output_ids = self._generate(encoded)

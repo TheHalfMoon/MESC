@@ -18,6 +18,10 @@ from pathlib import Path
 from typing import Final, cast
 
 from medscale.mesc import _mrl_machine_state_generation_legacy_v1 as _legacy
+from medscale.mesc._mrl_0809_prerequisite_gate_v1 import (
+    MRL0809PrerequisiteGateError,
+    mrl0809_prerequisite_gate,
+)
 
 __all__ = [
     "MachineStateGenerationError",
@@ -91,6 +95,7 @@ _EXTERNAL_DEPENDENCY_TEXT: Final[dict[str, frozenset[str]]] = {
 
 _merge_shape_closure = _legacy._closure_proof
 _legacy_dependencies = _legacy._dependencies
+_legacy_special_gate = _legacy._special_gate
 
 _project_sources = tuple(sorted(set(_legacy._PROJECT_SOURCES) | {_CLOSEOUT_EVIDENCE}))
 _all_sources = tuple(sorted(set(_legacy._ALL_SOURCES) | {_CLOSEOUT_EVIDENCE}))
@@ -147,6 +152,15 @@ def _dependencies(lines: list[str], task_id: str) -> tuple[str, ...]:
                 f"MRL task {task_id} contains unmodeled external dependency: {external}"
             )
     return dependencies
+
+
+def _special_gate(snapshot: _legacy.CanonicalRepositorySnapshot, task_id: str) -> bool:
+    if task_id != "MRL-0809":
+        return _legacy_special_gate(snapshot, task_id)
+    try:
+        return mrl0809_prerequisite_gate(snapshot.repository_root, snapshot.commit_sha)
+    except MRL0809PrerequisiteGateError as exc:
+        raise MachineStateGenerationError("MRL-0809 prerequisite gate failed closed") from exc
 
 
 def _task_records(text: str) -> tuple[tuple[str, bool, tuple[str, ...]], ...]:
@@ -428,6 +442,7 @@ def _unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
 vars(_legacy)["_dependencies"] = _dependencies
 vars(_legacy)["_task_records"] = _task_records
 vars(_legacy)["_closure_proof"] = _closure_proof
+vars(_legacy)["_special_gate"] = _special_gate
 
 admit_project_state_projection = _legacy.admit_project_state_projection
 generate_machine_state = _legacy.generate_machine_state

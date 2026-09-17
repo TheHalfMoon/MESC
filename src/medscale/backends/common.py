@@ -27,7 +27,7 @@ class BackendMissingDependencyError(BackendError):
 
 
 class BackendUnsupportedGrammarError(BackendError):
-    """A backend cannot enforce the requested grammar contract."""
+    """A backend cannot honor the requested grammar and must fail closed."""
 
 
 class BackendUnsupportedModelError(BackendError):
