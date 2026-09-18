@@ -83,15 +83,49 @@ def _task_state(root: Path, tmp_path: Path) -> str:
 def _receipt(
     *, producer_sha: str, producer_tree: str, manifest_sha: str, lock_sha: str
 ) -> dict[str, object]:
+    generation_evidence = {
+        "decoded_text_sha256": "d" * 64,
+        "generated_token_ids": [11, 12],
+        "synthetic_prompt_sha256": (
+            "19db6d407fdb52d48b9894900e3f0afe9e81b4a12e96669ef8a863419ba4d60d"
+        ),
+    }
     common = {
+        "generation_evidence": generation_evidence,
         "load_completed": True,
         "peak_cpu_memory_bytes": 1,
         "peak_gpu_memory_bytes": 1,
         "runtime_representation": "bitsandbytes-nf4-v1",
         "synthetic_generation_completed": True,
-        "synthetic_generation_sha256": "d" * 64,
+        "synthetic_generation_sha256": hashlib.sha256(
+            canonical_json_bytes(generation_evidence)
+        ).hexdigest(),
         "text_only_generation": True,
         "unloaded_after_probe": True,
+    }
+    runtime_identity = {
+        "bubblewrap_sha256": "e" * 64,
+        "bubblewrap_version": "bubblewrap 0.11.0",
+        "colab_release_tag": "release-fixture",
+        "compute_dtype": "float16",
+        "gpu_model": "Tesla T4",
+        "gpu_uuid": "GPU-fixture",
+        "gpu_vram_bytes": 1,
+        "harness_sha256": "f" * 64,
+        "kernel_release": "kernel-fixture",
+        "package_versions": {
+            "accelerate": "1.14.0",
+            "bitsandbytes": "0.50.2",
+            "huggingface-hub": "1.23.0",
+            "torch": "2.13.0",
+            "transformers": "5.16.1",
+            "xgrammar": "0.2.7",
+        },
+        "provider": "GOOGLE_COLAB",
+        "provider_execution_id": "assignment:test-only",
+        "provider_owner": "GOOGLE",
+        "python_version": "3.11.15",
+        "runtime_representation": "bitsandbytes-nf4-v1",
     }
     return {
         "candidate_substitution_performed": False,
@@ -99,22 +133,36 @@ def _receipt(
             {
                 **common,
                 "architecture": "Qwen3_5ForConditionalGeneration",
+                "artifact_identity_sha256": (
+                    "47fa40e84d8f5d5b3be87e40e2abe45ed8c6141f03c4c29b51dd2fbeffd4d227"
+                ),
                 "config_sha256": _QWEN_CONFIG_SHA,
                 "model_id": "Qwen/Qwen3.8-27B",
                 "processor_config_sha256": _QWEN_PROCESSOR_SHA,
+                "stage_receipt_sha256": "1" * 64,
                 "revision": _QWEN_SHA,
                 "text_vocab_size": 248320,
                 "tokenizer_config_sha256": _QWEN_TOKENIZER_SHA,
+                "weights_sha256": (
+                    "27c470ae6cfe721b205e468b9449fe86cfbf8fd7777772b7011f419887e345c3"
+                ),
             },
             {
                 **common,
                 "architecture": "Gemma4ForConditionalGeneration",
+                "artifact_identity_sha256": (
+                    "85b8e3fedd5423bdf1c01c9d451c8702ace1e42c447f1608e94c855e17d052f9"
+                ),
                 "config_sha256": _GEMMA_CONFIG_SHA,
                 "model_id": "google/gemma-4-31B-it",
                 "processor_config_sha256": _GEMMA_PROCESSOR_SHA,
+                "stage_receipt_sha256": "2" * 64,
                 "revision": _GEMMA_SHA,
                 "text_vocab_size": 262144,
                 "tokenizer_config_sha256": _GEMMA_TOKENIZER_SHA,
+                "weights_sha256": (
+                    "bca2cd08fe0ba249c668a6ce576612c26c49f38b15b63c1774138dd6fc31d537"
+                ),
             },
         ],
         "capacity_fallback_performed": False,
@@ -129,6 +177,9 @@ def _receipt(
         "mrl_0804_evidence_sha256": _MRL0804_EVIDENCE,
         "mrl_0804_runtime_identity_sha256": _MRL0804_RUNTIME,
         "mrl_0808_evidence_sha256": _MRL0808_EVIDENCE,
+        "mrl_0801_authorization_sha256": (
+            "af69087c6968c3bddb28556002a2a89fcf18932506a55d1eb7d6ff318e21b9d7"
+        ),
         "network_access_during_isolated_generation": False,
         "network_access_during_isolated_load": False,
         "optimizer_present": False,
@@ -139,7 +190,10 @@ def _receipt(
         "provider_owner": "GOOGLE",
         "repository_sha": producer_sha,
         "repository_tree": producer_tree,
-        "runtime_identity_sha256": "c" * 64,
+        "runtime_identity": runtime_identity,
+        "runtime_identity_sha256": hashlib.sha256(
+            canonical_json_bytes(runtime_identity)
+        ).hexdigest(),
         "sandbox_policy_sha256": "169255451b232a530875e221f39096fd103f3429b5d5125f54229f1b347c8316",
         "schema_version": "MESC-MRL-0809-RUNTIME-MODEL-FEASIBILITY-V1",
         "static_prerequisite_manifest_sha256": manifest_sha,
