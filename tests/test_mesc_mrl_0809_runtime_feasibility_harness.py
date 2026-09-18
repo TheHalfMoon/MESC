@@ -167,6 +167,7 @@ def test_stage_receipt_binds_entire_payload_manifest(
     payload_manifest = HARNESS._payload_manifest(snapshot)
     selected_files = tuple(item["path"] for item in payload_manifest)
     selected_bytes = sum(item["byte_count"] for item in payload_manifest)
+    monkeypatch.setitem(HARNESS.EXPECTED_SELECTED_PAYLOAD_BYTES, _QWEN, selected_bytes)
     receipt = {
         "artifact_identity_sha256": expected["artifact_identity_sha256"],
         "config_sha256": expected["config_sha256"],
@@ -985,6 +986,7 @@ def _install_synthetic_stage_identities(monkeypatch: pytest.MonkeyPatch) -> None
         byte_count=1,
     )
     for model_id in (_QWEN, _GEMMA):
+        monkeypatch.setitem(HARNESS.EXPECTED_SELECTED_PAYLOAD_BYTES, model_id, 4)
         current = dict(HARNESS.EXPECTED_CANDIDATES[model_id])
         identity = HfSafeTensorsArtifactIdentity(
             model_id=model_id,
@@ -1118,7 +1120,10 @@ def test_independent_verifier_binds_stage_receipts_and_exact_harness(
     tampered_path.write_bytes(HARNESS.canonical_json_bytes(tampered))
     with pytest.raises(
         HARNESS.HarnessError,
-        match=r"staging payload byte count|payload size/count|digest does not match",
+        match=(
+            r"selected payload byte total drifted|staging payload byte count|"
+            r"payload size/count|digest does not match"
+        ),
     ):
         HARNESS.verify_receipt(
             root,

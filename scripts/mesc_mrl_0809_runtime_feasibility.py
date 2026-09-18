@@ -663,6 +663,7 @@ def _read_stage_receipt(
     expected = EXPECTED_CANDIDATES[candidate]
     if receipt["model_id"] != candidate or receipt["revision"] != expected["revision"]:
         raise HarnessError("stage receipt candidate identity drifted")
+    _validate_frozen_selected_payload_bytes(receipt, candidate)
     if receipt["mrl_0801_authorization_sha256"] != MRL0801_AUTH_SHA256:
         raise HarnessError("stage receipt MRL-0801 authorization identity drifted")
     if type(receipt["remote_selected_bytes"]) is not int or receipt["remote_selected_bytes"] <= 0:
@@ -766,6 +767,16 @@ def _validate_staging_policy_envelope(receipt: dict[str, object]) -> None:
         raise HarnessError("stage receipt post-stage control reserve was insufficient")
 
 
+def _validate_frozen_selected_payload_bytes(receipt: dict[str, object], model_id: str) -> None:
+    observed = receipt.get("remote_selected_bytes")
+    expected = EXPECTED_SELECTED_PAYLOAD_BYTES[model_id]
+    if observed != expected:
+        raise HarnessError(
+            "stage receipt selected payload byte total drifted from frozen identity: "
+            f"observed={observed} expected={expected}"
+        )
+
+
 def _validate_stage_receipt_envelope(receipt: dict[str, object]) -> str:
     if set(receipt) != STAGE_RECEIPT_KEYS or receipt.get("schema_version") != SCHEMA_STAGE:
         raise HarnessError("stage receipt schema drifted")
@@ -773,6 +784,7 @@ def _validate_stage_receipt_envelope(receipt: dict[str, object]) -> str:
     if type(model_id) is not str or model_id not in EXPECTED_CANDIDATES:
         raise HarnessError("stage receipt candidate is outside the frozen roster")
     expected = EXPECTED_CANDIDATES[model_id]
+    _validate_frozen_selected_payload_bytes(receipt, model_id)
     fixed = {
         "artifact_identity_sha256": expected["artifact_identity_sha256"],
         "config_sha256": expected["config_sha256"],
