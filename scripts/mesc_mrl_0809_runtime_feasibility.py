@@ -124,6 +124,11 @@ EXPECTED_CANDIDATES: Final[dict[str, dict[str, object]]] = {
     },
 }
 
+EXPECTED_SELECTED_PAYLOAD_BYTES: Final[dict[str, int]] = {
+    "Qwen/Qwen3.8-27B": 55_586_036_114,
+    "google/gemma-4-31B-it": 62_578_656_403,
+}
+
 MRL0801_AUTH_SHA256: Final = "af69087c6968c3bddb28556002a2a89fcf18932506a55d1eb7d6ff318e21b9d7"
 MRL0804_EVIDENCE: Final = "f630a852319ca1ce6bd66b3203ce80c092e0695cabec3bb8456e29a94f8cd3f0"
 MRL0804_RUNTIME: Final = "05b19593f7c9c1f03df39a100189da653695bad1b13d24c921dd1fecd7fe0b45"
@@ -352,13 +357,12 @@ def _payload_manifest(snapshot: Path) -> list[dict[str, object]]:
     return records
 
 
-def _remote_capacity_preflight(
+def _remote_selected_payload(
     *,
     hub: Any,
     root: Path,
     candidate: str,
-    destination_parent: Path,
-) -> tuple[tuple[str, ...], int, int]:
+) -> tuple[tuple[str, ...], int]:
     revision = cast(str, EXPECTED_CANDIDATES[candidate]["revision"])
     weight_files = _mrl0801_weight_allowlist(root, candidate)
     patterns = tuple(sorted(set(weight_files) | set(METADATA_ALLOW_PATTERNS)))
@@ -386,7 +390,17 @@ def _remote_capacity_preflight(
     for required_metadata in ("config.json", "tokenizer_config.json", "processor_config.json"):
         if required_metadata not in selected:
             raise HarnessError(f"remote revision is missing required metadata: {required_metadata}")
-    selected_total = sum(selected.values())
+    return tuple(sorted(selected)), sum(selected.values())
+
+
+def _remote_capacity_preflight(
+    *,
+    hub: Any,
+    root: Path,
+    candidate: str,
+    destination_parent: Path,
+) -> tuple[tuple[str, ...], int, int]:
+    selected, selected_total = _remote_selected_payload(hub=hub, root=root, candidate=candidate)
     required_free = _required_staging_free_bytes(selected_total)
     available = shutil.disk_usage(destination_parent).free
     if available < required_free:
@@ -394,13 +408,58 @@ def _remote_capacity_preflight(
             "insufficient free storage for bounded candidate staging: "
             f"available={available} required={required_free}"
         )
-    return tuple(sorted(selected)), selected_total, available
+    return selected, selected_total, available
+
+
+def _remote_roster_capacity_preflight(
+    *,
+    hub: Any,
+    root: Path,
+    candidate: str,
+    destination_parent: Path,
+) -> tuple[tuple[str, ...], int, int, int]:
+    if candidate not in EXPECTED_CANDIDATES:
+        raise HarnessError("candidate is outside the frozen roster")
+    available = shutil.disk_usage(destination_parent).free
+    selected_for_candidate: tuple[str, ...] | None = None
+    selected_total_for_candidate: int | None = None
+    for roster_candidate in EXPECTED_CANDIDATES:
+        selected, selected_total = _remote_selected_payload(
+            hub=hub, root=root, candidate=roster_candidate
+        )
+        expected_total = EXPECTED_SELECTED_PAYLOAD_BYTES[roster_candidate]
+        if selected_total != expected_total:
+            raise HarnessError(
+                f"{roster_candidate} remote selected payload byte total drifted: "
+                f"observed={selected_total} expected={expected_total}"
+            )
+        if roster_candidate == candidate:
+            selected_for_candidate = selected
+            selected_total_for_candidate = selected_total
+    if selected_for_candidate is None or selected_total_for_candidate is None:
+        raise HarnessError("candidate is absent from the frozen roster preflight")
+    roster_required = _required_roster_staging_free_bytes()
+    if available < roster_required:
+        raise HarnessError(
+            "insufficient free storage for bounded dual-candidate roster staging: "
+            f"available={available} required={roster_required}"
+        )
+    return selected_for_candidate, selected_total_for_candidate, available, roster_required
 
 
 def _required_staging_free_bytes(selected_total: int) -> int:
     if type(selected_total) is not int or selected_total <= 0:
         raise HarnessError("selected staging payload must be a positive integer byte count")
     return selected_total + STAGING_CONTROL_RESERVE_BYTES
+
+
+def _required_roster_staging_free_bytes() -> int:
+    if set(EXPECTED_SELECTED_PAYLOAD_BYTES) != set(EXPECTED_CANDIDATES):
+        raise HarnessError("frozen selected-payload roster drifted")
+    return max(
+        _required_staging_free_bytes(selected_total)
+        for selected_total in EXPECTED_SELECTED_PAYLOAD_BYTES.values()
+    )
 
 
 def _prepare_hub_download() -> Any:
@@ -427,8 +486,9 @@ def _prepare_hub_download() -> Any:
 
 def _staging_policy(*, selected_total: int, free_before: int, free_after: int) -> dict[str, object]:
     required = _required_staging_free_bytes(selected_total)
-    if free_before < required:
-        raise HarnessError("staging preflight no longer satisfies the required free-space bound")
+    roster_required = _required_roster_staging_free_bytes()
+    if free_before < roster_required:
+        raise HarnessError("dual-candidate staging preflight no longer satisfies the roster bound")
     if free_after < STAGING_CONTROL_RESERVE_BYTES:
         raise HarnessError("post-stage free storage fell below the control reserve")
     return {
@@ -438,6 +498,8 @@ def _staging_policy(*, selected_total: int, free_before: int, free_after: int) -
         "observed_free_bytes_after": free_after,
         "observed_free_bytes_before": free_before,
         "required_free_bytes_before": required,
+        "roster_preflight_candidates": sorted(EXPECTED_CANDIDATES),
+        "roster_required_free_bytes_before": roster_required,
         "schema_version": STAGING_POLICY_SCHEMA,
         "selected_payload_bytes": selected_total,
         "xet_enabled": False,
@@ -523,12 +585,19 @@ def stage_candidate(
     _package_versions()
     hub = _prepare_hub_download()
     revision = cast(str, EXPECTED_CANDIDATES[candidate]["revision"])
-    selected_files, remote_selected_bytes, free_before = _remote_capacity_preflight(
+    (
+        selected_files,
+        remote_selected_bytes,
+        free_before,
+        roster_required_free,
+    ) = _remote_roster_capacity_preflight(
         hub=hub,
         root=root,
         candidate=candidate,
         destination_parent=destination.parent,
     )
+    if free_before < roster_required_free:
+        raise HarnessError("dual-candidate roster preflight free-space bound was not preserved")
     controlled_cache = destination / ".cache" / "mesc-hub-cache"
     controlled_cache.mkdir(parents=True, exist_ok=False)
     try:
@@ -655,6 +724,8 @@ def _validate_staging_policy_envelope(receipt: dict[str, object]) -> None:
         "observed_free_bytes_after",
         "observed_free_bytes_before",
         "required_free_bytes_before",
+        "roster_preflight_candidates",
+        "roster_required_free_bytes_before",
         "schema_version",
         "selected_payload_bytes",
         "xet_enabled",
@@ -673,6 +744,7 @@ def _validate_staging_policy_envelope(receipt: dict[str, object]) -> None:
         "observed_free_bytes_after",
         "observed_free_bytes_before",
         "required_free_bytes_before",
+        "roster_required_free_bytes_before",
         "selected_payload_bytes",
     ):
         if type(policy[field]) is not int or cast(int, policy[field]) <= 0:
@@ -682,8 +754,14 @@ def _validate_staging_policy_envelope(receipt: dict[str, object]) -> None:
     required_free = _required_staging_free_bytes(cast(int, policy["selected_payload_bytes"]))
     if policy["required_free_bytes_before"] != required_free:
         raise HarnessError("stage receipt required free-space bound drifted")
-    if cast(int, policy["observed_free_bytes_before"]) < required_free:
-        raise HarnessError("stage receipt preflight free storage was insufficient")
+    roster_candidates = policy["roster_preflight_candidates"]
+    if roster_candidates != sorted(EXPECTED_CANDIDATES):
+        raise HarnessError("stage receipt roster preflight candidate set drifted")
+    roster_required = _required_roster_staging_free_bytes()
+    if policy["roster_required_free_bytes_before"] != roster_required:
+        raise HarnessError("stage receipt roster free-space bound drifted")
+    if cast(int, policy["observed_free_bytes_before"]) < roster_required:
+        raise HarnessError("stage receipt dual-candidate preflight free storage was insufficient")
     if cast(int, policy["observed_free_bytes_after"]) < STAGING_CONTROL_RESERVE_BYTES:
         raise HarnessError("stage receipt post-stage control reserve was insufficient")
 

@@ -84,13 +84,14 @@ Do not add custody files to Git.
 
 The Stage-4 acquisition path is deliberately storage-bounded rather than protected by a coarse percentage or 10 GiB margin. For the locked `huggingface-hub==1.23.0` local-directory download path, the harness enforces all of the following:
 
+- before any candidate byte is downloaded, the harness resolves the exact remote selected-payload manifest for **both** frozen candidates and requires the current writable filesystem to satisfy the larger roster-wide threshold; Qwen therefore cannot begin if Gemma is already known not to fit;
 - downloads are serialized with `max_workers=1`;
 - Xet transport/chunk caching is disabled for this bounded acquisition;
 - the Hub cache lookup path is redirected to a fresh controlled cache under the empty candidate destination, so a pre-existing global Hub cache cannot trigger an unaccounted full-file copy;
 - temporary download files and final payload files share the destination filesystem, and metadata/cache material is removed after successful staging;
 - exact payload bytes are still selected from the frozen remote manifest and verified byte-for-byte after staging;
 - the preflight requires exact selected payload bytes plus a fixed 1 GiB control reserve;
-- the receipt records pre-stage free bytes, required bytes, post-stage free bytes, serialized worker count, cache-reuse policy, and Xet policy;
+- the receipt records the exact roster preflight candidate set, roster-wide required free bytes, candidate-specific required bytes, pre/post-stage free bytes, serialized worker count, cache-reuse policy, and Xet policy;
 - the stage fails closed if the 1 GiB control reserve is not still present after successful download cleanup.
 
 For the currently frozen manifests this means:

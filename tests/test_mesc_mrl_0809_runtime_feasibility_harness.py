@@ -38,13 +38,16 @@ def _sha(raw: bytes) -> str:
 
 def _staging_policy(selected_bytes: int) -> dict[str, object]:
     required = selected_bytes + HARNESS.STAGING_CONTROL_RESERVE_BYTES
+    roster_required = HARNESS._required_roster_staging_free_bytes()
     return {
         "control_reserve_bytes": HARNESS.STAGING_CONTROL_RESERVE_BYTES,
         "download_max_workers": HARNESS.STAGING_MAX_WORKERS,
         "global_cache_reuse": False,
         "observed_free_bytes_after": HARNESS.STAGING_CONTROL_RESERVE_BYTES + 1,
-        "observed_free_bytes_before": required + 1,
+        "observed_free_bytes_before": roster_required + 1,
         "required_free_bytes_before": required,
+        "roster_preflight_candidates": sorted(HARNESS.EXPECTED_CANDIDATES),
+        "roster_required_free_bytes_before": roster_required,
         "schema_version": HARNESS.STAGING_POLICY_SCHEMA,
         "selected_payload_bytes": selected_bytes,
         "xet_enabled": False,
@@ -585,12 +588,14 @@ def test_remote_capacity_preflight_returns_exact_file_names(
 def test_storage_policy_uses_exact_payload_plus_control_reserve() -> None:
     selected = 62_578_656_403
     required = HARNESS._required_staging_free_bytes(selected)
+    roster_required = HARNESS._required_roster_staging_free_bytes()
     assert required == selected + 1024 * 1024 * 1024
     assert required == 63_652_398_227
+    assert roster_required == required
 
     policy = HARNESS._staging_policy(
         selected_total=selected,
-        free_before=required,
+        free_before=roster_required,
         free_after=HARNESS.STAGING_CONTROL_RESERVE_BYTES,
     )
     receipt = {
@@ -602,23 +607,30 @@ def test_storage_policy_uses_exact_payload_plus_control_reserve() -> None:
 
 def test_storage_policy_fails_closed_for_drift_or_insufficient_reserve() -> None:
     selected = 1_000
-    required = HARNESS._required_staging_free_bytes(selected)
-    with pytest.raises(HARNESS.HarnessError, match="preflight"):
+    roster_required = HARNESS._required_roster_staging_free_bytes()
+    with pytest.raises(HARNESS.HarnessError, match="roster bound"):
         HARNESS._staging_policy(
             selected_total=selected,
-            free_before=required - 1,
+            free_before=roster_required - 1,
             free_after=HARNESS.STAGING_CONTROL_RESERVE_BYTES,
         )
     with pytest.raises(HARNESS.HarnessError, match="control reserve"):
         HARNESS._staging_policy(
             selected_total=selected,
-            free_before=required,
+            free_before=roster_required,
             free_after=HARNESS.STAGING_CONTROL_RESERVE_BYTES - 1,
         )
 
     policy = _staging_policy(selected)
     policy["download_max_workers"] = 2
     with pytest.raises(HARNESS.HarnessError, match="staging policy drifted"):
+        HARNESS._validate_staging_policy_envelope(
+            {"remote_selected_bytes": selected, "staging_policy": policy}
+        )
+
+    policy = _staging_policy(selected)
+    policy["roster_preflight_candidates"] = [_QWEN]
+    with pytest.raises(HARNESS.HarnessError, match="roster preflight candidate set drifted"):
         HARNESS._validate_staging_policy_envelope(
             {"remote_selected_bytes": selected, "staging_policy": policy}
         )
@@ -665,7 +677,8 @@ def test_stage_candidate_serializes_download_and_removes_cache(
         "tokenizer_config.json",
     )
     selected_total = len(selected)
-    free_before = selected_total + HARNESS.STAGING_CONTROL_RESERVE_BYTES + 100
+    roster_required = HARNESS._required_roster_staging_free_bytes()
+    free_before = roster_required + 100
     free_after = HARNESS.STAGING_CONTROL_RESERVE_BYTES + 50
     expected = HARNESS.EXPECTED_CANDIDATES[_QWEN]
     captured: dict[str, object] = {}
@@ -692,8 +705,8 @@ def test_stage_candidate_serializes_download_and_removes_cache(
     monkeypatch.setattr(HARNESS, "_prepare_hub_download", lambda: Hub())
     monkeypatch.setattr(
         HARNESS,
-        "_remote_capacity_preflight",
-        lambda **kwargs: (selected, selected_total, free_before),
+        "_remote_roster_capacity_preflight",
+        lambda **kwargs: (selected, selected_total, free_before, roster_required),
     )
     monkeypatch.setattr(
         HARNESS.shutil,
@@ -745,6 +758,78 @@ def test_stage_candidate_serializes_download_and_removes_cache(
         free_before=free_before,
         free_after=free_after,
     )
+
+
+def test_roster_preflight_checks_both_frozen_candidates_before_download(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from types import SimpleNamespace
+
+    observed: list[str] = []
+
+    def payload(*, hub: object, root: Path, candidate: str) -> tuple[tuple[str, ...], int]:
+        observed.append(candidate)
+        return (f"{candidate.replace('/', '-')}.bin",), HARNESS.EXPECTED_SELECTED_PAYLOAD_BYTES[
+            candidate
+        ]
+
+    monkeypatch.setattr(HARNESS, "_remote_selected_payload", payload)
+    roster_required = HARNESS._required_roster_staging_free_bytes()
+    monkeypatch.setattr(
+        HARNESS.shutil,
+        "disk_usage",
+        lambda path: SimpleNamespace(free=roster_required),
+    )
+    selected, total, free_before, required = HARNESS._remote_roster_capacity_preflight(
+        hub=object(),
+        root=tmp_path,
+        candidate=_QWEN,
+        destination_parent=tmp_path,
+    )
+    assert observed == list(HARNESS.EXPECTED_CANDIDATES)
+    assert selected == ("Qwen-Qwen3.8-27B.bin",)
+    assert total == HARNESS.EXPECTED_SELECTED_PAYLOAD_BYTES[_QWEN]
+    assert free_before == roster_required
+    assert required == roster_required
+
+    observed.clear()
+    monkeypatch.setattr(
+        HARNESS.shutil,
+        "disk_usage",
+        lambda path: SimpleNamespace(free=roster_required - 1),
+    )
+    with pytest.raises(HARNESS.HarnessError, match="dual-candidate roster staging"):
+        HARNESS._remote_roster_capacity_preflight(
+            hub=object(),
+            root=tmp_path,
+            candidate=_QWEN,
+            destination_parent=tmp_path,
+        )
+    assert observed == list(HARNESS.EXPECTED_CANDIDATES)
+
+
+def test_roster_preflight_rejects_frozen_payload_size_drift(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from types import SimpleNamespace
+
+    def payload(*, hub: object, root: Path, candidate: str) -> tuple[tuple[str, ...], int]:
+        expected = HARNESS.EXPECTED_SELECTED_PAYLOAD_BYTES[candidate]
+        return ("fixture.bin",), expected + (1 if candidate == _GEMMA else 0)
+
+    monkeypatch.setattr(HARNESS, "_remote_selected_payload", payload)
+    monkeypatch.setattr(
+        HARNESS.shutil,
+        "disk_usage",
+        lambda path: SimpleNamespace(free=100 * 1024 * 1024 * 1024),
+    )
+    with pytest.raises(HARNESS.HarnessError, match="payload byte total drifted"):
+        HARNESS._remote_roster_capacity_preflight(
+            hub=object(),
+            root=tmp_path,
+            candidate=_QWEN,
+            destination_parent=tmp_path,
+        )
 
 
 def test_weight_identity_must_match_mrl0801(
