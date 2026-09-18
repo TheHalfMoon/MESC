@@ -89,7 +89,7 @@ Stage only the authorized MRL-0801 weight allowlist plus required tokenizer/proc
       --destination "$MRL0809_CUSTODY/qwen-snapshot" \
       --receipt-out "$MRL0809_CUSTODY/qwen-stage.json"
 
-The stage command verifies exact revision metadata and the full SafeTensors identity against the already admitted MRL-0801 weights_sha256 and artifact_identity_sha256.
+The stage command verifies exact revision metadata and the full SafeTensors identity against the already admitted MRL-0801 weights_sha256 and artifact_identity_sha256. It also binds every staged payload file to an exact root-level path, byte count, and SHA-256 digest, and the probe rejects any added, removed, symlinked, or modified payload before isolated execution.
 
 Run the isolated probe:
 
@@ -157,8 +157,12 @@ The independent verification must recompute:
 - static-prerequisite manifest SHA-256;
 - dependency-lock SHA-256;
 - repository SHA/tree binding;
-- exact candidate identities;
-- provider/runtime identity fields;
+- the full embedded runtime-identity SHA-256;
+- the embedded harness SHA-256 against scripts/mesc_mrl_0809_runtime_feasibility.py at the exact receipt repository SHA;
+- exact candidate revision/metadata identities plus the admitted MRL-0801 weights_sha256 and artifact_identity_sha256 values;
+- each candidate stage-receipt SHA-256 binding;
+- each candidate embedded synthetic-generation evidence, including the exact fixed prompt identity and bounded generated token IDs;
+- exact Tesla T4 / Google Colab / CPython 3.11 / locked package / bitsandbytes-nf4-v1 runtime policy;
 - zero-cost, no-network, no-training, no-mutation, no-fallback, and cleanup constraints.
 
 Only an independently verified canonical receipt may proceed to the separate minimal trust/evidence-slot admission PR.

@@ -84,6 +84,100 @@ def test_snapshot_validation_binds_exact_metadata_and_weights(
         HARNESS._validate_snapshot(_QWEN, snapshot)
 
 
+def test_payload_manifest_rejects_symlink_and_nested_payload(tmp_path: Path) -> None:
+    snapshot = tmp_path / "snapshot"
+    snapshot.mkdir()
+    target = snapshot / "config.json"
+    target.write_bytes(b"fixture\n")
+    link = snapshot / "tokenizer.json"
+    link.symlink_to(target.name)
+    with pytest.raises(HARNESS.HarnessError, match="must not be symlinks"):
+        HARNESS._payload_manifest(snapshot)
+
+    link.unlink()
+    nested = snapshot / "nested"
+    nested.mkdir()
+    (nested / "tokenizer.json").write_bytes(b"fixture\n")
+    with pytest.raises(HARNESS.HarnessError, match="root-level basenames"):
+        HARNESS._payload_manifest(snapshot)
+
+
+def test_stage_receipt_binds_entire_payload_manifest(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    snapshot = tmp_path / "snapshot"
+    snapshot.mkdir()
+    files = {
+        "config.json": b'{"architecture":"fixture"}\n',
+        "tokenizer_config.json": b'{"tokenizer":"fixture"}\n',
+        "processor_config.json": b'{"processor":"fixture"}\n',
+        "tokenizer.json": b"tokenizer-A\n",
+        "model.safetensors": b"synthetic-weight-fixture",
+    }
+    for name, raw in files.items():
+        (snapshot / name).write_bytes(raw)
+
+    expected = dict(HARNESS.EXPECTED_CANDIDATES[_QWEN])
+    expected["config_sha256"] = _sha(files["config.json"])
+    expected["tokenizer_config_sha256"] = _sha(files["tokenizer_config.json"])
+    expected["processor_config_sha256"] = _sha(files["processor_config.json"])
+    monkeypatch.setitem(HARNESS.EXPECTED_CANDIDATES, _QWEN, expected)
+
+    weight_manifest = [
+        {
+            "byte_count": len(files["model.safetensors"]),
+            "kind": "weight",
+            "path": "model.safetensors",
+            "sha256": _sha(files["model.safetensors"]),
+        }
+    ]
+    monkeypatch.setattr(
+        HARNESS,
+        "_validate_weight_identity",
+        lambda candidate, value: (
+            expected["weights_sha256"],
+            expected["artifact_identity_sha256"],
+            weight_manifest,
+        ),
+    )
+    monkeypatch.setattr(
+        HARNESS,
+        "_mrl0801_weight_allowlist",
+        lambda root, candidate: ("model.safetensors",),
+    )
+
+    payload_manifest = HARNESS._payload_manifest(snapshot)
+    selected_files = tuple(item["path"] for item in payload_manifest)
+    selected_bytes = sum(item["byte_count"] for item in payload_manifest)
+    receipt = {
+        "artifact_identity_sha256": expected["artifact_identity_sha256"],
+        "config_sha256": expected["config_sha256"],
+        "model_id": _QWEN,
+        "mrl_0801_authorization_sha256": HARNESS.MRL0801_AUTH_SHA256,
+        "payload_manifest": payload_manifest,
+        "processor_config_sha256": expected["processor_config_sha256"],
+        "remote_selected_bytes": selected_bytes,
+        "remote_selected_files": list(selected_files),
+        "revision": expected["revision"],
+        "schema_version": HARNESS.SCHEMA_STAGE,
+        "snapshot_file_count": len(payload_manifest),
+        "snapshot_total_bytes": selected_bytes,
+        "tokenizer_config_sha256": expected["tokenizer_config_sha256"],
+        "weight_files": weight_manifest,
+        "weights_sha256": expected["weights_sha256"],
+    }
+    receipt_path = tmp_path / "stage.json"
+    receipt_path.write_bytes(HARNESS.canonical_json_bytes(receipt))
+
+    HARNESS._read_stage_receipt(_QWEN, snapshot, receipt_path, root=tmp_path)
+
+    original = (snapshot / "tokenizer.json").read_bytes()
+    (snapshot / "tokenizer.json").write_bytes(original.replace(b"A", b"B"))
+    assert (snapshot / "tokenizer.json").stat().st_size == len(original)
+    with pytest.raises(HARNESS.HarnessError, match="payload manifest drifted"):
+        HARNESS._read_stage_receipt(_QWEN, snapshot, receipt_path, root=tmp_path)
+
+
 def test_evidence_paths_must_remain_outside_repository(tmp_path: Path) -> None:
     root = tmp_path / "repo"
     root.mkdir()
@@ -221,15 +315,23 @@ def _observation(
     generation: dict[str, object] = {
         "decoded_text_sha256": "d" * 64,
         "generated_token_ids": [11, 12],
-        "synthetic_prompt_sha256": "e" * 64,
+        "synthetic_prompt_sha256": (
+            "19db6d407fdb52d48b9894900e3f0afe9e81b4a12e96669ef8a863419ba4d60d"
+        ),
     }
-    identity = {
-        "gpu_model": "Tesla T4",
-        "gpu_vram_bytes": 15360 * 1024 * 1024,
-        "provider": "GOOGLE_COLAB",
-        "provider_execution_id": execution_id,
-        "harness_sha256": "f" * 64,
-    }
+    identity, identity_sha = HARNESS._runtime_identity(
+        bwrap_sha256="a" * 64,
+        bwrap_version="bubblewrap 0.11.0",
+        colab_release_tag="release-fixture",
+        gpu_model="Tesla T4",
+        gpu_uuid="GPU-fixture",
+        gpu_vram_bytes=15360 * 1024 * 1024,
+        kernel_release="kernel-fixture",
+        package_versions=dict(HARNESS.EXPECTED_PACKAGES),
+        provider_execution_id=execution_id,
+        python_version="3.11.15",
+        harness_sha256="f" * 64,
+    )
     return {
         "candidate": _candidate(model_id, generation),
         "dependency_lock_sha256": lock_sha,
@@ -238,7 +340,7 @@ def _observation(
         "repository_sha": repository_sha,
         "repository_tree": repository_tree,
         "runtime_identity": identity,
-        "runtime_identity_sha256": _sha(HARNESS.canonical_json_bytes(identity)),
+        "runtime_identity_sha256": identity_sha,
         "schema_version": HARNESS.SCHEMA_OBSERVATION,
         "stage_artifact_identity_sha256": HARNESS.EXPECTED_CANDIDATES[model_id][
             "artifact_identity_sha256"
@@ -302,6 +404,15 @@ def test_assembly_self_validates_with_canonical_validator(
     )
     assert validated.receipt_sha256 == _sha(raw)
     assert validated.runtime_representation == HARNESS.RUNTIME_REPRESENTATION
+    assert validated.runtime_identity["harness_sha256"] == "f" * 64
+    document = HARNESS.parse_canonical_object(raw, label="assembled receipt")
+    candidates = document["candidates"]
+    assert isinstance(candidates, list)
+    for row in candidates:
+        assert isinstance(row, dict)
+        expected = HARNESS.EXPECTED_CANDIDATES[row["model_id"]]
+        assert row["weights_sha256"] == expected["weights_sha256"]
+        assert row["artifact_identity_sha256"] == expected["artifact_identity_sha256"]
 
 
 def test_assembly_rejects_cross_session_candidate_mix(

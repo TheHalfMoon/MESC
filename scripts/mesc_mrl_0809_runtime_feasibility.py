@@ -309,6 +309,26 @@ def _payload_files(snapshot: Path) -> tuple[Path, ...]:
     )
 
 
+def _payload_manifest(snapshot: Path) -> list[dict[str, object]]:
+    snapshot = snapshot.resolve(strict=True)
+    records: list[dict[str, object]] = []
+    for path in _payload_files(snapshot):
+        if path.is_symlink():
+            raise HarnessError("staged snapshot payload files must not be symlinks")
+        relative = path.relative_to(snapshot).as_posix()
+        if not relative or "/" in relative:
+            raise HarnessError("staged snapshot payload files must be root-level basenames")
+        observed = path.stat()
+        if not stat.S_ISREG(observed.st_mode) or observed.st_size <= 0:
+            raise HarnessError("staged snapshot payload files must be non-empty regular files")
+        records.append(
+            {"byte_count": observed.st_size, "path": relative, "sha256": sha256_file(path)}
+        )
+    if not records:
+        raise HarnessError("staged snapshot payload manifest is empty")
+    return records
+
+
 def _remote_capacity_preflight(
     *,
     hub: Any,
@@ -448,6 +468,13 @@ def stage_candidate(
         )
     except Exception as exc:
         raise HarnessError(f"exact candidate staging failed for {candidate}") from exc
+    payload_manifest = _payload_manifest(destination)
+    local_selected_files = tuple(cast(str, item["path"]) for item in payload_manifest)
+    local_selected_bytes = sum(cast(int, item["byte_count"]) for item in payload_manifest)
+    if local_selected_files != selected_files:
+        raise HarnessError("staged snapshot payload differs from remote selected files")
+    if local_selected_bytes != remote_selected_bytes:
+        raise HarnessError("staged snapshot byte total differs from remote manifest")
     digests, file_count, total_bytes = _validate_snapshot(candidate, destination)
     weights_sha256, artifact_identity_sha256, weight_files = _validate_weight_identity(
         candidate, destination
@@ -458,6 +485,7 @@ def stage_candidate(
         "model_id": candidate,
         "processor_config_sha256": digests["processor_config_sha256"],
         "mrl_0801_authorization_sha256": MRL0801_AUTH_SHA256,
+        "payload_manifest": payload_manifest,
         "remote_selected_bytes": remote_selected_bytes,
         "remote_selected_files": list(selected_files),
         "revision": revision,
@@ -482,6 +510,7 @@ def _read_stage_receipt(
         "model_id",
         "mrl_0801_authorization_sha256",
         "processor_config_sha256",
+        "payload_manifest",
         "remote_selected_bytes",
         "remote_selected_files",
         "revision",
@@ -516,6 +545,18 @@ def _read_stage_receipt(
         raise HarnessError("stage receipt remote selected files are not canonical")
     if not set(_mrl0801_weight_allowlist(root, candidate)) <= set(remote_file_names):
         raise HarnessError("stage receipt omitted an MRL-0801 weight file")
+    payload_manifest = receipt["payload_manifest"]
+    if type(payload_manifest) is not list or not payload_manifest:
+        raise HarnessError("stage receipt payload manifest is invalid")
+    local_payload_manifest = _payload_manifest(snapshot)
+    if payload_manifest != local_payload_manifest:
+        raise HarnessError("stage receipt payload manifest drifted")
+    local_payload_names = tuple(cast(str, item["path"]) for item in local_payload_manifest)
+    if remote_file_names != local_payload_names:
+        raise HarnessError("stage receipt remote/local payload file set drifted")
+    local_payload_bytes = sum(cast(int, item["byte_count"]) for item in local_payload_manifest)
+    if receipt["remote_selected_bytes"] != local_payload_bytes:
+        raise HarnessError("stage receipt remote/local payload byte total drifted")
     digests, file_count, total_bytes = _validate_snapshot(candidate, snapshot)
     if (
         receipt["snapshot_file_count"] != file_count
@@ -1052,7 +1093,14 @@ def assemble_receipt(root: Path, observations: list[Path], output: Path) -> None
     ]
     output = _require_outside_repository(output, root, label="runtime-feasibility receipt")
     documents = [_validated_observation(path) for path in observation_paths]
-    candidates = [cast(dict[str, object], document["candidate"]) for document in documents]
+    candidates: list[dict[str, object]] = []
+    for document in documents:
+        candidate = dict(cast(dict[str, object], document["candidate"]))
+        candidate["artifact_identity_sha256"] = document["stage_artifact_identity_sha256"]
+        candidate["generation_evidence"] = document["generation_evidence"]
+        candidate["stage_receipt_sha256"] = document["stage_receipt_sha256"]
+        candidate["weights_sha256"] = document["stage_weights_sha256"]
+        candidates.append(candidate)
     model_ids = tuple(sorted(cast(str, row["model_id"]) for row in candidates))
     if model_ids != tuple(sorted(EXPECTED_CANDIDATES)):
         raise HarnessError("observations do not contain the exact frozen candidate roster")
@@ -1098,6 +1146,7 @@ def assemble_receipt(root: Path, observations: list[Path], output: Path) -> None
         "mrl_0804_evidence_sha256": MRL0804_EVIDENCE,
         "mrl_0804_runtime_identity_sha256": MRL0804_RUNTIME,
         "mrl_0808_evidence_sha256": MRL0808_EVIDENCE,
+        "mrl_0801_authorization_sha256": MRL0801_AUTH_SHA256,
         "network_access_during_isolated_generation": False,
         "network_access_during_isolated_load": False,
         "optimizer_present": False,
@@ -1108,6 +1157,7 @@ def assemble_receipt(root: Path, observations: list[Path], output: Path) -> None
         "provider_owner": "GOOGLE",
         "repository_sha": head,
         "repository_tree": tree,
+        "runtime_identity": identity,
         "runtime_identity_sha256": first["runtime_identity_sha256"],
         "sandbox_policy_sha256": SANDBOX_POLICY,
         "schema_version": SCHEMA_RECEIPT,
