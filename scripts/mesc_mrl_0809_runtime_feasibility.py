@@ -101,6 +101,7 @@ EXPECTED_CANDIDATES: Final[dict[str, dict[str, object]]] = {
     },
 }
 
+MRL0801_AUTH_SHA256: Final = "af69087c6968c3bddb28556002a2a89fcf18932506a55d1eb7d6ff318e21b9d7"
 MRL0804_EVIDENCE: Final = "f630a852319ca1ce6bd66b3203ce80c092e0695cabec3bb8456e29a94f8cd3f0"
 MRL0804_RUNTIME: Final = "05b19593f7c9c1f03df39a100189da653695bad1b13d24c921dd1fecd7fe0b45"
 MRL0808_EVIDENCE: Final = "d65558e910cfaf63d41c1c52db1524039943eef00fd6692c576bf8ed1c8ebf77"
@@ -267,6 +268,8 @@ def _require_outside_repository(path: Path, root: Path, *, label: str) -> Path:
 
 def _mrl0801_weight_allowlist(root: Path, candidate: str) -> tuple[str, ...]:
     raw = (root / MRL0801_AUTH).read_bytes()
+    if sha256_bytes(raw) != MRL0801_AUTH_SHA256:
+        raise HarnessError("MRL-0801 acquisition authorization identity drifted")
     authorization = parse_canonical_object(raw, label="MRL-0801 acquisition authorization")
     rows = authorization.get("candidates")
     if type(rows) is not list:
@@ -424,6 +427,7 @@ def stage_candidate(
         if any(destination.iterdir()):
             raise HarnessError("staging destination must be absent or empty")
     destination.mkdir(parents=True, exist_ok=True)
+    _package_versions()
     try:
         hub: Any = importlib.import_module("huggingface_hub")
     except Exception as exc:
@@ -453,7 +457,7 @@ def stage_candidate(
         "config_sha256": digests["config_sha256"],
         "model_id": candidate,
         "processor_config_sha256": digests["processor_config_sha256"],
-        "mrl_0801_authorization_sha256": sha256_file(root / MRL0801_AUTH),
+        "mrl_0801_authorization_sha256": MRL0801_AUTH_SHA256,
         "remote_selected_bytes": remote_selected_bytes,
         "remote_selected_files": list(selected_files),
         "revision": revision,
@@ -493,7 +497,7 @@ def _read_stage_receipt(
     expected = EXPECTED_CANDIDATES[candidate]
     if receipt["model_id"] != candidate or receipt["revision"] != expected["revision"]:
         raise HarnessError("stage receipt candidate identity drifted")
-    if receipt["mrl_0801_authorization_sha256"] != sha256_file(root / MRL0801_AUTH):
+    if receipt["mrl_0801_authorization_sha256"] != MRL0801_AUTH_SHA256:
         raise HarnessError("stage receipt MRL-0801 authorization identity drifted")
     if type(receipt["remote_selected_bytes"]) is not int or receipt["remote_selected_bytes"] <= 0:
         raise HarnessError("stage receipt remote byte total is invalid")
