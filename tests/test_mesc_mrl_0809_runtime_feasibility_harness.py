@@ -36,6 +36,24 @@ def _sha(raw: bytes) -> str:
     return hashlib.sha256(raw).hexdigest()
 
 
+def _staging_policy(selected_bytes: int) -> dict[str, object]:
+    required = selected_bytes + HARNESS.STAGING_CONTROL_RESERVE_BYTES
+    roster_required = HARNESS._required_roster_staging_free_bytes()
+    return {
+        "control_reserve_bytes": HARNESS.STAGING_CONTROL_RESERVE_BYTES,
+        "download_max_workers": HARNESS.STAGING_MAX_WORKERS,
+        "global_cache_reuse": False,
+        "observed_free_bytes_after": HARNESS.STAGING_CONTROL_RESERVE_BYTES + 1,
+        "observed_free_bytes_before": roster_required + 1,
+        "required_free_bytes_before": required,
+        "roster_preflight_candidates": sorted(HARNESS.EXPECTED_CANDIDATES),
+        "roster_required_free_bytes_before": roster_required,
+        "schema_version": HARNESS.STAGING_POLICY_SCHEMA,
+        "selected_payload_bytes": selected_bytes,
+        "xet_enabled": False,
+    }
+
+
 def test_harness_canonical_json_matches_repository_contract() -> None:
     value = {
         "a": [None, True, 7, "text"],
@@ -149,6 +167,7 @@ def test_stage_receipt_binds_entire_payload_manifest(
     payload_manifest = HARNESS._payload_manifest(snapshot)
     selected_files = tuple(item["path"] for item in payload_manifest)
     selected_bytes = sum(item["byte_count"] for item in payload_manifest)
+    monkeypatch.setitem(HARNESS.EXPECTED_SELECTED_PAYLOAD_BYTES, _QWEN, selected_bytes)
     receipt = {
         "artifact_identity_sha256": expected["artifact_identity_sha256"],
         "config_sha256": expected["config_sha256"],
@@ -160,6 +179,7 @@ def test_stage_receipt_binds_entire_payload_manifest(
         "remote_selected_files": list(selected_files),
         "revision": expected["revision"],
         "schema_version": HARNESS.SCHEMA_STAGE,
+        "staging_policy": _staging_policy(selected_bytes),
         "snapshot_file_count": len(payload_manifest),
         "snapshot_total_bytes": selected_bytes,
         "tokenizer_config_sha256": expected["tokenizer_config_sha256"],
@@ -380,6 +400,7 @@ def _stage_receipt(model_id: str) -> dict[str, object]:
         "remote_selected_files": [row["path"] for row in payload],
         "revision": expected["revision"],
         "schema_version": HARNESS.SCHEMA_STAGE,
+        "staging_policy": _staging_policy(4),
         "snapshot_file_count": 4,
         "snapshot_total_bytes": 4,
         "tokenizer_config_sha256": expected["tokenizer_config_sha256"],
@@ -536,7 +557,7 @@ def test_remote_capacity_preflight_returns_exact_file_names(
         "disk_usage",
         lambda path: SimpleNamespace(free=100 * 1024 * 1024 * 1024),
     )
-    selected, total = HARNESS._remote_capacity_preflight(
+    selected, total, free_before = HARNESS._remote_capacity_preflight(
         hub=Hub(),
         root=root,
         candidate=_QWEN,
@@ -549,6 +570,7 @@ def test_remote_capacity_preflight_returns_exact_file_names(
     assert "README.md" not in selected
     assert not any("*" in name for name in selected)
     assert total == len(selected) * 100
+    assert free_before == 100 * 1024 * 1024 * 1024
 
     monkeypatch.setattr(
         HARNESS.shutil,
@@ -559,6 +581,253 @@ def test_remote_capacity_preflight_returns_exact_file_names(
         HARNESS._remote_capacity_preflight(
             hub=Hub(),
             root=root,
+            candidate=_QWEN,
+            destination_parent=tmp_path,
+        )
+
+
+def test_storage_policy_uses_exact_payload_plus_control_reserve() -> None:
+    selected = 62_578_656_403
+    required = HARNESS._required_staging_free_bytes(selected)
+    roster_required = HARNESS._required_roster_staging_free_bytes()
+    assert required == selected + 1024 * 1024 * 1024
+    assert required == 63_652_398_227
+    assert roster_required == required
+
+    policy = HARNESS._staging_policy(
+        selected_total=selected,
+        free_before=roster_required,
+        free_after=HARNESS.STAGING_CONTROL_RESERVE_BYTES,
+    )
+    receipt = {
+        "remote_selected_bytes": selected,
+        "staging_policy": policy,
+    }
+    HARNESS._validate_staging_policy_envelope(receipt)
+
+
+def test_storage_policy_fails_closed_for_drift_or_insufficient_reserve() -> None:
+    selected = 1_000
+    roster_required = HARNESS._required_roster_staging_free_bytes()
+    with pytest.raises(HARNESS.HarnessError, match="roster bound"):
+        HARNESS._staging_policy(
+            selected_total=selected,
+            free_before=roster_required - 1,
+            free_after=HARNESS.STAGING_CONTROL_RESERVE_BYTES,
+        )
+    with pytest.raises(HARNESS.HarnessError, match="control reserve"):
+        HARNESS._staging_policy(
+            selected_total=selected,
+            free_before=roster_required,
+            free_after=HARNESS.STAGING_CONTROL_RESERVE_BYTES - 1,
+        )
+
+    policy = _staging_policy(selected)
+    policy["download_max_workers"] = 2
+    with pytest.raises(HARNESS.HarnessError, match="staging policy drifted"):
+        HARNESS._validate_staging_policy_envelope(
+            {"remote_selected_bytes": selected, "staging_policy": policy}
+        )
+
+    policy = _staging_policy(selected)
+    policy["roster_preflight_candidates"] = [_QWEN]
+    with pytest.raises(HARNESS.HarnessError, match="roster preflight candidate set drifted"):
+        HARNESS._validate_staging_policy_envelope(
+            {"remote_selected_bytes": selected, "staging_policy": policy}
+        )
+
+
+def test_prepare_hub_download_forces_xet_off(monkeypatch: pytest.MonkeyPatch) -> None:
+    from types import SimpleNamespace
+
+    hub = SimpleNamespace()
+    imports: list[str] = []
+
+    def fake_import(name: str) -> object:
+        imports.append(name)
+        if name == "huggingface_hub":
+            assert HARNESS.os.environ["HF_HUB_DISABLE_XET"] == "1"
+            assert HARNESS.os.environ["HF_XET_CHUNK_CACHE_SIZE_BYTES"] == "0"
+            return hub
+        if name == "huggingface_hub.constants":
+            return SimpleNamespace(HF_HUB_DISABLE_XET=True)
+        raise AssertionError(name)
+
+    monkeypatch.setattr(HARNESS.importlib, "import_module", fake_import)
+    monkeypatch.delenv("HF_HUB_DISABLE_XET", raising=False)
+    monkeypatch.delenv("HF_XET_CHUNK_CACHE_SIZE_BYTES", raising=False)
+    assert HARNESS._prepare_hub_download() is hub
+    assert imports == ["huggingface_hub", "huggingface_hub.constants"]
+
+
+def test_stage_candidate_serializes_download_and_removes_cache(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from types import SimpleNamespace
+
+    root = tmp_path / "repo"
+    root.mkdir()
+    custody = tmp_path / "custody"
+    custody.mkdir()
+    destination = custody / "snapshot"
+    receipt_path = custody / "stage.json"
+    selected = (
+        "config.json",
+        "model.safetensors",
+        "processor_config.json",
+        "tokenizer_config.json",
+    )
+    selected_total = len(selected)
+    roster_required = HARNESS._required_roster_staging_free_bytes()
+    free_before = roster_required + 100
+    free_after = HARNESS.STAGING_CONTROL_RESERVE_BYTES + 50
+    expected = HARNESS.EXPECTED_CANDIDATES[_QWEN]
+    captured: dict[str, object] = {}
+
+    class Hub:
+        @staticmethod
+        def snapshot_download(**kwargs: object) -> str:
+            captured.update(kwargs)
+            local_dir = Path(str(kwargs["local_dir"]))
+            for name in selected:
+                (local_dir / name).write_bytes(b"x")
+            metadata = local_dir / ".cache" / "huggingface"
+            metadata.mkdir(parents=True, exist_ok=True)
+            (metadata / "fixture").write_bytes(b"metadata")
+            return str(local_dir)
+
+    monkeypatch.setattr(HARNESS, "_require_repository", lambda value: ("1" * 40, "2" * 40))
+    monkeypatch.setattr(
+        HARNESS,
+        "_require_colab_identity",
+        lambda: ("session", "release", "Tesla T4", "GPU-test", 1),
+    )
+    monkeypatch.setattr(HARNESS, "_package_versions", lambda: dict(HARNESS.EXPECTED_PACKAGES))
+    monkeypatch.setattr(HARNESS, "_prepare_hub_download", lambda: Hub())
+    monkeypatch.setattr(
+        HARNESS,
+        "_remote_roster_capacity_preflight",
+        lambda **kwargs: (selected, selected_total, free_before, roster_required),
+    )
+    monkeypatch.setattr(
+        HARNESS.shutil,
+        "disk_usage",
+        lambda path: SimpleNamespace(free=free_after),
+    )
+    monkeypatch.setattr(
+        HARNESS,
+        "_validate_snapshot",
+        lambda candidate, snapshot: (
+            {
+                "config_sha256": expected["config_sha256"],
+                "processor_config_sha256": expected["processor_config_sha256"],
+                "tokenizer_config_sha256": expected["tokenizer_config_sha256"],
+            },
+            selected_total,
+            selected_total,
+        ),
+    )
+    weight_sha = _sha(b"x")
+    weight_manifest = [
+        {
+            "byte_count": 1,
+            "kind": "weight",
+            "path": "model.safetensors",
+            "sha256": weight_sha,
+        }
+    ]
+    monkeypatch.setattr(
+        HARNESS,
+        "_validate_weight_identity",
+        lambda candidate, snapshot: (
+            expected["weights_sha256"],
+            expected["artifact_identity_sha256"],
+            weight_manifest,
+        ),
+    )
+
+    HARNESS.stage_candidate(root, _QWEN, destination, receipt_path)
+
+    assert captured["max_workers"] == 1
+    assert captured["local_dir"] == str(destination)
+    assert captured["allow_patterns"] == list(selected)
+    assert captured["cache_dir"] == str(destination / ".cache" / "mesc-hub-cache")
+    assert not (destination / ".cache").exists()
+    receipt = HARNESS.parse_canonical_object(receipt_path.read_bytes(), label="stage receipt")
+    assert receipt["staging_policy"] == HARNESS._staging_policy(
+        selected_total=selected_total,
+        free_before=free_before,
+        free_after=free_after,
+    )
+
+
+def test_roster_preflight_checks_both_frozen_candidates_before_download(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from types import SimpleNamespace
+
+    observed: list[str] = []
+
+    def payload(*, hub: object, root: Path, candidate: str) -> tuple[tuple[str, ...], int]:
+        observed.append(candidate)
+        return (f"{candidate.replace('/', '-')}.bin",), HARNESS.EXPECTED_SELECTED_PAYLOAD_BYTES[
+            candidate
+        ]
+
+    monkeypatch.setattr(HARNESS, "_remote_selected_payload", payload)
+    roster_required = HARNESS._required_roster_staging_free_bytes()
+    monkeypatch.setattr(
+        HARNESS.shutil,
+        "disk_usage",
+        lambda path: SimpleNamespace(free=roster_required),
+    )
+    selected, total, free_before, required = HARNESS._remote_roster_capacity_preflight(
+        hub=object(),
+        root=tmp_path,
+        candidate=_QWEN,
+        destination_parent=tmp_path,
+    )
+    assert observed == list(HARNESS.EXPECTED_CANDIDATES)
+    assert selected == ("Qwen-Qwen3.8-27B.bin",)
+    assert total == HARNESS.EXPECTED_SELECTED_PAYLOAD_BYTES[_QWEN]
+    assert free_before == roster_required
+    assert required == roster_required
+
+    observed.clear()
+    monkeypatch.setattr(
+        HARNESS.shutil,
+        "disk_usage",
+        lambda path: SimpleNamespace(free=roster_required - 1),
+    )
+    with pytest.raises(HARNESS.HarnessError, match="dual-candidate roster staging"):
+        HARNESS._remote_roster_capacity_preflight(
+            hub=object(),
+            root=tmp_path,
+            candidate=_QWEN,
+            destination_parent=tmp_path,
+        )
+    assert observed == list(HARNESS.EXPECTED_CANDIDATES)
+
+
+def test_roster_preflight_rejects_frozen_payload_size_drift(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from types import SimpleNamespace
+
+    def payload(*, hub: object, root: Path, candidate: str) -> tuple[tuple[str, ...], int]:
+        expected = HARNESS.EXPECTED_SELECTED_PAYLOAD_BYTES[candidate]
+        return ("fixture.bin",), expected + (1 if candidate == _GEMMA else 0)
+
+    monkeypatch.setattr(HARNESS, "_remote_selected_payload", payload)
+    monkeypatch.setattr(
+        HARNESS.shutil,
+        "disk_usage",
+        lambda path: SimpleNamespace(free=100 * 1024 * 1024 * 1024),
+    )
+    with pytest.raises(HARNESS.HarnessError, match="payload byte total drifted"):
+        HARNESS._remote_roster_capacity_preflight(
+            hub=object(),
+            root=tmp_path,
             candidate=_QWEN,
             destination_parent=tmp_path,
         )
@@ -677,7 +946,7 @@ def test_remote_capacity_preflight_is_bounded_and_fail_closed(
         "disk_usage",
         lambda path: SimpleNamespace(free=100 * 1024 * 1024 * 1024),
     )
-    selected, total = HARNESS._remote_capacity_preflight(
+    selected, total, free_before = HARNESS._remote_capacity_preflight(
         hub=Hub(),
         root=ROOT,
         candidate=_QWEN,
@@ -687,6 +956,7 @@ def test_remote_capacity_preflight_is_bounded_and_fail_closed(
     assert set(weight_files) <= set(selected)
     assert {"config.json", "tokenizer_config.json", "processor_config.json"} <= set(selected)
     assert total == 1_190
+    assert free_before == 100 * 1024 * 1024 * 1024
 
     monkeypatch.setattr(
         HARNESS.shutil,
@@ -716,6 +986,7 @@ def _install_synthetic_stage_identities(monkeypatch: pytest.MonkeyPatch) -> None
         byte_count=1,
     )
     for model_id in (_QWEN, _GEMMA):
+        monkeypatch.setitem(HARNESS.EXPECTED_SELECTED_PAYLOAD_BYTES, model_id, 4)
         current = dict(HARNESS.EXPECTED_CANDIDATES[model_id])
         identity = HfSafeTensorsArtifactIdentity(
             model_id=model_id,
@@ -847,7 +1118,13 @@ def test_independent_verifier_binds_stage_receipts_and_exact_harness(
     tampered["remote_selected_bytes"] = 5
     tampered_path = evidence / "stage-tampered.json"
     tampered_path.write_bytes(HARNESS.canonical_json_bytes(tampered))
-    with pytest.raises(HARNESS.HarnessError, match=r"payload size/count|digest does not match"):
+    with pytest.raises(
+        HARNESS.HarnessError,
+        match=(
+            r"selected payload byte total drifted|staging payload byte count|"
+            r"payload size/count|digest does not match"
+        ),
+    ):
         HARNESS.verify_receipt(
             root,
             receipt_path,

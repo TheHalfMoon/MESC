@@ -1103,6 +1103,14 @@ rq1-grammar = [
     { name = "transformers" },
     { name = "xgrammar" },
 ]
+rq1-runtime-feasibility = [
+    { name = "accelerate" },
+    { name = "bitsandbytes" },
+    { name = "huggingface-hub" },
+    { name = "torch" },
+    { name = "transformers" },
+    { name = "xgrammar" },
+]
 training-hf-sft = [
     { name = "accelerate" },
     { name = "bitsandbytes" },
@@ -1124,20 +1132,26 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "accelerate", marker = "extra == 'rq1-runtime-feasibility'", specifier = "==1.14.0" },
     { name = "accelerate", marker = "extra == 'training-hf-sft'", specifier = "==1.14.0" },
+    { name = "bitsandbytes", marker = "extra == 'rq1-runtime-feasibility'", specifier = "==0.50.2" },
     { name = "bitsandbytes", marker = "extra == 'training-hf-sft'", specifier = "==0.50.2" },
     { name = "datasets", marker = "extra == 'training-hf-sft'", specifier = "==5.0.1" },
+    { name = "huggingface-hub", marker = "extra == 'rq1-runtime-feasibility'", specifier = "==1.23.0" },
     { name = "llama-cpp-python", marker = "sys_platform != 'win32' and extra == 'backends-llamacpp'", specifier = ">=0.3.21" },
     { name = "peft", marker = "extra == 'training-hf-sft'", specifier = "==0.20.0" },
     { name = "torch", marker = "extra == 'rq1-grammar'", specifier = "==2.13.0" },
+    { name = "torch", marker = "extra == 'rq1-runtime-feasibility'", specifier = "==2.13.0" },
     { name = "torch", marker = "extra == 'training-hf-sft'", specifier = "==2.13.0" },
     { name = "transformers", marker = "extra == 'backends-transformers'", specifier = ">=4.44" },
     { name = "transformers", marker = "extra == 'rq1-grammar'", specifier = "==5.16.1" },
+    { name = "transformers", marker = "extra == 'rq1-runtime-feasibility'", specifier = "==5.16.1" },
     { name = "transformers", marker = "extra == 'training-hf-sft'", specifier = "==5.16.1" },
     { name = "trl", marker = "extra == 'training-hf-sft'", specifier = "==1.12.0" },
     { name = "xgrammar", marker = "extra == 'rq1-grammar'", specifier = "==0.2.7" },
+    { name = "xgrammar", marker = "extra == 'rq1-runtime-feasibility'", specifier = "==0.2.7" },
 ]
-provides-extras = ["backends-llamacpp", "backends-transformers", "rq1-grammar", "training-hf-sft"]
+provides-extras = ["backends-llamacpp", "backends-transformers", "rq1-grammar", "rq1-runtime-feasibility", "training-hf-sft"]
 
 [package.metadata.requires-dev]
 dev = [

@@ -28,7 +28,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, Final, Never, cast
 
-SCHEMA_STAGE: Final = "MESC-MRL-0809-STAGE-RECEIPT-V1"
+SCHEMA_STAGE: Final = "MESC-MRL-0809-STAGE-RECEIPT-V2"
 SCHEMA_WORKER: Final = "MESC-MRL-0809-CANDIDATE-WORKER-V1"
 SCHEMA_OBSERVATION: Final = "MESC-MRL-0809-CANDIDATE-OBSERVATION-V1"
 SCHEMA_RECEIPT: Final = "MESC-MRL-0809-RUNTIME-MODEL-FEASIBILITY-V1"
@@ -45,7 +45,9 @@ STATIC_MANIFEST = Path("specs/mesc-experiment-0/mrl-0809-static-prerequisites-v1
 LOCKFILE = Path("uv.lock")
 HARNESS = Path("scripts/mesc_mrl_0809_runtime_feasibility.py")
 MRL0801_AUTH = Path("specs/mesc-experiment-0/mrl-0801-acquisition-custody-authorization-v1.json")
-STORAGE_MARGIN_BYTES: Final = 10 * 1024 * 1024 * 1024
+STAGING_CONTROL_RESERVE_BYTES: Final = 1 * 1024 * 1024 * 1024
+STAGING_MAX_WORKERS: Final = 1
+STAGING_POLICY_SCHEMA: Final = "MESC-MRL-0809-STAGING-POLICY-V1"
 METADATA_ALLOW_PATTERNS: Final[tuple[str, ...]] = (
     "config.json",
     "generation_config.json",
@@ -70,6 +72,7 @@ STAGE_RECEIPT_KEYS: Final = frozenset(
         "remote_selected_files",
         "revision",
         "schema_version",
+        "staging_policy",
         "snapshot_file_count",
         "snapshot_total_bytes",
         "tokenizer_config_sha256",
@@ -119,6 +122,11 @@ EXPECTED_CANDIDATES: Final[dict[str, dict[str, object]]] = {
             "9f4fec4b1dc6ecddf8f4a92e9caea5971c0e67d81309f3f9066a2bee8c362633"
         ),
     },
+}
+
+EXPECTED_SELECTED_PAYLOAD_BYTES: Final[dict[str, int]] = {
+    "Qwen/Qwen3.8-27B": 55_586_036_114,
+    "google/gemma-4-31B-it": 62_578_656_403,
 }
 
 MRL0801_AUTH_SHA256: Final = "af69087c6968c3bddb28556002a2a89fcf18932506a55d1eb7d6ff318e21b9d7"
@@ -349,12 +357,11 @@ def _payload_manifest(snapshot: Path) -> list[dict[str, object]]:
     return records
 
 
-def _remote_capacity_preflight(
+def _remote_selected_payload(
     *,
     hub: Any,
     root: Path,
     candidate: str,
-    destination_parent: Path,
 ) -> tuple[tuple[str, ...], int]:
     revision = cast(str, EXPECTED_CANDIDATES[candidate]["revision"])
     weight_files = _mrl0801_weight_allowlist(root, candidate)
@@ -380,15 +387,123 @@ def _remote_capacity_preflight(
     missing_weights = sorted(set(weight_files) - set(selected))
     if missing_weights:
         raise HarnessError(f"remote revision is missing authorized weights: {missing_weights[0]}")
-    for required in ("config.json", "tokenizer_config.json", "processor_config.json"):
-        if required not in selected:
-            raise HarnessError(f"remote revision is missing required metadata: {required}")
-    selected_total = sum(selected.values())
-    margin = max(STORAGE_MARGIN_BYTES, (selected_total + 9) // 10)
+    for required_metadata in ("config.json", "tokenizer_config.json", "processor_config.json"):
+        if required_metadata not in selected:
+            raise HarnessError(f"remote revision is missing required metadata: {required_metadata}")
+    return tuple(sorted(selected)), sum(selected.values())
+
+
+def _remote_capacity_preflight(
+    *,
+    hub: Any,
+    root: Path,
+    candidate: str,
+    destination_parent: Path,
+) -> tuple[tuple[str, ...], int, int]:
+    selected, selected_total = _remote_selected_payload(hub=hub, root=root, candidate=candidate)
+    required_free = _required_staging_free_bytes(selected_total)
     available = shutil.disk_usage(destination_parent).free
-    if available < selected_total + margin:
-        raise HarnessError("insufficient free storage for bounded candidate staging")
-    return tuple(sorted(selected)), selected_total
+    if available < required_free:
+        raise HarnessError(
+            "insufficient free storage for bounded candidate staging: "
+            f"available={available} required={required_free}"
+        )
+    return selected, selected_total, available
+
+
+def _remote_roster_capacity_preflight(
+    *,
+    hub: Any,
+    root: Path,
+    candidate: str,
+    destination_parent: Path,
+) -> tuple[tuple[str, ...], int, int, int]:
+    if candidate not in EXPECTED_CANDIDATES:
+        raise HarnessError("candidate is outside the frozen roster")
+    available = shutil.disk_usage(destination_parent).free
+    selected_for_candidate: tuple[str, ...] | None = None
+    selected_total_for_candidate: int | None = None
+    for roster_candidate in EXPECTED_CANDIDATES:
+        selected, selected_total = _remote_selected_payload(
+            hub=hub, root=root, candidate=roster_candidate
+        )
+        expected_total = EXPECTED_SELECTED_PAYLOAD_BYTES[roster_candidate]
+        if selected_total != expected_total:
+            raise HarnessError(
+                f"{roster_candidate} remote selected payload byte total drifted: "
+                f"observed={selected_total} expected={expected_total}"
+            )
+        if roster_candidate == candidate:
+            selected_for_candidate = selected
+            selected_total_for_candidate = selected_total
+    if selected_for_candidate is None or selected_total_for_candidate is None:
+        raise HarnessError("candidate is absent from the frozen roster preflight")
+    roster_required = _required_roster_staging_free_bytes()
+    if available < roster_required:
+        raise HarnessError(
+            "insufficient free storage for bounded dual-candidate roster staging: "
+            f"available={available} required={roster_required}"
+        )
+    return selected_for_candidate, selected_total_for_candidate, available, roster_required
+
+
+def _required_staging_free_bytes(selected_total: int) -> int:
+    if type(selected_total) is not int or selected_total <= 0:
+        raise HarnessError("selected staging payload must be a positive integer byte count")
+    return selected_total + STAGING_CONTROL_RESERVE_BYTES
+
+
+def _required_roster_staging_free_bytes() -> int:
+    if set(EXPECTED_SELECTED_PAYLOAD_BYTES) != set(EXPECTED_CANDIDATES):
+        raise HarnessError("frozen selected-payload roster drifted")
+    return max(
+        _required_staging_free_bytes(selected_total)
+        for selected_total in EXPECTED_SELECTED_PAYLOAD_BYTES.values()
+    )
+
+
+def _prepare_hub_download() -> Any:
+    # Keep acquisition storage behavior deterministic and bounded. The committed
+    # huggingface_hub local_dir path writes one process-unique temporary file on
+    # the destination filesystem and atomically moves it into place. Serializing
+    # downloads therefore bounds model-byte occupancy by the selected payload,
+    # rather than N concurrent shards. Xet is disabled to avoid an additional
+    # reconstruction/cache surface, and a caller-supplied empty cache_dir prevents
+    # implicit reuse/copying from a pre-existing global Hub cache.
+    os.environ["HF_HUB_DISABLE_XET"] = "1"
+    os.environ["HF_XET_CHUNK_CACHE_SIZE_BYTES"] = "0"
+    try:
+        hub: Any = importlib.import_module("huggingface_hub")
+        constants: Any = importlib.import_module("huggingface_hub.constants")
+    except Exception as exc:
+        raise HarnessError("huggingface_hub is unavailable") from exc
+    if getattr(constants, "HF_HUB_DISABLE_XET", None) is not True:
+        raise HarnessError("huggingface_hub Xet transport must be disabled before staging")
+    if os.environ.get("HF_XET_CHUNK_CACHE_SIZE_BYTES") != "0":
+        raise HarnessError("Hugging Face Xet chunk cache must remain disabled")
+    return hub
+
+
+def _staging_policy(*, selected_total: int, free_before: int, free_after: int) -> dict[str, object]:
+    required = _required_staging_free_bytes(selected_total)
+    roster_required = _required_roster_staging_free_bytes()
+    if free_before < roster_required:
+        raise HarnessError("dual-candidate staging preflight no longer satisfies the roster bound")
+    if free_after < STAGING_CONTROL_RESERVE_BYTES:
+        raise HarnessError("post-stage free storage fell below the control reserve")
+    return {
+        "control_reserve_bytes": STAGING_CONTROL_RESERVE_BYTES,
+        "download_max_workers": STAGING_MAX_WORKERS,
+        "global_cache_reuse": False,
+        "observed_free_bytes_after": free_after,
+        "observed_free_bytes_before": free_before,
+        "required_free_bytes_before": required,
+        "roster_preflight_candidates": sorted(EXPECTED_CANDIDATES),
+        "roster_required_free_bytes_before": roster_required,
+        "schema_version": STAGING_POLICY_SCHEMA,
+        "selected_payload_bytes": selected_total,
+        "xet_enabled": False,
+    }
 
 
 def _metadata_digests(snapshot: Path) -> dict[str, str]:
@@ -468,26 +583,43 @@ def stage_candidate(
             raise HarnessError("staging destination must be absent or empty")
     destination.mkdir(parents=True, exist_ok=True)
     _package_versions()
-    try:
-        hub: Any = importlib.import_module("huggingface_hub")
-    except Exception as exc:
-        raise HarnessError("huggingface_hub is unavailable") from exc
+    hub = _prepare_hub_download()
     revision = cast(str, EXPECTED_CANDIDATES[candidate]["revision"])
-    selected_files, remote_selected_bytes = _remote_capacity_preflight(
+    (
+        selected_files,
+        remote_selected_bytes,
+        free_before,
+        roster_required_free,
+    ) = _remote_roster_capacity_preflight(
         hub=hub,
         root=root,
         candidate=candidate,
         destination_parent=destination.parent,
     )
+    if free_before < roster_required_free:
+        raise HarnessError("dual-candidate roster preflight free-space bound was not preserved")
+    controlled_cache = destination / ".cache" / "mesc-hub-cache"
+    controlled_cache.mkdir(parents=True, exist_ok=False)
     try:
         hub.snapshot_download(
             repo_id=candidate,
             revision=revision,
+            cache_dir=str(controlled_cache),
             local_dir=str(destination),
             allow_patterns=list(selected_files),
+            max_workers=STAGING_MAX_WORKERS,
         )
     except Exception as exc:
         raise HarnessError(f"exact candidate staging failed for {candidate}") from exc
+    cache_root = destination / ".cache"
+    if cache_root.exists():
+        shutil.rmtree(cache_root)
+    free_after = shutil.disk_usage(destination.parent).free
+    staging_policy = _staging_policy(
+        selected_total=remote_selected_bytes,
+        free_before=free_before,
+        free_after=free_after,
+    )
     payload_manifest = _payload_manifest(destination)
     local_selected_files = tuple(cast(str, item["path"]) for item in payload_manifest)
     local_selected_bytes = sum(cast(int, item["byte_count"]) for item in payload_manifest)
@@ -510,6 +642,7 @@ def stage_candidate(
         "remote_selected_files": list(selected_files),
         "revision": revision,
         "schema_version": SCHEMA_STAGE,
+        "staging_policy": staging_policy,
         "snapshot_file_count": file_count,
         "snapshot_total_bytes": total_bytes,
         "tokenizer_config_sha256": digests["tokenizer_config_sha256"],
@@ -526,9 +659,11 @@ def _read_stage_receipt(
     receipt = parse_canonical_object(raw, label="stage receipt")
     if set(receipt) != STAGE_RECEIPT_KEYS or receipt["schema_version"] != SCHEMA_STAGE:
         raise HarnessError("stage receipt schema drifted")
+    _validate_staging_policy_envelope(receipt)
     expected = EXPECTED_CANDIDATES[candidate]
     if receipt["model_id"] != candidate or receipt["revision"] != expected["revision"]:
         raise HarnessError("stage receipt candidate identity drifted")
+    _validate_frozen_selected_payload_bytes(receipt, candidate)
     if receipt["mrl_0801_authorization_sha256"] != MRL0801_AUTH_SHA256:
         raise HarnessError("stage receipt MRL-0801 authorization identity drifted")
     if type(receipt["remote_selected_bytes"]) is not int or receipt["remote_selected_bytes"] <= 0:
@@ -581,6 +716,67 @@ def _read_stage_receipt(
     return receipt, sha256_bytes(raw)
 
 
+def _validate_staging_policy_envelope(receipt: dict[str, object]) -> None:
+    staging_policy = receipt["staging_policy"]
+    if type(staging_policy) is not dict or set(staging_policy) != {
+        "control_reserve_bytes",
+        "download_max_workers",
+        "global_cache_reuse",
+        "observed_free_bytes_after",
+        "observed_free_bytes_before",
+        "required_free_bytes_before",
+        "roster_preflight_candidates",
+        "roster_required_free_bytes_before",
+        "schema_version",
+        "selected_payload_bytes",
+        "xet_enabled",
+    }:
+        raise HarnessError("stage receipt staging policy schema drifted")
+    policy = cast(dict[str, object], staging_policy)
+    if (
+        policy["schema_version"] != STAGING_POLICY_SCHEMA
+        or policy["control_reserve_bytes"] != STAGING_CONTROL_RESERVE_BYTES
+        or policy["download_max_workers"] != STAGING_MAX_WORKERS
+        or policy["global_cache_reuse"] is not False
+        or policy["xet_enabled"] is not False
+    ):
+        raise HarnessError("stage receipt staging policy drifted")
+    for field in (
+        "observed_free_bytes_after",
+        "observed_free_bytes_before",
+        "required_free_bytes_before",
+        "roster_required_free_bytes_before",
+        "selected_payload_bytes",
+    ):
+        if type(policy[field]) is not int or cast(int, policy[field]) <= 0:
+            raise HarnessError(f"stage receipt staging policy {field} must be positive")
+    if policy["selected_payload_bytes"] != receipt["remote_selected_bytes"]:
+        raise HarnessError("stage receipt staging payload byte count drifted")
+    required_free = _required_staging_free_bytes(cast(int, policy["selected_payload_bytes"]))
+    if policy["required_free_bytes_before"] != required_free:
+        raise HarnessError("stage receipt required free-space bound drifted")
+    roster_candidates = policy["roster_preflight_candidates"]
+    if roster_candidates != sorted(EXPECTED_CANDIDATES):
+        raise HarnessError("stage receipt roster preflight candidate set drifted")
+    roster_required = _required_roster_staging_free_bytes()
+    if policy["roster_required_free_bytes_before"] != roster_required:
+        raise HarnessError("stage receipt roster free-space bound drifted")
+    if cast(int, policy["observed_free_bytes_before"]) < roster_required:
+        raise HarnessError("stage receipt dual-candidate preflight free storage was insufficient")
+    if cast(int, policy["observed_free_bytes_after"]) < STAGING_CONTROL_RESERVE_BYTES:
+        raise HarnessError("stage receipt post-stage control reserve was insufficient")
+
+
+def _validate_frozen_selected_payload_bytes(receipt: dict[str, object], model_id: str) -> None:
+    observed = receipt.get("remote_selected_bytes")
+    expected = EXPECTED_SELECTED_PAYLOAD_BYTES[model_id]
+    if observed != expected:
+        raise HarnessError(
+            "stage receipt selected payload byte total drifted from frozen identity: "
+            f"observed={observed} expected={expected}"
+        )
+
+
 def _validate_stage_receipt_envelope(receipt: dict[str, object]) -> str:
     if set(receipt) != STAGE_RECEIPT_KEYS or receipt.get("schema_version") != SCHEMA_STAGE:
         raise HarnessError("stage receipt schema drifted")
@@ -588,6 +784,7 @@ def _validate_stage_receipt_envelope(receipt: dict[str, object]) -> str:
     if type(model_id) is not str or model_id not in EXPECTED_CANDIDATES:
         raise HarnessError("stage receipt candidate is outside the frozen roster")
     expected = EXPECTED_CANDIDATES[model_id]
+    _validate_frozen_selected_payload_bytes(receipt, model_id)
     fixed = {
         "artifact_identity_sha256": expected["artifact_identity_sha256"],
         "config_sha256": expected["config_sha256"],
@@ -600,6 +797,7 @@ def _validate_stage_receipt_envelope(receipt: dict[str, object]) -> str:
     for field, expected_value in fixed.items():
         if receipt[field] != expected_value:
             raise HarnessError(f"stage receipt {field} drifted from frozen identity")
+    _validate_staging_policy_envelope(receipt)
     for field in ("remote_selected_bytes", "snapshot_file_count", "snapshot_total_bytes"):
         if type(receipt[field]) is not int or cast(int, receipt[field]) <= 0:
             raise HarnessError(f"stage receipt {field} must be a positive integer")

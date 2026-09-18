@@ -54,11 +54,12 @@ The local HEAD and live origin/main SHA must be identical.
 Install only from the committed lock:
 
     uv python install 3.11
-    uv sync --extra rq1-grammar --extra training-hf-sft --frozen
+    uv sync --no-dev --extra rq1-runtime-feasibility --frozen
+    uv cache clean
     sudo apt-get update
     sudo apt-get install -y bubblewrap
 
-Installing the locked training-hf-sft extra supplies the already locked accelerate and bitsandbytes packages required for NF4 feasibility. This installation does not authorize or perform training. The harness never constructs an optimizer or invokes a training path.
+The dedicated `rq1-runtime-feasibility` extra is intentionally minimal and exact-pinned. It contains only `accelerate`, `bitsandbytes`, `huggingface-hub`, `torch`, `transformers`, and `xgrammar`, which are the packages required by the Stage-4 harness and its frozen runtime identity. Do not install the broader training extra or the development dependency group in the Colab qualification environment. This installation does not authorize or perform training. The harness never constructs an optimizer or invokes a training path.
 
 ## Provider identity and zero-cost attestation
 
@@ -79,11 +80,32 @@ All model snapshots and generated evidence must remain outside the repository:
 
 Do not add custody files to Git.
 
+## Storage-efficient bounded staging policy
+
+The Stage-4 acquisition path is deliberately storage-bounded rather than protected by a coarse percentage or 10 GiB margin. For the locked `huggingface-hub==1.23.0` local-directory download path, the harness enforces all of the following:
+
+- before any candidate byte is downloaded, the harness resolves the exact remote selected-payload manifest for **both** frozen candidates and requires the current writable filesystem to satisfy the larger roster-wide threshold; Qwen therefore cannot begin if Gemma is already known not to fit;
+- downloads are serialized with `max_workers=1`;
+- Xet transport/chunk caching is disabled for this bounded acquisition;
+- the Hub cache lookup path is redirected to a fresh controlled cache under the empty candidate destination, so a pre-existing global Hub cache cannot trigger an unaccounted full-file copy;
+- temporary download files and final payload files share the destination filesystem, and metadata/cache material is removed after successful staging;
+- exact payload bytes are still selected from the frozen remote manifest and verified byte-for-byte after staging;
+- the preflight requires exact selected payload bytes plus a fixed 1 GiB control reserve;
+- the receipt records the exact roster preflight candidate set, roster-wide required free bytes, candidate-specific required bytes, pre/post-stage free bytes, serialized worker count, cache-reuse policy, and Xet policy;
+- the stage fails closed if the 1 GiB control reserve is not still present after successful download cleanup.
+
+For the currently frozen manifests this means:
+
+- Qwen selected payload: `55,586,036,114` bytes; required pre-stage free space: `56,659,777,938` bytes;
+- Gemma selected payload: `62,578,656,403` bytes; required pre-stage free space: `63,652,398,227` bytes.
+
+The 1 GiB reserve is not model payload and is not permission to fill the filesystem to zero. It is an explicit fail-closed operational floor retained after staging for repository receipts, metadata, filesystem control, and probe startup. Any download implementation or dependency change that invalidates the single-worker same-filesystem bound requires a new governed repair before another Stage-4 attempt.
+
 ## Candidate 1 — Qwen
 
 Stage only the authorized MRL-0801 weight allowlist plus required tokenizer/processor metadata. The harness performs a remote size preflight before download and refuses to start if free storage is below the bounded threshold.
 
-    uv run python scripts/mesc_mrl_0809_runtime_feasibility.py stage \
+    .venv/bin/python scripts/mesc_mrl_0809_runtime_feasibility.py stage \
       --repository-root "$PWD" \
       --candidate "Qwen/Qwen3.8-27B" \
       --destination "$MRL0809_CUSTODY/qwen-snapshot" \
@@ -93,7 +115,7 @@ The stage command verifies exact revision metadata and the full SafeTensors iden
 
 Run the isolated probe:
 
-    uv run python scripts/mesc_mrl_0809_runtime_feasibility.py probe \
+    .venv/bin/python scripts/mesc_mrl_0809_runtime_feasibility.py probe \
       --repository-root "$PWD" \
       --candidate "Qwen/Qwen3.8-27B" \
       --snapshot "$MRL0809_CUSTODY/qwen-snapshot" \
@@ -113,13 +135,13 @@ Do not delete the stage receipt or observation.
 
 Repeat in the same Colab provider session:
 
-    uv run python scripts/mesc_mrl_0809_runtime_feasibility.py stage \
+    .venv/bin/python scripts/mesc_mrl_0809_runtime_feasibility.py stage \
       --repository-root "$PWD" \
       --candidate "google/gemma-4-31B-it" \
       --destination "$MRL0809_CUSTODY/gemma-snapshot" \
       --receipt-out "$MRL0809_CUSTODY/gemma-stage.json"
 
-    uv run python scripts/mesc_mrl_0809_runtime_feasibility.py probe \
+    .venv/bin/python scripts/mesc_mrl_0809_runtime_feasibility.py probe \
       --repository-root "$PWD" \
       --candidate "google/gemma-4-31B-it" \
       --snapshot "$MRL0809_CUSTODY/gemma-snapshot" \
@@ -135,7 +157,7 @@ If the provider session changes between candidates, STOP. Do not combine observa
 
 Only after both candidate observations succeed:
 
-    uv run python scripts/mesc_mrl_0809_runtime_feasibility.py assemble \
+    .venv/bin/python scripts/mesc_mrl_0809_runtime_feasibility.py assemble \
       --repository-root "$PWD" \
       --observation "$MRL0809_CUSTODY/qwen-observation.json" \
       --observation "$MRL0809_CUSTODY/gemma-observation.json" \
@@ -156,7 +178,7 @@ Run the committed independent verifier from that clean environment. Put the thre
     export MRL0809_VERIFY=/path/to/mrl0809-independent-verification
     mkdir -p "$MRL0809_VERIFY"
 
-    uv run python scripts/mesc_mrl_0809_runtime_feasibility.py verify \
+    .venv/bin/python scripts/mesc_mrl_0809_runtime_feasibility.py verify \
       --repository-root "$PWD" \
       --receipt "$MRL0809_VERIFY/runtime-feasibility.json" \
       --stage-receipt "$MRL0809_VERIFY/qwen-stage.json" \

@@ -72,3 +72,22 @@ jobs:
           tests/test_mesc_mrl_0809_prerequisites_v1.py
           tests/test_mesc_mrl_0809_xgrammar_integration_v1.py
           -q --no-header
+  rq1-runtime-feasibility:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+      - name: Install minimal MRL-0809 runtime-feasibility extra
+        run: uv sync --no-dev --extra rq1-runtime-feasibility --frozen
+      - name: Verify exact runtime-feasibility package surface
+        run: >-
+          uv run --no-sync python -c
+          'import importlib.metadata as m; expected={"accelerate":"1.14.0","bitsandbytes":"0.50.2","huggingface-hub":"1.23.0","torch":"2.13.0","transformers":"5.16.1","xgrammar":"0.2.7"};
+          assert {name:m.version(name) for name in expected} == expected;
+          forbidden=("datasets","peft","trl");
+          assert all(next(iter(m.packages_distributions().get(name, [])), None) is None for name in forbidden)'
