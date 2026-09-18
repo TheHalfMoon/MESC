@@ -81,12 +81,13 @@ def test_snapshot_validation_binds_exact_metadata_and_weights(
     config = b'{"architecture":"fixture"}\n'
     tokenizer = b'{"tokenizer":"fixture"}\n'
     processor = b'{"processor":"fixture"}\n'
+    expected = dict(HARNESS.EXPECTED_CANDIDATES[_QWEN])
+    processor_filename = expected["processor_metadata_filename"]
+    assert isinstance(processor_filename, str)
     (snapshot / "config.json").write_bytes(config)
     (snapshot / "tokenizer_config.json").write_bytes(tokenizer)
-    (snapshot / "processor_config.json").write_bytes(processor)
+    (snapshot / processor_filename).write_bytes(processor)
     (snapshot / "model-00001-of-00001.safetensors").write_bytes(b"synthetic-weight-fixture")
-
-    expected = dict(HARNESS.EXPECTED_CANDIDATES[_QWEN])
     expected["config_sha256"] = _sha(config)
     expected["tokenizer_config_sha256"] = _sha(tokenizer)
     expected["processor_config_sha256"] = _sha(processor)
@@ -100,6 +101,37 @@ def test_snapshot_validation_binds_exact_metadata_and_weights(
     (snapshot / "config.json").write_bytes(config + b" ")
     with pytest.raises(HARNESS.HarnessError, match="config_sha256 drifted"):
         HARNESS._validate_snapshot(_QWEN, snapshot)
+
+
+@pytest.mark.parametrize(
+    ("candidate", "expected_filename", "wrong_filename"),
+    (
+        (_QWEN, "preprocessor_config.json", "processor_config.json"),
+        (_GEMMA, "processor_config.json", "preprocessor_config.json"),
+    ),
+)
+def test_processor_metadata_filename_is_candidate_specific_and_fail_closed(
+    tmp_path: Path,
+    candidate: str,
+    expected_filename: str,
+    wrong_filename: str,
+) -> None:
+    snapshot = tmp_path / candidate.replace("/", "-")
+    snapshot.mkdir()
+    config = b'{"architecture":"fixture"}\n'
+    tokenizer = b'{"tokenizer":"fixture"}\n'
+    processor = b'{"processor":"fixture"}\n'
+    (snapshot / "config.json").write_bytes(config)
+    (snapshot / "tokenizer_config.json").write_bytes(tokenizer)
+    (snapshot / expected_filename).write_bytes(processor)
+
+    digests = HARNESS._metadata_digests(candidate, snapshot)
+    assert digests["processor_config_sha256"] == _sha(processor)
+
+    (snapshot / expected_filename).unlink()
+    (snapshot / wrong_filename).write_bytes(processor)
+    with pytest.raises(HARNESS.HarnessError, match=expected_filename):
+        HARNESS._metadata_digests(candidate, snapshot)
 
 
 def test_payload_manifest_rejects_symlink_and_nested_payload(tmp_path: Path) -> None:
@@ -125,10 +157,12 @@ def test_stage_receipt_binds_entire_payload_manifest(
 ) -> None:
     snapshot = tmp_path / "snapshot"
     snapshot.mkdir()
+    processor_filename = HARNESS.EXPECTED_CANDIDATES[_QWEN]["processor_metadata_filename"]
+    assert isinstance(processor_filename, str)
     files = {
         "config.json": b'{"architecture":"fixture"}\n',
         "tokenizer_config.json": b'{"tokenizer":"fixture"}\n',
-        "processor_config.json": b'{"processor":"fixture"}\n',
+        processor_filename: b'{"processor":"fixture"}\n',
         "tokenizer.json": b"tokenizer-A\n",
         "model.safetensors": b"synthetic-weight-fixture",
     }
@@ -138,7 +172,7 @@ def test_stage_receipt_binds_entire_payload_manifest(
     expected = dict(HARNESS.EXPECTED_CANDIDATES[_QWEN])
     expected["config_sha256"] = _sha(files["config.json"])
     expected["tokenizer_config_sha256"] = _sha(files["tokenizer_config.json"])
-    expected["processor_config_sha256"] = _sha(files["processor_config.json"])
+    expected["processor_config_sha256"] = _sha(files[processor_filename])
     monkeypatch.setitem(HARNESS.EXPECTED_CANDIDATES, _QWEN, expected)
 
     weight_manifest = [
@@ -380,7 +414,7 @@ def _stage_receipt(model_id: str) -> dict[str, object]:
         {"byte_count": 1, "path": "model.safetensors", "sha256": "a" * 64},
         {
             "byte_count": 1,
-            "path": "processor_config.json",
+            "path": expected["processor_metadata_filename"],
             "sha256": expected["processor_config_sha256"],
         },
         {
@@ -537,7 +571,7 @@ def test_remote_capacity_preflight_returns_exact_file_names(
             *weights,
             "config.json",
             "tokenizer_config.json",
-            "processor_config.json",
+            "preprocessor_config.json",
             "tokenizer.json",
             "tokenizer/nested-should-not-stage.json",
             "README.md",
@@ -674,7 +708,7 @@ def test_stage_candidate_serializes_download_and_removes_cache(
     selected = (
         "config.json",
         "model.safetensors",
-        "processor_config.json",
+        "preprocessor_config.json",
         "tokenizer_config.json",
     )
     selected_total = len(selected)
@@ -936,7 +970,7 @@ def test_remote_capacity_preflight_is_bounded_and_fail_closed(
                     SimpleNamespace(rfilename="model-00001-of-00001.safetensors", size=1_000),
                     SimpleNamespace(rfilename="config.json", size=20),
                     SimpleNamespace(rfilename="tokenizer_config.json", size=30),
-                    SimpleNamespace(rfilename="processor_config.json", size=40),
+                    SimpleNamespace(rfilename="preprocessor_config.json", size=40),
                     SimpleNamespace(rfilename="README.md", size=999_999),
                 ]
             )
@@ -954,7 +988,7 @@ def test_remote_capacity_preflight_is_bounded_and_fail_closed(
     )
     assert "README.md" not in selected
     assert set(weight_files) <= set(selected)
-    assert {"config.json", "tokenizer_config.json", "processor_config.json"} <= set(selected)
+    assert {"config.json", "tokenizer_config.json", "preprocessor_config.json"} <= set(selected)
     assert total == 1_190
     assert free_before == 100 * 1024 * 1024 * 1024
 
@@ -970,6 +1004,35 @@ def test_remote_capacity_preflight_is_bounded_and_fail_closed(
             candidate=_QWEN,
             destination_parent=tmp_path,
         )
+
+
+def test_qwen_remote_manifest_rejects_processor_config_alias(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(
+        HARNESS,
+        "_mrl0801_weight_allowlist",
+        lambda root, candidate: ("model.safetensors",),
+    )
+
+    class Hub:
+        @staticmethod
+        def model_info(model_id: str, *, revision: str, files_metadata: bool) -> object:
+            assert model_id == _QWEN
+            assert files_metadata is True
+            return SimpleNamespace(
+                siblings=[
+                    SimpleNamespace(rfilename="model.safetensors", size=100),
+                    SimpleNamespace(rfilename="config.json", size=20),
+                    SimpleNamespace(rfilename="tokenizer_config.json", size=30),
+                    SimpleNamespace(rfilename="processor_config.json", size=40),
+                ]
+            )
+
+    with pytest.raises(HARNESS.HarnessError, match=r"preprocessor_config\.json"):
+        HARNESS._remote_selected_payload(hub=Hub(), root=ROOT, candidate=_QWEN)
 
 
 def _install_synthetic_stage_identities(monkeypatch: pytest.MonkeyPatch) -> None:

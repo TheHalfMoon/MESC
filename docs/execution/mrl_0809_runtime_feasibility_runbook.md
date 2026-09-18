@@ -90,6 +90,7 @@ The Stage-4 acquisition path is deliberately storage-bounded rather than protect
 - the Hub cache lookup path is redirected to a fresh controlled cache under the empty candidate destination, so a pre-existing global Hub cache cannot trigger an unaccounted full-file copy;
 - temporary download files and final payload files share the destination filesystem, and metadata/cache material is removed after successful staging;
 - exact payload bytes are still selected from the frozen remote manifest and verified byte-for-byte after staging;
+- processor metadata is candidate-specific and exact: Qwen uses `preprocessor_config.json`, while Gemma uses `processor_config.json`; the canonical receipt field remains `processor_config_sha256` and binds the already-frozen digest for each candidate;
 - the preflight requires exact selected payload bytes plus a fixed 1 GiB control reserve;
 - the receipt records the exact roster preflight candidate set, roster-wide required free bytes, candidate-specific required bytes, pre/post-stage free bytes, serialized worker count, cache-reuse policy, and Xet policy;
 - the stage fails closed if the 1 GiB control reserve is not still present after successful download cleanup.
