@@ -32,6 +32,7 @@ SCHEMA_STAGE: Final = "MESC-MRL-0809-STAGE-RECEIPT-V1"
 SCHEMA_WORKER: Final = "MESC-MRL-0809-CANDIDATE-WORKER-V1"
 SCHEMA_OBSERVATION: Final = "MESC-MRL-0809-CANDIDATE-OBSERVATION-V1"
 SCHEMA_RECEIPT: Final = "MESC-MRL-0809-RUNTIME-MODEL-FEASIBILITY-V1"
+SCHEMA_VERIFY: Final = "MESC-MRL-0809-INDEPENDENT-RECEIPT-VERIFICATION-V1"
 RUNTIME_REPRESENTATION: Final = "bitsandbytes-nf4-v1"
 PROCESSOR_POLICY: Final = "AUTO_PROCESSOR_EXACT_REVISION"
 SYNTHETIC_PROMPT: Final = "Write one short sentence about a blue triangle."
@@ -56,6 +57,25 @@ METADATA_ALLOW_PATTERNS: Final[tuple[str, ...]] = (
     "merges.txt",
     "vocab.*",
     "*.tiktoken",
+)
+STAGE_RECEIPT_KEYS: Final = frozenset(
+    {
+        "artifact_identity_sha256",
+        "config_sha256",
+        "model_id",
+        "mrl_0801_authorization_sha256",
+        "payload_manifest",
+        "processor_config_sha256",
+        "remote_selected_bytes",
+        "remote_selected_files",
+        "revision",
+        "schema_version",
+        "snapshot_file_count",
+        "snapshot_total_bytes",
+        "tokenizer_config_sha256",
+        "weight_files",
+        "weights_sha256",
+    }
 )
 
 EXPECTED_PACKAGES: Final[dict[str, str]] = {
@@ -504,24 +524,7 @@ def _read_stage_receipt(
 ) -> tuple[dict[str, object], str]:
     raw = path.read_bytes()
     receipt = parse_canonical_object(raw, label="stage receipt")
-    expected_keys = {
-        "artifact_identity_sha256",
-        "config_sha256",
-        "model_id",
-        "mrl_0801_authorization_sha256",
-        "processor_config_sha256",
-        "payload_manifest",
-        "remote_selected_bytes",
-        "remote_selected_files",
-        "revision",
-        "schema_version",
-        "snapshot_file_count",
-        "snapshot_total_bytes",
-        "tokenizer_config_sha256",
-        "weight_files",
-        "weights_sha256",
-    }
-    if set(receipt) != expected_keys or receipt["schema_version"] != SCHEMA_STAGE:
+    if set(receipt) != STAGE_RECEIPT_KEYS or receipt["schema_version"] != SCHEMA_STAGE:
         raise HarnessError("stage receipt schema drifted")
     expected = EXPECTED_CANDIDATES[candidate]
     if receipt["model_id"] != candidate or receipt["revision"] != expected["revision"]:
@@ -576,6 +579,119 @@ def _read_stage_receipt(
     if receipt["weight_files"] != weight_files:
         raise HarnessError("stage receipt SafeTensors file manifest drifted")
     return receipt, sha256_bytes(raw)
+
+
+def _validate_stage_receipt_envelope(receipt: dict[str, object]) -> str:
+    if set(receipt) != STAGE_RECEIPT_KEYS or receipt.get("schema_version") != SCHEMA_STAGE:
+        raise HarnessError("stage receipt schema drifted")
+    model_id = receipt.get("model_id")
+    if type(model_id) is not str or model_id not in EXPECTED_CANDIDATES:
+        raise HarnessError("stage receipt candidate is outside the frozen roster")
+    expected = EXPECTED_CANDIDATES[model_id]
+    fixed = {
+        "artifact_identity_sha256": expected["artifact_identity_sha256"],
+        "config_sha256": expected["config_sha256"],
+        "mrl_0801_authorization_sha256": MRL0801_AUTH_SHA256,
+        "processor_config_sha256": expected["processor_config_sha256"],
+        "revision": expected["revision"],
+        "tokenizer_config_sha256": expected["tokenizer_config_sha256"],
+        "weights_sha256": expected["weights_sha256"],
+    }
+    for field, expected_value in fixed.items():
+        if receipt[field] != expected_value:
+            raise HarnessError(f"stage receipt {field} drifted from frozen identity")
+    for field in ("remote_selected_bytes", "snapshot_file_count", "snapshot_total_bytes"):
+        if type(receipt[field]) is not int or cast(int, receipt[field]) <= 0:
+            raise HarnessError(f"stage receipt {field} must be a positive integer")
+    remote = receipt["remote_selected_files"]
+    if type(remote) is not list or not remote:
+        raise HarnessError("stage receipt remote selected files are invalid")
+    remote_names = tuple(cast(str, item) for item in cast(list[object], remote))
+    if (
+        any(type(item) is not str or not item or "/" in item for item in cast(list[object], remote))
+        or remote_names != tuple(sorted(remote_names))
+        or len(remote_names) != len(set(remote_names))
+    ):
+        raise HarnessError("stage receipt remote selected files are not canonical")
+    payload = receipt["payload_manifest"]
+    if type(payload) is not list or not payload:
+        raise HarnessError("stage receipt payload manifest is invalid")
+    payload_rows: list[dict[str, object]] = []
+    for item in cast(list[object], payload):
+        if type(item) is not dict:
+            raise HarnessError("stage receipt payload manifest row is invalid")
+        row = cast(dict[str, object], item)
+        if set(row) != {"byte_count", "path", "sha256"}:
+            raise HarnessError("stage receipt payload manifest row schema drifted")
+        path = row["path"]
+        digest = row["sha256"]
+        byte_count = row["byte_count"]
+        if type(path) is not str or not path or "/" in path:
+            raise HarnessError("stage receipt payload path is unsafe")
+        if type(digest) is not str or SHA64.fullmatch(digest) is None:
+            raise HarnessError("stage receipt payload digest is invalid")
+        if type(byte_count) is not int or byte_count <= 0:
+            raise HarnessError("stage receipt payload byte count is invalid")
+        payload_rows.append(row)
+    payload_names = tuple(cast(str, row["path"]) for row in payload_rows)
+    if payload_names != remote_names:
+        raise HarnessError("stage receipt remote/local payload file set drifted")
+    payload_bytes = sum(cast(int, row["byte_count"]) for row in payload_rows)
+    if (
+        receipt["remote_selected_bytes"] != payload_bytes
+        or receipt["snapshot_total_bytes"] != payload_bytes
+        or receipt["snapshot_file_count"] != len(payload_rows)
+    ):
+        raise HarnessError("stage receipt payload size/count drifted")
+    payload_by_path = {cast(str, row["path"]): row for row in payload_rows}
+    weight_files = receipt["weight_files"]
+    if type(weight_files) is not list or not weight_files:
+        raise HarnessError("stage receipt SafeTensors file manifest is invalid")
+    weight_names: list[str] = []
+    for item in cast(list[object], weight_files):
+        if type(item) is not dict:
+            raise HarnessError("stage receipt SafeTensors file row is invalid")
+        row = cast(dict[str, object], item)
+        if set(row) != {"byte_count", "kind", "path", "sha256"}:
+            raise HarnessError("stage receipt SafeTensors file row schema drifted")
+        path = row["path"]
+        if type(path) is not str or path not in payload_by_path:
+            raise HarnessError("stage receipt SafeTensors path is invalid")
+        if row["kind"] not in ("index", "weight"):
+            raise HarnessError("stage receipt SafeTensors kind is invalid")
+        payload_row = payload_by_path[path]
+        if row["byte_count"] != payload_row["byte_count"] or row["sha256"] != payload_row["sha256"]:
+            raise HarnessError("stage receipt SafeTensors row disagrees with payload manifest")
+        weight_names.append(path)
+    if len(weight_names) != len(set(weight_names)):
+        raise HarnessError("stage receipt SafeTensors paths are duplicated")
+    try:
+        identity_module: Any = importlib.import_module(
+            "medscale.mesc._training_hf_safetensors_identity_v1"
+        )
+        files = tuple(
+            identity_module.HfArtifactFileIdentity(
+                path=cast(str, row["path"]),
+                kind=cast(Any, row["kind"]),
+                sha256=cast(str, row["sha256"]),
+                byte_count=cast(int, row["byte_count"]),
+            )
+            for row in cast(list[dict[str, object]], weight_files)
+        )
+        layout = "sharded" if files[0].kind == "index" else "single"
+        identity = identity_module.HfSafeTensorsArtifactIdentity(
+            model_id=model_id,
+            revision=cast(str, receipt["revision"]),
+            layout=layout,
+            files=files,
+        )
+    except Exception as exc:
+        raise HarnessError("stage receipt SafeTensors identity cannot be reconstructed") from exc
+    if identity.weights_sha256 != receipt["weights_sha256"]:
+        raise HarnessError("stage receipt weight manifest does not derive weights_sha256")
+    if identity.verifier_receipt_sha256 != receipt["artifact_identity_sha256"]:
+        raise HarnessError("stage receipt weight manifest does not derive artifact identity")
+    return model_id
 
 
 def _nvidia_nodes() -> tuple[Path, ...]:
@@ -1067,7 +1183,10 @@ def _validated_observation(path: Path) -> dict[str, object]:
     stage_sha = document["stage_receipt_sha256"]
     if type(stage_sha) is not str or SHA64.fullmatch(stage_sha) is None:
         raise HarnessError("candidate observation stage receipt digest is invalid")
-    candidate = cast(dict[str, object], document["candidate"])
+    candidate_value = document["candidate"]
+    if type(candidate_value) is not dict:
+        raise HarnessError("candidate observation candidate must be an object")
+    candidate = cast(dict[str, object], candidate_value)
     model_id = cast(str, candidate.get("model_id"))
     expected = EXPECTED_CANDIDATES.get(model_id)
     if expected is None:
@@ -1076,9 +1195,16 @@ def _validated_observation(path: Path) -> dict[str, object]:
         raise HarnessError("candidate observation weights identity drifted")
     if document["stage_artifact_identity_sha256"] != expected["artifact_identity_sha256"]:
         raise HarnessError("candidate observation artifact identity drifted")
-    generation = cast(dict[str, object], document["generation_evidence"])
-    if candidate["synthetic_generation_sha256"] != sha256_bytes(canonical_json_bytes(generation)):
+    generation_value = document["generation_evidence"]
+    if type(generation_value) is not dict:
+        raise HarnessError("candidate observation generation evidence must be an object")
+    generation = cast(dict[str, object], generation_value)
+    if candidate.get("synthetic_generation_sha256") != sha256_bytes(
+        canonical_json_bytes(generation)
+    ):
         raise HarnessError("candidate synthetic generation evidence digest drifted")
+    if type(document["runtime_identity"]) is not dict:
+        raise HarnessError("candidate observation runtime identity must be an object")
     return document
 
 
@@ -1181,6 +1307,96 @@ def assemble_receipt(root: Path, observations: list[Path], output: Path) -> None
     write_new(output, raw)
 
 
+def verify_receipt(
+    root: Path,
+    receipt_path: Path,
+    stage_receipts: list[Path],
+    verification_out: Path,
+) -> None:
+    root = root.resolve(strict=True)
+    if len(stage_receipts) != 2:
+        raise HarnessError("independent verification requires exactly two stage receipts")
+    head, tree = _require_repository(root)
+    receipt_path = _require_outside_repository(
+        receipt_path, root, label="runtime-feasibility receipt"
+    ).resolve(strict=True)
+    verification_out = _require_outside_repository(
+        verification_out, root, label="independent verification receipt"
+    )
+    raw = receipt_path.read_bytes()
+    receipt_document = parse_canonical_object(raw, label="runtime-feasibility receipt")
+    sys.path.insert(0, str((root / "src").resolve()))
+    validator = importlib.import_module("medscale.mesc._mrl_0809_runtime_feasibility_v1")
+    validated = validator.validate_runtime_feasibility_receipt(
+        raw,
+        expected_static_prerequisite_manifest_sha256=sha256_file(root / STATIC_MANIFEST),
+        expected_dependency_lock_sha256=sha256_file(root / LOCKFILE),
+        expected_repository_sha=head,
+        expected_repository_tree=tree,
+    )
+    harness_sha256 = sha256_file(root / HARNESS)
+    if validated.runtime_identity.get("harness_sha256") != harness_sha256:
+        raise HarnessError("runtime receipt does not bind the exact canonical harness bytes")
+    candidates_value = receipt_document.get("candidates")
+    if type(candidates_value) is not list:
+        raise HarnessError("runtime receipt candidate roster is invalid")
+    final_candidates: dict[str, dict[str, object]] = {}
+    for item in cast(list[object], candidates_value):
+        if type(item) is not dict:
+            raise HarnessError("runtime receipt candidate row is invalid")
+        row = cast(dict[str, object], item)
+        model_id = row.get("model_id")
+        if type(model_id) is not str or model_id in final_candidates:
+            raise HarnessError("runtime receipt candidate roster is not unique")
+        final_candidates[model_id] = row
+    if set(final_candidates) != set(EXPECTED_CANDIDATES):
+        raise HarnessError("runtime receipt candidate roster drifted")
+    verified_stage: dict[str, str] = {}
+    for path in stage_receipts:
+        resolved = _require_outside_repository(path, root, label="stage receipt").resolve(
+            strict=True
+        )
+        stage_raw = resolved.read_bytes()
+        stage_document = parse_canonical_object(stage_raw, label="stage receipt")
+        model_id = _validate_stage_receipt_envelope(stage_document)
+        if model_id in verified_stage:
+            raise HarnessError("duplicate stage receipt candidate")
+        stage_sha256 = sha256_bytes(stage_raw)
+        candidate = final_candidates[model_id]
+        if candidate.get("stage_receipt_sha256") != stage_sha256:
+            raise HarnessError("stage receipt digest does not match the final runtime receipt")
+        for field in (
+            "artifact_identity_sha256",
+            "config_sha256",
+            "processor_config_sha256",
+            "revision",
+            "tokenizer_config_sha256",
+            "weights_sha256",
+        ):
+            if candidate.get(field) != stage_document[field]:
+                raise HarnessError(f"stage receipt {field} disagrees with final candidate evidence")
+        verified_stage[model_id] = stage_sha256
+    if set(verified_stage) != set(EXPECTED_CANDIDATES):
+        raise HarnessError("independent verification did not cover the exact frozen roster")
+    verification = {
+        "dependency_lock_sha256": validated.dependency_lock_sha256,
+        "disposition": "PASS",
+        "harness_sha256": harness_sha256,
+        "provider_execution_id": validated.provider_execution_id,
+        "repository_sha": validated.repository_sha,
+        "repository_tree": validated.repository_tree,
+        "runtime_feasibility_receipt_sha256": validated.receipt_sha256,
+        "runtime_identity_sha256": validated.runtime_identity_sha256,
+        "schema_version": SCHEMA_VERIFY,
+        "stage_receipts": [
+            {"model_id": model_id, "sha256": verified_stage[model_id]}
+            for model_id in sorted(verified_stage)
+        ],
+        "static_prerequisite_manifest_sha256": validated.static_prerequisite_manifest_sha256,
+    }
+    write_new(verification_out, canonical_json_bytes(verification))
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
     sub = parser.add_subparsers(dest="command", required=True)
@@ -1203,6 +1419,12 @@ def build_parser() -> argparse.ArgumentParser:
     assemble.add_argument("--repository-root", type=Path, required=True)
     assemble.add_argument("--observation", type=Path, action="append", required=True)
     assemble.add_argument("--receipt-out", type=Path, required=True)
+
+    verify = sub.add_parser("verify")
+    verify.add_argument("--repository-root", type=Path, required=True)
+    verify.add_argument("--receipt", type=Path, required=True)
+    verify.add_argument("--stage-receipt", type=Path, action="append", required=True)
+    verify.add_argument("--verification-out", type=Path, required=True)
 
     worker = sub.add_parser("_worker")
     worker.add_argument("--candidate", choices=sorted(EXPECTED_CANDIDATES), required=True)
@@ -1232,6 +1454,14 @@ def main() -> None:
         return
     if args.command == "assemble":
         assemble_receipt(args.repository_root, args.observation, args.receipt_out)
+        return
+    if args.command == "verify":
+        verify_receipt(
+            args.repository_root,
+            args.receipt,
+            args.stage_receipt,
+            args.verification_out,
+        )
         return
     if args.command == "_worker":
         _worker(args.candidate, args.snapshot)

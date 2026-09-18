@@ -149,7 +149,24 @@ Assembly fails closed unless both observations bind one identical provider execu
 
 Do not modify the trust root or evidence slot in the Colab session.
 
-Copy only the final canonical receipt to a separate clean verifier environment. Independently re-fetch the exact repository SHA/tree named by the receipt and validate the receipt with medscale.mesc._mrl_0809_runtime_feasibility_v1.validate_runtime_feasibility_receipt.
+Copy the final canonical receipt plus the two canonical stage receipts to a separate clean verifier environment. Do not copy either model snapshot. Independently re-fetch the exact repository SHA/tree named by the receipt; if live canonical main has moved, STOP rather than silently verifying a stale run.
+
+Run the committed independent verifier from that clean environment. Put the three copied evidence files in a verifier-only custody directory first:
+
+    export MRL0809_VERIFY=/path/to/mrl0809-independent-verification
+    mkdir -p "$MRL0809_VERIFY"
+
+    uv run python scripts/mesc_mrl_0809_runtime_feasibility.py verify \
+      --repository-root "$PWD" \
+      --receipt "$MRL0809_VERIFY/runtime-feasibility.json" \
+      --stage-receipt "$MRL0809_VERIFY/qwen-stage.json" \
+      --stage-receipt "$MRL0809_VERIFY/gemma-stage.json" \
+      --verification-out "$MRL0809_VERIFY/independent-verification.json"
+
+    sha256sum "$MRL0809_VERIFY/runtime-feasibility.json"
+    sha256sum "$MRL0809_VERIFY/independent-verification.json"
+
+The verifier uses the canonical repository validator and independently recomputes the stage-receipt digests and exact harness binding. It emits a deterministic PASS artifact only after the final receipt, both stage receipts, canonical repository SHA/tree, static manifest, dependency lock, and runtime identity agree.
 
 The independent verification must recompute:
 
@@ -161,6 +178,7 @@ The independent verification must recompute:
 - the embedded harness SHA-256 against scripts/mesc_mrl_0809_runtime_feasibility.py at the exact receipt repository SHA;
 - exact candidate revision/metadata identities plus the admitted MRL-0801 weights_sha256 and artifact_identity_sha256 values;
 - each candidate stage-receipt SHA-256 binding;
+- each stage receipt's exact SafeTensors file manifest, re-deriving both `weights_sha256` and `artifact_identity_sha256` from its recorded raw-byte file identities;
 - each candidate embedded synthetic-generation evidence, including the exact fixed prompt identity and bounded generated token IDs;
 - exact Tesla T4 / Google Colab / CPython 3.11 / locked package / bitsandbytes-nf4-v1 runtime policy;
 - zero-cost, no-network, no-training, no-mutation, no-fallback, and cleanup constraints.

@@ -311,6 +311,8 @@ def _observation(
     manifest_sha: str,
     lock_sha: str,
     execution_id: str = "colab-fixture",
+    harness_sha256: str = "f" * 64,
+    stage_receipt_sha256: str = "a" * 64,
 ) -> dict[str, object]:
     generation: dict[str, object] = {
         "decoded_text_sha256": "d" * 64,
@@ -330,7 +332,7 @@ def _observation(
         package_versions=dict(HARNESS.EXPECTED_PACKAGES),
         provider_execution_id=execution_id,
         python_version="3.11.15",
-        harness_sha256="f" * 64,
+        harness_sha256=harness_sha256,
     )
     return {
         "candidate": _candidate(model_id, generation),
@@ -345,9 +347,51 @@ def _observation(
         "stage_artifact_identity_sha256": HARNESS.EXPECTED_CANDIDATES[model_id][
             "artifact_identity_sha256"
         ],
-        "stage_receipt_sha256": "a" * 64,
+        "stage_receipt_sha256": stage_receipt_sha256,
         "stage_weights_sha256": HARNESS.EXPECTED_CANDIDATES[model_id]["weights_sha256"],
         "static_prerequisite_manifest_sha256": manifest_sha,
+    }
+
+
+def _stage_receipt(model_id: str) -> dict[str, object]:
+    expected = HARNESS.EXPECTED_CANDIDATES[model_id]
+    payload = [
+        {"byte_count": 1, "path": "config.json", "sha256": expected["config_sha256"]},
+        {"byte_count": 1, "path": "model.safetensors", "sha256": "a" * 64},
+        {
+            "byte_count": 1,
+            "path": "processor_config.json",
+            "sha256": expected["processor_config_sha256"],
+        },
+        {
+            "byte_count": 1,
+            "path": "tokenizer_config.json",
+            "sha256": expected["tokenizer_config_sha256"],
+        },
+    ]
+    return {
+        "artifact_identity_sha256": expected["artifact_identity_sha256"],
+        "config_sha256": expected["config_sha256"],
+        "model_id": model_id,
+        "mrl_0801_authorization_sha256": HARNESS.MRL0801_AUTH_SHA256,
+        "payload_manifest": payload,
+        "processor_config_sha256": expected["processor_config_sha256"],
+        "remote_selected_bytes": 4,
+        "remote_selected_files": [row["path"] for row in payload],
+        "revision": expected["revision"],
+        "schema_version": HARNESS.SCHEMA_STAGE,
+        "snapshot_file_count": 4,
+        "snapshot_total_bytes": 4,
+        "tokenizer_config_sha256": expected["tokenizer_config_sha256"],
+        "weight_files": [
+            {
+                "byte_count": 1,
+                "kind": "weight",
+                "path": "model.safetensors",
+                "sha256": "a" * 64,
+            }
+        ],
+        "weights_sha256": expected["weights_sha256"],
     }
 
 
@@ -655,4 +699,215 @@ def test_remote_capacity_preflight_is_bounded_and_fail_closed(
             root=ROOT,
             candidate=_QWEN,
             destination_parent=tmp_path,
+        )
+
+
+def _install_synthetic_stage_identities(monkeypatch: pytest.MonkeyPatch) -> None:
+    from medscale.mesc import _mrl_0809_runtime_feasibility_v1 as validator
+    from medscale.mesc._training_hf_safetensors_identity_v1 import (
+        HfArtifactFileIdentity,
+        HfSafeTensorsArtifactIdentity,
+    )
+
+    file_identity = HfArtifactFileIdentity(
+        path="model.safetensors",
+        kind="weight",
+        sha256="a" * 64,
+        byte_count=1,
+    )
+    for model_id in (_QWEN, _GEMMA):
+        current = dict(HARNESS.EXPECTED_CANDIDATES[model_id])
+        identity = HfSafeTensorsArtifactIdentity(
+            model_id=model_id,
+            revision=current["revision"],
+            layout="single",
+            files=(file_identity,),
+        )
+        current["weights_sha256"] = identity.weights_sha256
+        current["artifact_identity_sha256"] = identity.verifier_receipt_sha256
+        monkeypatch.setitem(HARNESS.EXPECTED_CANDIDATES, model_id, current)
+
+        validator_current = dict(validator._EXPECTED_CANDIDATES[model_id])
+        validator_current["weights_sha256"] = identity.weights_sha256
+        validator_current["artifact_identity_sha256"] = identity.verifier_receipt_sha256
+        monkeypatch.setitem(validator._EXPECTED_CANDIDATES, model_id, validator_current)
+
+
+def test_stage_receipt_envelope_rederives_weight_identity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _install_synthetic_stage_identities(monkeypatch)
+    receipt = _stage_receipt(_QWEN)
+    assert HARNESS._validate_stage_receipt_envelope(receipt) == _QWEN
+
+    payload = receipt["payload_manifest"]
+    assert isinstance(payload, list)
+    weight_payload = next(row for row in payload if row["path"] == "model.safetensors")
+    weight_payload["sha256"] = "b" * 64
+    weight_files = receipt["weight_files"]
+    assert isinstance(weight_files, list)
+    weight_files[0]["sha256"] = "b" * 64
+    with pytest.raises(HARNESS.HarnessError, match="does not derive weights_sha256"):
+        HARNESS._validate_stage_receipt_envelope(receipt)
+
+
+def test_observation_rejects_non_object_evidence(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "observation.json"
+    document = _observation(
+        model_id=_QWEN,
+        repository_sha="1" * 40,
+        repository_tree="2" * 40,
+        manifest_sha="a" * 64,
+        lock_sha="b" * 64,
+    )
+    document["candidate"] = []
+    path.write_bytes(HARNESS.canonical_json_bytes(document))
+    with pytest.raises(HARNESS.HarnessError, match="candidate must be an object"):
+        HARNESS._validated_observation(path)
+
+    document = _observation(
+        model_id=_QWEN,
+        repository_sha="1" * 40,
+        repository_tree="2" * 40,
+        manifest_sha="a" * 64,
+        lock_sha="b" * 64,
+    )
+    document["generation_evidence"] = []
+    path.write_bytes(HARNESS.canonical_json_bytes(document))
+    with pytest.raises(HARNESS.HarnessError, match="generation evidence must be an object"):
+        HARNESS._validated_observation(path)
+
+
+def test_independent_verifier_binds_stage_receipts_and_exact_harness(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _install_synthetic_stage_identities(monkeypatch)
+    root = tmp_path / "repo"
+    (root / HARNESS.STATIC_MANIFEST.parent).mkdir(parents=True)
+    (root / HARNESS.STATIC_MANIFEST).write_bytes(b"manifest-fixture\n")
+    (root / HARNESS.LOCKFILE).write_bytes(b"lock-fixture\n")
+    harness_path = root / HARNESS.HARNESS
+    harness_path.parent.mkdir(parents=True, exist_ok=True)
+    harness_path.write_bytes(SCRIPT.read_bytes())
+    evidence = tmp_path / "custody"
+    evidence.mkdir()
+    repository_sha = "1" * 40
+    repository_tree = "2" * 40
+    manifest_sha = HARNESS.sha256_file(root / HARNESS.STATIC_MANIFEST)
+    lock_sha = HARNESS.sha256_file(root / HARNESS.LOCKFILE)
+    harness_sha = HARNESS.sha256_file(harness_path)
+    monkeypatch.setattr(
+        HARNESS,
+        "_require_repository",
+        lambda value: (repository_sha, repository_tree),
+    )
+
+    stage_paths: list[Path] = []
+    observations: list[Path] = []
+    for index, model_id in enumerate((_QWEN, _GEMMA)):
+        stage_path = evidence / f"stage-{index}.json"
+        stage_raw = HARNESS.canonical_json_bytes(_stage_receipt(model_id))
+        stage_path.write_bytes(stage_raw)
+        stage_paths.append(stage_path)
+        observation_path = evidence / f"candidate-{index}.json"
+        observation_path.write_bytes(
+            HARNESS.canonical_json_bytes(
+                _observation(
+                    model_id=model_id,
+                    repository_sha=repository_sha,
+                    repository_tree=repository_tree,
+                    manifest_sha=manifest_sha,
+                    lock_sha=lock_sha,
+                    harness_sha256=harness_sha,
+                    stage_receipt_sha256=_sha(stage_raw),
+                )
+            )
+        )
+        observations.append(observation_path)
+
+    receipt_path = evidence / "runtime-feasibility.json"
+    HARNESS.assemble_receipt(root, observations, receipt_path)
+    verification_path = evidence / "independent-verification.json"
+    HARNESS.verify_receipt(root, receipt_path, stage_paths, verification_path)
+    verification = HARNESS.parse_canonical_object(
+        verification_path.read_bytes(), label="independent verification"
+    )
+    assert verification["schema_version"] == HARNESS.SCHEMA_VERIFY
+    assert verification["disposition"] == "PASS"
+    assert verification["harness_sha256"] == harness_sha
+    assert verification["runtime_feasibility_receipt_sha256"] == _sha(receipt_path.read_bytes())
+    assert verification["stage_receipts"] == [
+        {"model_id": _QWEN, "sha256": _sha(stage_paths[0].read_bytes())},
+        {"model_id": _GEMMA, "sha256": _sha(stage_paths[1].read_bytes())},
+    ]
+
+    tampered = HARNESS.parse_canonical_object(stage_paths[0].read_bytes(), label="stage receipt")
+    tampered["remote_selected_bytes"] = 5
+    tampered_path = evidence / "stage-tampered.json"
+    tampered_path.write_bytes(HARNESS.canonical_json_bytes(tampered))
+    with pytest.raises(HARNESS.HarnessError, match=r"payload size/count|digest does not match"):
+        HARNESS.verify_receipt(
+            root,
+            receipt_path,
+            [tampered_path, stage_paths[1]],
+            evidence / "should-not-exist.json",
+        )
+
+
+def test_independent_verifier_rejects_harness_identity_drift(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _install_synthetic_stage_identities(monkeypatch)
+    root = tmp_path / "repo"
+    (root / HARNESS.STATIC_MANIFEST.parent).mkdir(parents=True)
+    (root / HARNESS.STATIC_MANIFEST).write_bytes(b"manifest-fixture\n")
+    (root / HARNESS.LOCKFILE).write_bytes(b"lock-fixture\n")
+    harness_path = root / HARNESS.HARNESS
+    harness_path.parent.mkdir(parents=True, exist_ok=True)
+    harness_path.write_bytes(SCRIPT.read_bytes())
+    evidence = tmp_path / "custody"
+    evidence.mkdir()
+    repository_sha = "1" * 40
+    repository_tree = "2" * 40
+    manifest_sha = HARNESS.sha256_file(root / HARNESS.STATIC_MANIFEST)
+    lock_sha = HARNESS.sha256_file(root / HARNESS.LOCKFILE)
+    monkeypatch.setattr(
+        HARNESS,
+        "_require_repository",
+        lambda value: (repository_sha, repository_tree),
+    )
+
+    stage_paths: list[Path] = []
+    observations: list[Path] = []
+    for index, model_id in enumerate((_QWEN, _GEMMA)):
+        stage_path = evidence / f"stage-{index}.json"
+        stage_raw = HARNESS.canonical_json_bytes(_stage_receipt(model_id))
+        stage_path.write_bytes(stage_raw)
+        stage_paths.append(stage_path)
+        observation_path = evidence / f"candidate-{index}.json"
+        observation_path.write_bytes(
+            HARNESS.canonical_json_bytes(
+                _observation(
+                    model_id=model_id,
+                    repository_sha=repository_sha,
+                    repository_tree=repository_tree,
+                    manifest_sha=manifest_sha,
+                    lock_sha=lock_sha,
+                    harness_sha256="0" * 64,
+                    stage_receipt_sha256=_sha(stage_raw),
+                )
+            )
+        )
+        observations.append(observation_path)
+
+    receipt_path = evidence / "runtime-feasibility.json"
+    HARNESS.assemble_receipt(root, observations, receipt_path)
+    with pytest.raises(HARNESS.HarnessError, match="exact canonical harness bytes"):
+        HARNESS.verify_receipt(
+            root,
+            receipt_path,
+            stage_paths,
+            evidence / "should-not-exist.json",
         )
