@@ -99,6 +99,7 @@ EXPECTED_CANDIDATES: Final[dict[str, dict[str, object]]] = {
         "processor_config_sha256": (
             "27225450ac9c6529872ee1924fcb0962ff5634834f817040f444118116f4e516"
         ),
+        "processor_metadata_filename": "preprocessor_config.json",
         "revision": "1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0",
         "text_vocab_size": 248320,
         "weights_sha256": "27c470ae6cfe721b205e468b9449fe86cfbf8fd7777772b7011f419887e345c3",
@@ -115,6 +116,7 @@ EXPECTED_CANDIDATES: Final[dict[str, dict[str, object]]] = {
         "processor_config_sha256": (
             "32bdf45d2ad4cc29a0822ddd157a182de76644f0419a6228d151495256e9813c"
         ),
+        "processor_metadata_filename": "processor_config.json",
         "revision": "842da3794eaa0b77d5f08bae87a17459d91ff475",
         "text_vocab_size": 262144,
         "weights_sha256": "bca2cd08fe0ba249c668a6ce576612c26c49f38b15b63c1774138dd6fc31d537",
@@ -387,7 +389,12 @@ def _remote_selected_payload(
     missing_weights = sorted(set(weight_files) - set(selected))
     if missing_weights:
         raise HarnessError(f"remote revision is missing authorized weights: {missing_weights[0]}")
-    for required_metadata in ("config.json", "tokenizer_config.json", "processor_config.json"):
+    required_metadata_files = (
+        "config.json",
+        "tokenizer_config.json",
+        cast(str, EXPECTED_CANDIDATES[candidate]["processor_metadata_filename"]),
+    )
+    for required_metadata in required_metadata_files:
         if required_metadata not in selected:
             raise HarnessError(f"remote revision is missing required metadata: {required_metadata}")
     return tuple(sorted(selected)), sum(selected.values())
@@ -506,11 +513,14 @@ def _staging_policy(*, selected_total: int, free_before: int, free_after: int) -
     }
 
 
-def _metadata_digests(snapshot: Path) -> dict[str, str]:
+def _metadata_digests(candidate: str, snapshot: Path) -> dict[str, str]:
+    processor_metadata_filename = cast(
+        str, EXPECTED_CANDIDATES[candidate]["processor_metadata_filename"]
+    )
     expected_files = {
         "config_sha256": snapshot / "config.json",
         "tokenizer_config_sha256": snapshot / "tokenizer_config.json",
-        "processor_config_sha256": snapshot / "processor_config.json",
+        "processor_config_sha256": snapshot / processor_metadata_filename,
     }
     digests: dict[str, str] = {}
     for field, path in expected_files.items():
@@ -523,7 +533,7 @@ def _metadata_digests(snapshot: Path) -> dict[str, str]:
 def _validate_snapshot(candidate: str, snapshot: Path) -> tuple[dict[str, str], int, int]:
     snapshot = snapshot.resolve(strict=True)
     expected = EXPECTED_CANDIDATES[candidate]
-    digests = _metadata_digests(snapshot)
+    digests = _metadata_digests(candidate, snapshot)
     for field, actual in digests.items():
         if actual != expected[field]:
             raise HarnessError(f"{candidate} {field} drifted")
