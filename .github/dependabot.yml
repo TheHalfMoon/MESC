@@ -6,6 +6,18 @@ updates:
       interval: "weekly"
     commit-message:
       prefix: "build"
+    # MRL-0809 runtime-feasibility versions are exact, governance-bound evidence.
+    # Any version change to this frozen runtime surface must use a separately
+    # reviewed governed PR with regenerated lock/static bindings and qualification.
+    ignore:
+      - dependency-name: "accelerate"
+      - dependency-name: "bitsandbytes"
+      - dependency-name: "huggingface-hub"
+      - dependency-name: "pillow"
+      - dependency-name: "torch"
+      - dependency-name: "torchvision"
+      - dependency-name: "transformers"
+      - dependency-name: "xgrammar"
     groups:
       dev-dependencies:
         patterns: ["*"]
