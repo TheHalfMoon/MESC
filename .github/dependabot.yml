@@ -28,3 +28,15 @@ updates:
       interval: "weekly"
     commit-message:
       prefix: "ci"
+    # optional-extras.yml is byte-bound by the MRL-0809 static prerequisite
+    # manifest. Changes to these action references require governed manifest
+    # regeneration and qualification rather than an automated update PR.
+    ignore:
+      - dependency-name: "actions/checkout"
+      - dependency-name: "astral-sh/setup-uv"
+    # CodeQL init/analyze must move together. Separate Dependabot PRs produce
+    # mixed action versions and a configuration-error failure.
+    groups:
+      codeql-action:
+        patterns:
+          - "github/codeql-action/*"
