@@ -11,6 +11,7 @@ the canonical repository validator before it can be emitted.
 from __future__ import annotations
 
 import argparse
+import errno
 import fnmatch
 import gc
 import hashlib
@@ -22,8 +23,10 @@ import platform
 import re
 import shutil
 import stat
+import struct
 import subprocess
 import sys
+import tempfile
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, Final, Never, cast
@@ -38,6 +41,34 @@ PROCESSOR_POLICY: Final = "AUTO_PROCESSOR_EXACT_REVISION"
 SYNTHETIC_PROMPT: Final = "Write one short sentence about a blue triangle."
 MAX_NEW_TOKENS: Final = 12
 PROC_TMPFS_BYTES: Final = 4_096
+CUDA_DRIVER_LIBRARY_PATH: Final = "/usr/lib64-nvidia"
+NVIDIA_VISIBLE_DEVICES_VALUE: Final = "all"
+NVIDIA_DRIVER_CAPABILITIES_VALUE: Final = "compute,utility"
+SANDBOX_UNSHARE_FLAGS: Final[tuple[str, ...]] = (
+    "--unshare-user",
+    "--unshare-net",
+    "--unshare-ipc",
+    "--unshare-uts",
+    "--unshare-cgroup",
+)
+AUDIT_ARCH_X86_64: Final = 0xC000003E
+X32_SYSCALL_BIT: Final = 0x40000000
+HOST_PROCESS_SYSCALLS_X86_64: Final[tuple[int, ...]] = (
+    62,  # kill
+    101,  # ptrace
+    129,  # rt_sigqueueinfo
+    200,  # tkill
+    234,  # tgkill
+    297,  # rt_tgsigqueueinfo
+    310,  # process_vm_readv
+    311,  # process_vm_writev
+    312,  # kcmp
+    424,  # pidfd_send_signal
+    434,  # pidfd_open
+    438,  # pidfd_getfd
+    440,  # process_madvise
+    448,  # process_mrelease
+)
 GPU_MODEL: Final = "Tesla T4"
 SHA40: Final = re.compile(r"^[0-9a-f]{40}$", re.ASCII)
 SHA64: Final = re.compile(r"^[0-9a-f]{64}$", re.ASCII)
@@ -1035,7 +1066,7 @@ def _sandbox_prefix(
     runtime_links = _runtime_symlink_args()
     args = [
         str(bwrap),
-        "--unshare-all",
+        *SANDBOX_UNSHARE_FLAGS,
         "--die-with-parent",
         "--new-session",
         "--clearenv",
@@ -1055,6 +1086,24 @@ def _sandbox_prefix(
         str(PROC_TMPFS_BYTES),
         "--tmpfs",
         "/proc",
+        "--dir",
+        "/proc/sys",
+        "--dir",
+        "/proc/sys/vm",
+        "--ro-bind",
+        "/proc/sys/vm/mmap_min_addr",
+        "/proc/sys/vm/mmap_min_addr",
+        "--ro-bind",
+        "/proc/cpuinfo",
+        "/proc/cpuinfo",
+        "--dir",
+        "/proc/driver",
+        "--ro-bind",
+        "/proc/driver/nvidia",
+        "/proc/driver/nvidia",
+        "--bind",
+        "/proc/self",
+        "/proc/self",
         "--dev",
         "/dev",
     ]
@@ -1092,6 +1141,39 @@ def _sandbox_prefix(
     return args
 
 
+def _host_process_seccomp_program() -> bytes:
+    """Return a deterministic x86_64 filter denying host-process interaction syscalls."""
+    bpf_ld_w_abs = 0x20
+    bpf_jmp_jeq_k = 0x15
+    bpf_ret_k = 0x06
+    seccomp_ret_allow = 0x7FFF0000
+    seccomp_ret_errno = 0x00050000
+
+    instructions: list[tuple[int, int, int, int]] = [
+        (bpf_ld_w_abs, 0, 0, 4),
+        (bpf_jmp_jeq_k, 1, 0, AUDIT_ARCH_X86_64),
+        (bpf_ret_k, 0, 0, seccomp_ret_errno | errno.EPERM),
+        (bpf_ld_w_abs, 0, 0, 0),
+    ]
+    denied = tuple(
+        sorted(
+            {
+                *HOST_PROCESS_SYSCALLS_X86_64,
+                *(number | X32_SYSCALL_BIT for number in HOST_PROCESS_SYSCALLS_X86_64),
+            }
+        )
+    )
+    for number in denied:
+        instructions.extend(
+            (
+                (bpf_jmp_jeq_k, 0, 1, number),
+                (bpf_ret_k, 0, 0, seccomp_ret_errno | errno.EPERM),
+            )
+        )
+    instructions.append((bpf_ret_k, 0, 0, seccomp_ret_allow))
+    return b"".join(struct.pack("<HBBI", *instruction) for instruction in instructions)
+
+
 def _run_worker(
     *,
     candidate: str,
@@ -1107,21 +1189,34 @@ def _run_worker(
         "XDG_CACHE_HOME": "/tmp",
         "PYTHONPATH": "/mesc-run/site-packages",
         "PYTHONDONTWRITEBYTECODE": "1",
+        "LD_LIBRARY_PATH": CUDA_DRIVER_LIBRARY_PATH,
+        "NVIDIA_VISIBLE_DEVICES": NVIDIA_VISIBLE_DEVICES_VALUE,
+        "NVIDIA_DRIVER_CAPABILITIES": NVIDIA_DRIVER_CAPABILITIES_VALUE,
     }
     for key, value in environment.items():
         command.extend(["--setenv", key, value])
-    command.extend(
-        [
-            python_binary,
-            "/mesc-run/harness.py",
-            "_worker",
-            "--candidate",
-            candidate,
-            "--snapshot",
-            "/mesc-run/model-weights",
-        ]
-    )
-    completed = subprocess.run(command, check=False, capture_output=True)
+    with tempfile.TemporaryFile(mode="w+b") as seccomp:
+        seccomp.write(_host_process_seccomp_program())
+        seccomp.flush()
+        seccomp.seek(0)
+        command.extend(["--seccomp", str(seccomp.fileno())])
+        command.extend(
+            [
+                python_binary,
+                "/mesc-run/harness.py",
+                "_worker",
+                "--candidate",
+                candidate,
+                "--snapshot",
+                "/mesc-run/model-weights",
+            ]
+        )
+        completed = subprocess.run(
+            command,
+            check=False,
+            capture_output=True,
+            pass_fds=(seccomp.fileno(),),
+        )
     if completed.returncode != 0:
         stderr = completed.stderr.decode("utf-8", "replace")[-6000:]
         raise HarnessError(f"isolated candidate probe failed: {stderr}")
@@ -1197,6 +1292,20 @@ def probe_candidate(
         raise HarnessError("bubblewrap is required before Stage 4")
     bwrap = Path(bwrap_raw).resolve(strict=True)
     bwrap_version = subprocess.check_output([str(bwrap), "--version"], text=True).strip()
+    if platform.machine() != "x86_64":
+        raise HarnessError("MRL-0809 CUDA sandbox requires x86_64 for the frozen seccomp policy")
+    support_paths = (
+        Path(CUDA_DRIVER_LIBRARY_PATH),
+        Path("/proc/self"),
+        Path("/proc/cpuinfo"),
+        Path("/proc/sys/vm/mmap_min_addr"),
+        Path("/proc/driver/nvidia"),
+    )
+    missing_support = [str(path) for path in support_paths if not path.exists()]
+    if missing_support:
+        raise HarnessError(
+            "CUDA sandbox runtime support path is unavailable: " + missing_support[0]
+        )
     base_prefix, site_packages, python_version = _python_layout(python_executable)
     package_versions = _package_versions()
     nodes = _nvidia_nodes()
