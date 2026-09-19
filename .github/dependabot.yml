@@ -6,6 +6,18 @@ updates:
       interval: "weekly"
     commit-message:
       prefix: "build"
+    # MRL-0809 runtime-feasibility versions are exact, governance-bound evidence.
+    # Any version change to this frozen runtime surface must use a separately
+    # reviewed governed PR with regenerated lock/static bindings and qualification.
+    ignore:
+      - dependency-name: "accelerate"
+      - dependency-name: "bitsandbytes"
+      - dependency-name: "huggingface-hub"
+      - dependency-name: "pillow"
+      - dependency-name: "torch"
+      - dependency-name: "torchvision"
+      - dependency-name: "transformers"
+      - dependency-name: "xgrammar"
     groups:
       dev-dependencies:
         patterns: ["*"]
@@ -16,3 +28,14 @@ updates:
       interval: "weekly"
     commit-message:
       prefix: "ci"
+    # optional-extras.yml is byte-bound by the MRL-0809 static prerequisite
+    # manifest. Exclude that workflow from automated action updates so other
+    # workflows can continue receiving normal Dependabot maintenance.
+    exclude-paths:
+      - ".github/workflows/optional-extras.yml"
+    # CodeQL init/analyze must move together. Separate Dependabot PRs produce
+    # mixed action versions and a configuration-error failure.
+    groups:
+      codeql-action:
+        patterns:
+          - "github/codeql-action/*"
