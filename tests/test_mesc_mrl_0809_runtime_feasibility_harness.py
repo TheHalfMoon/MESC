@@ -300,7 +300,10 @@ def test_sandbox_mounts_only_runtime_material_not_repository(tmp_path: Path) -> 
         nvidia_nodes=(Path("/dev/nvidia0"),),
     )
     rendered = "\n".join(prefix)
-    assert "--unshare-all" in prefix
+    assert "--unshare-all" not in prefix
+    assert "--unshare-pid" not in prefix
+    for flag in HARNESS.SANDBOX_UNSHARE_FLAGS:
+        assert flag in prefix
     assert "/mesc-run/harness.py" in prefix
     assert "/mesc-run/model-weights" in prefix
     assert "/mesc-run/python-base" in prefix
@@ -322,6 +325,21 @@ def test_sandbox_mounts_only_runtime_material_not_repository(tmp_path: Path) -> 
     ]
     assert len(proc_mount) == len(proc_remount) == 1
     assert proc_remount[0] > proc_mount[0]
+    required_proc_segments = (
+        ["--bind", "/proc/self", "/proc/self"],
+        ["--ro-bind", "/proc/cpuinfo", "/proc/cpuinfo"],
+        ["--ro-bind", "/proc/sys/vm/mmap_min_addr", "/proc/sys/vm/mmap_min_addr"],
+        ["--ro-bind", "/proc/driver/nvidia", "/proc/driver/nvidia"],
+    )
+    for segment in required_proc_segments:
+        assert any(
+            prefix[index : index + len(segment)] == segment
+            for index in range(len(prefix) - len(segment) + 1)
+        )
+    assert not any(
+        prefix[index : index + 3] == ["--ro-bind", "/proc", "/proc"]
+        for index in range(len(prefix) - 2)
+    )
 
 
 def test_sandbox_creates_nested_nvidia_device_parent_before_bind(tmp_path: Path) -> None:
@@ -338,6 +356,67 @@ def test_sandbox_creates_nested_nvidia_device_parent_before_bind(tmp_path: Path)
     parent_index = next(i for i in range(len(prefix) - 1) if prefix[i : i + 2] == parent)
     bind_index = next(i for i in range(len(prefix) - 2) if prefix[i : i + 3] == bind)
     assert parent_index < bind_index
+
+
+def test_worker_forwards_only_bounded_cuda_runtime_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_run(
+        command: list[str],
+        *,
+        check: bool,
+        capture_output: bool,
+        pass_fds: tuple[int, ...],
+    ) -> subprocess.CompletedProcess[bytes]:
+        captured["command"] = command
+        assert check is False
+        assert capture_output is True
+        assert len(pass_fds) == 1
+        assert pass_fds[0] > 0
+        return subprocess.CompletedProcess(
+            args=command,
+            returncode=0,
+            stdout=HARNESS.canonical_json_bytes({}),
+            stderr=b"",
+        )
+
+    monkeypatch.setattr(HARNESS.subprocess, "run", fake_run)
+    assert (
+        HARNESS._run_worker(
+            candidate=_QWEN,
+            prefix=["/usr/bin/bwrap"],
+            python_version="3.11.15",
+        )
+        == {}
+    )
+    command = captured["command"]
+    assert isinstance(command, list)
+    expected = {
+        "LD_LIBRARY_PATH": HARNESS.CUDA_DRIVER_LIBRARY_PATH,
+        "NVIDIA_VISIBLE_DEVICES": HARNESS.NVIDIA_VISIBLE_DEVICES_VALUE,
+        "NVIDIA_DRIVER_CAPABILITIES": HARNESS.NVIDIA_DRIVER_CAPABILITIES_VALUE,
+    }
+    for key, value in expected.items():
+        segment = ["--setenv", key, value]
+        assert any(
+            command[index : index + len(segment)] == segment
+            for index in range(len(command) - len(segment) + 1)
+        )
+    assert "HF_TOKEN" not in command
+    assert "HUGGING_FACE_HUB_TOKEN" not in command
+    seccomp_index = command.index("--seccomp")
+    assert int(command[seccomp_index + 1]) > 0
+
+
+def test_signal_seccomp_program_is_deterministic_and_fail_closed() -> None:
+    first = HARNESS._signal_seccomp_program()
+    second = HARNESS._signal_seccomp_program()
+    assert first == second
+    assert len(first) % 8 == 0
+    assert len(first) >= 8 * (5 + (2 * len(HARNESS.SIGNAL_SYSCALLS_X86_64)))
+    assert first != b""
 
 
 def test_runtime_identity_binds_harness_bytes() -> None:
