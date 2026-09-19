@@ -1,5 +1,10 @@
 # OpenMed — Capability Analysis
 
+> Historical analysis dated 2026-07-10. For current planning, read the
+> [2026-09-09 gap review](openmed_gap_review_2026-09-09.md). Counts, licensing/network
+> generalizations and naming examples below must not be treated as current facts.
+> ADR-0007 remains the integration decision; ADR-0036 controls current MESC naming.
+
 - **Status:** Analysis (extends the accepted [ADR-0007](../adr/0007-openmed-adapter.md);
   introduces no new decision — the decision stands, this document decomposes it)
 - **Date:** 2026-07-10
