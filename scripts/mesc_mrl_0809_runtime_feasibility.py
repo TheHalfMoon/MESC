@@ -53,13 +53,21 @@ SANDBOX_UNSHARE_FLAGS: Final[tuple[str, ...]] = (
 )
 AUDIT_ARCH_X86_64: Final = 0xC000003E
 X32_SYSCALL_BIT: Final = 0x40000000
-SIGNAL_SYSCALLS_X86_64: Final[tuple[int, ...]] = (
+HOST_PROCESS_SYSCALLS_X86_64: Final[tuple[int, ...]] = (
     62,  # kill
+    101,  # ptrace
     129,  # rt_sigqueueinfo
     200,  # tkill
     234,  # tgkill
     297,  # rt_tgsigqueueinfo
+    310,  # process_vm_readv
+    311,  # process_vm_writev
+    312,  # kcmp
     424,  # pidfd_send_signal
+    434,  # pidfd_open
+    438,  # pidfd_getfd
+    440,  # process_madvise
+    448,  # process_mrelease
 )
 GPU_MODEL: Final = "Tesla T4"
 SHA40: Final = re.compile(r"^[0-9a-f]{40}$", re.ASCII)
@@ -1133,8 +1141,8 @@ def _sandbox_prefix(
     return args
 
 
-def _signal_seccomp_program() -> bytes:
-    """Return a deterministic x86_64 seccomp filter that denies process signaling."""
+def _host_process_seccomp_program() -> bytes:
+    """Return a deterministic x86_64 filter denying host-process interaction syscalls."""
     bpf_ld_w_abs = 0x20
     bpf_jmp_jeq_k = 0x15
     bpf_ret_k = 0x06
@@ -1150,8 +1158,8 @@ def _signal_seccomp_program() -> bytes:
     denied = tuple(
         sorted(
             {
-                *SIGNAL_SYSCALLS_X86_64,
-                *(number | X32_SYSCALL_BIT for number in SIGNAL_SYSCALLS_X86_64),
+                *HOST_PROCESS_SYSCALLS_X86_64,
+                *(number | X32_SYSCALL_BIT for number in HOST_PROCESS_SYSCALLS_X86_64),
             }
         )
     )
@@ -1188,7 +1196,7 @@ def _run_worker(
     for key, value in environment.items():
         command.extend(["--setenv", key, value])
     with tempfile.TemporaryFile(mode="w+b") as seccomp:
-        seccomp.write(_signal_seccomp_program())
+        seccomp.write(_host_process_seccomp_program())
         seccomp.flush()
         seccomp.seek(0)
         command.extend(["--seccomp", str(seccomp.fileno())])

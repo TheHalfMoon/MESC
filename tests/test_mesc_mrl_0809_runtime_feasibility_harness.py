@@ -410,13 +410,25 @@ def test_worker_forwards_only_bounded_cuda_runtime_environment(
     assert int(command[seccomp_index + 1]) > 0
 
 
-def test_signal_seccomp_program_is_deterministic_and_fail_closed() -> None:
-    first = HARNESS._signal_seccomp_program()
-    second = HARNESS._signal_seccomp_program()
+def test_host_process_seccomp_program_is_deterministic_and_fail_closed() -> None:
+    first = HARNESS._host_process_seccomp_program()
+    second = HARNESS._host_process_seccomp_program()
     assert first == second
     assert len(first) % 8 == 0
-    assert len(first) >= 8 * (5 + (2 * len(HARNESS.SIGNAL_SYSCALLS_X86_64)))
+    assert len(first) >= 8 * (5 + (2 * len(HARNESS.HOST_PROCESS_SYSCALLS_X86_64)))
     assert first != b""
+    assert {
+        62,
+        101,
+        310,
+        311,
+        312,
+        424,
+        434,
+        438,
+        440,
+        448,
+    }.issubset(set(HARNESS.HOST_PROCESS_SYSCALLS_X86_64))
 
 
 def test_runtime_identity_binds_harness_bytes() -> None:
