@@ -6,6 +6,11 @@ updates:
       interval: "weekly"
     commit-message:
       prefix: "build"
+    # MRL-0809 statically binds pyproject.toml and uv.lock byte-for-byte.
+    # Suspend automated uv version-update PRs while that binding is active.
+    # Security updates remain separately surfaced and must use governed
+    # manifest regeneration/qualification before merge.
+    open-pull-requests-limit: 0
     # MRL-0809 runtime-feasibility versions are exact, governance-bound evidence.
     # Any version change to this frozen runtime surface must use a separately
     # reviewed governed PR with regenerated lock/static bindings and qualification.
