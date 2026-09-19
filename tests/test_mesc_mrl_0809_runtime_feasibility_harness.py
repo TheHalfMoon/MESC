@@ -6,6 +6,7 @@ import hashlib
 import importlib.util
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
 from types import ModuleType
 
@@ -267,6 +268,31 @@ def test_gpu_context_is_exact_tesla_t4(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(HARNESS.subprocess, "run", wrong)
     with pytest.raises(HARNESS.HarnessError, match="Tesla T4"):
         HARNESS._gpu_context()
+
+
+def test_runtime_feasibility_extra_binds_processor_dependencies() -> None:
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text())
+    dependencies = project["project"]["optional-dependencies"]["rq1-runtime-feasibility"]
+    assert dependencies == [
+        "accelerate==1.14.0",
+        "bitsandbytes==0.50.2",
+        "huggingface-hub==1.23.0",
+        "pillow==12.3.0",
+        "torch==2.13.0",
+        "torchvision==0.28.0",
+        "transformers==5.16.1",
+        "xgrammar==0.2.7",
+    ]
+    assert HARNESS.EXPECTED_PACKAGES == {
+        "accelerate": "1.14.0",
+        "bitsandbytes": "0.50.2",
+        "huggingface-hub": "1.23.0",
+        "pillow": "12.3.0",
+        "torch": "2.13.0",
+        "torchvision": "0.28.0",
+        "transformers": "5.16.1",
+        "xgrammar": "0.2.7",
+    }
 
 
 def test_package_versions_fail_closed(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -117,7 +117,9 @@ EXPECTED_PACKAGES: Final[dict[str, str]] = {
     "accelerate": "1.14.0",
     "bitsandbytes": "0.50.2",
     "huggingface-hub": "1.23.0",
+    "pillow": "12.3.0",
     "torch": "2.13.0",
+    "torchvision": "0.28.0",
     "transformers": "5.16.1",
     "xgrammar": "0.2.7",
 }

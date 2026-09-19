@@ -87,7 +87,7 @@ jobs:
       - name: Verify exact runtime-feasibility package surface
         run: >-
           uv run --no-sync python -c
-          'import importlib.metadata as m; expected={"accelerate":"1.14.0","bitsandbytes":"0.50.2","huggingface-hub":"1.23.0","torch":"2.13.0","transformers":"5.16.1","xgrammar":"0.2.7"};
+          'import importlib.metadata as m; expected={"accelerate":"1.14.0","bitsandbytes":"0.50.2","huggingface-hub":"1.23.0","pillow":"12.3.0","torch":"2.13.0","torchvision":"0.28.0","transformers":"5.16.1","xgrammar":"0.2.7"};
           assert {name:m.version(name) for name in expected} == expected;
           forbidden=("datasets","peft","trl");
           assert all(next(iter(m.packages_distributions().get(name, [])), None) is None for name in forbidden)'

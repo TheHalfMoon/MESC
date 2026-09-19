@@ -59,7 +59,7 @@ Install only from the committed lock:
     sudo apt-get update
     sudo apt-get install -y bubblewrap
 
-The dedicated `rq1-runtime-feasibility` extra is intentionally minimal and exact-pinned. It contains only `accelerate`, `bitsandbytes`, `huggingface-hub`, `torch`, `transformers`, and `xgrammar`, which are the packages required by the Stage-4 harness and its frozen runtime identity. Do not install the broader training extra or the development dependency group in the Colab qualification environment. This installation does not authorize or perform training. The harness never constructs an optimizer or invokes a training path.
+The dedicated `rq1-runtime-feasibility` extra is intentionally minimal and exact-pinned. It contains only `accelerate`, `bitsandbytes`, `huggingface-hub`, `pillow`, `torch`, `torchvision`, `transformers`, and `xgrammar`, which are the packages required by the Stage-4 harness, the frozen multimodal processor path, and its frozen runtime identity. Do not install the broader training extra or the development dependency group in the Colab qualification environment. This installation does not authorize or perform training. The harness never constructs an optimizer or invokes a training path.
 
 ## Provider identity and zero-cost attestation
 
