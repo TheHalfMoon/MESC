@@ -308,6 +308,36 @@ def test_sandbox_mounts_only_runtime_material_not_repository(tmp_path: Path) -> 
     assert "/mesc-run/repository" not in rendered
     assert "scientific-corpus" not in rendered
     assert "tier3" not in rendered.lower()
+    assert "--proc" not in prefix
+    proc_mount = [
+        index
+        for index in range(len(prefix) - 3)
+        if prefix[index : index + 4]
+        == ["--size", str(HARNESS.PROC_TMPFS_BYTES), "--tmpfs", "/proc"]
+    ]
+    proc_remount = [
+        index
+        for index in range(len(prefix) - 1)
+        if prefix[index : index + 2] == ["--remount-ro", "/proc"]
+    ]
+    assert len(proc_mount) == len(proc_remount) == 1
+    assert proc_remount[0] > proc_mount[0]
+
+
+def test_sandbox_creates_nested_nvidia_device_parent_before_bind(tmp_path: Path) -> None:
+    prefix = HARNESS._sandbox_prefix(
+        bwrap=Path("/usr/bin/bwrap"),
+        harness=tmp_path / "harness.py",
+        snapshot=tmp_path / "snapshot",
+        base_prefix=tmp_path / "python-base",
+        site_packages=tmp_path / "site-packages",
+        nvidia_nodes=(Path("/dev/nvidia0"), Path("/dev/nvidia-caps/nvidia-cap1")),
+    )
+    parent = ["--dir", "/dev/nvidia-caps"]
+    bind = ["--dev-bind", "/dev/nvidia-caps/nvidia-cap1", "/dev/nvidia-caps/nvidia-cap1"]
+    parent_index = next(i for i in range(len(prefix) - 1) if prefix[i : i + 2] == parent)
+    bind_index = next(i for i in range(len(prefix) - 2) if prefix[i : i + 3] == bind)
+    assert parent_index < bind_index
 
 
 def test_runtime_identity_binds_harness_bytes() -> None:

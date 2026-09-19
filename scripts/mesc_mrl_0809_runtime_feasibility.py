@@ -37,6 +37,7 @@ RUNTIME_REPRESENTATION: Final = "bitsandbytes-nf4-v1"
 PROCESSOR_POLICY: Final = "AUTO_PROCESSOR_EXACT_REVISION"
 SYNTHETIC_PROMPT: Final = "Write one short sentence about a blue triangle."
 MAX_NEW_TOKENS: Final = 12
+PROC_TMPFS_BYTES: Final = 4_096
 GPU_MODEL: Final = "Tesla T4"
 SHA40: Final = re.compile(r"^[0-9a-f]{40}$", re.ASCII)
 SHA64: Final = re.compile(r"^[0-9a-f]{64}$", re.ASCII)
@@ -1050,15 +1051,22 @@ def _sandbox_prefix(
         "--ro-bind",
         "/etc/ld.so.cache",
         "/etc/ld.so.cache",
-        "--proc",
+        "--size",
+        str(PROC_TMPFS_BYTES),
+        "--tmpfs",
         "/proc",
         "--dev",
         "/dev",
     ]
+    parent_dirs = sorted({node.parent for node in nvidia_nodes if node.parent != Path("/dev")})
+    for parent in parent_dirs:
+        args.extend(["--dir", str(parent)])
     for node in nvidia_nodes:
         args.extend(["--dev-bind", str(node), str(node)])
     args.extend(
         [
+            "--remount-ro",
+            "/proc",
             "--dir",
             "/mesc-run",
             "--ro-bind",

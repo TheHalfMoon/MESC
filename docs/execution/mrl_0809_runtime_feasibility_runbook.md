@@ -124,7 +124,7 @@ Run the isolated probe:
       --observation-out "$MRL0809_CUSTODY/qwen-observation.json" \
       --python-executable "$PWD/.venv/bin/python"
 
-The probe reverifies the staged SafeTensors bytes before entering a no-network bubblewrap sandbox. The model must remain GPU-only with no CPU/disk offload or capacity fallback.
+The probe reverifies the staged SafeTensors bytes before entering a no-network bubblewrap sandbox. The sandbox preserves `--unshare-all` while using the canonical MRL-0808 hosted-kernel portability pattern: `/proc` is a bounded 4 KiB read-only tmpfs rather than a nested procfs mount, and nested NVIDIA device parents are created before explicit device binds. Provider procfs is never exposed. The model must remain GPU-only with no CPU/disk offload or capacity fallback.
 
 After a successful unload receipt, remove the Qwen snapshot to recover storage:
 
