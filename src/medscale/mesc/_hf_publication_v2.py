@@ -28,9 +28,7 @@ CANONICAL_HF_OWNER = "MedScaleAI"
 CANONICAL_ENVIRONMENT = "huggingface-publication"
 CANONICAL_WORKFLOW = ".github/workflows/hf-publish.yml"
 PUBLICATION_MODE = "trusted-publisher-oidc-v1"
-EXPECTED_WORKFLOW_REF = (
-    f"{CANONICAL_REPOSITORY}/{CANONICAL_WORKFLOW}@refs/heads/main"
-)
+EXPECTED_WORKFLOW_REF = f"{CANONICAL_REPOSITORY}/{CANONICAL_WORKFLOW}@refs/heads/main"
 
 TRANSPORT_MANIFEST_PATHS = (
     ".github/workflows/hf-publish.yml",
@@ -157,32 +155,18 @@ class PublicationAuthority:
     def _validate_active(self) -> None:
         plan = self.plan
         if plan is None:
-            raise HfPublicationTransportError(
-                "ACTIVE authority requires a publication plan"
-            )
+            raise HfPublicationTransportError("ACTIVE authority requires a publication plan")
         if plan.source_repository != CANONICAL_REPOSITORY:
-            raise HfPublicationTransportError(
-                "publication plan source repository drifted"
-            )
+            raise HfPublicationTransportError("publication plan source repository drifted")
         if plan.destination_owner != CANONICAL_HF_OWNER:
-            raise HfPublicationTransportError(
-                "publication plan destination owner drifted"
-            )
+            raise HfPublicationTransportError("publication plan destination owner drifted")
         if plan.external_upload_enabled:
-            raise HfPublicationTransportError(
-                "P1 publication plan must remain nonpublishing"
-            )
-        expected_plan_sha = hashlib.sha256(
-            canonical_json_bytes(plan.to_dict())
-        ).hexdigest()
+            raise HfPublicationTransportError("P1 publication plan must remain nonpublishing")
+        expected_plan_sha = hashlib.sha256(canonical_json_bytes(plan.to_dict())).hexdigest()
         if self.plan_sha256 != expected_plan_sha:
-            raise HfPublicationTransportError(
-                "authority plan_sha256 does not bind the plan"
-            )
+            raise HfPublicationTransportError("authority plan_sha256 does not bind the plan")
         if self.artifact_manifest_sha256 != plan.artifact_manifest_sha256:
-            raise HfPublicationTransportError(
-                "authority artifact manifest does not bind the plan"
-            )
+            raise HfPublicationTransportError("authority artifact manifest does not bind the plan")
         self._validate_assets()
         if self.authority_repository != CANONICAL_REPOSITORY:
             raise HfPublicationTransportError("authority repository drifted")
@@ -196,9 +180,10 @@ class PublicationAuthority:
         if self.environment_name != CANONICAL_ENVIRONMENT:
             raise HfPublicationTransportError("authority environment drifted")
         _require_sha256(self.environment_policy_sha256, field="environment policy sha256")
-        if self.destination_parent_commit is None or _SHA40.fullmatch(
-            self.destination_parent_commit
-        ) is None:
+        if (
+            self.destination_parent_commit is None
+            or _SHA40.fullmatch(self.destination_parent_commit) is None
+        ):
             raise HfPublicationTransportError("destination parent commit must be SHA-1")
         _require_sha256(
             self.destination_parent_inventory_sha256,
@@ -224,10 +209,7 @@ class PublicationAuthority:
             raise HfPublicationTransportError("release asset paths do not match plan artifacts")
         for path, binding in bindings.items():
             artifact = artifacts[path]
-            if (
-                binding.byte_count != artifact.byte_count
-                or binding.sha256 != artifact.sha256
-            ):
+            if binding.byte_count != artifact.byte_count or binding.sha256 != artifact.sha256:
                 raise HfPublicationTransportError(
                     "release asset identity does not match plan artifact"
                 )
@@ -323,9 +305,7 @@ def transport_manifest(root: Path) -> tuple[dict[str, object], ...]:
         for part in PurePosixPath(relative).parts:
             path = path / part
             if path.is_symlink():
-                raise HfPublicationTransportError(
-                    f"transport path contains a symlink: {relative}"
-                )
+                raise HfPublicationTransportError(f"transport path contains a symlink: {relative}")
         resolved = path.resolve(strict=True)
         if resolved_root not in resolved.parents:
             raise HfPublicationTransportError(f"transport path escaped repository: {relative}")
@@ -413,44 +393,29 @@ def _verify_authority_comment(authority: PublicationAuthority, github_token: str
     if hashlib.sha256(body.encode("utf-8")).hexdigest() != body_sha256:
         raise HfPublicationTransportError("authority comment body drifted")
     issue_url = comment.get("issue_url")
-    expected = (
-        f"https://api.github.com/repos/{CANONICAL_REPOSITORY}/issues/"
-        f"{issue_number}"
-    )
+    expected = f"https://api.github.com/repos/{CANONICAL_REPOSITORY}/issues/{issue_number}"
     if issue_url != expected:
         raise HfPublicationTransportError("authority comment issue binding drifted")
 
 
 def _environment_policy_sha256(github_token: str) -> str:
     name = urllib.parse.quote(CANONICAL_ENVIRONMENT, safe="")
-    environment = _github_json(
-        f"/repos/{CANONICAL_REPOSITORY}/environments/{name}", github_token
-    )
+    environment = _github_json(f"/repos/{CANONICAL_REPOSITORY}/environments/{name}", github_token)
     if type(environment) is not dict or environment.get("name") != CANONICAL_ENVIRONMENT:
-        raise HfPublicationTransportError(
-            "publication Environment is absent or malformed"
-        )
+        raise HfPublicationTransportError("publication Environment is absent or malformed")
     if environment.get("can_admins_bypass") is not False:
         raise HfPublicationTransportError(
             "publication Environment must prohibit administrator bypass"
         )
     protection_rules = environment.get("protection_rules")
     if type(protection_rules) is not list or not protection_rules:
-        raise HfPublicationTransportError(
-            "publication Environment has no protection rules"
-        )
-    normalized_rules, substantive_protection = _normalize_protection_rules(
-        protection_rules
-    )
+        raise HfPublicationTransportError("publication Environment has no protection rules")
+    normalized_rules, substantive_protection = _normalize_protection_rules(protection_rules)
     if not substantive_protection:
-        raise HfPublicationTransportError(
-            "publication Environment protection is not substantive"
-        )
+        raise HfPublicationTransportError("publication Environment protection is not substantive")
     deployment = environment.get("deployment_branch_policy")
     if type(deployment) is not dict:
-        raise HfPublicationTransportError(
-            "publication Environment has no deployment policy"
-        )
+        raise HfPublicationTransportError("publication Environment has no deployment policy")
     protected = deployment.get("protected_branches")
     custom = deployment.get("custom_branch_policies")
     if type(protected) is not bool or type(custom) is not bool or protected == custom:
@@ -465,25 +430,14 @@ def _environment_policy_sha256(github_token: str) -> str:
             github_token,
         )
         if type(response) is not dict:
-            raise HfPublicationTransportError(
-                "deployment branch policy response is malformed"
-            )
+            raise HfPublicationTransportError("deployment branch policy response is malformed")
         total = response.get("total_count")
         rows = response.get("branch_policies")
-        if (
-            type(total) is not int
-            or type(rows) is not list
-            or total != len(rows)
-            or total > 100
-        ):
-            raise HfPublicationTransportError(
-                "deployment branch policy inventory is incomplete"
-            )
+        if type(total) is not int or type(rows) is not list or total != len(rows) or total > 100:
+            raise HfPublicationTransportError("deployment branch policy inventory is incomplete")
         for row in rows:
             if type(row) is not dict:
-                raise HfPublicationTransportError(
-                    "deployment branch policy is malformed"
-                )
+                raise HfPublicationTransportError("deployment branch policy is malformed")
             policy_id = row.get("id")
             policy_name = row.get("name")
             policy_type = row.get("type")
@@ -492,14 +446,11 @@ def _environment_policy_sha256(github_token: str) -> str:
                 or type(policy_name) is not str
                 or type(policy_type) is not str
             ):
-                raise HfPublicationTransportError(
-                    "deployment branch policy identity is malformed"
-                )
-            branch_policies.append(
-                {"id": policy_id, "name": policy_name, "type": policy_type}
-            )
+                raise HfPublicationTransportError("deployment branch policy identity is malformed")
+            branch_policies.append({"id": policy_id, "name": policy_name, "type": policy_type})
         if len(branch_policies) != 1 or (
-            branch_policies[0]["type"], branch_policies[0]["name"]
+            branch_policies[0]["type"],
+            branch_policies[0]["name"],
         ) != ("branch", "main"):
             raise HfPublicationTransportError(
                 "custom deployment policy must bind exactly branch main"
@@ -535,52 +486,35 @@ def _normalize_protection_rules(
             or type(raw.get("id")) is not int
             or type(raw.get("type")) is not str
         ):
-            raise HfPublicationTransportError(
-                "Environment protection rule is malformed"
-            )
+            raise HfPublicationTransportError("Environment protection rule is malformed")
         rule_type = raw["type"]
         item: dict[str, object] = {"id": raw["id"], "type": rule_type}
         if "wait_timer" in raw:
             wait_timer = raw["wait_timer"]
             if type(wait_timer) is not int:
-                raise HfPublicationTransportError(
-                    "Environment wait timer is malformed"
-                )
+                raise HfPublicationTransportError("Environment wait timer is malformed")
             item["wait_timer"] = wait_timer
             if rule_type == "wait_timer" and wait_timer > 0:
                 substantive = True
         if "prevent_self_review" in raw:
             prevent_self_review = raw["prevent_self_review"]
             if type(prevent_self_review) is not bool:
-                raise HfPublicationTransportError(
-                    "Environment self-review policy is malformed"
-                )
+                raise HfPublicationTransportError("Environment self-review policy is malformed")
             item["prevent_self_review"] = prevent_self_review
         if "reviewers" in raw:
             reviewers = raw["reviewers"]
             if type(reviewers) is not list:
-                raise HfPublicationTransportError(
-                    "Environment reviewers are malformed"
-                )
+                raise HfPublicationTransportError("Environment reviewers are malformed")
             clean_reviewers: list[dict[str, object]] = []
             for reviewer in reviewers:
-                if (
-                    type(reviewer) is not dict
-                    or type(reviewer.get("type")) is not str
-                ):
-                    raise HfPublicationTransportError(
-                        "Environment reviewer is malformed"
-                    )
+                if type(reviewer) is not dict or type(reviewer.get("type")) is not str:
+                    raise HfPublicationTransportError("Environment reviewer is malformed")
                 identity = reviewer.get("reviewer")
                 if type(identity) is not dict or type(identity.get("id")) is not int:
-                    raise HfPublicationTransportError(
-                        "Environment reviewer identity is malformed"
-                    )
+                    raise HfPublicationTransportError("Environment reviewer identity is malformed")
                 label = identity.get("login", identity.get("slug"))
                 if type(label) is not str:
-                    raise HfPublicationTransportError(
-                        "Environment reviewer label is malformed"
-                    )
+                    raise HfPublicationTransportError("Environment reviewer label is malformed")
                 clean_reviewers.append(
                     {
                         "id": identity["id"],
@@ -868,9 +802,7 @@ def _write_receipt(
     ):
         raise HfPublicationTransportError("publication receipt binding is incomplete")
     if path.exists() or path.is_symlink():
-        raise HfPublicationTransportError(
-            "publication receipt output must not pre-exist"
-        )
+        raise HfPublicationTransportError("publication receipt output must not pre-exist")
     if path.parent.is_symlink():
         raise HfPublicationTransportError("publication receipt parent must not be a symlink")
     path.parent.mkdir(parents=True, exist_ok=True)
