@@ -11,10 +11,11 @@ import tempfile
 import urllib.error
 import urllib.parse
 import urllib.request
+from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-from typing import Any, Iterator, Literal, cast
+from typing import Any, Literal, cast
 
 from medscale.mesc._canonical_json_v1 import canonical_json_bytes
 from medscale.mesc._hf_publication_v1 import HfPublicationPlan, parse_publication_plan
@@ -709,10 +710,10 @@ def publish_with_trusted_publisher(
             from huggingface_hub import (
                 CommitOperationAdd,
                 HfApi,
-                __version__ as hub_version,
                 get_token,
                 hf_hub_download,
             )
+            from huggingface_hub import __version__ as hub_version
 
             if hub_version != "1.23.0":
                 raise HfPublicationTransportError("huggingface-hub version drifted")
@@ -981,13 +982,13 @@ __all__ = [
     "CANONICAL_REPOSITORY",
     "CANONICAL_WORKFLOW",
     "EXPECTED_WORKFLOW_REF",
-    "HfPublicationTransportError",
     "PUBLICATION_MODE",
-    "PublicationAuthority",
-    "ReleaseAssetBinding",
     "SCHEMA_AUTHORITY",
     "SCHEMA_RECEIPT",
     "TRANSPORT_MANIFEST_PATHS",
+    "HfPublicationTransportError",
+    "PublicationAuthority",
+    "ReleaseAssetBinding",
     "materialize_release_assets",
     "parse_authority",
     "publish_with_trusted_publisher",
