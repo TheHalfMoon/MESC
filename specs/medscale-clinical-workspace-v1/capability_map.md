@@ -27,12 +27,12 @@ No disposition below is implementation authority.
 | Source-linked note draft | Abridge Linked Evidence pattern | BUILD | every generated supported span links to source | Workspace only |
 | Specialty templates | Abridge workflow pattern | BUILD | versioned templates, no hidden prompt drift | Workspace only |
 | Draft orders/tasks | Abridge order-capture pattern | BUILD | draft only + explicit human confirmation | Workspace only |
-| Coding suggestions | Abridge/OpenEvidence references | BUILD later | suggestion+rationale; never auto-submit | Workspace only |
+| Coding suggestions | Founder product scope / clinical workflow requirement | BUILD later | suggestion+rationale; never auto-submit | Workspace only |
 | Patient summary draft | encounter workflow | BUILD | source-linked + review required | Workspace only |
 | Natural-language evidence search | OpenEvidence | BUILD | query -> frozen retrieval snapshot -> sources | Workspace + Research primitives |
 | Patient-context evidence query | OpenEvidence partner deployments | LATER | policy-controlled context; no unauthorized egress | Workspace only |
 | Evidence citations | OpenEvidence/Abridge + Research Core | BUILD | source identity + claim-source links | shared interface |
-| Evidence strength metadata | OpenEvidence-style workflow | BUILD | transparent method/version; UNKNOWN allowed | Workspace/Research |
+| Evidence strength metadata | OpenEvidence provider-described EvidenceGrade pattern + Research Core evidence principles | BUILD | transparent MedScale-owned method/version; UNKNOWN allowed | Workspace/Research |
 | Contradiction detection | evidence workflow | BUILD | conflicting sources surfaced | Workspace/Research |
 | Local clinical NER | OpenMed | ADAPT candidate | pinned artifact, offline deterministic baseline | Workspace adapter |
 | PII detection | OpenMed | ADAPT candidate | synthetic privacy fixtures first | Workspace only |
