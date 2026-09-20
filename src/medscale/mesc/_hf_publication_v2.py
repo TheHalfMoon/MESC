@@ -789,6 +789,7 @@ def _write_receipt(
     plan = authority.plan
     plan_sha256 = authority.plan_sha256
     artifact_manifest_sha256 = authority.artifact_manifest_sha256
+    issue_number = authority.authority_issue_number
     comment_id = authority.authority_comment_id
     body_sha256 = authority.authority_body_sha256
     environment_policy_sha256 = authority.environment_policy_sha256
@@ -796,6 +797,7 @@ def _write_receipt(
         plan is None
         or plan_sha256 is None
         or artifact_manifest_sha256 is None
+        or issue_number is None
         or comment_id is None
         or body_sha256 is None
         or environment_policy_sha256 is None
@@ -810,6 +812,7 @@ def _write_receipt(
         "artifact_manifest_sha256": artifact_manifest_sha256,
         "authority_body_sha256": body_sha256,
         "authority_comment_id": comment_id,
+        "authority_issue_number": issue_number,
         "destination_commit": destination_commit,
         "destination_owner": plan.destination_owner,
         "destination_repo": plan.destination_repo,
