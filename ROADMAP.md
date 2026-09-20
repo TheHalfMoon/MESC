@@ -56,6 +56,25 @@ Language policy remains [ADR-0013](docs/adr/0013-language-strategy.md) (Python-f
 
 > Horizon definitions follow the Research Vision. Where older condensed presentations differ, the **Research Vision and current canonical governance govern**.
 
+
+## Proposed clinical workspace scope reconciliation
+
+Issue #459 records a Founder-directed target for MedScale to grow beyond its current research-only product boundary toward a privacy-first, local-first clinical workspace. That target conflicts with current accepted scope documents and therefore remains **planning-only** until the applicable architecture decision is explicitly ratified.
+
+The proposed package is:
+
+- [ADR-0038 — local clinical workspace boundary](docs/adr/0038-local-clinical-workspace-boundary.md) — **Proposed; awaiting Founder approval**;
+- [Clinical Workspace V1 master specification](specs/medscale-clinical-workspace-v1/README.md);
+- [capability map](specs/medscale-clinical-workspace-v1/capability_map.md);
+- [data security and threat model](specs/medscale-clinical-workspace-v1/data_security.md);
+- [dependency-ordered task ledger](specs/medscale-clinical-workspace-v1/tasks.md);
+- [2026-09-20 source refresh](docs/architecture/clinical_workspace_source_refresh_2026-09-20.md).
+
+The architectural recommendation is one MedScale public project with two mechanically isolated trust domains: the existing synthetic-only **Research Core** and a future local **Clinical Workspace**. The Research Core may publish versioned interfaces outward; patient/workspace state must not flow back into Research Core training, evaluation, benchmarks, or MRL evidence.
+
+Until ADR-0038 is explicitly accepted, this package does **not** authorize application implementation or modify the current Research Vision. Even after architecture acceptance, PHI ingestion, clinical production use, EHR writes, Workspace-data training/evaluation, model/runtime execution, publication, paid compute, and new MRL Stage-4 attempts remain separately governed.
+
+
 ## Current execution boundary
 
 Do not infer the next executable task from this roadmap. Determine it from canonical `main`, the applicable specification/task ledger, declared dependencies, machine eligibility where required, exact-head verification evidence, and any mandatory independent review. Human screening, external data access, model/GPU execution, training, promotion, publication, and release remain evidence- or authority-dependent even when supporting code already exists.
