@@ -137,7 +137,9 @@ jobs:
               for line in collected.stdout.splitlines()
               if line.startswith("tests/") and "::" in line
           )
-          summary_matches = re.findall(r"(\d+) tests? collected", collected.stdout)
+          summary_matches = re.findall(
+              r"(\d+)(?:/\d+)? tests? collected", collected.stdout
+          )
           if not summary_matches:
               raise SystemExit("pytest collection summary was not found")
           collected_count = int(summary_matches[-1])
