@@ -98,7 +98,7 @@ jobs:
       - name: Sync (locked)
         run: uv sync --frozen
 
-      - name: Build deterministic test-file shard
+      - name: Build deterministic test-node shard
         env:
           SHARD_INDEX: ${{ matrix.shard }}
         shell: bash
@@ -108,7 +108,9 @@ jobs:
 
           import hashlib
           import os
+          import re
           import subprocess
+          import sys
           from pathlib import Path
 
           shard_count = int(os.environ["PYTEST_SHARD_COUNT"])
@@ -116,58 +118,75 @@ jobs:
           if shard_count <= 0 or not 0 <= shard_index < shard_count:
               raise SystemExit("invalid pytest shard identity")
 
-          tracked = subprocess.run(
-              ["git", "ls-files", "tests"],
-              check=True,
+          collected = subprocess.run(
+              [sys.executable, "-m", "pytest", "--collect-only", "-q"],
+              check=False,
               capture_output=True,
               text=True,
               encoding="utf-8",
-          ).stdout.splitlines()
-          test_files = sorted(
-              path
-              for path in tracked
-              if path.endswith(".py")
-              and (
-                  Path(path).name.startswith("test_")
-                  or Path(path).name.endswith("_test.py")
-              )
           )
-          if not test_files:
-              raise SystemExit("no tracked pytest-discoverable test files found")
-
-          buckets: list[list[str]] = [[] for _ in range(shard_count)]
-          bucket_bytes = [0] * shard_count
-          weighted = sorted(
-              ((Path(path).stat().st_size, path) for path in test_files),
-              key=lambda item: (-item[0], item[1]),
-          )
-          for byte_count, path in weighted:
-              destination = min(
-                  range(shard_count),
-                  key=lambda index: (bucket_bytes[index], index),
+          if collected.returncode != 0:
+              sys.stderr.write(collected.stdout)
+              sys.stderr.write(collected.stderr)
+              raise SystemExit(
+                  f"pytest collection failed with exit code {collected.returncode}"
               )
-              buckets[destination].append(path)
-              bucket_bytes[destination] += byte_count
 
-          flattened = [path for bucket in buckets for path in bucket]
-          if len(flattened) != len(test_files) or set(flattened) != set(test_files):
-              raise SystemExit("pytest shard plan is incomplete or overlapping")
+          nodeids = sorted(
+              line.strip()
+              for line in collected.stdout.splitlines()
+              if line.startswith("tests/") and "::" in line
+          )
+          summary_matches = re.findall(r"(\d+) tests? collected", collected.stdout)
+          if not summary_matches:
+              raise SystemExit("pytest collection summary was not found")
+          collected_count = int(summary_matches[-1])
+          if collected_count != len(nodeids):
+              raise SystemExit(
+                  "pytest node inventory does not match collection summary: "
+                  f"summary={collected_count} inventory={len(nodeids)}"
+              )
+          if len(nodeids) != len(set(nodeids)):
+              raise SystemExit("pytest node inventory contains duplicate node IDs")
+          if len(nodeids) < shard_count:
+              raise SystemExit("pytest node inventory is smaller than shard count")
+
+          buckets = [nodeids[index::shard_count] for index in range(shard_count)]
+          flattened = [nodeid for bucket in buckets for nodeid in bucket]
+          if len(flattened) != len(nodeids) or set(flattened) != set(nodeids):
+              raise SystemExit("pytest node shard plan is incomplete or overlapping")
           if any(not bucket for bucket in buckets):
-              raise SystemExit("pytest shard plan contains an empty shard")
+              raise SystemExit("pytest node shard plan contains an empty shard")
 
-          selected = sorted(buckets[shard_index])
+          selected = buckets[shard_index]
           manifest = "\n".join(selected) + "\n"
-          Path("pytest-shard.txt").write_text(manifest, encoding="utf-8", newline="\n")
+          Path("pytest-shard.txt").write_text(
+              manifest,
+              encoding="utf-8",
+              newline="\n",
+          )
           digest = hashlib.sha256(manifest.encode("utf-8")).hexdigest()
+          benchmark_prefix = "tests/test_mesc_mrl_researcher_benchmark_v1.py::"
+          benchmark_counts = [
+              sum(nodeid.startswith(benchmark_prefix) for nodeid in bucket)
+              for bucket in buckets
+          ]
           print(
-              f"PYTEST_SHARD index={shard_index} count={len(selected)} "
-              f"bytes={bucket_bytes[shard_index]} sha256={digest}"
+              f"PYTEST_SHARD index={shard_index} nodes={len(selected)} "
+              f"sha256={digest}"
           )
           print(
               "PYTEST_SHARD_PLAN "
               + " ".join(
-                  f"{index}:{len(bucket)}:{bucket_bytes[index]}"
+                  f"{index}:{len(bucket)}"
                   for index, bucket in enumerate(buckets)
+              )
+          )
+          print(
+              "PYTEST_BENCHMARK_DISTRIBUTION "
+              + " ".join(
+                  f"{index}:{count}"
+                  for index, count in enumerate(benchmark_counts)
               )
           )
           PY
@@ -177,9 +196,9 @@ jobs:
           COVERAGE_FILE: ${{ runner.temp }}/.coverage.py${{ matrix.python-version }}.shard${{ matrix.shard }}
         shell: bash
         run: |
-          mapfile -t test_files < pytest-shard.txt
-          test "${#test_files[@]}" -gt 0
-          uv run pytest             --cov             --cov-report=             --cov-fail-under=0             "${test_files[@]}"
+          mapfile -t test_nodes < pytest-shard.txt
+          test "${#test_nodes[@]}" -gt 0
+          uv run pytest             --cov             --cov-report=             --cov-fail-under=0             "${test_nodes[@]}"
           test -s "${COVERAGE_FILE}"
 
       - name: Preserve shard coverage
