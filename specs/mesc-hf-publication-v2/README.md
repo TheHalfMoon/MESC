@@ -69,3 +69,7 @@ This repository change does not grant or perform any of the following:
 - any MRL-0809 runtime allocation.
 
 External activation requires a separate founder authorization naming the exact destination and artifact identity plus independently verified external configuration.
+
+## Qualification-head rule
+
+Exact-head qualification evidence is valid only for a head that actually executes the required CI, CodeQL, and Hugging Face Publication Qualification jobs. A workflow-generated repair commit whose downstream runs are suppressed or reported as `action_required` is not qualification evidence and must be followed by a new ordinary repository commit before merge review.
