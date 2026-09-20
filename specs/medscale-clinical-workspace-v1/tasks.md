@@ -438,7 +438,7 @@ No checkbox alone proves completion.
 
 **State:** `BLOCKED_ARCHITECTURE`
 
-**Depends on:** CW-004 through CW-018 as applicable.
+**Depends on:** CW-010, CW-012, CW-014, CW-015, CW-016, CW-018.
 
 **Purpose:** independently attack the synthetic/local implementation before any PHI proposal.
 
@@ -528,25 +528,25 @@ CW-003      |
   |         |
 CW-004 <----+
   |
-  +--> CW-005 -> CW-006 -> CW-007 -> CW-008 -> CW-015
-  |
-  +--> CW-009 -> CW-010
-  |
-  +--> CW-011 -> CW-012
-  |      |
-  |      +------------------------------+
-  |                                     |
-  +--> CW-013 -> CW-014                 |
-  |                                     |
-  +--> CW-016                           |
-  |                                     |
-  +--> CW-017 ---------------------> CW-018
-                                        |
-                                      CW-019
-                                        |
-                                      CW-020
-                                        |
-                                      CW-021 (separate external/clinical authority)
+  +--> CW-005 -> CW-006 -> CW-007 -> CW-008 -> CW-015 --+
+  |                                                        |
+  +--> CW-009 -> CW-010 ----------------------------------+
+  |                                                        |
+  +--> CW-011 -> CW-012 ----------------------+            |
+  |      |                                     |            |
+  |      +------------------------------+      |            |
+  |                                     |      |            |
+  +--> CW-013 -> CW-014 ----------------+------+------------+
+  |                                     |                   |
+  +--> CW-016 --------------------------+-------------------+
+  |                                     |                   |
+  +--> CW-017 ---------------------> CW-018 ----------------+
+                                                            |
+                                                          CW-019
+                                                            |
+                                                          CW-020
+                                                            |
+                                                          CW-021 (separate external/clinical authority)
 ```
 
 CW-009/CW-010 and CW-011/CW-012 may be scheduled only when R4 permits the next single task; the diagram expresses dependency, not parallel execution authority.
