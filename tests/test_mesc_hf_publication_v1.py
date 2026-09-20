@@ -57,6 +57,18 @@ def _qualify(plan: HfPublicationPlan) -> HfPublicationQualification:
         expected_repository="TheHalfMoon/MESC",
         expected_sha=_SHA,
         expected_tree=_TREE,
+        expected_tag="v0.3.0",
+    )
+
+
+def _receipt(plan: HfPublicationPlan, report: HfPublicationQualification) -> bytes:
+    return build_dry_run_receipt(
+        plan,
+        report,
+        expected_repository="TheHalfMoon/MESC",
+        expected_sha=_SHA,
+        expected_tree=_TREE,
+        expected_tag="v0.3.0",
     )
 
 
@@ -65,7 +77,7 @@ def test_valid_plan_is_dry_run_ready_and_receipt_is_nonpublishing() -> None:
     report = _qualify(plan)
     assert report.disposition == "DRY_RUN_READY"
     assert report.blockers == ()
-    receipt = json.loads(build_dry_run_receipt(plan, report))
+    receipt = json.loads(_receipt(plan, report))
     assert receipt["external_upload_performed"] is False
     assert receipt["destination_owner"] == "MedScaleAI"
     assert receipt["destination_repo_type"] == "space"
@@ -89,6 +101,7 @@ def test_external_upload_true_is_blocked_during_repository_qualification() -> No
         ("source_repository", "OtherOrg/OtherRepo", "source repository"),
         ("source_sha", "c" * 40, "source SHA"),
         ("source_tree", "d" * 40, "source tree"),
+        ("source_tag", "v0.3.1", "source tag"),
     ],
 )
 def test_stale_or_wrong_source_identity_is_blocked(field: str, value: str, expected: str) -> None:
@@ -171,6 +184,8 @@ def test_cli_writes_exact_nonpublishing_receipt(tmp_path: Path) -> None:
             _SHA,
             "--expected-tree",
             _TREE,
+            "--expected-tag",
+            "v0.3.0",
             "--receipt-out",
             str(receipt_path),
         ],
@@ -189,15 +204,27 @@ def test_dry_run_receipt_rejects_blocked_qualification() -> None:
     plan = _plan(destination_owner="OtherOrg")
     report = _qualify(plan)
     with pytest.raises(HfPublicationQualificationError, match="DRY_RUN_READY"):
-        build_dry_run_receipt(plan, report)
+        _receipt(plan, report)
+
+
+def test_dry_run_receipt_rejects_forged_ready_qualification() -> None:
+    plan = _plan(destination_owner="OtherOrg", external_upload_enabled=True)
+    forged = HfPublicationQualification(
+        disposition="DRY_RUN_READY",
+        plan_sha256=hashlib.sha256(canonical_json_bytes(plan.to_dict())).hexdigest(),
+        artifact_manifest_sha256=plan.artifact_manifest_sha256,
+        blockers=(),
+    )
+    with pytest.raises(HfPublicationQualificationError, match="fresh plan qualification"):
+        _receipt(plan, forged)
 
 
 def test_receipt_rejects_qualification_for_different_plan() -> None:
     plan = _plan()
     report = _qualify(plan)
     changed = replace(plan, source_tag="v0.3.1")
-    with pytest.raises(HfPublicationQualificationError, match="does not bind"):
-        build_dry_run_receipt(changed, report)
+    with pytest.raises(HfPublicationQualificationError, match="fresh plan qualification"):
+        _receipt(changed, report)
 
 
 def test_plan_identity_is_deterministic() -> None:

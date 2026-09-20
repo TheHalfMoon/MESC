@@ -223,6 +223,7 @@ def qualify_publication_plan(
     expected_repository: str,
     expected_sha: str,
     expected_tree: str,
+    expected_tag: str,
     expected_owner: str = CANONICAL_HF_OWNER,
 ) -> HfPublicationQualification:
     if type(plan) is not HfPublicationPlan:
@@ -234,6 +235,8 @@ def qualify_publication_plan(
         blockers.append("source SHA does not match canonical source")
     if plan.source_tree != expected_tree:
         blockers.append("source tree does not match canonical source")
+    if plan.source_tag != expected_tag:
+        blockers.append("source tag does not match canonical source")
     if plan.destination_owner != expected_owner:
         blockers.append("destination owner is outside the authorized allowlist")
     if plan.external_upload_enabled:
@@ -256,15 +259,33 @@ def qualify_publication_plan(
 def build_dry_run_receipt(
     plan: HfPublicationPlan,
     qualification: HfPublicationQualification,
+    *,
+    expected_repository: str,
+    expected_sha: str,
+    expected_tree: str,
+    expected_tag: str,
+    expected_owner: str = CANONICAL_HF_OWNER,
 ) -> bytes:
-    if qualification.disposition != "DRY_RUN_READY" or qualification.blockers:
+    fresh = qualify_publication_plan(
+        plan,
+        expected_repository=expected_repository,
+        expected_sha=expected_sha,
+        expected_tree=expected_tree,
+        expected_tag=expected_tag,
+        expected_owner=expected_owner,
+    )
+    if qualification != fresh:
+        raise HfPublicationQualificationError(
+            "qualification does not match fresh plan qualification"
+        )
+    if fresh.disposition != "DRY_RUN_READY" or fresh.blockers:
         raise HfPublicationQualificationError(
             "dry-run receipt requires a DRY_RUN_READY qualification"
         )
     expected_plan_sha = hashlib.sha256(canonical_json_bytes(plan.to_dict())).hexdigest()
-    if qualification.plan_sha256 != expected_plan_sha:
+    if fresh.plan_sha256 != expected_plan_sha:
         raise HfPublicationQualificationError("qualification does not bind this plan")
-    if qualification.artifact_manifest_sha256 != plan.artifact_manifest_sha256:
+    if fresh.artifact_manifest_sha256 != plan.artifact_manifest_sha256:
         raise HfPublicationQualificationError(
             "qualification artifact manifest does not bind this plan"
         )
@@ -275,7 +296,7 @@ def build_dry_run_receipt(
         "destination_repo": plan.destination_repo,
         "destination_repo_type": plan.destination_repo_type,
         "external_upload_performed": False,
-        "plan_sha256": qualification.plan_sha256,
+        "plan_sha256": fresh.plan_sha256,
         "schema_version": SCHEMA_RECEIPT,
         "source_repository": plan.source_repository,
         "source_sha": plan.source_sha,

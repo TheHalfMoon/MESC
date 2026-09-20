@@ -44,7 +44,7 @@ Repository qualification requires external_upload_enabled=false.
 
 Qualification is blocked for:
 
-- source repository/SHA/tree drift;
+- source repository/SHA/tree/tag drift;
 - destination-owner drift;
 - unsafe or duplicate artifact paths;
 - missing README.md card;
@@ -58,7 +58,9 @@ No credential is represented in the plan or dry-run receipt schema.
 ## Dry-run receipt
 
 A successful dry-run receipt records source identity, destination identity, plan hash,
-artifact-manifest hash, and external_upload_performed=false.
+artifact-manifest hash, and external_upload_performed=false. Receipt construction reruns
+qualification against the exact expected repository/SHA/tree/tag so a caller-supplied
+qualification object cannot bypass the fail-closed checks.
 
 The receipt is evidence of repository-side planning/qualification only. It is not
 publication evidence.
