@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import subprocess
 from dataclasses import replace
@@ -277,6 +278,24 @@ def test_temporary_environment_restores_process_state() -> None:
     assert "HF_OIDC_RESOURCE" not in os.environ
 
 
+def test_receipt_binds_authority_issue_and_verified_readback(tmp_path: Path) -> None:
+    path = tmp_path / "receipt.json"
+    v2._write_receipt(
+        path,
+        active_authority(),
+        destination_commit="4" * 40,
+        github_run_id="12345",
+        github_run_attempt="1",
+        github_actor="TheHalfMoon",
+    )
+    receipt = json.loads(path.read_text())
+    assert receipt["authority_issue_number"] == 451
+    assert receipt["authority_comment_id"] == 123
+    assert receipt["destination_commit"] == "4" * 40
+    assert receipt["readback_verified"] is True
+    assert canonical_json_bytes(receipt) == path.read_bytes()
+
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -295,6 +314,7 @@ def test_workflow_preflight_has_no_environment_or_oidc_write() -> None:
     workflow = (REPO_ROOT / ".github/workflows/hf-publish.yml").read_text()
     preflight = _job_block(workflow, "preflight")
     publish = _job_block(workflow, "publish")
+    admit = _job_block(workflow, "admit-receipt")
     assert "environment:" not in preflight
     assert "id-token:" not in preflight
     assert "contents: read" in preflight
@@ -303,6 +323,14 @@ def test_workflow_preflight_has_no_environment_or_oidc_write() -> None:
     assert "needs: preflight" in publish
     assert "environment: huggingface-publication" in publish
     assert "id-token: write" in publish
+    assert "needs: publish" in admit
+    assert "environment:" not in admit
+    assert "id-token:" not in admit
+    assert "actions: read" in admit
+    assert "issues: write" in admit
+    assert "contents: write" not in admit
+    assert "actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c" in admit
+    assert "gh issue comment" in admit
 
 
 def test_workflow_is_dispatch_only_disabled_by_operator_guard() -> None:
@@ -313,6 +341,7 @@ def test_workflow_is_dispatch_only_disabled_by_operator_guard() -> None:
     assert "pull_request:" not in prefix
     assert workflow.count("vars.HF_PUBLISH_ENABLED == 'true'") == 2
     assert workflow.count("github.ref == 'refs/heads/main'") == 2
+    assert workflow.count("issues: write") == 1
     assert "secrets." not in workflow
     assert "contents: write" not in workflow
 
