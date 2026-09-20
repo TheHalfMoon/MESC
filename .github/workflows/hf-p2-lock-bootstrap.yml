@@ -8,17 +8,19 @@ on:
       - ".github/workflows/hf-p2-lock-bootstrap.yml"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   lock:
-    name: generate script lock
+    name: persist exact script lock
+    if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          persist-credentials: false
+          ref: ${{ github.head_ref }}
+          persist-credentials: true
       - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
           enable-cache: false
@@ -28,10 +30,16 @@ jobs:
         run: uv lock --script scripts/mesc_hf_publish.py
       - name: Verify generated script lock
         run: uv lock --check --script scripts/mesc_hf_publish.py
-      - name: Upload exact generated lock
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: hf-p2-script-lock-${{ github.event.pull_request.number }}-${{ github.sha }}
-          path: scripts/mesc_hf_publish.py.lock
-          if-no-files-found: error
-          retention-days: 1
+      - name: Verify expected lock identity
+        shell: bash
+        run: |
+          test "$(sha256sum scripts/mesc_hf_publish.py.lock | cut -d' ' -f1)" =             "15c40edc5e9f725df06c745b62301cc4f7c1cfbe496cf355fb040f134e792d3a"
+      - name: Commit exact generated lock to PR branch
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add scripts/mesc_hf_publish.py.lock
+          git diff --cached --quiet && exit 0
+          git commit -m "build: lock Hugging Face transport dependencies"
+          git push origin "HEAD:${GITHUB_HEAD_REF}"
