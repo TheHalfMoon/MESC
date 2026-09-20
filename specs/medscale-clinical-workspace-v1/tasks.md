@@ -521,39 +521,69 @@ No generic roadmap approval or “go ahead” substitutes for this bounded autho
 
 ## Dependency graph
 
+The following edge list is the authoritative rendered dependency view. Every arrow below corresponds to one declared direct dependency; no additional edge is implied by layout.
+
 ```text
-CW-000
-  |
-CW-001
-  |
-CW-002 -----+
-  |         |
-CW-003      |
-  |         |
-CW-004 <----+
-  |
-  +--> CW-005 -> CW-006 -> CW-007 -> CW-008 -> CW-015 --+
-  |                                                        |
-  +--> CW-009 -> CW-010 ----------------------------------+
-  |                                                        |
-  +--> CW-011 -> CW-012 ----------------------+            |
-  |      |                                     |            |
-  |      +------------------------------+      |            |
-  |                                     |      |            |
-  +--> CW-013 -> CW-014 ----------------+------+------------+
-  |                                     |                   |
-  +--> CW-016 --------------------------+-------------------+
-  |                                     |                   |
-  +--> CW-017 ---------------------> CW-018 ----------------+
-                                                            |
-                                                          CW-019
-                                                            |
-                                                          CW-020
-                                                            |
-                                                          CW-021 (separate external/clinical authority)
+CW-000 -> CW-001
+
+CW-001 -> CW-002
+CW-001 -> CW-003
+CW-002 -> CW-003
+
+CW-001 -> CW-004
+CW-003 -> CW-004
+
+CW-003 -> CW-005
+CW-004 -> CW-005
+CW-005 -> CW-006
+CW-003 -> CW-007
+CW-004 -> CW-007
+CW-006 -> CW-007
+CW-007 -> CW-008
+
+CW-001 -> CW-009
+CW-003 -> CW-009
+CW-004 -> CW-009
+CW-009 -> CW-010
+
+CW-003 -> CW-011
+CW-004 -> CW-011
+CW-011 -> CW-012
+
+CW-003 -> CW-013
+CW-004 -> CW-013
+CW-013 -> CW-014
+CW-003 -> CW-014
+CW-004 -> CW-014
+
+CW-003 -> CW-015
+CW-004 -> CW-015
+CW-008 -> CW-015
+
+CW-001 -> CW-016
+CW-004 -> CW-016
+
+CW-002 -> CW-017
+CW-003 -> CW-017
+CW-004 -> CW-017
+
+CW-002 -> CW-018
+CW-003 -> CW-018
+CW-011 -> CW-018
+CW-017 -> CW-018
+
+CW-010 -> CW-019
+CW-012 -> CW-019
+CW-014 -> CW-019
+CW-015 -> CW-019
+CW-016 -> CW-019
+CW-018 -> CW-019
+
+CW-019 -> CW-020
+CW-020 -> CW-021
 ```
 
-CW-009/CW-010 and CW-011/CW-012 may be scheduled only when R4 permits the next single task; the diagram expresses dependency, not parallel execution authority.
+The final `CW-020 -> CW-021` edge is necessary but not sufficient: CW-021 also requires the separate explicit Founder/governance authorization defined in its task contract. CW-009/CW-010 and CW-011/CW-012 may be scheduled only when R4 permits the next single task; the edge list expresses dependency, not parallel execution authority.
 
 ## Cross-project / MRL relation
 
