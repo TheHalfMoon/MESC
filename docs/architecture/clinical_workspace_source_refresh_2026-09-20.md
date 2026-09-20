@@ -72,8 +72,9 @@ MedScale V1 should treat generated clinical actions as drafts and preserve a hum
 
 - https://takehome.openevidence.com/
 - https://www.cedars-sinai.org/newsroom/cedars-sinai-enhances-clinical-decision-making-with-openevidence/
-- https://www.mountsinai.org/about/newsroom/2026/mount-sinai-and-openevidence-announce-strategic-partnership-to-advance-ai-enabled-clinical-decision-making
+- https://www.mountsinai.org/about/newsroom/2026/mount-sinai-health-system-collaborates-with-openevidence-to-provide-evidence-based-knowledge-within-electronic-medical-record
 - https://www.cochrane.org/about-us/news/cochrane-evidence-inform-openevidence-users
+- https://www.prnewswire.com/news-releases/openevidence-launches-evidencegrade-empowering-physicians-to-see-the-strength-of-cited-evidence-beneath-each-ai-answer-302822750.html *(provider-issued press release; not independent validation)*
 
 Accessed: 2026-09-20.
 
@@ -81,7 +82,7 @@ The public OpenEvidence homepage could not be treated as the sole source in this
 
 ### Current observed product pattern
 
-Primary partner materials establish that OpenEvidence is used for natural-language clinical questions and medical-literature retrieval, including integrations where relevant patient-record context can shape retrieval. Cochrane states that its publishing partner licenses Cochrane systematic-review content to OpenEvidence.
+Primary partner materials establish that OpenEvidence is used for natural-language clinical questions and medical-literature retrieval, including integrations where relevant patient-record context can shape retrieval. Cochrane states that its publishing partner licenses Cochrane systematic-review content to OpenEvidence. A provider-issued July 2026 press release also describes EvidenceGrade as surfacing and grading the quality of published evidence behind answers; MedScale treats that as a product-capability claim to study, not independent validation of the method.
 
 ### MedScale disposition
 
