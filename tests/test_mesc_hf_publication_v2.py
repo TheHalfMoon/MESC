@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import subprocess
+import textwrap
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -310,6 +311,13 @@ def _job_block(text: str, job: str) -> str:
     return text[start:end]
 
 
+def _receipt_admission_script(workflow: str) -> str:
+    marker = "          python - <<'PY'\n"
+    end_marker = "\n          PY"
+    tail = workflow.split(marker, maxsplit=1)[1]
+    return textwrap.dedent(tail.split(end_marker, maxsplit=1)[0])
+
+
 def test_workflow_preflight_has_no_environment_or_oidc_write() -> None:
     workflow = (REPO_ROOT / ".github/workflows/hf-publish.yml").read_text()
     preflight = _job_block(workflow, "preflight")
@@ -328,9 +336,40 @@ def test_workflow_preflight_has_no_environment_or_oidc_write() -> None:
     assert "id-token:" not in admit
     assert "actions: read" in admit
     assert "issues: write" in admit
-    assert "contents: write" not in admit
+    assert "contents:" not in admit
     assert "actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c" in admit
     assert "gh issue comment" in admit
+
+
+def test_receipt_admission_script_validates_same_run_receipt(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    receipt_path = tmp_path / "receipt.json"
+    comment_path = tmp_path / "comment.md"
+    issue_path = tmp_path / "issue.txt"
+    v2._write_receipt(
+        receipt_path,
+        active_authority(),
+        destination_commit="4" * 40,
+        github_run_id="12345",
+        github_run_attempt="1",
+        github_actor="TheHalfMoon",
+    )
+    monkeypatch.setenv("RECEIPT_PATH", str(receipt_path))
+    monkeypatch.setenv("COMMENT_PATH", str(comment_path))
+    monkeypatch.setenv("ISSUE_PATH", str(issue_path))
+    monkeypatch.setenv("EXPECTED_REPOSITORY", "TheHalfMoon/MESC")
+    monkeypatch.setenv("EXPECTED_RUN_ID", "12345")
+    monkeypatch.setenv("EXPECTED_RUN_ATTEMPT", "1")
+
+    workflow = (REPO_ROOT / ".github/workflows/hf-publish.yml").read_text()
+    script = _receipt_admission_script(workflow)
+    exec(compile(script, ".github/workflows/hf-publish.yml:receipt-admission", "exec"), {})
+
+    assert issue_path.read_text() == "451"
+    comment = comment_path.read_text()
+    assert hashlib.sha256(receipt_path.read_bytes()).hexdigest() in comment
+    assert receipt_path.read_text() in comment
 
 
 def test_workflow_is_dispatch_only_disabled_by_operator_guard() -> None:
