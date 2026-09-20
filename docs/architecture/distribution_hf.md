@@ -92,7 +92,11 @@ Publication reuses exact immutable GitHub Release bytes without rebuilding, requ
 authorized Hugging Face destination parent commit and file inventory, performs one
 parent-bound Hub commit, and independently downloads every governed file at the returned
 immutable Hugging Face commit to reproduce byte counts and SHA-256 values before a
-success receipt can exist.
+success receipt can exist. The receipt is transferred to a separate non-OIDC admission
+job, revalidated against the same workflow run/attempt, and posted with its SHA-256 to
+the exact authority issue as canonical GitHub evidence. A failure after the Hub commit
+is an explicit reconciliation state: no automatic rerun, deletion, rollback, or
+replacement is permitted.
 
 This repository implementation does **not** create or configure a Hugging Face
 repository, GitHub Environment, or Trusted Publisher; does not set
