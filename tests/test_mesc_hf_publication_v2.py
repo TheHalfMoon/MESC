@@ -67,9 +67,7 @@ def active_authority(*, environment_policy_sha256: str = "f" * 64) -> v2.Publica
 
 
 def test_disabled_authority_is_minimal_and_canonical() -> None:
-    raw = canonical_json_bytes(
-        {"schema_version": v2.SCHEMA_AUTHORITY, "state": "DISABLED"}
-    )
+    raw = canonical_json_bytes({"schema_version": v2.SCHEMA_AUTHORITY, "state": "DISABLED"})
     authority = v2.parse_authority(raw)
     assert authority.state == "DISABLED"
     with pytest.raises(v2.HfPublicationTransportError, match="not ACTIVE"):
@@ -106,7 +104,6 @@ def test_authority_requires_exact_release_asset_binding() -> None:
     )
     with pytest.raises(v2.HfPublicationTransportError, match="identity"):
         replace(authority, release_assets=(bad_asset,))
-
 
 
 def test_materialization_protects_leading_hyphen_tag(
@@ -279,6 +276,7 @@ def test_temporary_environment_restores_process_state() -> None:
         assert os.environ["HF_OIDC_RESOURCE"] == "spaces/x/y"
     assert "HF_OIDC_RESOURCE" not in os.environ
 
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -367,9 +365,7 @@ def test_environment_rejects_non_substantive_protection(
     payloads = github_payloads()
     environment = payloads["environment"]
     assert type(environment) is dict
-    environment["protection_rules"] = [
-        {"id": 7, "type": "wait_timer", "wait_timer": 0}
-    ]
+    environment["protection_rules"] = [{"id": 7, "type": "wait_timer", "wait_timer": 0}]
     install_github_stub(monkeypatch, payloads)
     with pytest.raises(v2.HfPublicationTransportError, match="not substantive"):
         v2._environment_policy_sha256("gh")
@@ -400,9 +396,7 @@ def test_live_boundary_rejects_wrong_workflow_identity(
             github_token="gh",
             expected_repository="TheHalfMoon/MESC",
             expected_workflow_sha=SHA,
-            expected_workflow_ref=(
-                "TheHalfMoon/MESC/.github/workflows/other.yml@refs/heads/main"
-            ),
+            expected_workflow_ref=("TheHalfMoon/MESC/.github/workflows/other.yml@refs/heads/main"),
         )
 
 
