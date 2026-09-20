@@ -46,9 +46,6 @@ jobs:
           git diff --check
           mapfile -t changed < <(git status --short | sed -E 's/^.. //' | sort)
           expected=(
-            "scripts/mesc_hf_publish.py"
-            "specs/mesc-hf-publication-v2/README.md"
-            "specs/mesc-hf-publication-v2/authority.json"
             "src/medscale/mesc/_hf_publication_v2.py"
             "tests/test_mesc_hf_publication_v2.py"
           )
