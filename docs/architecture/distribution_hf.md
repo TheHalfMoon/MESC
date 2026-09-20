@@ -62,3 +62,15 @@ Acceptance of those ADRs and repository-side TestPyPI qualification do not creat
 Hugging Face publication, credentials, model/data execution evidence, or authorization
 to upload anything. External activation and distribution remain separately scoped and
 evidence-gated.
+
+## Repository-side dry-run qualification contract
+
+Issue #451 introduces specs/mesc-hf-publication-v1 as a repository-side,
+external-publication-disabled qualification contract. The contract binds an exact GitHub
+source SHA/tree/tag, destination allowlist, artifact manifest, card, rights, provenance,
+and licence identity and may emit only a dry-run receipt with
+external_upload_performed=false.
+
+This implementation does not change the external publication boundary above: Hugging
+Face upload, repository creation, credentials, promotion, and post-publication readback
+remain unimplemented and separately authority-gated until a successor is qualified.
