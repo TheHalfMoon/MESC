@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import importlib
 import json
 import os
 import re
@@ -641,17 +642,10 @@ def publish_with_trusted_publisher(
                 "HF_OIDC_RESOURCE": authority.oidc_resource,
             }
         ):
-            from huggingface_hub import (
-                CommitOperationAdd,
-                HfApi,
-                get_token,
-                hf_hub_download,
-            )
-            from huggingface_hub import __version__ as hub_version
-
-            if hub_version != "1.23.0":
+            hub = cast(Any, importlib.import_module("huggingface_hub"))
+            if hub.__version__ != "1.23.0":
                 raise HfPublicationTransportError("huggingface-hub version drifted")
-            token = get_token()
+            token = hub.get_token()
             if not token:
                 raise HfPublicationTransportError(
                     "Trusted Publisher OIDC exchange returned no token"
@@ -663,10 +657,10 @@ def publish_with_trusted_publisher(
                 expected_workflow_sha=expected_workflow_sha,
                 expected_workflow_ref=expected_workflow_ref,
             )
-            api = HfApi(token=token)
+            api = hub.HfApi(token=token)
             parent_files = _verify_hf_parent(api, authority)
             operations = [
-                CommitOperationAdd(
+                hub.CommitOperationAdd(
                     path_in_repo=binding.path,
                     path_or_fileobj=str(payload_dir / binding.path),
                 )
@@ -702,7 +696,7 @@ def publish_with_trusted_publisher(
                 raise HfPublicationTransportError("Hugging Face post-commit inventory drifted")
             for binding in authority.release_assets:
                 downloaded = Path(
-                    hf_hub_download(
+                    hub.hf_hub_download(
                         repo_id=authority.repo_id,
                         filename=binding.path,
                         repo_type=authority.repo_type,
