@@ -45,6 +45,7 @@ def _add_live_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--authority", type=Path, default=DEFAULT_AUTHORITY)
     parser.add_argument("--expected-repository", required=True)
     parser.add_argument("--expected-sha", required=True)
+    parser.add_argument("--expected-workflow-ref", required=True)
 
 
 def main() -> None:
@@ -86,6 +87,7 @@ def main() -> None:
             github_token=_github_token(),
             expected_repository=args.expected_repository,
             expected_workflow_sha=args.expected_sha,
+            expected_workflow_ref=args.expected_workflow_ref,
         )
         print("PREFLIGHT_OK")
         return
@@ -97,6 +99,7 @@ def main() -> None:
         github_token=_github_token(),
         expected_repository=args.expected_repository,
         expected_workflow_sha=args.expected_sha,
+        expected_workflow_ref=args.expected_workflow_ref,
         receipt_out=args.receipt_out,
         github_run_id=args.github_run_id,
         github_run_attempt=args.github_run_attempt,
