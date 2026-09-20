@@ -720,6 +720,8 @@ def publish_with_trusted_publisher(
                 github_run_id=github_run_id,
                 github_run_attempt=github_run_attempt,
                 github_actor=github_actor,
+                workflow_sha=expected_workflow_sha,
+                workflow_ref=expected_workflow_ref,
             )
             return destination_commit
 
@@ -779,6 +781,8 @@ def _write_receipt(
     github_run_id: str,
     github_run_attempt: str,
     github_actor: str,
+    workflow_sha: str,
+    workflow_ref: str,
 ) -> None:
     plan = authority.plan
     plan_sha256 = authority.plan_sha256
@@ -787,6 +791,10 @@ def _write_receipt(
     comment_id = authority.authority_comment_id
     body_sha256 = authority.authority_body_sha256
     environment_policy_sha256 = authority.environment_policy_sha256
+    if _SHA40.fullmatch(workflow_sha) is None:
+        raise HfPublicationTransportError("publication receipt workflow SHA is invalid")
+    if workflow_ref != EXPECTED_WORKFLOW_REF:
+        raise HfPublicationTransportError("publication receipt workflow identity drifted")
     if (
         plan is None
         or plan_sha256 is None
@@ -823,6 +831,8 @@ def _write_receipt(
         "source_sha": plan.source_sha,
         "source_tag": plan.source_tag,
         "source_tree": plan.source_tree,
+        "workflow_ref": workflow_ref,
+        "workflow_sha": workflow_sha,
     }
     with path.open("xb") as handle:
         handle.write(canonical_json_bytes(receipt))
