@@ -67,6 +67,7 @@ The proposed package is:
 - [Clinical Workspace V1 master specification](specs/medscale-clinical-workspace-v1/README.md);
 - [capability map](specs/medscale-clinical-workspace-v1/capability_map.md);
 - [data security and threat model](specs/medscale-clinical-workspace-v1/data_security.md);
+- [migration, compatibility, and recovery contract](specs/medscale-clinical-workspace-v1/migration_recovery.md);
 - [dependency-ordered task ledger](specs/medscale-clinical-workspace-v1/tasks.md);
 - [2026-09-20 source refresh](docs/architecture/clinical_workspace_source_refresh_2026-09-20.md).
 
