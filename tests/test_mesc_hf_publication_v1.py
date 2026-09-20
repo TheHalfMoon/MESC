@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import subprocess
+import sys
 from dataclasses import replace
+from pathlib import Path
 
 import pytest
 
@@ -38,7 +41,7 @@ def _plan(**overrides: object) -> HfPublicationPlan:
         "source_tree": _TREE,
         "source_tag": "v0.3.0",
         "artifacts": (_artifact(), _artifact("app.py", digest="d" * 64)),
-        "card_sha256": "e" * 64,
+        "card_sha256": _HASH,
         "rights_sha256": "f" * 64,
         "provenance_sha256": "1" * 64,
         "license_id": "Apache-2.0",
@@ -108,7 +111,10 @@ def test_artifact_manifest_is_order_independent() -> None:
     assert left.artifact_manifest_sha256 == right.artifact_manifest_sha256
 
 
-@pytest.mark.parametrize("path", ["/README.md", "../README.md", "a/../README.md", "a\\b"])
+@pytest.mark.parametrize(
+    "path",
+    ["/README.md", "../README.md", "a/../README.md", "a\\b", "a//b", "a/./b"],
+)
 def test_unsafe_artifact_paths_are_rejected(path: str) -> None:
     with pytest.raises(HfPublicationQualificationError, match="safe and relative"):
         _artifact(path)
@@ -139,6 +145,44 @@ def test_plan_parser_requires_canonical_json_and_exact_keys() -> None:
     payload["token"] = "secret"
     with pytest.raises(HfPublicationQualificationError, match="keys drifted"):
         parse_publication_plan(canonical_json_bytes(payload))
+
+
+def test_card_hash_must_bind_readme_artifact() -> None:
+    plan = _plan(card_sha256="e" * 64)
+    report = _qualify(plan)
+    assert report.disposition == "BLOCKED"
+    assert "card_sha256 does not bind README.md" in report.blockers
+
+
+def test_cli_writes_exact_nonpublishing_receipt(tmp_path: Path) -> None:
+    plan = _plan()
+    plan_path = tmp_path / "plan.json"
+    receipt_path = tmp_path / "receipt.json"
+    plan_path.write_bytes(canonical_json_bytes(plan.to_dict()))
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "scripts/mesc_hf_publication.py",
+            "--plan",
+            str(plan_path),
+            "--expected-repository",
+            "TheHalfMoon/MESC",
+            "--expected-sha",
+            _SHA,
+            "--expected-tree",
+            _TREE,
+            "--receipt-out",
+            str(receipt_path),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode == 0, completed.stderr
+    receipt = json.loads(receipt_path.read_bytes())
+    assert receipt["external_upload_performed"] is False
+    assert receipt["source_sha"] == _SHA
+    assert receipt["destination_owner"] == "MedScaleAI"
 
 
 def test_dry_run_receipt_rejects_blocked_qualification() -> None:

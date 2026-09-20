@@ -61,6 +61,7 @@ class HfPublicationArtifact:
             not self.path
             or self.path.startswith("/")
             or "\\" in self.path
+            or pure.as_posix() != self.path
             or any(part in {"", ".", ".."} for part in pure.parts)
         ):
             raise HfPublicationQualificationError("artifact path must be safe and relative")
@@ -237,9 +238,11 @@ def qualify_publication_plan(
         blockers.append("destination owner is outside the authorized allowlist")
     if plan.external_upload_enabled:
         blockers.append("external upload must remain disabled during repository qualification")
-    artifact_paths = {item.path for item in plan.artifacts}
-    if "README.md" not in artifact_paths:
+    artifacts_by_path = {item.path: item for item in plan.artifacts}
+    if "README.md" not in artifacts_by_path:
         blockers.append("Hugging Face card README.md is absent")
+    elif artifacts_by_path["README.md"].sha256 != plan.card_sha256:
+        blockers.append("card_sha256 does not bind README.md")
     disposition: Disposition = "BLOCKED" if blockers else "DRY_RUN_READY"
     plan_sha256 = hashlib.sha256(canonical_json_bytes(plan.to_dict())).hexdigest()
     return HfPublicationQualification(

@@ -7,8 +7,13 @@ on:
       - ".github/workflows/hf-publication.yml"
       - "scripts/mesc_hf_publication.py"
       - "specs/mesc-hf-publication-v1/**"
+      - "docs/architecture/distribution_hf.md"
       - "src/medscale/mesc/_hf_publication_v1.py"
       - "tests/test_mesc_hf_publication_v1.py"
+
+concurrency:
+  group: hf-publication-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
