@@ -86,3 +86,123 @@ jobs:
           path: ${{ runner.temp }}/mesc-hf-publication-receipt.json
           if-no-files-found: error
           retention-days: 90
+
+
+  admit-receipt:
+    name: canonical receipt admission
+    needs: publish
+    if: needs.publish.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      issues: write
+    steps:
+      - name: Download exact publication receipt
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: mesc-hf-publication-receipt-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/mesc-hf-receipt
+      - name: Validate and prepare canonical receipt evidence
+        env:
+          RECEIPT_PATH: ${{ runner.temp }}/mesc-hf-receipt/mesc-hf-publication-receipt.json
+          COMMENT_PATH: ${{ runner.temp }}/mesc-hf-publication-receipt.md
+          ISSUE_PATH: ${{ runner.temp }}/mesc-hf-publication-issue.txt
+          EXPECTED_REPOSITORY: ${{ github.repository }}
+          EXPECTED_RUN_ID: ${{ github.run_id }}
+          EXPECTED_RUN_ATTEMPT: ${{ github.run_attempt }}
+        shell: bash
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          import re
+          from pathlib import Path
+
+          receipt_path = Path(os.environ["RECEIPT_PATH"])
+          raw = receipt_path.read_bytes()
+          try:
+              receipt = json.loads(raw.decode("utf-8"))
+          except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+              raise SystemExit("publication receipt is not valid UTF-8 JSON") from exc
+
+          expected_keys = {
+              "artifact_manifest_sha256",
+              "authority_body_sha256",
+              "authority_comment_id",
+              "authority_issue_number",
+              "destination_commit",
+              "destination_owner",
+              "destination_repo",
+              "destination_repo_type",
+              "environment_policy_sha256",
+              "github_actor",
+              "github_run_attempt",
+              "github_run_id",
+              "plan_sha256",
+              "publication_mode",
+              "readback_verified",
+              "schema_version",
+              "source_repository",
+              "source_sha",
+              "source_tag",
+              "source_tree",
+          }
+          if type(receipt) is not dict or set(receipt) != expected_keys:
+              raise SystemExit("publication receipt schema drifted")
+          if receipt["schema_version"] != "MESC-HF-PUBLICATION-RECEIPT-V1":
+              raise SystemExit("publication receipt version drifted")
+          if receipt["source_repository"] != os.environ["EXPECTED_REPOSITORY"]:
+              raise SystemExit("publication receipt repository drifted")
+          if receipt["github_run_id"] != os.environ["EXPECTED_RUN_ID"]:
+              raise SystemExit("publication receipt run id drifted")
+          if receipt["github_run_attempt"] != os.environ["EXPECTED_RUN_ATTEMPT"]:
+              raise SystemExit("publication receipt run attempt drifted")
+          if receipt["readback_verified"] is not True:
+              raise SystemExit("publication receipt lacks immutable readback proof")
+
+          issue_number = receipt["authority_issue_number"]
+          if type(issue_number) is not int or issue_number <= 0:
+              raise SystemExit("publication receipt authority issue is invalid")
+          if type(receipt["authority_comment_id"]) is not int or receipt["authority_comment_id"] <= 0:
+              raise SystemExit("publication receipt authority comment is invalid")
+
+          sha40 = re.compile(r"^[0-9a-f]{40}$")
+          sha64 = re.compile(r"^[0-9a-f]{64}$")
+          for field in ("destination_commit", "source_sha", "source_tree"):
+              if type(receipt[field]) is not str or sha40.fullmatch(receipt[field]) is None:
+                  raise SystemExit(f"publication receipt {field} is invalid")
+          for field in (
+              "artifact_manifest_sha256",
+              "authority_body_sha256",
+              "environment_policy_sha256",
+              "plan_sha256",
+          ):
+              if type(receipt[field]) is not str or sha64.fullmatch(receipt[field]) is None:
+                  raise SystemExit(f"publication receipt {field} is invalid")
+
+          receipt_sha256 = hashlib.sha256(raw).hexdigest()
+          body = (
+              "## MESC Hugging Face publication receipt\n\n"
+              "Canonical GitHub evidence admitted by the publication workflow after "
+              "immutable Hugging Face readback.\n\n"
+              f"- workflow run: `{receipt['github_run_id']}`\n"
+              f"- workflow attempt: `{receipt['github_run_attempt']}`\n"
+              f"- receipt SHA-256: `{receipt_sha256}`\n\n"
+              "```json\n"
+              + raw.decode("utf-8")
+              + "\n```\n"
+          )
+          Path(os.environ["COMMENT_PATH"]).write_text(body, encoding="utf-8")
+          Path(os.environ["ISSUE_PATH"]).write_text(str(issue_number), encoding="ascii")
+          PY
+      - name: Admit receipt to canonical GitHub evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COMMENT_PATH: ${{ runner.temp }}/mesc-hf-publication-receipt.md
+          ISSUE_PATH: ${{ runner.temp }}/mesc-hf-publication-issue.txt
+        run: >-
+          gh issue comment "$(cat "${ISSUE_PATH}")"
+          --repo "${GITHUB_REPOSITORY}"
+          --body-file "${COMMENT_PATH}"
