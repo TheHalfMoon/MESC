@@ -1,0 +1,88 @@
+name: Hugging Face Trusted Publication
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    name: publication preflight
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      github.ref == 'refs/heads/main' &&
+      vars.HF_PUBLISH_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: read
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          enable-cache: false
+      - name: Install Python 3.11
+        run: uv python install 3.11
+      - name: Verify exact committed publication authority and external policy
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PYTHONPATH: src
+        run: >-
+          uv run --locked --script scripts/mesc_hf_publish.py preflight
+          --expected-repository "${GITHUB_REPOSITORY}"
+          --expected-sha "${GITHUB_SHA}"
+          --expected-workflow-ref "${GITHUB_WORKFLOW_REF}"
+
+  publish:
+    name: trusted publication
+    needs: preflight
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      github.ref == 'refs/heads/main' &&
+      vars.HF_PUBLISH_ENABLED == 'true' &&
+      needs.preflight.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: huggingface-publication
+    permissions:
+      contents: read
+      issues: read
+      actions: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          enable-cache: false
+      - name: Install Python 3.11
+        run: uv python install 3.11
+      - name: Publish exact governed bytes with Trusted Publisher OIDC
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PYTHONPATH: src
+        run: >-
+          uv run --locked --script scripts/mesc_hf_publish.py publish
+          --expected-repository "${GITHUB_REPOSITORY}"
+          --expected-sha "${GITHUB_SHA}"
+          --expected-workflow-ref "${GITHUB_WORKFLOW_REF}"
+          --receipt-out "${RUNNER_TEMP}/mesc-hf-publication-receipt.json"
+          --github-run-id "${GITHUB_RUN_ID}"
+          --github-run-attempt "${GITHUB_RUN_ATTEMPT}"
+          --github-actor "${GITHUB_ACTOR}"
+      - name: Verify publication receipt exists
+        run: test -s "${RUNNER_TEMP}/mesc-hf-publication-receipt.json"
+      - name: Preserve publication receipt
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: mesc-hf-publication-receipt-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/mesc-hf-publication-receipt.json
+          if-no-files-found: error
+          retention-days: 90
