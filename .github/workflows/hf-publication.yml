@@ -1,0 +1,46 @@
+name: Hugging Face Publication Qualification
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/hf-publication.yml"
+      - "scripts/mesc_hf_publication.py"
+      - "specs/mesc-hf-publication-v1/**"
+      - "docs/architecture/distribution_hf.md"
+      - "src/medscale/mesc/_hf_publication_v1.py"
+      - "tests/test_mesc_hf_publication_v1.py"
+
+concurrency:
+  group: hf-publication-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  dry-run-contract:
+    name: dry-run contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          enable-cache: false
+      - name: Install Python 3.11
+        run: uv python install 3.11
+      - name: Sync exact lock
+        run: uv sync --frozen
+      - name: Focused Hugging Face publication qualification
+        run: uv run pytest -q tests/test_mesc_hf_publication_v1.py
+      - name: CLI import/help smoke
+        run: uv run python scripts/mesc_hf_publication.py --help
+      - name: Verify no publication credentials or upload surface
+        shell: bash
+        run: |
+          ! rg -n 'HF_TOKEN|HUGGING_FACE_HUB_TOKEN|push_to_hub|create_repo|upload_file|upload_folder'             src/medscale/mesc/_hf_publication_v1.py             scripts/mesc_hf_publication.py             .github/workflows/hf-publication.yml
