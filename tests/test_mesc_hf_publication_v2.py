@@ -288,11 +288,15 @@ def test_receipt_binds_authority_issue_and_verified_readback(tmp_path: Path) -> 
         github_run_id="12345",
         github_run_attempt="1",
         github_actor="TheHalfMoon",
+        workflow_sha=SHA,
+        workflow_ref=v2.EXPECTED_WORKFLOW_REF,
     )
     receipt = json.loads(path.read_text())
     assert receipt["authority_issue_number"] == 451
     assert receipt["authority_comment_id"] == 123
     assert receipt["destination_commit"] == "4" * 40
+    assert receipt["workflow_sha"] == SHA
+    assert receipt["workflow_ref"] == v2.EXPECTED_WORKFLOW_REF
     assert receipt["readback_verified"] is True
     assert canonical_json_bytes(receipt) == path.read_bytes()
 
@@ -354,6 +358,8 @@ def test_receipt_admission_script_validates_same_run_receipt(
         github_run_id="12345",
         github_run_attempt="1",
         github_actor="TheHalfMoon",
+        workflow_sha=SHA,
+        workflow_ref=v2.EXPECTED_WORKFLOW_REF,
     )
     monkeypatch.setenv("RECEIPT_PATH", str(receipt_path))
     monkeypatch.setenv("COMMENT_PATH", str(comment_path))
@@ -361,6 +367,8 @@ def test_receipt_admission_script_validates_same_run_receipt(
     monkeypatch.setenv("EXPECTED_REPOSITORY", "TheHalfMoon/MESC")
     monkeypatch.setenv("EXPECTED_RUN_ID", "12345")
     monkeypatch.setenv("EXPECTED_RUN_ATTEMPT", "1")
+    monkeypatch.setenv("EXPECTED_WORKFLOW_SHA", SHA)
+    monkeypatch.setenv("EXPECTED_WORKFLOW_REF", v2.EXPECTED_WORKFLOW_REF)
 
     workflow = (REPO_ROOT / ".github/workflows/hf-publish.yml").read_text()
     script = _receipt_admission_script(workflow)
