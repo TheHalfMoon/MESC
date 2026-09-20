@@ -29,6 +29,14 @@ GitHub can create a missing Environment when a job first references `environment
 
 A missing, unprotected, incomplete, or policy-drifted Environment is a hard failure. Repository code does not create or configure the Environment.
 
+## Canonical receipt admission and reconciliation
+
+A successful Hub commit is not sufficient by itself. The publication job first performs immutable Hub readback, writes a canonical JSON receipt, and preserves that receipt as a same-run Actions artifact. A separate `admit-receipt` job has no Environment binding and no OIDC permission; it receives only `actions: read` and `issues: write`, validates the exact receipt schema plus same-run identity, and posts the exact receipt bytes with their SHA-256 to the authority issue. That issue comment is the durable canonical GitHub evidence; the Actions artifact is a transport/recovery copy rather than the canonical record.
+
+If a remote Hub commit succeeds but readback, receipt creation, artifact transfer, or canonical GitHub admission fails, the workflow is failed and the destination is a reconciliation state. The workflow must not be blindly rerun because the destination parent binding will have changed. Recovery starts with read-only inspection of the exact Hub commit and repository inventory, followed by a new explicit founder decision that either admits recovered evidence or authorizes a separately governed successor action.
+
+Withdrawal is never automatic. This transport contains no delete-repository or rollback surface. Any withdrawal, replacement, deprecation, or supersession requires separate explicit authority naming the exact destination and immutable revision to be affected, followed by independent post-action verification and a canonical GitHub evidence record.
+
 ## Active authority record
 
 A future `ACTIVE` authority is valid only when canonical JSON binds all of the following:
