@@ -7,6 +7,7 @@
 - **Canonical planning base:** `475a389777c02a1992acafa24b1cfd1dae24c46b`
 - **Scope:** architecture, data/security boundaries, capability decomposition, delivery sequencing, acceptance contracts
 - **Non-scope:** PHI ingestion, production clinical use, model/runtime execution, training, publication, release, paid compute, MRL contract changes
+- **Companion contracts:** [data security](data_security.md) · [capability map](capability_map.md) · [migration/recovery](migration_recovery.md) · [task ledger](tasks.md)
 
 ## 1. Purpose
 
@@ -710,6 +711,8 @@ The system assumes:
 The detailed threat model is in [data_security.md](data_security.md).
 
 ## 22. Recovery and failure modes
+
+The detailed version/schema/key/index migration and rollback contract is [migration_recovery.md](migration_recovery.md).
 
 The Workspace must have explicit recovery for:
 
