@@ -93,7 +93,7 @@ def main() -> None:
         return
     if args.command != "publish":
         raise HfPublicationTransportError("unsupported command")
-    destination_commit = publish_with_trusted_publisher(
+    publish_with_trusted_publisher(
         REPOSITORY_ROOT,
         authority,
         github_token=_github_token(),
@@ -105,7 +105,7 @@ def main() -> None:
         github_run_attempt=args.github_run_attempt,
         github_actor=args.github_actor,
     )
-    print(f"PUBLICATION_OK destination_commit={destination_commit}")
+    print("PUBLICATION_OK")
 
 
 if __name__ == "__main__":
