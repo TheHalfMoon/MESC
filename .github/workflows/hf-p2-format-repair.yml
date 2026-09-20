@@ -19,11 +19,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.head_ref }}
+          fetch-depth: 2
           persist-credentials: true
       - name: Bind repair bootstrap to exact predecessor
         shell: bash
         run: |
-          test "$(git rev-parse HEAD^)" = "9f296ce109b50e4177e59aab07b0224df9c5eee9"
+          test "$(git rev-parse HEAD^)" = "cbc63ffb1d5162f2b798d0cfb8124b21b03aad4c"
           test "$(git diff --name-only HEAD^ HEAD)" = ".github/workflows/hf-p2-format-repair.yml"
       - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
