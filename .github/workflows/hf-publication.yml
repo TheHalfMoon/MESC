@@ -1,6 +1,8 @@
 name: Hugging Face Publication Qualification
 
 on:
+  push:
+    branches: [main]
   pull_request:
     branches: [main]
     paths:
