@@ -116,11 +116,19 @@ def test_all_four_allowlisted_paths_exist() -> None:
 def test_no_fifth_publication_path_was_added() -> None:
     """Nothing named for this increment exists outside the four-path allowlist."""
     allowed = {REPOSITORY_ROOT / relative for relative in ALLOWLISTED_PATHS}
-    for base in ("src", "tests", ".github"):
-        for candidate in (REPOSITORY_ROOT / base).rglob("*publication*"):
-            if not candidate.is_file() or "__pycache__" in candidate.parts:
-                continue
-            assert candidate in allowed, str(candidate)
+    increment_patterns = (
+        ("src", "*fixture_publication*"),
+        ("tests", "*fixture_publication*"),
+        ("tests", "*p01_04b_publication*"),
+        (".github", "*p01-04b-publication*"),
+    )
+    observed = {
+        candidate
+        for base, pattern in increment_patterns
+        for candidate in (REPOSITORY_ROOT / base).rglob(pattern)
+        if candidate.is_file() and "__pycache__" not in candidate.parts
+    }
+    assert observed == allowed, sorted(str(path) for path in observed ^ allowed)
 
 
 def test_continuing_protected_paths_are_byte_identical() -> None:
