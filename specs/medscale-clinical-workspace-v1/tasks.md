@@ -50,6 +50,7 @@ No checkbox alone proves completion.
 - source refresh;
 - data/security threat model;
 - capability map;
+- migration/compatibility/recovery contract;
 - this task ledger;
 - docs/roadmap links.
 
@@ -420,7 +421,7 @@ No checkbox alone proves completion.
 
 **Depends on:** CW-002, CW-003, CW-011, CW-017.
 
-**Purpose:** prove lifecycle protection across primary and derived state.
+**Purpose:** prove lifecycle protection across primary and derived state, including the contract in [migration_recovery.md](migration_recovery.md).
 
 **Acceptance**
 - encrypted backup;
@@ -430,6 +431,9 @@ No checkbox alone proves completion.
 - deleted object policy across indexes/graph/cache/backups;
 - rotation crash test;
 - recovery runbook;
+- migration manifest/preflight/checkpoint-resume evidence;
+- supported upgrade/downgrade refusal semantics;
+- rollback or forward-repair exercise;
 - audit coverage.
 
 ---
