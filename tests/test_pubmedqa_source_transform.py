@@ -175,12 +175,19 @@ class TestFrozenSlotted:
 
 class TestPyArrowIsolation:
     def test_private_module_import_does_not_require_pyarrow(self) -> None:
-        module_name = "medscale.dataset._pubmedqa_source"
-        if module_name in sys.modules:
-            del sys.modules[module_name]
-        imported = importlib.import_module(module_name)
-        assert imported is not None
-        assert "pyarrow" not in sys.modules
+        code = """
+import sys
+import medscale.dataset._pubmedqa_source
+polluted = [name for name in sys.modules if name == "pyarrow" or name.startswith("pyarrow.")]
+raise SystemExit(1 if polluted else 0)
+"""
+        completed = subprocess.run(
+            [sys.executable, "-c", code],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert completed.returncode == 0, completed.stderr
 
 
 # ============================================================================
