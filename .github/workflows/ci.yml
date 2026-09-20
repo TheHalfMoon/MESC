@@ -18,9 +18,12 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  PYTEST_SHARD_COUNT: "4"
+
 jobs:
-  quality:
-    name: quality (py${{ matrix.python-version }})
+  static:
+    name: static (py${{ matrix.python-version }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -68,8 +71,178 @@ jobs:
           uv run python scripts/mrl_closeout_evidence.py
           --verify specs/mesc-research-loop-v1/closeout-evidence-v1.json
 
-      - name: Pytest
-        run: uv run pytest --cov --cov-report=term-missing
+  pytest-shard:
+    name: pytest shard ${{ matrix.shard }} (py${{ matrix.python-version }})
+    needs: static
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+        shard: [0, 1, 2, 3]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          enable-cache: true
+
+      - name: Install Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Sync (locked)
+        run: uv sync --frozen
+
+      - name: Build deterministic test-file shard
+        env:
+          SHARD_INDEX: ${{ matrix.shard }}
+        shell: bash
+        run: |
+          uv run python - <<'PY'
+          from __future__ import annotations
+
+          import hashlib
+          import os
+          import subprocess
+          from pathlib import Path
+
+          shard_count = int(os.environ["PYTEST_SHARD_COUNT"])
+          shard_index = int(os.environ["SHARD_INDEX"])
+          if shard_count <= 0 or not 0 <= shard_index < shard_count:
+              raise SystemExit("invalid pytest shard identity")
+
+          tracked = subprocess.run(
+              ["git", "ls-files", "tests"],
+              check=True,
+              capture_output=True,
+              text=True,
+              encoding="utf-8",
+          ).stdout.splitlines()
+          test_files = sorted(
+              path
+              for path in tracked
+              if path.endswith(".py")
+              and (
+                  Path(path).name.startswith("test_")
+                  or Path(path).name.endswith("_test.py")
+              )
+          )
+          if not test_files:
+              raise SystemExit("no tracked pytest-discoverable test files found")
+
+          buckets: list[list[str]] = [[] for _ in range(shard_count)]
+          bucket_bytes = [0] * shard_count
+          weighted = sorted(
+              ((Path(path).stat().st_size, path) for path in test_files),
+              key=lambda item: (-item[0], item[1]),
+          )
+          for byte_count, path in weighted:
+              destination = min(
+                  range(shard_count),
+                  key=lambda index: (bucket_bytes[index], index),
+              )
+              buckets[destination].append(path)
+              bucket_bytes[destination] += byte_count
+
+          flattened = [path for bucket in buckets for path in bucket]
+          if len(flattened) != len(test_files) or set(flattened) != set(test_files):
+              raise SystemExit("pytest shard plan is incomplete or overlapping")
+          if any(not bucket for bucket in buckets):
+              raise SystemExit("pytest shard plan contains an empty shard")
+
+          selected = sorted(buckets[shard_index])
+          manifest = "\n".join(selected) + "\n"
+          Path("pytest-shard.txt").write_text(manifest, encoding="utf-8", newline="\n")
+          digest = hashlib.sha256(manifest.encode("utf-8")).hexdigest()
+          print(
+              f"PYTEST_SHARD index={shard_index} count={len(selected)} "
+              f"bytes={bucket_bytes[shard_index]} sha256={digest}"
+          )
+          print(
+              "PYTEST_SHARD_PLAN "
+              + " ".join(
+                  f"{index}:{len(bucket)}:{bucket_bytes[index]}"
+                  for index, bucket in enumerate(buckets)
+              )
+          )
+          PY
+
+      - name: Pytest shard with coverage
+        env:
+          COVERAGE_FILE: ${{ runner.temp }}/.coverage.py${{ matrix.python-version }}.shard${{ matrix.shard }}
+        shell: bash
+        run: |
+          mapfile -t test_files < pytest-shard.txt
+          test "${#test_files[@]}" -gt 0
+          uv run pytest             --cov             --cov-report=             --cov-fail-under=0             "${test_files[@]}"
+          test -s "${COVERAGE_FILE}"
+
+      - name: Preserve shard coverage
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage-py${{ matrix.python-version }}-shard-${{ matrix.shard }}
+          path: ${{ runner.temp }}/.coverage.py${{ matrix.python-version }}.shard${{ matrix.shard }}
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 1
+
+  quality:
+    name: quality (py${{ matrix.python-version }})
+    needs: [static, pytest-shard]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - name: Require successful static and full-shard qualification
+        env:
+          STATIC_RESULT: ${{ needs.static.result }}
+          PYTEST_SHARD_RESULT: ${{ needs.pytest-shard.result }}
+        shell: bash
+        run: |
+          test "${STATIC_RESULT}" = "success"
+          test "${PYTEST_SHARD_RESULT}" = "success"
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          enable-cache: true
+
+      - name: Install Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Sync (locked)
+        run: uv sync --frozen
+
+      - name: Download exact-version shard coverage
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: coverage-py${{ matrix.python-version }}-shard-*
+          path: ${{ runner.temp }}/coverage-shards
+          merge-multiple: true
+
+      - name: Combine coverage and enforce repository threshold
+        shell: bash
+        run: |
+          mapfile -t coverage_files < <(
+            find "${RUNNER_TEMP}/coverage-shards"               -maxdepth 1               -type f               -name ".coverage.py${{ matrix.python-version }}.shard*"               -print | sort
+          )
+          test "${#coverage_files[@]}" -eq "${PYTEST_SHARD_COUNT}"
+          uv run coverage combine "${RUNNER_TEMP}/coverage-shards"
+          uv run coverage report --show-missing --fail-under=77
 
       - name: MRL machine-state drift/manual-edit gate
         run: uv run pytest -q tests/test_mesc_mrl_machine_state_ci_gate_v1.py
