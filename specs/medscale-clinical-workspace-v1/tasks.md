@@ -533,20 +533,20 @@ CW-004 <----+
   +--> CW-009 -> CW-010
   |
   +--> CW-011 -> CW-012
-  |
-  +--> CW-013 -> CW-014
-  |
-  +--> CW-016
-  |
-  +--> CW-017
-        |
-CW-018 <+
-  |
-CW-019
-  |
-CW-020
-  |
-CW-021 (separate external/clinical authority)
+  |      |
+  |      +------------------------------+
+  |                                     |
+  +--> CW-013 -> CW-014                 |
+  |                                     |
+  +--> CW-016                           |
+  |                                     |
+  +--> CW-017 ---------------------> CW-018
+                                        |
+                                      CW-019
+                                        |
+                                      CW-020
+                                        |
+                                      CW-021 (separate external/clinical authority)
 ```
 
 CW-009/CW-010 and CW-011/CW-012 may be scheduled only when R4 permits the next single task; the diagram expresses dependency, not parallel execution authority.
