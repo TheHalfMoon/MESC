@@ -1,0 +1,37 @@
+name: P2 Hugging Face Script Lock Bootstrap
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "scripts/mesc_hf_publish.py"
+      - ".github/workflows/hf-p2-lock-bootstrap.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  lock:
+    name: generate script lock
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          enable-cache: false
+      - name: Install Python 3.11
+        run: uv python install 3.11
+      - name: Generate exact script lock
+        run: uv lock --script scripts/mesc_hf_publish.py
+      - name: Verify generated script lock
+        run: uv lock --check --script scripts/mesc_hf_publish.py
+      - name: Upload exact generated lock
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: hf-p2-script-lock-${{ github.event.pull_request.number }}-${{ github.sha }}
+          path: scripts/mesc_hf_publish.py.lock
+          if-no-files-found: error
+          retention-days: 1
