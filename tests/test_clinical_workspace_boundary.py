@@ -93,9 +93,30 @@ def test_workspace_boundary_guard_rejects_network_import(tmp_path: Path) -> None
     assert "network-capable import is forbidden" in result.stderr
 
 
+def test_workspace_boundary_guard_rejects_boundary_escape_import(tmp_path: Path) -> None:
+    (tmp_path / "bad.py").write_text("import subprocess\n", encoding="utf-8")
+    result = _run_guard(tmp_path)
+    assert result.returncode == 1
+    assert "boundary escape import is forbidden" in result.stderr
+
+
+def test_workspace_boundary_guard_rejects_nonallowlisted_stdlib(tmp_path: Path) -> None:
+    (tmp_path / "bad.py").write_text("import pathlib\n", encoding="utf-8")
+    result = _run_guard(tmp_path)
+    assert result.returncode == 1
+    assert "stdlib import is not allowlisted" in result.stderr
+
+
+def test_workspace_boundary_guard_rejects_dynamic_import(tmp_path: Path) -> None:
+    (tmp_path / "bad.py").write_text("__import__('medscale')\n", encoding="utf-8")
+    result = _run_guard(tmp_path)
+    assert result.returncode == 1
+    assert "dynamic import/code/file primitive is forbidden" in result.stderr
+
+
 def test_workspace_boundary_guard_rejects_persistent_write(tmp_path: Path) -> None:
     (tmp_path / "bad.py").write_text(
-        "from pathlib import Path\nPath('x').write_text('y')\n",
+        "class Sink:\n    pass\nSink().write_text('y')\n",
         encoding="utf-8",
     )
     result = _run_guard(tmp_path)
