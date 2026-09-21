@@ -124,6 +124,36 @@ def test_workspace_boundary_guard_rejects_persistent_write(tmp_path: Path) -> No
     assert "persistent filesystem mutation is forbidden" in result.stderr
 
 
+
+
+def test_workspace_cli_emits_no_object_or_display_data() -> None:
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(_WORKSPACE_SRC)
+    env["PYTHONNOUSERSITE"] = "1"
+    result = subprocess.run(
+        [sys.executable, "-m", "medscale_workspace"],
+        cwd=_REPO_ROOT,
+        env=env,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+
+    payload = json.loads(result.stdout)
+    assert payload == {
+        "application": "medscale-workspace",
+        "data_class": "SYNTHETIC",
+        "mode": "offline-shell",
+        "ready": True,
+    }
+    lowered = result.stdout.lower()
+    assert "patient" not in lowered
+    assert "encounter" not in lowered
+    assert "object_id" not in lowered
+    assert "display_name" not in lowered
+
+
 def test_workspace_shell_runs_offline_with_deterministic_synthetic_identity() -> None:
     first = _run_workspace_offline()
     second = _run_workspace_offline()
