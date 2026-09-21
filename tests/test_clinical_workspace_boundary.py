@@ -176,6 +176,54 @@ def test_workspace_boundary_guard_rejects_persistent_write(tmp_path: Path) -> No
     assert "persistent filesystem mutation is forbidden" in result.stderr
 
 
+def test_workspace_boundary_guard_rejects_builtins_introspection(tmp_path: Path) -> None:
+    (tmp_path / "bad.py").write_text(
+        'getattr(__builtins__, "__import__")("socket")\n',
+        encoding="utf-8",
+    )
+    result = _run_guard(tmp_path)
+    assert result.returncode == 1
+    assert "call shape cannot be verified fail-closed" in result.stderr
+    assert "forbidden capability reference is not allowed in CW-001: __builtins__" in result.stderr
+
+
+def test_workspace_boundary_guard_rejects_capability_binding_forms(tmp_path: Path) -> None:
+    (tmp_path / "bad.py").write_text(
+        'for loader in [__import__]:\n    loader("socket")\n',
+        encoding="utf-8",
+    )
+    result = _run_guard(tmp_path)
+    assert result.returncode == 1
+    assert "forbidden capability reference is not allowed in CW-001: __import__" in result.stderr
+
+
+def test_workspace_boundary_guard_rejects_dictionary_indirection(tmp_path: Path) -> None:
+    (tmp_path / "bad.py").write_text(
+        'table = {}\nloader = table["__import__"]\nloader("socket")\n',
+        encoding="utf-8",
+    )
+    result = _run_guard(tmp_path)
+    assert result.returncode == 1
+    assert "dynamic import/code/file primitive is forbidden" in result.stderr
+
+
+def test_workspace_boundary_guard_rejects_reflective_capability_access(tmp_path: Path) -> None:
+    (tmp_path / "bad.py").write_text("reader = globals()\n", encoding="utf-8")
+    result = _run_guard(tmp_path)
+    assert result.returncode == 1
+    assert "reflective capability access is forbidden" in result.stderr
+
+
+def test_workspace_boundary_guard_rejects_unverifiable_call_shape(tmp_path: Path) -> None:
+    (tmp_path / "bad.py").write_text(
+        'table = {"handler": print}\ntable["handler"]("x")\n',
+        encoding="utf-8",
+    )
+    result = _run_guard(tmp_path)
+    assert result.returncode == 1
+    assert "call shape cannot be verified fail-closed" in result.stderr
+
+
 def test_synthetic_encounter_rejects_cross_workspace_patient() -> None:
     code = f"""
 import sys
@@ -198,6 +246,83 @@ except ValueError as exc:
     assert str(exc) == "patient must belong to the synthetic workspace"
 else:
     raise AssertionError("cross-workspace patient was accepted")
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=_REPO_ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_synthetic_encounter_rejects_non_patient_identity() -> None:
+    code = f"""
+import sys
+
+sys.path.insert(0, {str(_WORKSPACE_SRC)!r})
+
+from medscale_workspace.fixtures import (
+    SYNTHETIC_WORKSPACE_ID,
+    SyntheticPatient,
+    synthetic_encounter,
+)
+from medscale_workspace.identity import WorkspaceObjectType, synthetic_identity
+
+encounter_shaped = SyntheticPatient(
+    identity=synthetic_identity(
+        SYNTHETIC_WORKSPACE_ID,
+        WorkspaceObjectType.ENCOUNTER,
+        "encounter-shaped",
+    )
+)
+try:
+    synthetic_encounter(encounter_shaped)
+except ValueError as exc:
+    assert str(exc) == "patient identity must have object type PATIENT"
+else:
+    raise AssertionError("encounter-typed identity was accepted as a patient")
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=_REPO_ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_synthetic_encounter_identity_is_patient_specific() -> None:
+    code = f"""
+import sys
+
+sys.path.insert(0, {str(_WORKSPACE_SRC)!r})
+
+from medscale_workspace.fixtures import (
+    SYNTHETIC_WORKSPACE_ID,
+    SyntheticPatient,
+    synthetic_encounter,
+    synthetic_patient,
+)
+from medscale_workspace.identity import WorkspaceObjectType, synthetic_identity
+
+canonical = synthetic_encounter()
+assert canonical.identity.object_id == synthetic_encounter().identity.object_id
+assert canonical.patient_id == synthetic_patient().identity.object_id
+
+other_patient = SyntheticPatient(
+    identity=synthetic_identity(
+        SYNTHETIC_WORKSPACE_ID,
+        WorkspaceObjectType.PATIENT,
+        "patient-beta",
+    )
+)
+other = synthetic_encounter(other_patient)
+assert other.patient_id == other_patient.identity.object_id
+assert other.identity.object_id != canonical.identity.object_id
+assert other.identity.object_id == synthetic_encounter(other_patient).identity.object_id
 """
     result = subprocess.run(
         [sys.executable, "-c", code],

@@ -56,19 +56,64 @@ _FORBIDDEN_CALL_PRIMITIVES = {
     "exec",
     "open",
 }
+_FORBIDDEN_REFLECTION_PRIMITIVES = {
+    "delattr",
+    "getattr",
+    "globals",
+    "locals",
+    "setattr",
+    "vars",
+}
+_FORBIDDEN_NAME_REFERENCES = {
+    "__builtins__",
+}
+_FORBIDDEN_CAPABILITY_REFERENCES = (
+    _FORBIDDEN_CALL_PRIMITIVES | _FORBIDDEN_REFLECTION_PRIMITIVES | _FORBIDDEN_NAME_REFERENCES
+)
+
+
+def _bindings(node: ast.AST) -> tuple[list[ast.expr], ast.expr] | None:
+    """Return the (targets, value) pair of a simple local binding, if any."""
+
+    if isinstance(node, ast.Assign):
+        return list(node.targets), node.value
+    if isinstance(node, ast.AnnAssign) and node.value is not None:
+        return [node.target], node.value
+    if isinstance(node, ast.NamedExpr):
+        return [node.target], node.value
+    return None
+
+
+def _resolves_to_capability(value: ast.expr, aliases: set[str]) -> bool:
+    """Return True when a bound value statically resolves to a capability."""
+
+    if isinstance(value, ast.Name):
+        return value.id in _FORBIDDEN_CAPABILITY_REFERENCES or value.id in aliases
+    if isinstance(value, ast.Subscript) and isinstance(value.slice, ast.Constant):
+        return value.slice.value in _FORBIDDEN_CAPABILITY_REFERENCES
+    return False
 
 
 def _forbidden_call_aliases(tree: ast.AST) -> set[str]:
+    """Collect local names that resolve to a forbidden capability indirectly.
+
+    Taint propagates from a capability name and from a literal dictionary lookup
+    of a capability name (for example ``table["__import__"]``) through simple
+    bindings, so the eventual call through the alias is still rejected.
+    """
+
     aliases: set[str] = set()
     changed = True
     while changed:
         changed = False
         for node in ast.walk(tree):
-            if not isinstance(node, ast.Assign) or not isinstance(node.value, ast.Name):
+            binding = _bindings(node)
+            if binding is None:
                 continue
-            if node.value.id not in _FORBIDDEN_CALL_PRIMITIVES and node.value.id not in aliases:
+            targets, value = binding
+            if not _resolves_to_capability(value, aliases):
                 continue
-            for target in node.targets:
+            for target in targets:
                 if isinstance(target, ast.Name) and target.id not in aliases:
                     aliases.add(target.id)
                     changed = True
@@ -108,22 +153,54 @@ def inspect_workspace_source(source_root: Path) -> list[str]:
             elif root not in sys.stdlib_module_names:
                 errors.append(f"{relative}: undeclared third-party import is forbidden: {root}")
 
-        forbidden_aliases = _forbidden_call_aliases(tree)
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.Call):
-                continue
-            if isinstance(node.func, ast.Name) and (
-                node.func.id in _FORBIDDEN_CALL_PRIMITIVES or node.func.id in forbidden_aliases
-            ):
+        errors.extend(_capability_errors(relative, tree))
+    return errors
+
+
+def _capability_errors(relative: Path, tree: ast.AST) -> list[str]:
+    """Report dynamic capability acquisition that cannot be verified fail-closed."""
+
+    errors: list[str] = []
+    forbidden_aliases = _forbidden_call_aliases(tree)
+    reported_callees: set[int] = set()
+
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        if isinstance(node.func, ast.Name):
+            if node.func.id in _FORBIDDEN_CALL_PRIMITIVES or node.func.id in forbidden_aliases:
+                reported_callees.add(id(node.func))
                 errors.append(
                     f"{relative}:{node.lineno}: dynamic import/code/file primitive is forbidden "
                     f"in CW-001: {node.func.id}"
                 )
-            elif isinstance(node.func, ast.Attribute) and node.func.attr in _WRITE_ATTRIBUTES:
+            elif node.func.id in _FORBIDDEN_REFLECTION_PRIMITIVES:
+                reported_callees.add(id(node.func))
+                errors.append(
+                    f"{relative}:{node.lineno}: reflective capability access is forbidden "
+                    f"in CW-001: {node.func.id}"
+                )
+        elif isinstance(node.func, ast.Attribute):
+            if node.func.attr in _WRITE_ATTRIBUTES:
                 errors.append(
                     f"{relative}:{node.lineno}: persistent filesystem mutation is forbidden "
                     f"in CW-001: {node.func.attr}"
                 )
+        else:
+            errors.append(
+                f"{relative}:{node.lineno}: call shape cannot be verified fail-closed in CW-001: "
+                f"{type(node.func).__name__}"
+            )
+
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Name) or node.id not in _FORBIDDEN_CAPABILITY_REFERENCES:
+            continue
+        if id(node) in reported_callees:
+            continue
+        errors.append(
+            f"{relative}:{node.lineno}: forbidden capability reference is not allowed in CW-001: "
+            f"{node.id}"
+        )
     return errors
 
 

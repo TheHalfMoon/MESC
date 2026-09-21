@@ -46,10 +46,12 @@ def synthetic_encounter(patient: SyntheticPatient | None = None) -> SyntheticEnc
     fixture_patient = patient or synthetic_patient()
     if fixture_patient.identity.workspace_id != SYNTHETIC_WORKSPACE_ID:
         raise ValueError("patient must belong to the synthetic workspace")
+    if fixture_patient.identity.object_type is not WorkspaceObjectType.PATIENT:
+        raise ValueError("patient identity must have object type PATIENT")
     identity = synthetic_identity(
         SYNTHETIC_WORKSPACE_ID,
         WorkspaceObjectType.ENCOUNTER,
-        "encounter-001",
+        f"encounter-001:{fixture_patient.identity.object_id}",
     )
     return SyntheticEncounter(
         identity=identity,
