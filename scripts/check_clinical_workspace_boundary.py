@@ -84,6 +84,7 @@ _IN_MEMORY_TEST_PROVIDER = "InMemoryTestKeyProvider"
 _NONCE_CONSTANT = "NONCE_SIZE_BYTES"
 _ADMITTED_NONCE_SIZE_BYTES = 12
 _RESERVED_PASSWORD_KDF = "scrypt"
+_PRIVATE_CONNECTION_ATTRIBUTE = "_connection"
 
 _FORBIDDEN_CALL_PRIMITIVES = {
     "__import__",
@@ -348,6 +349,14 @@ def _cw002_structure_errors(source_root: Path, trees: dict[Path, ast.AST]) -> li
             errors.append(
                 f"{relative}: key derivation must stay in reviewed code and must not "
                 "import cryptography (ADR-0039 decision 5)"
+            )
+        if relative.name != _STORAGE_MODULE and any(
+            isinstance(node, ast.Attribute) and node.attr == _PRIVATE_CONNECTION_ATTRIBUTE
+            for node in ast.walk(tree)
+        ):
+            errors.append(
+                f"{relative}: only {_STORAGE_MODULE} may touch the private store connection; "
+                "every other module must use the public store API"
             )
 
         source_text = path.read_text(encoding="utf-8")

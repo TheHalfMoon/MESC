@@ -62,3 +62,23 @@ class ObjectNotFoundError(WorkspaceStoreError):
 
 class StoreConflictError(WorkspaceStoreError):
     """An immutable object revision already exists and cannot be overwritten."""
+
+
+class ProvenanceError(WorkspaceStoreError):
+    """A provenance record is malformed or its declared identity is not truthful."""
+
+
+class ProvenanceDigestMismatchError(ProvenanceError):
+    """The recorded content digest does not match the payload bound to it."""
+
+
+class AuditError(WorkspaceStoreError):
+    """An audit event is malformed or was not produced by this audit spine."""
+
+
+class AuditChainError(AuditError):
+    """The append-only audit chain is broken, reordered or otherwise not intact."""
+
+
+class AuditReplayError(AuditError):
+    """An audit event was replayed instead of appended exactly once."""

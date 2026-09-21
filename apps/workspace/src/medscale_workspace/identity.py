@@ -14,6 +14,11 @@ class WorkspaceObjectType(StrEnum):
 
     PATIENT = "Patient"
     ENCOUNTER = "Encounter"
+    # CW-003 (Issue #471) admits the provenance and audit record classes so the
+    # provenance spine and the append-only audit spine can live in the same
+    # workspace store as the objects they describe.
+    PROVENANCE_RECORD = "ProvenanceRecord"
+    AUDIT_EVENT = "AuditEvent"
 
 
 @dataclass(frozen=True, slots=True)

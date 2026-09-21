@@ -1,10 +1,10 @@
 # Clinical Workspace V1 — Dependency-Ordered Task Ledger
 
-- **Status:** Canonical implementation ledger — CW-001 and CW-002 closed; CW-003 eligible
-- **Date:** 2026-09-20 (frontier reconciled 2026-09-21; CW-002 ratified, activated, implemented and closed 2026-09-21)
+- **Status:** Canonical implementation ledger — CW-001 and CW-002 closed; CW-003 activated
+- **Date:** 2026-09-20 (frontier reconciled 2026-09-22; CW-002 closed 2026-09-21; CW-003 activated 2026-09-22)
 - **Parent:** [Clinical Workspace V1](README.md)
 - **Architecture gate:** ADR-0038 canonically effective after PR #460 protected merge and fresh-main qualification
-- **Current implementation authority:** NONE — CW-002 closed canonically; CW-003 is eligible but requires separate activation before any implementation begins
+- **Current implementation authority:** CW-003 only — activated 2026-09-22 under Issue #471, within the provenance and audit contract fixed by the CW-000 planning package
 
 This ledger is implementation-ready planning. It is not an executable backlog until ADR-0038 is canonically effective, the applicable dependencies are closed canonically, and the applicable task is separately activated. Admissibility is per task: it held for CW-002 while that task was active, and it now holds for CW-003 only after separate activation.
 
@@ -149,13 +149,19 @@ license record is [cw-002-dependency-license-review.md](cw-002-dependency-licens
 
 ## CW-003 — Provenance and audit spine
 
-**State:** `ELIGIBLE` (not activated)
+**State:** `IN_PROGRESS` (activated 2026-09-22)
 
 **Depends on:** CW-001, CW-002.
 
-**Activation:** requires separate activation under repository governance before any implementation begins. Its dependencies are `CLOSED_CANONICAL`; eligibility is not implementation authority.
+**Activation:** Issue #471 — CW-003 activation. Its dependencies are `CLOSED_CANONICAL`; activation confers no acceptance and no authority beyond this bounded unit.
 
 **Purpose:** create product provenance and security audit records before AI workflows.
+
+**Implemented surfaces (provenance):** a provenance record is its own immutable workspace object bound to the object revision it describes, carrying the producer identity, explicit source references, review state, recorded content digest, provenance format version and policy version. Generated content must reference at least one source. The recorded digest is re-verified against stored content rather than trusted.
+
+**Implemented surfaces (audit):** each audit event is one immutable object whose event identity is derived from its digest and whose object identity is its chain position, chained to its predecessor's digest from a genesis digest. The chain is contiguous; a replayed event, and a concurrent attempt to append a second event at an occupied chain position, collide with the stored object instead of appending. Deletion of content plus recording of that deletion is one store transaction, so audit metadata survives while the content does not. The caller supplies the occurrence time as a validated ISO-8601 instant with an explicit zone; the package imports no clock.
+
+**Recorded limitation of this unit:** append-only is enforced by the API, by digest-derived identity and by chain verification. There is no database-level write-once trigger, and a removed tail event verifies internally unless a head digest is retained outside the store; that limitation is stated in the module, tested, and belongs to CW-018/CW-019 for stricter enforcement.
 
 **Acceptance**
 - generated/imported/edited objects have revision + source identity;
@@ -628,9 +634,9 @@ CW-000, CW-001 and CW-002 are `CLOSED_CANONICAL`. ADR-0038 is canonically effect
 Current frontier:
 
 1. CW-001 is `CLOSED_CANONICAL`: implementation PR #463 merged through the protected path at canonical merge `1ec0c3dd2e379649fd0b6a710b9dbde0f60490f3` and completed fresh-main qualification;
-2. CW-002 is `CLOSED_CANONICAL`: ADR-0039 was ratified under R6 with Amendment A1, CW-002 was activated under Issue #467, implementation PR #469 merged through the protected path, and fresh-main qualification succeeded;
-3. CW-003 is `ELIGIBLE` because CW-001 and CW-002 are `CLOSED_CANONICAL`, but it is **not activated** and no implementation authority exists for it;
-4. CW-004 through CW-021 remain `BLOCKED_DEPENDENCY` until their declared predecessors close canonically;
+2. CW-002 is `CLOSED_CANONICAL`: ADR-0039 was ratified under R6 with Amendment A1, CW-002 was activated under Issue #467, implementation PR #469 merged through the protected path at `19743d6b6b46f7729883e67f4cee26e72be2b323` with fresh-main qualification, and the closeout increment merged at `6f8d20c368549ed8640cfa9f197c7e0eb3d9ca56`;
+3. CW-003 is `IN_PROGRESS`: activated under Issue #471 as the single active implementation unit, and not yet `CLOSED_CANONICAL`;
+4. CW-004 through CW-021 remain `BLOCKED_DEPENDENCY` until their declared predecessors close canonically (CW-004 depends on CW-003);
 5. CW-021 additionally requires the bounded explicit Founder/governance clinical-pilot authorization defined in its task contract.
 
 No closeout or eligibility statement grants PHI, clinical production, EHR write, Workspace-data training/evaluation, publication, paid-compute, MRL-contract, or Stage-4 authority.
