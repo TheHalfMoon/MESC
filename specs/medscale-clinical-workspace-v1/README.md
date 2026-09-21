@@ -914,4 +914,4 @@ CW-000 is `CLOSED_CANONICAL`. Exact closure evidence is recorded in [cw-000-clos
 
 CW-001 is `CLOSED_CANONICAL`. Exact closure evidence is recorded in [cw-001-closeout.md](cw-001-closeout.md).
 
-CW-002 is eligible but not activated. Its own contract requires a ratified storage/key implementation ADR (storage engine, key and cryptography strategy, migration approach) and separate activation before implementation begins. Implementation remains separately gated.
+CW-002 is `IN_PROGRESS`. ADR-0039 (storage engine, key and cryptography strategy, migration approach) was accepted by the Founder under R6 on 2026-09-21 with Amendment A1, and CW-002 was activated under Issue #467. The [ratification record](adr-0039-founder-ratification.md) is controlling for the amended decision. CW-003 onward remains separately gated, and implementation of CW-002 confers no PHI, clinical-production, EHR-write, training, publication or MRL authority.
