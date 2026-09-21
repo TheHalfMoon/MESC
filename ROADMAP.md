@@ -73,7 +73,7 @@ The Founder-ratified architecture and planning package are:
 
 The architectural recommendation is one MedScale public project with two mechanically isolated trust domains: the existing synthetic-only **Research Core** and a future local **Clinical Workspace**. The Research Core may publish versioned interfaces outward; patient/workspace state must not flow back into Research Core training, evaluation, benchmarks, or MRL evidence.
 
-Until ADR-0038 is explicitly accepted, this package does **not** authorize application implementation or modify the current Research Vision. Even after architecture acceptance, PHI ingestion, clinical production use, EHR writes, Workspace-data training/evaluation, model/runtime execution, publication, paid compute, and new MRL Stage-4 attempts remain separately governed.
+Until ADR-0038 is canonically effective after protected merge and fresh-main qualification, this package does **not** authorize application implementation or modify the current Research Vision. Even after canonical effectiveness, PHI ingestion, clinical production use, EHR writes, Workspace-data training/evaluation, model/runtime execution, publication, paid compute, and new MRL Stage-4 attempts remain separately governed.
 
 
 ## Current execution boundary
