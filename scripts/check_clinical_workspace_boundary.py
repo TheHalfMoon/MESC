@@ -5,8 +5,8 @@ from __future__ import annotations
 import argparse
 import ast
 import sys
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Sequence
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _DEFAULT_SOURCE = _REPO_ROOT / "apps" / "workspace" / "src"
