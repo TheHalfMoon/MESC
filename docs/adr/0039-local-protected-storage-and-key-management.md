@@ -25,6 +25,8 @@ CW-001 deliberately left the Workspace package at zero dependencies behind a fai
 6. **Migration discipline.** Treat application version, workspace schema version, policy version and encryption-format version as first-class recorded state. Apply forward-only migrations in the M1–M3 classes from the CW-000 contract, emit a migration manifest for every state-changing migration, use the checkpoint table for crash recovery, and refuse a downgrade the running application cannot read.
 7. **Governed boundary-guard change.** Extend the CW-001 guard for CW-002 to admit `sqlite3` and the cipher provider while keeping the network, process, dynamic-import and persistent-mutation prohibitions, and add a rule that workspace code may only touch the single workspace store path resolved by one dedicated module.
 8. **Synthetic-only development.** Encrypted fixtures remain synthetic. This ADR creates no PHI, real-patient-data, clinical-production or EHR-write authority.
+9. **Durability and integrity pragmas are part of the decision.** Run the store with `journal_mode=WAL`, `synchronous=FULL` on the write path, `foreign_keys=ON`, `secure_delete=ON` and an explicit busy timeout. The crash-safety claim in this ADR holds only under those settings, so CW-002 tests must assert the effective pragma values instead of trusting defaults.
+10. **Key-material lifetime.** Never persist key material in the store, never include it in the store file, logs, diagnostics or crash reporting, and keep the root secret and derived data-encryption keys in process memory only for the shortest window needed to decrypt or encrypt. CW-002 tests must assert that key bytes appear neither in the store file nor in captured log output.
 
 ## Consequences
 
