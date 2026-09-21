@@ -13,10 +13,16 @@ _DEFAULT_SOURCE = _REPO_ROOT / "apps" / "workspace" / "src"
 _FORBIDDEN_NETWORK_ROOTS = {
     "aiohttp",
     "boto3",
+    "ftplib",
+    "http",
     "httpx",
     "requests",
+    "smtplib",
     "socket",
+    "telnetlib",
+    "urllib",
     "urllib3",
+    "xmlrpc",
 }
 _WRITE_ATTRIBUTES = {
     "mkdir",
