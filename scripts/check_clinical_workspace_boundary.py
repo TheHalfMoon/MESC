@@ -75,7 +75,6 @@ def _forbidden_call_aliases(tree: ast.AST) -> set[str]:
     return aliases
 
 
-
 def _import_roots(tree: ast.AST) -> set[str]:
     roots: set[str] = set()
     for node in ast.walk(tree):
