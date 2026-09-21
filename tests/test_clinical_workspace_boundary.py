@@ -8,7 +8,6 @@ import subprocess
 import sys
 import tomllib
 from pathlib import Path
-from uuid import UUID
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _WORKSPACE_ROOT = _REPO_ROOT / "apps" / "workspace"
@@ -178,25 +177,36 @@ def test_workspace_boundary_guard_rejects_persistent_write(tmp_path: Path) -> No
 
 
 def test_synthetic_encounter_rejects_cross_workspace_patient() -> None:
-    sys.path.insert(0, str(_WORKSPACE_SRC))
-    try:
-        from medscale_workspace.fixtures import SyntheticPatient, synthetic_encounter
-        from medscale_workspace.identity import WorkspaceObjectType, synthetic_identity
+    code = f"""
+import sys
+from uuid import UUID
 
-        foreign_identity = synthetic_identity(
-            UUID("00000000-0000-0000-0000-000000000001"),
-            WorkspaceObjectType.PATIENT,
-            "foreign-patient",
-        )
-        patient = SyntheticPatient(identity=foreign_identity)
-        try:
-            synthetic_encounter(patient)
-        except ValueError as exc:
-            assert str(exc) == "patient must belong to the synthetic workspace"
-        else:
-            raise AssertionError("cross-workspace patient was accepted")
-    finally:
-        sys.path.remove(str(_WORKSPACE_SRC))
+sys.path.insert(0, {str(_WORKSPACE_SRC)!r})
+
+from medscale_workspace.fixtures import SyntheticPatient, synthetic_encounter
+from medscale_workspace.identity import WorkspaceObjectType, synthetic_identity
+
+foreign_identity = synthetic_identity(
+    UUID("00000000-0000-0000-0000-000000000001"),
+    WorkspaceObjectType.PATIENT,
+    "foreign-patient",
+)
+patient = SyntheticPatient(identity=foreign_identity)
+try:
+    synthetic_encounter(patient)
+except ValueError as exc:
+    assert str(exc) == "patient must belong to the synthetic workspace"
+else:
+    raise AssertionError("cross-workspace patient was accepted")
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=_REPO_ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
 
 
 def test_workspace_cli_emits_no_object_or_display_data() -> None:
