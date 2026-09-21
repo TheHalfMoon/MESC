@@ -29,6 +29,13 @@ def workspace_snapshot() -> dict[str, object]:
             "microphone": False,
             "ehr": False,
             "external_model": False,
-            "persistent_write": False,
+            "persistent_write": True,
+        },
+        "storage": {
+            "engine": "sqlite3",
+            "payload_encryption": "AES-256-GCM",
+            "key_derivation": "HKDF-SHA-256",
+            "plaintext_fallback": False,
+            "platform_key_provider": "unavailable-fail-closed",
         },
     }
