@@ -10,6 +10,13 @@ from typing import Sequence
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _DEFAULT_SOURCE = _REPO_ROOT / "apps" / "workspace" / "src"
+_ALLOWED_STDLIB_ROOTS = {
+    "__future__",
+    "dataclasses",
+    "enum",
+    "json",
+    "uuid",
+}
 _FORBIDDEN_ESCAPE_ROOTS = {
     "ctypes",
     "importlib",
@@ -69,14 +76,27 @@ def inspect_workspace_source(source_root: Path) -> list[str]:
                 errors.append(f"{relative}: network-capable import is forbidden: {root}")
             elif root in _FORBIDDEN_ESCAPE_ROOTS:
                 errors.append(f"{relative}: boundary escape import is forbidden: {root}")
-            elif root != "medscale_workspace" and root not in sys.stdlib_module_names:
+            elif root == "medscale_workspace":
+                continue
+            elif root in sys.stdlib_module_names and root not in _ALLOWED_STDLIB_ROOTS:
+                errors.append(f"{relative}: stdlib import is not allowlisted for CW-001: {root}")
+            elif root not in sys.stdlib_module_names:
                 errors.append(f"{relative}: undeclared third-party import is forbidden: {root}")
 
         for node in ast.walk(tree):
             if not isinstance(node, ast.Call):
                 continue
-            if isinstance(node.func, ast.Name) and node.func.id == "open":
-                errors.append(f"{relative}:{node.lineno}: file writes/opens are forbidden in CW-001")
+            if isinstance(node.func, ast.Name) and node.func.id in {
+                "__import__",
+                "compile",
+                "eval",
+                "exec",
+                "open",
+            }:
+                errors.append(
+                    f"{relative}:{node.lineno}: dynamic import/code/file primitive is forbidden "
+                    f"in CW-001: {node.func.id}"
+                )
             elif isinstance(node.func, ast.Attribute) and node.func.attr in _WRITE_ATTRIBUTES:
                 errors.append(
                     f"{relative}:{node.lineno}: persistent filesystem mutation is forbidden "
