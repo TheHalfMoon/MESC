@@ -224,6 +224,50 @@ def test_workspace_boundary_guard_rejects_unverifiable_call_shape(tmp_path: Path
     assert "call shape cannot be verified fail-closed" in result.stderr
 
 
+def test_workspace_boundary_guard_rejects_object_graph_traversal(tmp_path: Path) -> None:
+    (tmp_path / "bad.py").write_text(
+        "candidates = ().__class__.__base__.__subclasses__()\n"
+        "runner = candidates[0]\n"
+        'runner("id")\n',
+        encoding="utf-8",
+    )
+    result = _run_guard(tmp_path)
+    assert result.returncode == 1
+    assert "object-graph capability attribute is forbidden in CW-001: __class__" in result.stderr
+    assert (
+        "object-graph capability attribute is forbidden in CW-001: __subclasses__" in result.stderr
+    )
+
+
+def test_workspace_boundary_guard_rejects_dunder_capability_dictionary(tmp_path: Path) -> None:
+    (tmp_path / "bad.py").write_text("print(object.__dict__['__subclasses__'])\n", encoding="utf-8")
+    result = _run_guard(tmp_path)
+    assert result.returncode == 1
+    assert "object-graph capability attribute is forbidden in CW-001: __dict__" in result.stderr
+
+
+def test_workspace_boundary_guard_allows_ordinary_dunder_use(tmp_path: Path) -> None:
+    (tmp_path / "good.py").write_text(
+        "__all__ = ['Thing']\n"
+        "\n"
+        "\n"
+        "class Thing:\n"
+        "    def __init__(self, name: str) -> None:\n"
+        "        self.name = name\n"
+        "\n"
+        "\n"
+        "def build() -> str:\n"
+        "    return Thing('alpha').name\n"
+        "\n"
+        "\n"
+        'if __name__ == "__main__":\n'
+        "    print(build())\n",
+        encoding="utf-8",
+    )
+    result = _run_guard(tmp_path)
+    assert result.returncode == 0, result.stderr
+
+
 def test_synthetic_encounter_rejects_cross_workspace_patient() -> None:
     code = f"""
 import sys

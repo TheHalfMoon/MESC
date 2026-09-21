@@ -67,6 +67,32 @@ _FORBIDDEN_REFLECTION_PRIMITIVES = {
 _FORBIDDEN_NAME_REFERENCES = {
     "__builtins__",
 }
+# Attribute names that reconstruct a capability from the object graph even though
+# the code never names the capability directly. Ordinary dunder use that a normal
+# class-based module needs (``__init__``, ``__all__``, ``__name__``) is unaffected.
+_FORBIDDEN_ATTRIBUTE_REFERENCES = {
+    "__bases__",
+    "__base__",
+    "__builtins__",
+    "__class__",
+    "__closure__",
+    "__code__",
+    "__delattr__",
+    "__dict__",
+    "__func__",
+    "__getattr__",
+    "__getattribute__",
+    "__globals__",
+    "__import__",
+    "__loader__",
+    "__mro__",
+    "__reduce__",
+    "__reduce_ex__",
+    "__self__",
+    "__setattr__",
+    "__spec__",
+    "__subclasses__",
+}
 _FORBIDDEN_CAPABILITY_REFERENCES = (
     _FORBIDDEN_CALL_PRIMITIVES | _FORBIDDEN_REFLECTION_PRIMITIVES | _FORBIDDEN_NAME_REFERENCES
 )
@@ -193,6 +219,12 @@ def _capability_errors(relative: Path, tree: ast.AST) -> list[str]:
             )
 
     for node in ast.walk(tree):
+        if isinstance(node, ast.Attribute) and node.attr in _FORBIDDEN_ATTRIBUTE_REFERENCES:
+            errors.append(
+                f"{relative}:{node.lineno}: object-graph capability attribute is forbidden in "
+                f"CW-001: {node.attr}"
+            )
+            continue
         if not isinstance(node, ast.Name) or node.id not in _FORBIDDEN_CAPABILITY_REFERENCES:
             continue
         if id(node) in reported_callees:
