@@ -912,4 +912,6 @@ The planning exit conditions are satisfied:
 
 CW-000 is `CLOSED_CANONICAL`. Exact closure evidence is recorded in [cw-000-closeout.md](cw-000-closeout.md).
 
-CW-001 is eligible for separate activation but is not active. Implementation remains separately gated after planning closeout.
+CW-001 is `CLOSED_CANONICAL`. Exact closure evidence is recorded in [cw-001-closeout.md](cw-001-closeout.md).
+
+CW-002 is eligible but not activated. Its own contract requires a ratified storage/key implementation ADR (storage engine, key and cryptography strategy, migration approach) and separate activation before implementation begins. Implementation remains separately gated.

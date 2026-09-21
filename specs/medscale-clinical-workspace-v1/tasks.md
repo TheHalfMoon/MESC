@@ -1,10 +1,10 @@
 # Clinical Workspace V1 — Dependency-Ordered Task Ledger
 
-- **Status:** Canonical implementation ledger — CW-001 active
-- **Date:** 2026-09-20
+- **Status:** Canonical implementation ledger — CW-001 closed; CW-002 eligible
+- **Date:** 2026-09-20 (frontier reconciled 2026-09-21)
 - **Parent:** [Clinical Workspace V1](README.md)
 - **Architecture gate:** ADR-0038 canonically effective after PR #460 protected merge and fresh-main qualification
-- **Current implementation authority:** CW-001 ONLY — activated by Issue #462; later tasks remain blocked
+- **Current implementation authority:** NONE — CW-001 closed canonically; CW-002 requires a ratified storage/key ADR and separate activation
 
 This ledger is implementation-ready planning. It is not an executable backlog until ADR-0038 is canonically effective, the applicable dependencies are closed canonically, and the applicable task is separately activated.
 
@@ -75,9 +75,11 @@ No checkbox alone proves completion.
 
 ## CW-001 — Workspace boundary skeleton
 
-**State:** `IN_PROGRESS`
+**State:** `CLOSED_CANONICAL`
 
 **Activation:** Issue #462.
+
+**Closeout evidence:** [cw-001-closeout.md](cw-001-closeout.md)
 
 **Depends on:** CW-000.
 
@@ -104,11 +106,13 @@ No checkbox alone proves completion.
 
 ## CW-002 — Local protected storage and key abstraction
 
-**State:** `BLOCKED_DEPENDENCY`
+**State:** `ELIGIBLE` (not activated)
 
 **Depends on:** CW-001.
 
 **Purpose:** implement protected local storage using synthetic sensitive fixtures.
+
+**Activation prerequisite:** this task requires its own implementation ADR (storage engine, key/cryptography strategy, migration approach) ratified under R6 and a separate activation before any implementation begins. Eligibility does not confer implementation authority.
 
 **Requires separate implementation ADR**
 - database/storage engine;
@@ -602,15 +606,15 @@ WORKSPACE_PLANNING_SUCCESS != MRL_STAGE4_AUTHORITY
 
 Research Core capabilities may later be consumed only at canonically qualified interfaces.
 
-## Planning closeout
+## Canonical closeout status
 
-CW-000 is `CLOSED_CANONICAL`. ADR-0038 is canonically effective. Exact closure evidence is recorded in [cw-000-closeout.md](cw-000-closeout.md).
+CW-000 and CW-001 are `CLOSED_CANONICAL`. ADR-0038 is canonically effective. Exact closure evidence is recorded in [cw-000-closeout.md](cw-000-closeout.md) and [cw-001-closeout.md](cw-001-closeout.md).
 
 Current frontier:
 
-1. CW-001 is `ELIGIBLE` because its only declared dependency, CW-000, is `CLOSED_CANONICAL`;
-2. CW-001 is not `IN_PROGRESS` until it is separately activated under repository governance;
-3. CW-002 through CW-021 remain `BLOCKED_DEPENDENCY` until their declared predecessors close canonically;
+1. CW-001 is `CLOSED_CANONICAL`: implementation PR #463 merged through the protected path at canonical merge `1ec0c3dd2e379649fd0b6a710b9dbde0f60490f3` and completed fresh-main qualification;
+2. CW-002 is `ELIGIBLE` because its only declared dependency, CW-001, is `CLOSED_CANONICAL`, but it is **not activated**: its own contract requires a separate implementation ADR (storage engine, key and cryptography strategy, migration approach) ratified under R6 before implementation, plus separate activation under repository governance;
+3. CW-003 through CW-021 remain `BLOCKED_DEPENDENCY` until their declared predecessors close canonically;
 4. CW-021 additionally requires the bounded explicit Founder/governance clinical-pilot authorization defined in its task contract.
 
-Planning closeout does not grant PHI, clinical production, EHR write, Workspace-data training/evaluation, publication, paid-compute, MRL-contract, or Stage-4 authority.
+No closeout or eligibility statement grants PHI, clinical production, EHR write, Workspace-data training/evaluation, publication, paid-compute, MRL-contract, or Stage-4 authority.
