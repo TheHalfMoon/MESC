@@ -1,10 +1,10 @@
 # Clinical Workspace V1 — Dependency-Ordered Task Ledger
 
-- **Status:** Founder-ratified planning ledger — pending canonical merge; no implementation authority
+- **Status:** Canonical planning ledger — CW-000 closed; no implementation authority
 - **Date:** 2026-09-20
 - **Parent:** [Clinical Workspace V1](README.md)
-- **Architecture gate:** ADR-0038 accepted by Founder under R6; canonical effect pending planning closeout
-- **Current implementation authority:** NONE
+- **Architecture gate:** ADR-0038 canonically effective after PR #460 protected merge and fresh-main qualification
+- **Current implementation authority:** NONE — CW-001 is eligible but not activated
 
 This ledger is implementation-ready planning. It is not an executable backlog until ADR-0038 is canonically effective, the applicable dependencies are closed canonically, and the applicable task is separately activated.
 
@@ -42,7 +42,7 @@ No checkbox alone proves completion.
 
 ## CW-000 — Architecture reconciliation closeout
 
-**State:** `IN_PROGRESS_PLANNING`
+**State:** `CLOSED_CANONICAL`
 
 **Purpose:** close Issue #459 with an accepted architecture and canonical planning package.
 
@@ -75,7 +75,7 @@ No checkbox alone proves completion.
 
 ## CW-001 — Workspace boundary skeleton
 
-**State:** `BLOCKED_CANONICAL_EFFECT`
+**State:** `ELIGIBLE`
 
 **Depends on:** CW-000.
 
@@ -102,7 +102,7 @@ No checkbox alone proves completion.
 
 ## CW-002 — Local protected storage and key abstraction
 
-**State:** `BLOCKED_CANONICAL_EFFECT`
+**State:** `BLOCKED_DEPENDENCY`
 
 **Depends on:** CW-001.
 
@@ -130,7 +130,7 @@ No checkbox alone proves completion.
 
 ## CW-003 — Provenance and audit spine
 
-**State:** `BLOCKED_CANONICAL_EFFECT`
+**State:** `BLOCKED_DEPENDENCY`
 
 **Depends on:** CW-001, CW-002.
 
@@ -148,7 +148,7 @@ No checkbox alone proves completion.
 
 ## CW-004 — No-backflow and data-classification guard
 
-**State:** `BLOCKED_CANONICAL_EFFECT`
+**State:** `BLOCKED_DEPENDENCY`
 
 **Depends on:** CW-001, CW-003.
 
@@ -168,7 +168,7 @@ No checkbox alone proves completion.
 
 ## CW-005 — Synthetic encounter session lifecycle
 
-**State:** `BLOCKED_CANONICAL_EFFECT`
+**State:** `BLOCKED_DEPENDENCY`
 
 **Depends on:** CW-003, CW-004.
 
@@ -186,7 +186,7 @@ No checkbox alone proves completion.
 
 ## CW-006 — Local ASR adapter
 
-**State:** `BLOCKED_CANONICAL_EFFECT`
+**State:** `BLOCKED_DEPENDENCY`
 
 **Depends on:** CW-005.
 
@@ -211,7 +211,7 @@ No checkbox alone proves completion.
 
 ## CW-007 — Source-linked clinical draft engine
 
-**State:** `BLOCKED_CANONICAL_EFFECT`
+**State:** `BLOCKED_DEPENDENCY`
 
 **Depends on:** CW-003, CW-004, CW-006.
 
@@ -229,7 +229,7 @@ No checkbox alone proves completion.
 
 ## CW-008 — Human review and finalization workflow
 
-**State:** `BLOCKED_CANONICAL_EFFECT`
+**State:** `BLOCKED_DEPENDENCY`
 
 **Depends on:** CW-007.
 
@@ -246,7 +246,7 @@ No checkbox alone proves completion.
 
 ## CW-009 — Evidence corpus and retrieval snapshot
 
-**State:** `BLOCKED_CANONICAL_EFFECT`
+**State:** `BLOCKED_DEPENDENCY`
 
 **Depends on:** CW-001, CW-003, CW-004.
 
@@ -266,7 +266,7 @@ No checkbox alone proves completion.
 
 ## CW-010 — Claim-source and evidence-strength layer
 
-**State:** `BLOCKED_CANONICAL_EFFECT`
+**State:** `BLOCKED_DEPENDENCY`
 
 **Depends on:** CW-009.
 
@@ -286,7 +286,7 @@ No checkbox alone proves completion.
 
 ## CW-011 — Longitudinal patient graph and timeline
 
-**State:** `BLOCKED_CANONICAL_EFFECT`
+**State:** `BLOCKED_DEPENDENCY`
 
 **Depends on:** CW-003, CW-004.
 
@@ -305,7 +305,7 @@ No checkbox alone proves completion.
 
 ## CW-012 — Linked document/table/graph workspace
 
-**State:** `BLOCKED_CANONICAL_EFFECT`
+**State:** `BLOCKED_DEPENDENCY`
 
 **Depends on:** CW-011.
 
@@ -322,7 +322,7 @@ No checkbox alone proves completion.
 
 ## CW-013 — Bounded FHIR R4 import/export
 
-**State:** `BLOCKED_CANONICAL_EFFECT`
+**State:** `BLOCKED_DEPENDENCY`
 
 **Depends on:** CW-003, CW-004.
 
@@ -341,7 +341,7 @@ No checkbox alone proves completion.
 
 ## CW-014 — Read-only external connector framework
 
-**State:** `BLOCKED_CANONICAL_EFFECT`
+**State:** `BLOCKED_DEPENDENCY`
 
 **Depends on:** CW-013, CW-003, CW-004.
 
@@ -365,7 +365,7 @@ No checkbox alone proves completion.
 
 ## CW-015 — Local Workspace analytics
 
-**State:** `BLOCKED_CANONICAL_EFFECT`
+**State:** `BLOCKED_DEPENDENCY`
 
 **Depends on:** CW-003, CW-004, CW-008.
 
@@ -383,7 +383,7 @@ No checkbox alone proves completion.
 
 ## CW-016 — Research Workspace UI
 
-**State:** `BLOCKED_CANONICAL_EFFECT`
+**State:** `BLOCKED_DEPENDENCY`
 
 **Depends on:** CW-001, CW-004.
 
@@ -399,7 +399,7 @@ No checkbox alone proves completion.
 
 ## CW-017 — Dataset Workspace and export quarantine
 
-**State:** `BLOCKED_CANONICAL_EFFECT`
+**State:** `BLOCKED_DEPENDENCY`
 
 **Depends on:** CW-002, CW-003, CW-004.
 
@@ -419,7 +419,7 @@ No checkbox alone proves completion.
 
 ## CW-018 — Backup, restore, deletion, and key rotation
 
-**State:** `BLOCKED_CANONICAL_EFFECT`
+**State:** `BLOCKED_DEPENDENCY`
 
 **Depends on:** CW-002, CW-003, CW-011, CW-017.
 
@@ -442,7 +442,7 @@ No checkbox alone proves completion.
 
 ## CW-019 — Security and privacy closure
 
-**State:** `BLOCKED_CANONICAL_EFFECT`
+**State:** `BLOCKED_DEPENDENCY`
 
 **Depends on:** CW-010, CW-012, CW-014, CW-015, CW-016, CW-018.
 
@@ -470,7 +470,7 @@ No checkbox alone proves completion.
 
 ## CW-020 — PHI-readiness evidence packet
 
-**State:** `BLOCKED_CANONICAL_EFFECT`
+**State:** `BLOCKED_DEPENDENCY`
 
 **Depends on:** CW-019.
 
@@ -497,7 +497,7 @@ This task cannot ingest PHI.
 
 ## CW-021 — Separately authorized bounded clinical pilot
 
-**State:** `BLOCKED_CANONICAL_EFFECT`
+**State:** `BLOCKED_DEPENDENCY`
 
 **Depends on:** CW-020 plus a new explicit Founder/governance authorization.
 
@@ -602,9 +602,13 @@ Research Core capabilities may later be consumed only at canonically qualified i
 
 ## Planning closeout
 
-CW-000 is the only active unit in this planning PR.
+CW-000 is `CLOSED_CANONICAL`. ADR-0038 is canonically effective. Exact closure evidence is recorded in [cw-000-closeout.md](cw-000-closeout.md).
 
-All CW-001+ tasks remain blocked until:
-1. CW-000 reaches `CLOSED_CANONICAL` through protected normal merge and fresh-main qualification, making ADR-0038 canonically effective;
-2. every declared dependency of the applicable task is `CLOSED_CANONICAL`;
-3. the applicable task is separately activated under repository governance.
+Current frontier:
+
+1. CW-001 is `ELIGIBLE` because its only declared dependency, CW-000, is `CLOSED_CANONICAL`;
+2. CW-001 is not `IN_PROGRESS` until it is separately activated under repository governance;
+3. CW-002 through CW-021 remain `BLOCKED_DEPENDENCY` until their declared predecessors close canonically;
+4. CW-021 additionally requires the bounded explicit Founder/governance clinical-pilot authorization defined in its task contract.
+
+Planning closeout does not grant PHI, clinical production, EHR write, Workspace-data training/evaluation, publication, paid-compute, MRL-contract, or Stage-4 authority.

@@ -59,11 +59,11 @@ Language policy remains [ADR-0013](docs/adr/0013-language-strategy.md) (Python-f
 
 ## Ratified clinical workspace scope reconciliation
 
-Issue #459 records a Founder-directed target for MedScale to grow beyond its current research-only product boundary toward a privacy-first, local-first clinical workspace. That target conflicts with current accepted scope documents and therefore remains **planning-only** until the applicable architecture decision is explicitly ratified.
+Issue #459 reconciled the Founder-directed target for MedScale to grow beyond its prior research-only product boundary toward a privacy-first, local-first clinical workspace. ADR-0038 is now canonically effective; implementation remains separately task-gated.
 
 The Founder-ratified architecture and planning package are:
 
-- [ADR-0038 — local clinical workspace boundary](docs/adr/0038-local-clinical-workspace-boundary.md) — **Accepted by Founder under R6; pending canonical merge and fresh-main qualification**;
+- [ADR-0038 — local clinical workspace boundary](docs/adr/0038-local-clinical-workspace-boundary.md) — **Accepted by Founder under R6; canonically effective after PR #460 protected merge and fresh-main qualification**;
 - [Clinical Workspace V1 master specification](specs/medscale-clinical-workspace-v1/README.md);
 - [capability map](specs/medscale-clinical-workspace-v1/capability_map.md);
 - [data security and threat model](specs/medscale-clinical-workspace-v1/data_security.md);
@@ -73,7 +73,7 @@ The Founder-ratified architecture and planning package are:
 
 The architectural recommendation is one MedScale public project with two mechanically isolated trust domains: the existing synthetic-only **Research Core** and a future local **Clinical Workspace**. The Research Core may publish versioned interfaces outward; patient/workspace state must not flow back into Research Core training, evaluation, benchmarks, or MRL evidence.
 
-Until ADR-0038 is canonically effective after protected merge and fresh-main qualification, this package does **not** authorize application implementation or modify the current Research Vision. Even after canonical effectiveness, PHI ingestion, clinical production use, EHR writes, Workspace-data training/evaluation, model/runtime execution, publication, paid compute, and new MRL Stage-4 attempts remain separately governed.
+ADR-0038 is canonically effective after PR #460 protected merge and fresh-main qualification. CW-000 is closed canonically. CW-001 is eligible for separate activation but is not active. PHI ingestion, clinical production use, EHR writes, Workspace-data training/evaluation, model/runtime execution, publication, paid compute, and new MRL Stage-4 attempts remain separately governed.
 
 
 ## Current execution boundary

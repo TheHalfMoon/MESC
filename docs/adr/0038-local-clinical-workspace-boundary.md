@@ -1,11 +1,12 @@
 # ADR-0038 — Separate the MedScale research core from a local clinical workspace surface
 
-- **Status:** Accepted by Founder under R6 — pending canonical merge
+- **Status:** Accepted by Founder under R6 — canonically effective
 - **Date:** 2026-09-20
 - **Deciders:** Founder
 - **Ratified:** 2026-09-21 by explicit Founder decision under R6
+- **Canonical effect:** 2026-09-21 after protected merge of PR #460 at `b9d122cb59a11eb1195e9caa0e9ae3cd03705265` and successful fresh-main qualification
 - **Related:** Issue #459, ADR-0003, ADR-0005, ADR-0007, ADR-0008, ADR-0035, ADR-0036, `specs/medscale-clinical-workspace-v1/`
-- **Supersedes on canonical merge:** only the portions of the Research Vision, ADR-0003, ADR-0005, and ADR-0007 that state MedScale can never own a clinician-facing/local product surface. It does **not** weaken R1-R7, MRL evidence, model/runtime authority, publication authority, or the research-core PHI boundary.
+- **Supersedes canonically:** only the portions of the Research Vision, ADR-0003, ADR-0005, and ADR-0007 that state MedScale can never own a clinician-facing/local product surface. It does **not** weaken R1-R7, MRL evidence, model/runtime authority, publication authority, or the research-core PHI boundary.
 
 ## Context
 
@@ -237,7 +238,7 @@ Every donor-derived implementation task must record source repository, exact rev
 
 ## Reconciliation with current accepted decisions
 
-On canonical merge, this ADR changes the following interpretations:
+As a canonically effective decision, this ADR changes the following interpretations:
 
 - **Research Vision:** “MedScale is not a clinician-facing product” becomes true only of the **Research Core**, not the whole MedScale project.
 - **ADR-0003:** Afia may continue consuming MedScale, but it is no longer the only permitted product surface. The Research Core still never depends on Afia.
@@ -277,19 +278,24 @@ The Founder explicitly ratified ADR-0038 under R6 on 2026-09-21, selecting Optio
 
 That ratification selects the architecture only. It does not grant any authority listed in the explicit non-grants above.
 
-### Canonical effectiveness — PENDING
+### Canonical effectiveness — COMPLETE
 
-Before this ADR becomes canonically effective:
+ADR-0038 became canonically effective after the ratified planning package completed its protected merge and fresh-main qualification gates.
 
-1. the source-refresh and capability map must remain reviewed against current primary sources;
-2. the data/security boundary must retain a mechanically enforceable no-backflow path;
-3. implementation tasks must remain dependency ordered and independently reviewable;
-4. no task may depend on PHI, clinical production access, paid compute, or a new MRL runtime attempt;
-5. the ratification-record exact head must pass ordinary exact-head review/CI;
-6. the planning PR must merge through the protected normal-merge path;
-7. fresh canonical-main qualification must succeed on the actual merge SHA.
+Closure evidence:
 
-Until protected merge and fresh-main qualification complete, ADR-0038 is Founder-ratified planning evidence and is not yet canonically effective.
+- PR #460 qualified exact head: `f1f35558599fbbacd4c4045731496531d3a5eb34`;
+- protected normal merge SHA: `b9d122cb59a11eb1195e9caa0e9ae3cd03705265`;
+- merge tree: `e9a3b22d5b3265390d57312dfd73681c36ec85e6`;
+- pre-merge CI `35559195648`: SUCCESS;
+- pre-merge CodeQL `35559195642`: SUCCESS;
+- independent exact-head material review: no material defect;
+- fresh-main CI `35561943880`: SUCCESS;
+- fresh-main CodeQL `35561943875`: SUCCESS;
+- fresh-main Optional Extras / Backends `35561943888`: SUCCESS;
+- fresh-main Hugging Face Publication Qualification `35561943887`: SUCCESS.
+
+Canonical effectiveness selects and activates the architecture decision only. It does not grant any authority listed in the explicit non-grants above.
 
 ## Rollback
 
