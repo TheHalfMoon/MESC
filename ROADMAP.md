@@ -73,7 +73,7 @@ The Founder-ratified architecture and planning package are:
 
 The architectural recommendation is one MedScale public project with two mechanically isolated trust domains: the existing synthetic-only **Research Core** and a future local **Clinical Workspace**. The Research Core may publish versioned interfaces outward; patient/workspace state must not flow back into Research Core training, evaluation, benchmarks, or MRL evidence.
 
-ADR-0038 is canonically effective after PR #460 protected merge and fresh-main qualification. CW-000 is closed canonically. CW-001 is eligible for separate activation but is not active. PHI ingestion, clinical production use, EHR writes, Workspace-data training/evaluation, model/runtime execution, publication, paid compute, and new MRL Stage-4 attempts remain separately governed.
+ADR-0038 is canonically effective after PR #460 protected merge and fresh-main qualification. CW-000 and CW-001 are closed canonically. CW-002 is eligible but not activated: its own contract requires a ratified storage/key implementation ADR and separate activation before implementation begins. PHI ingestion, clinical production use, EHR writes, Workspace-data training/evaluation, model/runtime execution, publication, paid compute, and new MRL Stage-4 attempts remain separately governed.
 
 
 ## Current execution boundary
