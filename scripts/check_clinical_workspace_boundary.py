@@ -49,6 +49,32 @@ _WRITE_ATTRIBUTES = {
     "write_text",
 }
 
+_FORBIDDEN_CALL_PRIMITIVES = {
+    "__import__",
+    "compile",
+    "eval",
+    "exec",
+    "open",
+}
+
+
+def _forbidden_call_aliases(tree: ast.AST) -> set[str]:
+    aliases: set[str] = set()
+    changed = True
+    while changed:
+        changed = False
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Assign) or not isinstance(node.value, ast.Name):
+                continue
+            if node.value.id not in _FORBIDDEN_CALL_PRIMITIVES and node.value.id not in aliases:
+                continue
+            for target in node.targets:
+                if isinstance(target, ast.Name) and target.id not in aliases:
+                    aliases.add(target.id)
+                    changed = True
+    return aliases
+
+
 
 def _import_roots(tree: ast.AST) -> set[str]:
     roots: set[str] = set()
@@ -83,16 +109,13 @@ def inspect_workspace_source(source_root: Path) -> list[str]:
             elif root not in sys.stdlib_module_names:
                 errors.append(f"{relative}: undeclared third-party import is forbidden: {root}")
 
+        forbidden_aliases = _forbidden_call_aliases(tree)
         for node in ast.walk(tree):
             if not isinstance(node, ast.Call):
                 continue
-            if isinstance(node.func, ast.Name) and node.func.id in {
-                "__import__",
-                "compile",
-                "eval",
-                "exec",
-                "open",
-            }:
+            if isinstance(node.func, ast.Name) and (
+                node.func.id in _FORBIDDEN_CALL_PRIMITIVES or node.func.id in forbidden_aliases
+            ):
                 errors.append(
                     f"{relative}:{node.lineno}: dynamic import/code/file primitive is forbidden "
                     f"in CW-001: {node.func.id}"
