@@ -67,6 +67,10 @@ _FORBIDDEN_REFLECTION_PRIMITIVES = {
 _FORBIDDEN_NAME_REFERENCES = {
     "__builtins__",
 }
+_FORBIDDEN_IMPORTING_PRIMITIVES = {
+    "breakpoint",
+    "help",
+}
 # Attribute names that reconstruct a capability from the object graph even though
 # the code never names the capability directly. Ordinary dunder use that a normal
 # class-based module needs (``__init__``, ``__all__``, ``__name__``) is unaffected.
@@ -92,10 +96,39 @@ _FORBIDDEN_ATTRIBUTE_REFERENCES = {
     "__setattr__",
     "__spec__",
     "__subclasses__",
+    # Frame introspection reaches a module's real globals and builtins through an
+    # exception or a suspended frame without naming ``__builtins__`` directly.
+    "__traceback__",
+    "ag_frame",
+    "cr_frame",
+    "f_back",
+    "f_builtins",
+    "f_code",
+    "f_globals",
+    "f_locals",
+    "gi_frame",
+    "tb_frame",
+    "tb_next",
 }
 _FORBIDDEN_CAPABILITY_REFERENCES = (
-    _FORBIDDEN_CALL_PRIMITIVES | _FORBIDDEN_REFLECTION_PRIMITIVES | _FORBIDDEN_NAME_REFERENCES
+    _FORBIDDEN_CALL_PRIMITIVES
+    | _FORBIDDEN_REFLECTION_PRIMITIVES
+    | _FORBIDDEN_IMPORTING_PRIMITIVES
+    | _FORBIDDEN_NAME_REFERENCES
 )
+
+
+def _literal_string(node: ast.expr) -> str | None:
+    """Return the constant string value of an expression, folding ``+`` concatenation."""
+
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+        left = _literal_string(node.left)
+        right = _literal_string(node.right)
+        if left is not None and right is not None:
+            return left + right
+    return None
 
 
 def _bindings(node: ast.AST) -> tuple[list[ast.expr], ast.expr] | None:
@@ -115,8 +148,8 @@ def _resolves_to_capability(value: ast.expr, aliases: set[str]) -> bool:
 
     if isinstance(value, ast.Name):
         return value.id in _FORBIDDEN_CAPABILITY_REFERENCES or value.id in aliases
-    if isinstance(value, ast.Subscript) and isinstance(value.slice, ast.Constant):
-        return value.slice.value in _FORBIDDEN_CAPABILITY_REFERENCES
+    if isinstance(value, ast.Subscript):
+        return _literal_string(value.slice) in _FORBIDDEN_CAPABILITY_REFERENCES
     return False
 
 
@@ -204,6 +237,12 @@ def _capability_errors(relative: Path, tree: ast.AST) -> list[str]:
                 reported_callees.add(id(node.func))
                 errors.append(
                     f"{relative}:{node.lineno}: reflective capability access is forbidden "
+                    f"in CW-001: {node.func.id}"
+                )
+            elif node.func.id in _FORBIDDEN_IMPORTING_PRIMITIVES:
+                reported_callees.add(id(node.func))
+                errors.append(
+                    f"{relative}:{node.lineno}: runtime code-importing builtin is forbidden "
                     f"in CW-001: {node.func.id}"
                 )
         elif isinstance(node.func, ast.Attribute):

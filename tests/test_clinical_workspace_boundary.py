@@ -246,6 +246,43 @@ def test_workspace_boundary_guard_rejects_dunder_capability_dictionary(tmp_path:
     assert "object-graph capability attribute is forbidden in CW-001: __dict__" in result.stderr
 
 
+def test_workspace_boundary_guard_rejects_frame_globals_escape(tmp_path: Path) -> None:
+    (tmp_path / "bad.py").write_text(
+        "try:\n"
+        '    raise ValueError("x")\n'
+        "except ValueError as exc:\n"
+        "    frames = exc.__traceback__.tb_frame.f_globals\n"
+        '    caps = frames["__buil" + "tins__"]\n'
+        '    loader = caps["__imp" + "ort__"]\n'
+        '    loader("socket")\n',
+        encoding="utf-8",
+    )
+    result = _run_guard(tmp_path)
+    assert result.returncode == 1
+    assert (
+        "object-graph capability attribute is forbidden in CW-001: __traceback__" in result.stderr
+    )
+    assert "object-graph capability attribute is forbidden in CW-001: f_globals" in result.stderr
+    assert "dynamic import/code/file primitive is forbidden" in result.stderr
+
+
+def test_workspace_boundary_guard_folds_concatenated_capability_keys(tmp_path: Path) -> None:
+    (tmp_path / "bad.py").write_text(
+        'table = {}\nloader = table["__imp" + "ort__"]\nloader("socket")\n',
+        encoding="utf-8",
+    )
+    result = _run_guard(tmp_path)
+    assert result.returncode == 1
+    assert "dynamic import/code/file primitive is forbidden" in result.stderr
+
+
+def test_workspace_boundary_guard_rejects_runtime_importing_builtin(tmp_path: Path) -> None:
+    (tmp_path / "bad.py").write_text("help()\n", encoding="utf-8")
+    result = _run_guard(tmp_path)
+    assert result.returncode == 1
+    assert "runtime code-importing builtin is forbidden in CW-001: help" in result.stderr
+
+
 def test_workspace_boundary_guard_allows_ordinary_dunder_use(tmp_path: Path) -> None:
     (tmp_path / "good.py").write_text(
         "__all__ = ['Thing']\n"
