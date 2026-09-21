@@ -8,6 +8,7 @@ import subprocess
 import sys
 import tomllib
 from pathlib import Path
+from uuid import UUID
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _WORKSPACE_ROOT = _REPO_ROOT / "apps" / "workspace"
@@ -25,7 +26,7 @@ def _run_guard(source: Path = _WORKSPACE_SRC) -> subprocess.CompletedProcess[str
     )
 
 
-def _run_workspace_offline() -> subprocess.CompletedProcess[str]:
+def _run_workspace_snapshot_offline() -> subprocess.CompletedProcess[str]:
     code = f"""
 import json
 import socket
@@ -42,6 +43,38 @@ sys.path.insert(0, {str(_WORKSPACE_SRC)!r})
 
 from medscale_workspace.app import workspace_snapshot
 print(json.dumps(workspace_snapshot(), sort_keys=True, separators=(",", ":")))
+"""
+    env = os.environ.copy()
+    for key in tuple(env):
+        if "proxy" in key.lower() or key.startswith("HF_"):
+            env.pop(key, None)
+    env["PYTHONNOUSERSITE"] = "1"
+    return subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=_REPO_ROOT,
+        env=env,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+
+def _run_workspace_cli_offline() -> subprocess.CompletedProcess[str]:
+    code = f"""
+import runpy
+import socket
+import sys
+import urllib.request
+
+def blocked(*args, **kwargs):
+    raise AssertionError("network access attempted")
+
+socket.socket = blocked
+socket.create_connection = blocked
+urllib.request.urlopen = blocked
+sys.path.insert(0, {str(_WORKSPACE_SRC)!r})
+
+runpy.run_module("medscale_workspace", run_name="__main__")
 """
     env = os.environ.copy()
     for key in tuple(env):
@@ -114,6 +147,26 @@ def test_workspace_boundary_guard_rejects_dynamic_import(tmp_path: Path) -> None
     assert "dynamic import/code/file primitive is forbidden" in result.stderr
 
 
+def test_workspace_boundary_guard_rejects_import_alias(tmp_path: Path) -> None:
+    (tmp_path / "bad.py").write_text(
+        "loader = __import__\nloader('socket')\n",
+        encoding="utf-8",
+    )
+    result = _run_guard(tmp_path)
+    assert result.returncode == 1
+    assert "dynamic import/code/file primitive is forbidden" in result.stderr
+
+
+def test_workspace_boundary_guard_rejects_eval_alias(tmp_path: Path) -> None:
+    (tmp_path / "bad.py").write_text(
+        "runner = eval\nrunner('1 + 1')\n",
+        encoding="utf-8",
+    )
+    result = _run_guard(tmp_path)
+    assert result.returncode == 1
+    assert "dynamic import/code/file primitive is forbidden" in result.stderr
+
+
 def test_workspace_boundary_guard_rejects_persistent_write(tmp_path: Path) -> None:
     (tmp_path / "bad.py").write_text(
         "class Sink:\n    pass\nSink().write_text('y')\n",
@@ -124,18 +177,30 @@ def test_workspace_boundary_guard_rejects_persistent_write(tmp_path: Path) -> No
     assert "persistent filesystem mutation is forbidden" in result.stderr
 
 
+def test_synthetic_encounter_rejects_cross_workspace_patient() -> None:
+    sys.path.insert(0, str(_WORKSPACE_SRC))
+    try:
+        from medscale_workspace.fixtures import SyntheticPatient, synthetic_encounter
+        from medscale_workspace.identity import WorkspaceObjectType, synthetic_identity
+
+        foreign_identity = synthetic_identity(
+            UUID("00000000-0000-0000-0000-000000000001"),
+            WorkspaceObjectType.PATIENT,
+            "foreign-patient",
+        )
+        patient = SyntheticPatient(identity=foreign_identity)
+        try:
+            synthetic_encounter(patient)
+        except ValueError as exc:
+            assert str(exc) == "patient must belong to the synthetic workspace"
+        else:
+            raise AssertionError("cross-workspace patient was accepted")
+    finally:
+        sys.path.remove(str(_WORKSPACE_SRC))
+
+
 def test_workspace_cli_emits_no_object_or_display_data() -> None:
-    env = os.environ.copy()
-    env["PYTHONPATH"] = str(_WORKSPACE_SRC)
-    env["PYTHONNOUSERSITE"] = "1"
-    result = subprocess.run(
-        [sys.executable, "-m", "medscale_workspace"],
-        cwd=_REPO_ROOT,
-        env=env,
-        check=False,
-        capture_output=True,
-        text=True,
-    )
+    result = _run_workspace_cli_offline()
     assert result.returncode == 0, result.stderr
 
     payload = json.loads(result.stdout)
@@ -153,8 +218,8 @@ def test_workspace_cli_emits_no_object_or_display_data() -> None:
 
 
 def test_workspace_shell_runs_offline_with_deterministic_synthetic_identity() -> None:
-    first = _run_workspace_offline()
-    second = _run_workspace_offline()
+    first = _run_workspace_snapshot_offline()
+    second = _run_workspace_snapshot_offline()
     assert first.returncode == 0, first.stderr
     assert second.returncode == 0, second.stderr
     assert first.stdout == second.stdout
