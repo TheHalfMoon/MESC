@@ -269,19 +269,27 @@ MRL_CONTRACT_MUTATION = NOT_AUTHORIZED
 NEW_MRL_STAGE4_ATTEMPT = NOT_AUTHORIZED
 ```
 
-## Acceptance requirements
+## Ratification and canonical-effectiveness gates
 
-Before this ADR can become Accepted:
+### Founder architecture ratification — COMPLETE
 
-1. the source-refresh and capability map must be reviewed against current primary sources;
-2. the data/security boundary must show a mechanically enforceable no-backflow path;
-3. implementation tasks must be dependency ordered and independently reviewable;
+The Founder explicitly ratified ADR-0038 under R6 on 2026-09-21, selecting Option B: one MedScale public project with mechanically isolated Research Core and Clinical Workspace trust domains.
+
+That ratification selects the architecture only. It does not grant any authority listed in the explicit non-grants above.
+
+### Canonical effectiveness — PENDING
+
+Before this ADR becomes canonically effective:
+
+1. the source-refresh and capability map must remain reviewed against current primary sources;
+2. the data/security boundary must retain a mechanically enforceable no-backflow path;
+3. implementation tasks must remain dependency ordered and independently reviewable;
 4. no task may depend on PHI, clinical production access, paid compute, or a new MRL runtime attempt;
-5. the Founder must explicitly approve this architecture choice;
-6. the accepted commit must pass ordinary exact-head review/CI and protected merge;
-7. fresh canonical-main qualification must succeed.
+5. the ratification-record exact head must pass ordinary exact-head review/CI;
+6. the planning PR must merge through the protected normal-merge path;
+7. fresh canonical-main qualification must succeed on the actual merge SHA.
 
-Until then, this ADR is planning evidence only.
+Until protected merge and fresh-main qualification complete, ADR-0038 is Founder-ratified planning evidence and is not yet canonically effective.
 
 ## Rollback
 
