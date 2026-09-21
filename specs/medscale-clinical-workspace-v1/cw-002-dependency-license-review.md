@@ -61,19 +61,34 @@ Key derivation (HKDF-SHA-256), envelope encoding, header validation, key-version
 the rotation state machine and the store path rule remain reviewed code inside
 `apps/workspace/src/medscale_workspace`.
 
-## 4. Why the Research Core lock file changes
+## 4. Why the Research Core lock file does **not** change
 
-`uv.lock` and the root `[dependency-groups] dev` list carry the same three packages so the
-authoritative CI environment can run the CW-002 Workspace tests. That is a test-environment
-installation path only:
+`pyproject.toml` and `uv.lock` are frozen sources of the MRL-0809 static prerequisite manifest
+(`specs/mesc-experiment-0/mrl-0809-static-prerequisites-v1.json`, which binds the exact SHA-256
+of each source and is enforced fail-closed by
+`src/medscale/mesc/_mrl_0809_prerequisite_gate_v1.py`).
+
+An earlier CW-002 head added the AEAD dependency to the root dev group and therefore drifted
+`pyproject.toml`; that drift is recorded as negative evidence, and the canonical bytes were
+restored. A Clinical Workspace increment must not reinterpret, expand or relax the MRL-0809
+prerequisite identity.
+
+The dependency is therefore supplied by CI instead:
 
 ```text
+ci.yml, pytest-shard job:
+  uv sync --frozen                                   # unchanged Research Core lock
+  uv pip install --python .venv "cryptography==50.0.1"   # CW-002 Workspace AEAD primitive
+  uv run --no-sync ...                               # exact, already-built environment
+
 src/medscale runtime dependencies   unchanged (still none)
 Workspace runtime dependencies      cryptography==50.0.1
+pyproject.toml / uv.lock            unchanged, still matching the MRL-0809 digests
 ```
 
 The Research Core package remains importable and testable without the Workspace, exactly as
-CW-001 required.
+CW-001 required, and a CW-002 test asserts that both frozen lock sources still match their
+recorded MRL-0809 digests.
 
 ## 5. Limits of this record
 

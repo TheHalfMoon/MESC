@@ -26,8 +26,11 @@ Current scope:
 - no connector credentials and no network requirement.
 
 Exactly one third-party runtime dependency is admitted, for the AEAD primitive only:
-`cryptography` (`Apache-2.0 OR BSD-3-Clause`). The Research Core package remains free of
-runtime dependencies. See [cw-002-dependency-license-review.md](../../specs/medscale-clinical-workspace-v1/cw-002-dependency-license-review.md).
+`cryptography==50.0.1` (`Apache-2.0 OR BSD-3-Clause`). The Research Core package remains free
+of runtime dependencies, and `pyproject.toml`/`uv.lock` stay byte-identical to the frozen
+MRL-0809 static prerequisite digests: CI installs the Workspace dependency into the shard
+environment instead. See
+[cw-002-dependency-license-review.md](../../specs/medscale-clinical-workspace-v1/cw-002-dependency-license-review.md).
 
 The Research Core remains independently packaged from `src/medscale`. The Workspace is a
 separate package under `apps/workspace` and imports no Research Core modules.

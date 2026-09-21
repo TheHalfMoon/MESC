@@ -173,9 +173,39 @@ def test_workspace_package_declares_exactly_one_aead_dependency() -> None:
     assert root_configuration["project"]["dependencies"] == [], (
         "the Research Core package must stay free of runtime dependencies"
     )
-    assert "cryptography>=50.0.1" in root_configuration["dependency-groups"]["dev"], (
-        "the authoritative CI environment must install the workspace AEAD dependency"
+    assert "cryptography" not in " ".join(root_configuration["dependency-groups"]["dev"]), (
+        "pyproject.toml is a frozen MRL-0809 prerequisite source; the Workspace AEAD "
+        "dependency must be supplied outside the Research Core lock"
     )
+
+
+def test_ci_supplies_the_workspace_aead_dependency_outside_the_frozen_lock() -> None:
+    workflow = (REPOSITORY_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    assert "cryptography==50.0.1" in workflow, (
+        "the authoritative shard environment must install the Workspace AEAD dependency"
+    )
+    assert workflow.count("uv run --no-sync") >= 2, (
+        "the shard build and shard run must both keep the explicitly built environment"
+    )
+
+
+def test_research_core_lock_sources_remain_frozen() -> None:
+    """CW-002 must not drift the frozen MRL-0809 static prerequisite sources."""
+
+    manifest = json.loads(
+        (
+            REPOSITORY_ROOT
+            / "specs"
+            / "mesc-experiment-0"
+            / "mrl-0809-static-prerequisites-v1.json"
+        ).read_text(encoding="utf-8")
+    )
+    recorded = {row["path"]: row["sha256"] for row in manifest["sources"]}
+    for path in ("pyproject.toml", "uv.lock"):
+        digest = hashlib.sha256((REPOSITORY_ROOT / path).read_bytes()).hexdigest()
+        assert digest == recorded[path], (
+            f"{path} drifted from the frozen MRL-0809 prerequisite identity"
+        )
 
 
 def test_hkdf_sha256_matches_rfc5869_vector_a1() -> None:
