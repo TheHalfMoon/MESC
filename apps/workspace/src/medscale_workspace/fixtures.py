@@ -44,6 +44,8 @@ def synthetic_patient() -> SyntheticPatient:
 
 def synthetic_encounter(patient: SyntheticPatient | None = None) -> SyntheticEncounter:
     fixture_patient = patient or synthetic_patient()
+    if fixture_patient.identity.workspace_id != SYNTHETIC_WORKSPACE_ID:
+        raise ValueError("patient must belong to the synthetic workspace")
     identity = synthetic_identity(
         SYNTHETIC_WORKSPACE_ID,
         WorkspaceObjectType.ENCOUNTER,
