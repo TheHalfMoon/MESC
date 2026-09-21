@@ -1,10 +1,11 @@
 # ADR-0038 — Separate the MedScale research core from a local clinical workspace surface
 
-- **Status:** Proposed — awaiting Founder approval
+- **Status:** Accepted by Founder under R6 — pending canonical merge
 - **Date:** 2026-09-20
 - **Deciders:** Founder
+- **Ratified:** 2026-09-21 by explicit Founder decision under R6
 - **Related:** Issue #459, ADR-0003, ADR-0005, ADR-0007, ADR-0008, ADR-0035, ADR-0036, `specs/medscale-clinical-workspace-v1/`
-- **Supersedes on acceptance:** only the portions of the Research Vision, ADR-0003, ADR-0005, and ADR-0007 that state MedScale can never own a clinician-facing/local product surface. It does **not** weaken R1-R7, MRL evidence, model/runtime authority, publication authority, or the research-core PHI boundary.
+- **Supersedes on canonical merge:** only the portions of the Research Vision, ADR-0003, ADR-0005, and ADR-0007 that state MedScale can never own a clinician-facing/local product surface. It does **not** weaken R1-R7, MRL evidence, model/runtime authority, publication authority, or the research-core PHI boundary.
 
 ## Context
 
@@ -69,7 +70,7 @@ Keep current MedScale unchanged and implement the clinical workspace in a separa
 
 It remains the rollback option if Option B proves unable to preserve the trust boundary mechanically.
 
-## Proposed decision
+## Decision
 
 Adopt **Option B**.
 
@@ -236,7 +237,7 @@ Every donor-derived implementation task must record source repository, exact rev
 
 ## Reconciliation with current accepted decisions
 
-If accepted, this ADR changes the following interpretations:
+On canonical merge, this ADR changes the following interpretations:
 
 - **Research Vision:** “MedScale is not a clinician-facing product” becomes true only of the **Research Core**, not the whole MedScale project.
 - **ADR-0003:** Afia may continue consuming MedScale, but it is no longer the only permitted product surface. The Research Core still never depends on Afia.
@@ -246,7 +247,7 @@ If accepted, this ADR changes the following interpretations:
 
 ## Explicit non-grants
 
-This proposed ADR and its planning package do **not** authorize:
+This ADR and its planning package do **not** authorize:
 
 ```text
 PHI_INGESTION = NOT_AUTHORIZED

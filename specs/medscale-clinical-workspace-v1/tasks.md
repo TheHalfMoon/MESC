@@ -1,9 +1,9 @@
 # Clinical Workspace V1 — Dependency-Ordered Task Ledger
 
-- **Status:** Proposed planning ledger
+- **Status:** Founder-ratified planning ledger — pending canonical merge; no implementation authority
 - **Date:** 2026-09-20
 - **Parent:** [Clinical Workspace V1](README.md)
-- **Architecture gate:** proposed ADR-0038
+- **Architecture gate:** ADR-0038 accepted by Founder under R6; canonical effect pending planning closeout
 - **Current implementation authority:** NONE
 
 This ledger is implementation-ready planning. It is not an executable backlog until the applicable architecture and task authority is accepted.

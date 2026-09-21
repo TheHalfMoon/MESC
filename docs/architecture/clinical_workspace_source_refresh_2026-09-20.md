@@ -27,7 +27,7 @@ At the reviewed base, current accepted MedScale documents establish:
 - scope changes costing more than one day to reverse require an ADR;
 - model/runtime/training/publication/clinical authority is not implied by planning.
 
-Those facts create the conflict that Issue #459 and proposed ADR-0038 must resolve.
+Those facts created the conflict that Issue #459 and ADR-0038 resolve.
 
 ## Abridge — product/workflow reference
 

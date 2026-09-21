@@ -57,13 +57,13 @@ Language policy remains [ADR-0013](docs/adr/0013-language-strategy.md) (Python-f
 > Horizon definitions follow the Research Vision. Where older condensed presentations differ, the **Research Vision and current canonical governance govern**.
 
 
-## Proposed clinical workspace scope reconciliation
+## Ratified clinical workspace scope reconciliation
 
 Issue #459 records a Founder-directed target for MedScale to grow beyond its current research-only product boundary toward a privacy-first, local-first clinical workspace. That target conflicts with current accepted scope documents and therefore remains **planning-only** until the applicable architecture decision is explicitly ratified.
 
-The proposed package is:
+The Founder-ratified architecture and planning package are:
 
-- [ADR-0038 — local clinical workspace boundary](docs/adr/0038-local-clinical-workspace-boundary.md) — **Proposed; awaiting Founder approval**;
+- [ADR-0038 — local clinical workspace boundary](docs/adr/0038-local-clinical-workspace-boundary.md) — **Accepted by Founder under R6; pending canonical merge and fresh-main qualification**;
 - [Clinical Workspace V1 master specification](specs/medscale-clinical-workspace-v1/README.md);
 - [capability map](specs/medscale-clinical-workspace-v1/capability_map.md);
 - [data security and threat model](specs/medscale-clinical-workspace-v1/data_security.md);

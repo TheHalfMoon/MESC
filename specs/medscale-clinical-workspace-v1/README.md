@@ -1,9 +1,9 @@
 # MedScale Clinical Workspace V1 — Canonical Planning Specification
 
-- **Status:** Proposed planning package — no implementation authority
+- **Status:** Founder-ratified planning package — no implementation authority; pending canonical merge and fresh-main qualification
 - **Date:** 2026-09-20
 - **Parent issue:** #459
-- **Proposed ADR:** [ADR-0038](../../docs/adr/0038-local-clinical-workspace-boundary.md)
+- **Architecture ADR:** [ADR-0038](../../docs/adr/0038-local-clinical-workspace-boundary.md) — Accepted by Founder under R6; pending canonical merge
 - **Canonical planning base:** `475a389777c02a1992acafa24b1cfd1dae24c46b`
 - **Scope:** architecture, data/security boundaries, capability decomposition, delivery sequencing, acceptance contracts
 - **Non-scope:** PHI ingestion, production clinical use, model/runtime execution, training, publication, release, paid compute, MRL contract changes
