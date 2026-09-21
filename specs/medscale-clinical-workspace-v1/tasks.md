@@ -1,12 +1,12 @@
 # Clinical Workspace V1 — Dependency-Ordered Task Ledger
 
-- **Status:** Canonical implementation ledger — CW-001 closed; CW-002 eligible
-- **Date:** 2026-09-20 (frontier reconciled 2026-09-21)
+- **Status:** Canonical implementation ledger — CW-001 closed; CW-002 activated
+- **Date:** 2026-09-20 (frontier reconciled 2026-09-21; CW-002 ratified and activated 2026-09-21)
 - **Parent:** [Clinical Workspace V1](README.md)
 - **Architecture gate:** ADR-0038 canonically effective after PR #460 protected merge and fresh-main qualification
-- **Current implementation authority:** NONE — CW-001 closed canonically; CW-002 requires a ratified storage/key ADR and separate activation
+- **Current implementation authority:** CW-002 only — activated 2026-09-21 under Issue #467, governed by [ADR-0039](../../docs/adr/0039-local-protected-storage-and-key-management.md) as amended by A1 ([ratification record](adr-0039-founder-ratification.md))
 
-This ledger is implementation-ready planning. It is not an executable backlog until ADR-0038 is canonically effective, the applicable dependencies are closed canonically, and the applicable task is separately activated.
+This ledger is implementation-ready planning. It is not an executable backlog until ADR-0038 is canonically effective, the applicable dependencies are closed canonically, and the applicable task is separately activated. Each of those three conditions now holds for CW-002, and only for CW-002.
 
 ## Global gates
 
@@ -106,13 +106,17 @@ No checkbox alone proves completion.
 
 ## CW-002 — Local protected storage and key abstraction
 
-**State:** `ELIGIBLE` (not activated)
+**State:** `IN_PROGRESS` (activated 2026-09-21)
+
+**Activation:** Issue #467 — Founder ratification of ADR-0039 and CW-002 activation.
 
 **Depends on:** CW-001.
 
 **Purpose:** implement protected local storage using synthetic sensitive fixtures.
 
-**Activation prerequisite:** this task requires its own implementation ADR (storage engine, key/cryptography strategy, migration approach) ratified under R6 and a separate activation before any implementation begins. Eligibility does not confer implementation authority. The proposal is recorded as [ADR-0039](../../docs/adr/0039-local-protected-storage-and-key-management.md), which is `Proposed` and not yet ratified.
+**Activation prerequisite (satisfied):** this task required its own implementation ADR (storage engine, key/cryptography strategy, migration approach) ratified under R6 and a separate activation. [ADR-0039](../../docs/adr/0039-local-protected-storage-and-key-management.md) was proposed in PR #466 and then **accepted by the Founder under R6 on 2026-09-21 with Amendment A1**, recorded in the [ratification record](adr-0039-founder-ratification.md). Activation does not waive any acceptance item below.
+
+**Amended contract items (A1):** HKDF-SHA-256 workspace/version key derivation (A1.1); `scrypt` reserved for a future password-derived path (A1.2); 96-bit random per-operation AES-256-GCM nonce with misuse/reuse tests (A1.3); associated data additionally binds the immutable object/revision identity (A1.4); an explicit whole-store rollback limitation (A1.5); an `ACTIVE -> ROTATING -> RETIRING -> RETIRED` key state machine (A1.6); a capability-declaring platform key provider that fails closed (A1.7); dependency-policy reconciliation with no silent dependency (A1.8); a leakage surface beyond the database file (A1.9); an explicit plaintext-metadata scope (A1.10); `secure_delete=ON` as defense in depth only (A1.11); and preservation of every existing principle (A1.12).
 
 **Requires separate implementation ADR**
 - database/storage engine;
@@ -126,7 +130,8 @@ No checkbox alone proves completion.
 - workspace isolation;
 - key rotation test;
 - no plaintext fallback;
-- dependency/source license review.
+- dependency/source license review;
+- the Amendment A1 security clarifications above are each demonstrated by evidence bound to the exact qualified head.
 
 **Stop**
 - selected storage cannot support authenticated protection/recovery requirements;
@@ -608,13 +613,13 @@ Research Core capabilities may later be consumed only at canonically qualified i
 
 ## Canonical closeout status
 
-CW-000 and CW-001 are `CLOSED_CANONICAL`. ADR-0038 is canonically effective. Exact closure evidence is recorded in [cw-000-closeout.md](cw-000-closeout.md) and [cw-001-closeout.md](cw-001-closeout.md).
+CW-000 and CW-001 are `CLOSED_CANONICAL`. ADR-0038 is canonically effective, and ADR-0039 is accepted by the Founder under R6 as amended by A1. Exact closure evidence is recorded in [cw-000-closeout.md](cw-000-closeout.md) and [cw-001-closeout.md](cw-001-closeout.md), and the ADR-0039 decision is recorded in [adr-0039-founder-ratification.md](adr-0039-founder-ratification.md).
 
 Current frontier:
 
 1. CW-001 is `CLOSED_CANONICAL`: implementation PR #463 merged through the protected path at canonical merge `1ec0c3dd2e379649fd0b6a710b9dbde0f60490f3` and completed fresh-main qualification;
-2. CW-002 is `ELIGIBLE` because its only declared dependency, CW-001, is `CLOSED_CANONICAL`, but it is **not activated**: its own contract requires a separate implementation ADR (storage engine, key and cryptography strategy, migration approach) ratified under R6 before implementation, plus separate activation under repository governance;
-3. CW-003 through CW-021 remain `BLOCKED_DEPENDENCY` until their declared predecessors close canonically;
+2. CW-002 is `IN_PROGRESS`: its only declared dependency, CW-001, is `CLOSED_CANONICAL`; ADR-0039 was ratified under R6 with Amendment A1; and CW-002 was activated under Issue #467. It remains the single active implementation unit and is not yet `CLOSED_CANONICAL`;
+3. CW-003 through CW-021 remain `BLOCKED_DEPENDENCY` until their declared predecessors close canonically (CW-003 depends on CW-002);
 4. CW-021 additionally requires the bounded explicit Founder/governance clinical-pilot authorization defined in its task contract.
 
 No closeout or eligibility statement grants PHI, clinical production, EHR write, Workspace-data training/evaluation, publication, paid-compute, MRL-contract, or Stage-4 authority.
