@@ -10,6 +10,13 @@ from typing import Sequence
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _DEFAULT_SOURCE = _REPO_ROOT / "apps" / "workspace" / "src"
+_FORBIDDEN_ESCAPE_ROOTS = {
+    "ctypes",
+    "importlib",
+    "multiprocessing",
+    "os",
+    "subprocess",
+}
 _FORBIDDEN_NETWORK_ROOTS = {
     "aiohttp",
     "boto3",
@@ -60,6 +67,8 @@ def inspect_workspace_source(source_root: Path) -> list[str]:
                 errors.append(f"{relative}: Research Core import is forbidden during CW-001")
             elif root in _FORBIDDEN_NETWORK_ROOTS:
                 errors.append(f"{relative}: network-capable import is forbidden: {root}")
+            elif root in _FORBIDDEN_ESCAPE_ROOTS:
+                errors.append(f"{relative}: boundary escape import is forbidden: {root}")
             elif root != "medscale_workspace" and root not in sys.stdlib_module_names:
                 errors.append(f"{relative}: undeclared third-party import is forbidden: {root}")
 
