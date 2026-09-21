@@ -9,7 +9,9 @@ retaining the deleted content.
 Design:
 
 * each event is one immutable object in the CW-002 store, keyed by a digest-derived
-  identity, so a replayed event collides with the stored one instead of appending;
+  event identity and a chain position, so a replayed event — and a concurrent attempt
+  to append two different events at the same position — collide with the stored object
+  instead of silently appending a second event;
 * every event carries the digest of its predecessor and its own digest over a
   canonical payload document, forming a hash chain from a genesis digest;
 * the caller supplies ``occurred_at``: this package imports no clock, so ordering is
@@ -24,6 +26,9 @@ so a party with direct database write access could remove a trailing event; that
 would be detected as a chain shortfall only against a retained head digest. Stricter
 storage-level enforcement belongs to the CW-018 lifecycle work and the CW-019
 independent security lane.
+
+Cost note: every append re-verifies the whole chain before it writes, so append cost
+grows with trail length. Checkpointing or anchored-head designs belong to CW-018.
 """
 
 from __future__ import annotations
@@ -47,6 +52,7 @@ from medscale_workspace.storage import ObjectWrite, WorkspaceStore
 from medscale_workspace.versions import AUDIT_CHAIN_FORMAT_VERSION, POLICY_VERSION
 
 AUDIT_OBJECT_NAMESPACE = UUID("3ad1f5c8-2b64-4e19-8a70-9c5d2e6b4f81")
+CHAIN_OBJECT_ID = uuid5(AUDIT_OBJECT_NAMESPACE, "audit-chain")
 EVENT_ID_PREFIX = "mesc-ws-audit/1:sha256:"
 GENESIS_EVENT_DIGEST = "0" * 64
 MAXIMUM_IDENTIFIER_LENGTH = 128
@@ -100,6 +106,82 @@ def _admitted_text(raw: object, *, label: str, maximum: int) -> str:
         if not character.isprintable():
             raise AuditError(f"{label} must not contain control characters")
     return value
+
+
+def _admitted_occurred_at(raw: object) -> str:
+    """Admit a well-formed ISO-8601 instant with an explicit zone.
+
+    Shape validation only: the package holds no calendar and performs no date
+    arithmetic, so this checks the recorded form, not calendar correctness.
+    """
+
+    value = _admitted_text(raw, label="audit occurrence time", maximum=64)
+    separator = value[10:11]
+    if len(value) < 20 or separator != "T":
+        raise AuditError("audit occurrence time must be an ISO-8601 instant with a zone")
+    date_part = value[:10]
+    time_part = value[11:]
+    if not (
+        _digits(date_part[0:4], 4)
+        and date_part[4:5] == "-"
+        and _digits(date_part[5:7], 2)
+        and date_part[7:8] == "-"
+        and _digits(date_part[8:10], 2)
+    ):
+        raise AuditError("audit occurrence time must start with YYYY-MM-DD")
+    month = int(date_part[5:7])
+    day = int(date_part[8:10])
+    if not 1 <= month <= 12 or not 1 <= day <= 31:
+        raise AuditError("audit occurrence time carries an out-of-range month or day")
+    zone_offset = time_part.find("+", 1)
+    if zone_offset < 0:
+        zone_offset = time_part.find("-", 1)
+    if zone_offset < 0:
+        if not time_part.endswith("Z"):
+            raise AuditError("audit occurrence time must carry Z or a numeric zone offset")
+        clock = time_part[:-1]
+        zone = "Z"
+    else:
+        clock = time_part[:zone_offset]
+        zone = time_part[zone_offset:]
+    fraction = clock.find(".")
+    if fraction >= 0:
+        if not _digits(clock[fraction + 1 :], 0) or not 1 <= len(clock) - fraction - 1 <= 6:
+            raise AuditError("audit occurrence time fraction must carry one to six digits")
+        clock = clock[:fraction]
+    if (
+        len(clock) != 8
+        or not _digits(clock[0:2], 2)
+        or clock[2:3] != ":"
+        or not _digits(clock[3:5], 2)
+        or clock[5:6] != ":"
+        or not _digits(clock[6:8], 2)
+    ):
+        raise AuditError("audit occurrence time must carry HH:MM:SS")
+    hour = int(clock[0:2])
+    minute = int(clock[3:5])
+    second = int(clock[6:8])
+    if hour > 23 or minute > 59 or second > 60:
+        raise AuditError("audit occurrence time carries an out-of-range clock value")
+    if zone != "Z" and not (
+        len(zone) == 6
+        and zone[0:1] in {"+", "-"}
+        and _digits(zone[1:3], 2)
+        and zone[3:4] == ":"
+        and _digits(zone[4:6], 2)
+        and int(zone[1:3]) <= 23
+        and int(zone[4:6]) <= 59
+    ):
+        raise AuditError("audit occurrence time zone offset must be +HH:MM or -HH:MM")
+    return value
+
+
+def _digits(raw: str, length: int) -> bool:
+    if length and len(raw) != length:
+        return False
+    if not raw:
+        return False
+    return all(character in "0123456789" for character in raw)
 
 
 def _admitted_digest(raw: object, *, label: str) -> str:
@@ -217,11 +299,7 @@ class AuditEvent:
             "event_type": self.event_type.value,
             "metadata": metadata,
             "object_refs": [reference.to_document() for reference in self.object_refs],
-            "occurred_at": _admitted_text(
-                self.occurred_at,
-                label="audit occurrence time",
-                maximum=64,
-            ),
+            "occurred_at": _admitted_occurred_at(self.occurred_at),
             "policy_version": POLICY_VERSION,
             "previous_event_digest": _admitted_digest(
                 self.previous_event_digest,
@@ -247,7 +325,7 @@ class AuditEvent:
     def binding(self) -> ObjectBinding:
         return ObjectBinding(
             workspace_id=self.workspace_id,
-            object_id=uuid5(AUDIT_OBJECT_NAMESPACE, self.event_id),
+            object_id=CHAIN_OBJECT_ID,
             object_type=WorkspaceObjectType.AUDIT_EVENT,
             object_revision=self.object_revision,
         )
@@ -406,7 +484,7 @@ class AuditTrail:
             )
         except StoreConflictError as error:
             raise AuditReplayError(
-                "the audit event already exists in this workspace and was not appended twice"
+                "this audit chain position already holds an event; the event was not appended"
             ) from error
 
     def _stored_events(self) -> tuple[AuditEvent, ...]:
@@ -561,6 +639,10 @@ def _event_from_bytes(raw: bytes) -> AuditEvent:
     except ValueError as error:
         raise AuditError("stored audit event carries an unadmitted member value") from error
     event.payload_document()
+    if event.event_id != f"{EVENT_ID_PREFIX}{event.event_digest}":
+        raise AuditChainError("stored audit event identity is not derived from its digest")
+    if event.binding().object_revision != event.object_revision:
+        raise AuditChainError("stored audit event position does not match its sequence")
     return event
 
 

@@ -25,8 +25,9 @@ Current scope:
   review state, recorded content digest, format and policy versions, and a rule that
   generated content must reference at least one source;
 - an append-only audit spine: one immutable object per event, digest-derived event identity,
-  predecessor-digest chaining, replay collision instead of append, caller-supplied occurrence
-  time, and one transaction that deletes content while recording the deletion;
+  chain-position object identity, predecessor-digest chaining, replay and occupied-position
+  collisions instead of append, a validated caller-supplied ISO-8601 occurrence time, and one
+  transaction that deletes content while recording the deletion;
 - no plaintext fallback anywhere in the path;
 - no microphone or ambient capture;
 - no EHR/FHIR connector;

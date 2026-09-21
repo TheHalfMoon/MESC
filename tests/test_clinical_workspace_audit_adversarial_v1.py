@@ -13,7 +13,7 @@ import sqlite3
 import sys
 from pathlib import Path
 from typing import Any
-from uuid import UUID, uuid5
+from uuid import UUID
 
 import pytest
 
@@ -48,17 +48,16 @@ from medscale_workspace import (  # noqa: E402
     verify_provenance,
 )
 from medscale_workspace.audit import (  # noqa: E402
-    AUDIT_OBJECT_NAMESPACE,
     EVENT_ID_PREFIX,
     GENESIS_EVENT_DIGEST,
     AuditEvent,
     _build_event,
     _event_digest,
+    _event_from_bytes,
 )
 from medscale_workspace.errors import (  # noqa: E402
     AuditChainError,
     AuditError,
-    AuditReplayError,
     EnvelopeAuthenticationError,
     ObjectNotFoundError,
     ProvenanceError,
@@ -192,18 +191,19 @@ def test_swapping_stored_audit_envelopes_fails_authentication(tmp_path: Path) ->
     connection = raw(store_path)
     try:
         rows = connection.execute(
-            "SELECT object_id, envelope FROM objects WHERE object_type = ? ORDER BY object_id",
+            "SELECT object_revision, envelope FROM objects WHERE object_type = ? "
+            "ORDER BY object_revision",
             (WorkspaceObjectType.AUDIT_EVENT.value,),
         ).fetchall()
     finally:
         connection.close()
     assert len(rows) == 3
-    swapped = {str(object_id): bytes(envelope) for object_id, envelope in rows}
+    swapped = {str(revision): bytes(envelope) for revision, envelope in rows}
     ordered_ids = sorted(swapped)
     first_id, second_id = ordered_ids[0], ordered_ids[1]
     raw_execute(
         store_path,
-        "UPDATE objects SET envelope = ? WHERE object_id = ?",
+        "UPDATE objects SET envelope = ? WHERE object_revision = ?",
         (swapped[second_id], first_id),
     )
     with (
@@ -230,7 +230,7 @@ def test_replaying_an_event_object_is_refused(tmp_path: Path) -> None:
         assert AuditTrail(store).verify().events_verified == 3
 
 
-def test_a_duplicate_sequence_event_is_detected(tmp_path: Path) -> None:
+def test_a_second_event_cannot_take_an_existing_chain_position(tmp_path: Path) -> None:
     root_secret = new_root_secret()
     seeded_trail(tmp_path, root_secret)
     forged = _build_event(
@@ -244,11 +244,12 @@ def test_a_duplicate_sequence_event_is_detected(tmp_path: Path) -> None:
         metadata=(),
     )
     with open_store(tmp_path, root_secret=root_secret) as store:
-        store.put_objects_atomic(
-            (ObjectWrite(binding=forged.binding(), payload=forged.canonical_bytes()),)
-        )
-        with pytest.raises(AuditChainError):
-            AuditTrail(store).verify()
+        with pytest.raises(StoreConflictError):
+            store.put_objects_atomic(
+                (ObjectWrite(binding=forged.binding(), payload=forged.canonical_bytes()),)
+            )
+        # The refused append leaves the trail intact instead of wedging it.
+        assert AuditTrail(store).verify().events_verified == 3
 
 
 def test_an_event_identity_not_derived_from_its_digest_is_detected(tmp_path: Path) -> None:
@@ -270,11 +271,15 @@ def test_an_event_identity_not_derived_from_its_digest_is_detected(tmp_path: Pat
         previous_event_digest=head.previous_event_digest,
     )
     with open_store(tmp_path, root_secret=root_secret) as store:
-        store.put_objects_atomic(
-            (ObjectWrite(binding=forged.binding(), payload=forged.canonical_bytes()),)
-        )
-        with pytest.raises((AuditChainError, AuditReplayError)):
-            AuditTrail(store).verify()
+        # The forged event claims an existing chain position, so it collides instead of
+        # replacing the recorded event.
+        with pytest.raises(StoreConflictError):
+            store.put_objects_atomic(
+                (ObjectWrite(binding=forged.binding(), payload=forged.canonical_bytes()),)
+            )
+        assert AuditTrail(store).verify().events_verified == 3
+    with pytest.raises(AuditChainError):
+        _event_from_bytes(forged.canonical_bytes())
 
 
 def test_tampering_with_a_stored_event_payload_fails_closed(tmp_path: Path) -> None:
@@ -311,16 +316,8 @@ def test_a_forged_event_document_is_rejected(tmp_path: Path) -> None:
     forged_payload = json.dumps(
         head_document, sort_keys=True, separators=(",", ":"), ensure_ascii=True
     ).encode("ascii")
-    forged_binding = ObjectBinding(
-        workspace_id=WORKSPACE_ALPHA,
-        object_id=uuid5(AUDIT_OBJECT_NAMESPACE, str(head_document["event_id"])),
-        object_type=WorkspaceObjectType.AUDIT_EVENT,
-        object_revision="audit-00000099",
-    )
-    with open_store(tmp_path, root_secret=root_secret) as store:
-        store.put_objects_atomic((ObjectWrite(binding=forged_binding, payload=forged_payload),))
-        with pytest.raises(AuditError):
-            AuditTrail(store).verify()
+    with pytest.raises(AuditError):
+        _event_from_bytes(forged_payload)
 
 
 def test_audit_metadata_bounds_are_enforced(tmp_path: Path) -> None:
@@ -372,6 +369,54 @@ def test_an_event_for_another_workspace_cannot_be_stored(tmp_path: Path) -> None
                 (ObjectWrite(binding=forged.binding(), payload=forged.canonical_bytes()),)
             )
         assert AuditTrail(store).verify().events_verified == 0
+
+
+@pytest.mark.parametrize(
+    "occurred_at",
+    [
+        "",
+        "whenever",
+        "2026-09-21",
+        "2026-09-21T18:00:00",
+        "2026-13-01T00:00:00Z",
+        "2026-09-32T00:00:00Z",
+        "2026-09-21T25:00:00Z",
+        "2026-09-21T18:61:00Z",
+        "2026-09-21T18:00:61.1234567Z",
+        "2026-09-21T18:00:00+3:00",
+        "2026-09-21T18:00:00+03:0",
+    ],
+)
+def test_malformed_occurrence_times_are_refused(tmp_path: Path, occurred_at: str) -> None:
+    with open_store(tmp_path) as store:
+        trail = AuditTrail(store)
+        with pytest.raises(AuditError):
+            trail.append(
+                event_type=AuditEventType.WORKSPACE_OPEN,
+                actor_id="synthetic-clinician",
+                occurred_at=occurred_at,
+            )
+        assert trail.verify().events_verified == 0
+
+
+@pytest.mark.parametrize(
+    "occurred_at",
+    [
+        "2026-09-21T18:00:00Z",
+        "2026-09-21T18:00:00.123456Z",
+        "2026-09-21T18:00:00+03:00",
+        "2026-09-21T18:00:00-07:30",
+    ],
+)
+def test_well_formed_occurrence_times_are_recorded(tmp_path: Path, occurred_at: str) -> None:
+    with open_store(tmp_path) as store:
+        event = AuditTrail(store).append(
+            event_type=AuditEventType.WORKSPACE_OPEN,
+            actor_id="synthetic-clinician",
+            occurred_at=occurred_at,
+        )
+        assert event.occurred_at == occurred_at
+        assert AuditTrail(store).verify().events_verified == 1
 
 
 def test_an_event_digest_that_does_not_match_its_payload_is_detected(tmp_path: Path) -> None:
