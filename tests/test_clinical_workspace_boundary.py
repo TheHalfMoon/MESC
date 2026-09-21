@@ -1,0 +1,122 @@
+"""CW-001 Clinical Workspace boundary and offline-shell acceptance tests."""
+
+from __future__ import annotations
+
+import json
+import os
+import subprocess
+import sys
+import tomllib
+from pathlib import Path
+
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+_WORKSPACE_ROOT = _REPO_ROOT / "apps" / "workspace"
+_WORKSPACE_SRC = _WORKSPACE_ROOT / "src"
+_GUARD = _REPO_ROOT / "scripts" / "check_clinical_workspace_boundary.py"
+
+
+def _run_guard(source: Path = _WORKSPACE_SRC) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [sys.executable, str(_GUARD), "--source", str(source)],
+        cwd=_REPO_ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+
+def _run_workspace_offline() -> subprocess.CompletedProcess[str]:
+    code = f"""
+import json
+import socket
+import sys
+import urllib.request
+
+def blocked(*args, **kwargs):
+    raise AssertionError("network access attempted")
+
+socket.socket = blocked
+socket.create_connection = blocked
+urllib.request.urlopen = blocked
+sys.path.insert(0, {str(_WORKSPACE_SRC)!r})
+
+from medscale_workspace.app import workspace_snapshot
+print(json.dumps(workspace_snapshot(), sort_keys=True, separators=(",", ":")))
+"""
+    env = os.environ.copy()
+    for key in tuple(env):
+        if "proxy" in key.lower() or key.startswith("HF_"):
+            env.pop(key, None)
+    env["PYTHONNOUSERSITE"] = "1"
+    return subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=_REPO_ROOT,
+        env=env,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+
+def test_root_research_package_remains_workspace_independent() -> None:
+    config = tomllib.loads((_REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    assert config["tool"]["hatch"]["build"]["targets"]["wheel"]["packages"] == ["src/medscale"]
+    assert config["project"]["dependencies"] == []
+
+
+def test_workspace_package_is_zero_dependency_and_separate() -> None:
+    config = tomllib.loads((_WORKSPACE_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    assert config["project"]["name"] == "medscale-workspace"
+    assert config["project"]["dependencies"] == []
+    assert config["tool"]["hatch"]["build"]["targets"]["wheel"]["packages"] == [
+        "src/medscale_workspace"
+    ]
+
+
+def test_workspace_boundary_guard_passes_current_source() -> None:
+    result = _run_guard()
+    assert result.returncode == 0, result.stderr
+    assert "CW-001 workspace boundary PASS" in result.stdout
+
+
+def test_workspace_boundary_guard_rejects_research_import(tmp_path: Path) -> None:
+    (tmp_path / "bad.py").write_text("from medscale import Corpus\n", encoding="utf-8")
+    result = _run_guard(tmp_path)
+    assert result.returncode == 1
+    assert "Research Core import is forbidden" in result.stderr
+
+
+def test_workspace_boundary_guard_rejects_network_import(tmp_path: Path) -> None:
+    (tmp_path / "bad.py").write_text("import socket\n", encoding="utf-8")
+    result = _run_guard(tmp_path)
+    assert result.returncode == 1
+    assert "network-capable import is forbidden" in result.stderr
+
+
+def test_workspace_boundary_guard_rejects_persistent_write(tmp_path: Path) -> None:
+    (tmp_path / "bad.py").write_text(
+        "from pathlib import Path\nPath('x').write_text('y')\n",
+        encoding="utf-8",
+    )
+    result = _run_guard(tmp_path)
+    assert result.returncode == 1
+    assert "persistent filesystem mutation is forbidden" in result.stderr
+
+
+def test_workspace_shell_runs_offline_with_deterministic_synthetic_identity() -> None:
+    first = _run_workspace_offline()
+    second = _run_workspace_offline()
+    assert first.returncode == 0, first.stderr
+    assert second.returncode == 0, second.stderr
+    assert first.stdout == second.stdout
+
+    payload = json.loads(first.stdout)
+    assert payload["data_class"] == "SYNTHETIC"
+    assert payload["capabilities"] == {
+        "network": False,
+        "microphone": False,
+        "ehr": False,
+        "external_model": False,
+        "persistent_write": False,
+    }
+    assert payload["encounter"]["patient_id"] == payload["patient"]["object_id"]

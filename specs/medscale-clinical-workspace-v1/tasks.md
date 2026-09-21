@@ -1,10 +1,10 @@
 # Clinical Workspace V1 — Dependency-Ordered Task Ledger
 
-- **Status:** Canonical planning ledger — CW-000 closed; no implementation authority
+- **Status:** Canonical implementation ledger — CW-001 active
 - **Date:** 2026-09-20
 - **Parent:** [Clinical Workspace V1](README.md)
 - **Architecture gate:** ADR-0038 canonically effective after PR #460 protected merge and fresh-main qualification
-- **Current implementation authority:** NONE — CW-001 is eligible but not activated
+- **Current implementation authority:** CW-001 ONLY — activated by Issue #462; later tasks remain blocked
 
 This ledger is implementation-ready planning. It is not an executable backlog until ADR-0038 is canonically effective, the applicable dependencies are closed canonically, and the applicable task is separately activated.
 
@@ -75,7 +75,9 @@ No checkbox alone proves completion.
 
 ## CW-001 — Workspace boundary skeleton
 
-**State:** `ELIGIBLE`
+**State:** `IN_PROGRESS`
+
+**Activation:** Issue #462.
 
 **Depends on:** CW-000.
 
