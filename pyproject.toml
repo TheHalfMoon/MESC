@@ -94,7 +94,7 @@ packages = ["src/medscale"]
 [tool.ruff]
 line-length = 100
 target-version = "py311"
-src = ["src", "tests", "apps/workspace/src"]
+src = ["src", "tests"]
 
 [tool.ruff.lint]
 select = [
@@ -112,7 +112,7 @@ select = [
 ]
 
 [tool.ruff.lint.isort]
-known-first-party = ["medscale", "medscale_workspace"]
+known-first-party = ["medscale"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/test_pubmedqa_source_transform.py" = ["E501"]
@@ -147,7 +147,7 @@ exclude = [
 [tool.mypy]
 python_version = "3.11"
 strict = true
-files = ["src", "tests", "scripts", "apps/workspace/src"]
+files = ["src", "tests", "scripts"]
 warn_unused_configs = true
 warn_redundant_casts = true
 warn_unreachable = true
