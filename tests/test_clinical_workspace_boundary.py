@@ -124,8 +124,6 @@ def test_workspace_boundary_guard_rejects_persistent_write(tmp_path: Path) -> No
     assert "persistent filesystem mutation is forbidden" in result.stderr
 
 
-
-
 def test_workspace_cli_emits_no_object_or_display_data() -> None:
     env = os.environ.copy()
     env["PYTHONPATH"] = str(_WORKSPACE_SRC)
