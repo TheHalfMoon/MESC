@@ -98,12 +98,20 @@ jobs:
       - name: Sync (locked)
         run: uv sync --frozen
 
+      # CW-002 (ADR-0039 decision 5, amendment A1.8) admits exactly one Workspace
+      # runtime dependency for the AEAD primitive. pyproject.toml and uv.lock are
+      # frozen sources of the MRL-0809 static prerequisite manifest, so the Workspace
+      # dependency is installed into the already-synced environment instead of
+      # drifting the Research Core lock; --no-sync keeps that environment exact.
+      - name: Install the CW-002 Workspace AEAD dependency
+        run: uv pip install --python .venv "cryptography==50.0.1"
+
       - name: Build deterministic test-node shard
         env:
           SHARD_INDEX: ${{ matrix.shard }}
         shell: bash
         run: |
-          uv run python - <<'PY'
+          uv run --no-sync python - <<'PY'
           from __future__ import annotations
 
           import hashlib
@@ -200,7 +208,7 @@ jobs:
         run: |
           mapfile -t test_nodes < pytest-shard.txt
           test "${#test_nodes[@]}" -gt 0
-          uv run pytest             --cov             --cov-report=             --cov-fail-under=0             "${test_nodes[@]}"
+          uv run --no-sync pytest             --cov             --cov-report=             --cov-fail-under=0             "${test_nodes[@]}"
           test -s "${COVERAGE_FILE}"
 
       - name: Preserve shard coverage

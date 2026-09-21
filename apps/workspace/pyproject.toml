@@ -9,7 +9,11 @@ description = "Local-first MedScale Clinical Workspace shell."
 requires-python = ">=3.11,<3.15"
 license = "Apache-2.0"
 authors = [{ name = "Abdulaziz Alshehri" }]
-dependencies = []
+# CW-002 capability expansion, recorded by ADR-0039 decisions 5 and 7 and
+# reconciled by amendment A1.8: exactly one runtime dependency, for the AEAD
+# primitive only. Key derivation, envelope encoding, key-version handling and
+# migration remain reviewed code in this package.
+dependencies = ["cryptography==50.0.1"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/medscale_workspace"]

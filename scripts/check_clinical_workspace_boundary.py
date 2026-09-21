@@ -1,4 +1,22 @@
-"""Fail-closed static guard for the CW-001 Clinical Workspace boundary."""
+"""Fail-closed static guard for the Clinical Workspace boundary.
+
+CW-001 introduced the guard and kept the Workspace package at zero dependencies.
+CW-002 is a recorded capability expansion (ADR-0039 decision 7, amendment A1.12):
+the guard now admits exactly ``sqlite3``, ``hashlib``, ``hmac``, ``secrets`` and one
+restricted ``cryptography`` module for the AEAD primitive, and adds the CW-002
+structural rules that make the expansion mechanical rather than conventional:
+
+* ``sqlite3`` is imported only by ``storage.py``;
+* ``cryptography`` is imported only by ``aead.py``, from the AEAD module only;
+* key derivation never imports ``cryptography``, and the reserved ``scrypt`` path is
+  absent from the Workspace sources entirely (A1.1/A1.2);
+* the store path is resolved by exactly one module, and every ``sqlite3.connect``
+  call takes its path from that resolver (ADR-0039 decision 7);
+* the nonce size is a single 96-bit constant used by every nonce call (A1.3);
+* the production key-provider resolver cannot reach the in-memory test provider.
+
+Network, process, dynamic-import and persistent-mutation prohibitions are unchanged.
+"""
 
 from __future__ import annotations
 
@@ -14,7 +32,11 @@ _ALLOWED_STDLIB_ROOTS = {
     "__future__",
     "dataclasses",
     "enum",
+    "hashlib",
+    "hmac",
     "json",
+    "secrets",
+    "sqlite3",
     "uuid",
 }
 _FORBIDDEN_ESCAPE_ROOTS = {
@@ -48,6 +70,20 @@ _WRITE_ATTRIBUTES = {
     "write_bytes",
     "write_text",
 }
+
+_ALLOWED_THIRD_PARTY_MODULES = {
+    "cryptography.hazmat.primitives.ciphers.aead",
+}
+_STORAGE_MODULE = "storage.py"
+_AEAD_MODULE = "aead.py"
+_STORE_PATH_MODULE = "store_path.py"
+_KEY_DERIVATION_MODULE = "keyderive.py"
+_STORE_PATH_RESOLVER = "resolve_workspace_store_path"
+_PLATFORM_PROVIDER_RESOLVER = "resolve_platform_key_provider"
+_IN_MEMORY_TEST_PROVIDER = "InMemoryTestKeyProvider"
+_NONCE_CONSTANT = "NONCE_SIZE_BYTES"
+_ADMITTED_NONCE_SIZE_BYTES = 12
+_RESERVED_PASSWORD_KDF = "scrypt"
 
 _FORBIDDEN_CALL_PRIMITIVES = {
     "__import__",
@@ -179,14 +215,58 @@ def _forbidden_call_aliases(tree: ast.AST) -> set[str]:
     return aliases
 
 
-def _import_roots(tree: ast.AST) -> set[str]:
-    roots: set[str] = set()
+def _imported_modules(tree: ast.AST) -> set[str]:
+    """Return every dotted module path named by an import statement."""
+
+    modules: set[str] = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
-            roots.update(alias.name.split(".", 1)[0] for alias in node.names)
+            modules.update(alias.name for alias in node.names)
         elif isinstance(node, ast.ImportFrom) and node.module:
-            roots.add(node.module.split(".", 1)[0])
-    return roots
+            modules.add(node.module)
+    return modules
+
+
+def _resolver_bound_names(tree: ast.AST) -> set[str]:
+    """Return local names bound to a call of the single store-path resolver."""
+
+    names: set[str] = set()
+    for node in ast.walk(tree):
+        binding = _bindings(node)
+        if binding is None:
+            continue
+        targets, value = binding
+        if not (
+            isinstance(value, ast.Call)
+            and isinstance(value.func, ast.Name)
+            and value.func.id == _STORE_PATH_RESOLVER
+        ):
+            continue
+        for target in targets:
+            if isinstance(target, ast.Name):
+                names.add(target.id)
+    return names
+
+
+def _function_definitions(tree: ast.AST, name: str) -> list[ast.FunctionDef | ast.AsyncFunctionDef]:
+    return [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef) and node.name == name
+    ]
+
+
+def _module_constants(tree: ast.AST) -> dict[str, object]:
+    constants: dict[str, object] = {}
+    for node in tree.body if isinstance(tree, ast.Module) else []:
+        if not isinstance(node, ast.Assign):
+            continue
+        if not isinstance(node.value, ast.Constant):
+            continue
+        for target in node.targets:
+            if isinstance(target, ast.Name):
+                constants[target.id] = node.value.value
+    return constants
 
 
 def inspect_workspace_source(source_root: Path) -> list[str]:
@@ -194,13 +274,16 @@ def inspect_workspace_source(source_root: Path) -> list[str]:
     if not source_root.is_dir():
         return [f"workspace source directory missing: {source_root}"]
 
+    trees: dict[Path, ast.AST] = {}
     for path in sorted(source_root.rglob("*.py")):
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        trees[path] = tree
         relative = path.relative_to(source_root)
 
-        for root in sorted(_import_roots(tree)):
+        for module in sorted(_imported_modules(tree)):
+            root = module.split(".", 1)[0]
             if root == "medscale":
-                errors.append(f"{relative}: Research Core import is forbidden during CW-001")
+                errors.append(f"{relative}: Research Core import is forbidden")
             elif root in _FORBIDDEN_NETWORK_ROOTS:
                 errors.append(f"{relative}: network-capable import is forbidden: {root}")
             elif root in _FORBIDDEN_ESCAPE_ROOTS:
@@ -208,11 +291,143 @@ def inspect_workspace_source(source_root: Path) -> list[str]:
             elif root == "medscale_workspace":
                 continue
             elif root in sys.stdlib_module_names and root not in _ALLOWED_STDLIB_ROOTS:
-                errors.append(f"{relative}: stdlib import is not allowlisted for CW-001: {root}")
+                errors.append(f"{relative}: stdlib import is not allowlisted: {root}")
             elif root not in sys.stdlib_module_names:
-                errors.append(f"{relative}: undeclared third-party import is forbidden: {root}")
+                if module in _ALLOWED_THIRD_PARTY_MODULES:
+                    continue
+                errors.append(f"{relative}: undeclared third-party import is forbidden: {module}")
 
         errors.extend(_capability_errors(relative, tree))
+    errors.extend(_cw002_structure_errors(source_root, trees))
+    return errors
+
+
+def _cw002_structure_errors(source_root: Path, trees: dict[Path, ast.AST]) -> list[str]:
+    """Report violations of the CW-002 capability-expansion rules."""
+
+    errors: list[str] = []
+    relative_by_name = {path.name: path.relative_to(source_root) for path in trees}
+    storage_path = relative_by_name.get(_STORAGE_MODULE)
+    aead_path = relative_by_name.get(_AEAD_MODULE)
+    store_path_path = relative_by_name.get(_STORE_PATH_MODULE)
+    key_derivation_path = relative_by_name.get(_KEY_DERIVATION_MODULE)
+
+    for name, relative in (
+        (_STORAGE_MODULE, storage_path),
+        (_AEAD_MODULE, aead_path),
+        (_STORE_PATH_MODULE, store_path_path),
+        (_KEY_DERIVATION_MODULE, key_derivation_path),
+    ):
+        if relative is None:
+            errors.append(f"CW-002 requires {name}")
+
+    resolver_definitions: list[str] = []
+    connect_calls = 0
+
+    for path, tree in sorted(trees.items(), key=lambda item: str(item[0])):
+        relative = path.relative_to(source_root)
+        modules = _imported_modules(tree)
+        imports_sqlite = any(module == "sqlite3" for module in modules)
+        imports_cipher = any(module.startswith("cryptography") for module in modules)
+        if imports_sqlite and relative.name != _STORAGE_MODULE:
+            errors.append(
+                f"{relative}: sqlite3 may be imported only by {_STORAGE_MODULE} "
+                "(ADR-0039 decision 7)"
+            )
+        if relative.name == _STORAGE_MODULE and not imports_sqlite:
+            errors.append(f"{relative}: {_STORAGE_MODULE} must import sqlite3")
+        if imports_cipher and relative.name != _AEAD_MODULE:
+            errors.append(f"{relative}: cryptography may be imported only by {_AEAD_MODULE}")
+        if relative.name == _AEAD_MODULE and not imports_cipher:
+            errors.append(f"{relative}: {_AEAD_MODULE} must import the AEAD primitive")
+        if relative.name == _STORE_PATH_MODULE and (imports_sqlite or imports_cipher):
+            errors.append(
+                f"{relative}: the store-path resolver must not import storage or cipher providers"
+            )
+        if relative.name == _KEY_DERIVATION_MODULE and imports_cipher:
+            errors.append(
+                f"{relative}: key derivation must stay in reviewed code and must not "
+                "import cryptography (ADR-0039 decision 5)"
+            )
+
+        source_text = path.read_text(encoding="utf-8")
+        if _RESERVED_PASSWORD_KDF in source_text:
+            errors.append(f"{relative}: the reserved password KDF is not admitted in CW-002 (A1.2)")
+
+        if _function_definitions(tree, _STORE_PATH_RESOLVER):
+            resolver_definitions.append(path.name)
+
+        bound_resolver_names = _resolver_bound_names(tree)
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            function = node.func
+            if not isinstance(function, ast.Attribute) or function.attr != "connect":
+                continue
+            if not isinstance(function.value, ast.Name) or function.value.id != "sqlite3":
+                continue
+            connect_calls += 1
+            if relative.name != _STORAGE_MODULE:
+                errors.append(
+                    f"{relative}:{node.lineno}: sqlite3.connect is admitted only in "
+                    f"{_STORAGE_MODULE}"
+                )
+                continue
+            argument = node.args[0] if node.args else None
+            direct = (
+                isinstance(argument, ast.Call)
+                and isinstance(argument.func, ast.Name)
+                and argument.func.id == _STORE_PATH_RESOLVER
+            )
+            bound = isinstance(argument, ast.Name) and argument.id in bound_resolver_names
+            if not (direct or bound):
+                errors.append(
+                    f"{relative}:{node.lineno}: sqlite3.connect must take its path from "
+                    f"{_STORE_PATH_RESOLVER} (ADR-0039 decision 7)"
+                )
+
+        if relative.name == _AEAD_MODULE:
+            constants = _module_constants(tree)
+            if constants.get(_NONCE_CONSTANT) != _ADMITTED_NONCE_SIZE_BYTES:
+                errors.append(
+                    f"{relative}: {_NONCE_CONSTANT} must be declared as "
+                    f"{_ADMITTED_NONCE_SIZE_BYTES} (A1.3)"
+                )
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.Call):
+                    continue
+                function = node.func
+                is_token_bytes = (
+                    isinstance(function, ast.Attribute) and function.attr == "token_bytes"
+                )
+                if not is_token_bytes:
+                    continue
+                argument = node.args[0] if node.args else None
+                if not (isinstance(argument, ast.Name) and argument.id == _NONCE_CONSTANT):
+                    errors.append(
+                        f"{relative}:{node.lineno}: nonce generation must use "
+                        f"{_NONCE_CONSTANT} (A1.3)"
+                    )
+
+        if relative.name == "keyprovider.py":
+            for definition in _function_definitions(tree, _PLATFORM_PROVIDER_RESOLVER):
+                body_names = {
+                    node.id for node in ast.walk(definition) if isinstance(node, ast.Name)
+                }
+                if _IN_MEMORY_TEST_PROVIDER in body_names:
+                    errors.append(
+                        f"{relative}:{definition.lineno}: the production provider resolver "
+                        f"must not reach {_IN_MEMORY_TEST_PROVIDER}"
+                    )
+
+    if resolver_definitions != [_STORE_PATH_MODULE]:
+        observed = ", ".join(resolver_definitions) or "none"
+        errors.append(
+            f"{_STORE_PATH_RESOLVER} must be defined exactly once in {_STORE_PATH_MODULE}; "
+            f"observed: {observed}"
+        )
+    if connect_calls == 0:
+        errors.append("no admitted sqlite3.connect call was found in the workspace sources")
     return errors
 
 
@@ -231,37 +446,37 @@ def _capability_errors(relative: Path, tree: ast.AST) -> list[str]:
                 reported_callees.add(id(node.func))
                 errors.append(
                     f"{relative}:{node.lineno}: dynamic import/code/file primitive is forbidden "
-                    f"in CW-001: {node.func.id}"
+                    f"in the Clinical Workspace: {node.func.id}"
                 )
             elif node.func.id in _FORBIDDEN_REFLECTION_PRIMITIVES:
                 reported_callees.add(id(node.func))
                 errors.append(
                     f"{relative}:{node.lineno}: reflective capability access is forbidden "
-                    f"in CW-001: {node.func.id}"
+                    f"in the Clinical Workspace: {node.func.id}"
                 )
             elif node.func.id in _FORBIDDEN_IMPORTING_PRIMITIVES:
                 reported_callees.add(id(node.func))
                 errors.append(
                     f"{relative}:{node.lineno}: runtime code-importing builtin is forbidden "
-                    f"in CW-001: {node.func.id}"
+                    f"in the Clinical Workspace: {node.func.id}"
                 )
         elif isinstance(node.func, ast.Attribute):
             if node.func.attr in _WRITE_ATTRIBUTES:
                 errors.append(
                     f"{relative}:{node.lineno}: persistent filesystem mutation is forbidden "
-                    f"in CW-001: {node.func.attr}"
+                    f"in the Clinical Workspace: {node.func.attr}"
                 )
         else:
             errors.append(
-                f"{relative}:{node.lineno}: call shape cannot be verified fail-closed in CW-001: "
-                f"{type(node.func).__name__}"
+                f"{relative}:{node.lineno}: call shape cannot be verified fail-closed in the "
+                f"Clinical Workspace: {type(node.func).__name__}"
             )
 
     for node in ast.walk(tree):
         if isinstance(node, ast.Attribute) and node.attr in _FORBIDDEN_ATTRIBUTE_REFERENCES:
             errors.append(
                 f"{relative}:{node.lineno}: object-graph capability attribute is forbidden in "
-                f"CW-001: {node.attr}"
+                f"the Clinical Workspace: {node.attr}"
             )
             continue
         if not isinstance(node, ast.Name) or node.id not in _FORBIDDEN_CAPABILITY_REFERENCES:
@@ -269,8 +484,8 @@ def _capability_errors(relative: Path, tree: ast.AST) -> list[str]:
         if id(node) in reported_callees:
             continue
         errors.append(
-            f"{relative}:{node.lineno}: forbidden capability reference is not allowed in CW-001: "
-            f"{node.id}"
+            f"{relative}:{node.lineno}: forbidden capability reference is not allowed in the "
+            f"Clinical Workspace: {node.id}"
         )
     return errors
 
@@ -287,7 +502,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(error, file=sys.stderr)
         return 1
 
-    print(f"CW-001 workspace boundary PASS: {source_root}")
+    print(f"CW-002 workspace boundary PASS: {source_root}")
     return 0
 
 
