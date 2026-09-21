@@ -112,7 +112,7 @@ No checkbox alone proves completion.
 
 **Purpose:** implement protected local storage using synthetic sensitive fixtures.
 
-**Activation prerequisite:** this task requires its own implementation ADR (storage engine, key/cryptography strategy, migration approach) ratified under R6 and a separate activation before any implementation begins. Eligibility does not confer implementation authority.
+**Activation prerequisite:** this task requires its own implementation ADR (storage engine, key/cryptography strategy, migration approach) ratified under R6 and a separate activation before any implementation begins. Eligibility does not confer implementation authority. The proposal is recorded as [ADR-0039](../../docs/adr/0039-local-protected-storage-and-key-management.md), which is `Proposed` and not yet ratified.
 
 **Requires separate implementation ADR**
 - database/storage engine;
