@@ -1,12 +1,12 @@
 # Clinical Workspace V1 — Dependency-Ordered Task Ledger
 
-- **Status:** Canonical implementation ledger — CW-001 closed; CW-002 activated
-- **Date:** 2026-09-20 (frontier reconciled 2026-09-21; CW-002 ratified and activated 2026-09-21)
+- **Status:** Canonical implementation ledger — CW-001 and CW-002 closed; CW-003 eligible
+- **Date:** 2026-09-20 (frontier reconciled 2026-09-21; CW-002 ratified, activated, implemented and closed 2026-09-21)
 - **Parent:** [Clinical Workspace V1](README.md)
 - **Architecture gate:** ADR-0038 canonically effective after PR #460 protected merge and fresh-main qualification
-- **Current implementation authority:** CW-002 only — activated 2026-09-21 under Issue #467, governed by [ADR-0039](../../docs/adr/0039-local-protected-storage-and-key-management.md) as amended by A1 ([ratification record](adr-0039-founder-ratification.md))
+- **Current implementation authority:** NONE — CW-002 closed canonically; CW-003 is eligible but requires separate activation before any implementation begins
 
-This ledger is implementation-ready planning. It is not an executable backlog until ADR-0038 is canonically effective, the applicable dependencies are closed canonically, and the applicable task is separately activated. Each of those three conditions now holds for CW-002, and only for CW-002.
+This ledger is implementation-ready planning. It is not an executable backlog until ADR-0038 is canonically effective, the applicable dependencies are closed canonically, and the applicable task is separately activated. Admissibility is per task: it held for CW-002 while that task was active, and it now holds for CW-003 only after separate activation.
 
 ## Global gates
 
@@ -106,9 +106,11 @@ No checkbox alone proves completion.
 
 ## CW-002 — Local protected storage and key abstraction
 
-**State:** `IN_PROGRESS` (activated 2026-09-21)
+**State:** `CLOSED_CANONICAL`
 
 **Activation:** Issue #467 — Founder ratification of ADR-0039 and CW-002 activation.
+
+**Closeout evidence:** [cw-002-closeout.md](cw-002-closeout.md) — implementation PR #469 merged at `19743d6b6b46f7729883e67f4cee26e72be2b323` (tree `bcf4685a8fe26b197607767691defd5ad4f47596`) after exact-head qualification of `9f9a02112a60cc281447db46c2ac876323af1dd4`, followed by fresh-main CI, CodeQL, Optional Extras/Backends and HF Publication qualification.
 
 **Depends on:** CW-001.
 
@@ -133,6 +135,12 @@ No checkbox alone proves completion.
 - dependency/source license review;
 - the Amendment A1 security clarifications above are each demonstrated by evidence bound to the exact qualified head.
 
+**Demonstrated on canonical `main`** (see the closeout record for exact run identities): copied
+storage is unreadable without the root secret; key and payload locations are separated; pragmas
+are asserted rather than assumed; workspace isolation fails closed; the rotation state machine
+completes and resumes deterministically; no plaintext fallback exists; and the dependency and
+license record is [cw-002-dependency-license-review.md](cw-002-dependency-license-review.md).
+
 **Stop**
 - selected storage cannot support authenticated protection/recovery requirements;
 - keys must be stored beside ciphertext without a separate protection mechanism.
@@ -141,9 +149,11 @@ No checkbox alone proves completion.
 
 ## CW-003 — Provenance and audit spine
 
-**State:** `BLOCKED_DEPENDENCY`
+**State:** `ELIGIBLE` (not activated)
 
 **Depends on:** CW-001, CW-002.
+
+**Activation:** requires separate activation under repository governance before any implementation begins. Its dependencies are `CLOSED_CANONICAL`; eligibility is not implementation authority.
 
 **Purpose:** create product provenance and security audit records before AI workflows.
 
@@ -613,13 +623,14 @@ Research Core capabilities may later be consumed only at canonically qualified i
 
 ## Canonical closeout status
 
-CW-000 and CW-001 are `CLOSED_CANONICAL`. ADR-0038 is canonically effective, and ADR-0039 is accepted by the Founder under R6 as amended by A1. Exact closure evidence is recorded in [cw-000-closeout.md](cw-000-closeout.md) and [cw-001-closeout.md](cw-001-closeout.md), and the ADR-0039 decision is recorded in [adr-0039-founder-ratification.md](adr-0039-founder-ratification.md).
+CW-000, CW-001 and CW-002 are `CLOSED_CANONICAL`. ADR-0038 is canonically effective, and ADR-0039 is accepted by the Founder under R6 as amended by A1. Exact closure evidence is recorded in [cw-000-closeout.md](cw-000-closeout.md), [cw-001-closeout.md](cw-001-closeout.md) and [cw-002-closeout.md](cw-002-closeout.md), and the ADR-0039 decision is recorded in [adr-0039-founder-ratification.md](adr-0039-founder-ratification.md).
 
 Current frontier:
 
 1. CW-001 is `CLOSED_CANONICAL`: implementation PR #463 merged through the protected path at canonical merge `1ec0c3dd2e379649fd0b6a710b9dbde0f60490f3` and completed fresh-main qualification;
-2. CW-002 is `IN_PROGRESS`: its only declared dependency, CW-001, is `CLOSED_CANONICAL`; ADR-0039 was ratified under R6 with Amendment A1; and CW-002 was activated under Issue #467. It remains the single active implementation unit and is not yet `CLOSED_CANONICAL`;
-3. CW-003 through CW-021 remain `BLOCKED_DEPENDENCY` until their declared predecessors close canonically (CW-003 depends on CW-002);
-4. CW-021 additionally requires the bounded explicit Founder/governance clinical-pilot authorization defined in its task contract.
+2. CW-002 is `CLOSED_CANONICAL`: ADR-0039 was ratified under R6 with Amendment A1, CW-002 was activated under Issue #467, implementation PR #469 merged through the protected path, and fresh-main qualification succeeded;
+3. CW-003 is `ELIGIBLE` because CW-001 and CW-002 are `CLOSED_CANONICAL`, but it is **not activated** and no implementation authority exists for it;
+4. CW-004 through CW-021 remain `BLOCKED_DEPENDENCY` until their declared predecessors close canonically;
+5. CW-021 additionally requires the bounded explicit Founder/governance clinical-pilot authorization defined in its task contract.
 
 No closeout or eligibility statement grants PHI, clinical production, EHR write, Workspace-data training/evaluation, publication, paid-compute, MRL-contract, or Stage-4 authority.
