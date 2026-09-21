@@ -666,6 +666,11 @@ class WorkspaceStore:
             key_version,
             envelope,
         ) in rows:
+            state = self.key_state(int(key_version))
+            if state is KeyState.RETIRED:
+                raise KeyStateError(
+                    "a row bound to a retired key version is refused rather than silently migrated"
+                )
             source_binding = self._binding_from_row(
                 workspace_id=str(workspace_id),
                 object_id=str(object_id),

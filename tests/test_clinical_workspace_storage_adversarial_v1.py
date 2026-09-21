@@ -475,6 +475,30 @@ def test_an_unknown_key_version_row_fails_closed(tmp_path: Path) -> None:
         store.get_object(binding_for())
 
 
+def test_rotation_refuses_to_migrate_a_row_bound_to_a_retired_key(tmp_path: Path) -> None:
+    """A retired key must not silently resume work, even through the rotation path."""
+
+    root_secret = new_root_secret()
+    with open_store(tmp_path, root_secret=root_secret) as store:
+        store.put_objects_atomic((ObjectWrite(binding=binding_for(), payload=PAYLOAD_A),))
+        retirement_envelope = stored_envelope(store.store_path, PATIENT_OBJECT)
+        store.begin_key_rotation(2)
+        assert store.rotate_pending(max_objects=10) == 1
+        assert store.finalize_key_rotation() == 1
+        store.retire_key_version(1)
+        store_path = store.store_path
+    raw_execute(
+        store_path,
+        "UPDATE objects SET key_version = 1, envelope = ? WHERE object_id = ?",
+        (retirement_envelope, str(PATIENT_OBJECT)),
+    )
+    with open_store(tmp_path, root_secret=root_secret) as store:
+        assert store.key_state(1) is KeyState.RETIRED
+        store.begin_key_rotation(3)
+        with pytest.raises(KeyStateError):
+            store.rotate_pending(max_objects=10)
+
+
 def test_rotation_preconditions_fail_closed(tmp_path: Path) -> None:
     with open_store(tmp_path) as store:
         with pytest.raises(KeyRotationError):
