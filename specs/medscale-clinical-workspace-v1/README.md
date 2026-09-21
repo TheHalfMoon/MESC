@@ -1,13 +1,13 @@
 # MedScale Clinical Workspace V1 — Canonical Planning Specification
 
-- **Status:** Founder-ratified planning package — no implementation authority; pending canonical merge and fresh-main qualification
+- **Status:** Canonical planning package — ADR-0038 effective; CW-000 closed; no implementation authority
 - **Date:** 2026-09-20
 - **Parent issue:** #459
-- **Architecture ADR:** [ADR-0038](../../docs/adr/0038-local-clinical-workspace-boundary.md) — Accepted by Founder under R6; pending canonical merge
+- **Architecture ADR:** [ADR-0038](../../docs/adr/0038-local-clinical-workspace-boundary.md) — Accepted by Founder under R6; canonically effective
 - **Canonical planning base:** `475a389777c02a1992acafa24b1cfd1dae24c46b`
 - **Scope:** architecture, data/security boundaries, capability decomposition, delivery sequencing, acceptance contracts
 - **Non-scope:** PHI ingestion, production clinical use, model/runtime execution, training, publication, release, paid compute, MRL contract changes
-- **Companion contracts:** [data security](data_security.md) · [capability map](capability_map.md) · [migration/recovery](migration_recovery.md) · [task ledger](tasks.md)
+- **Companion contracts:** [data security](data_security.md) · [capability map](capability_map.md) · [migration/recovery](migration_recovery.md) · [task ledger](tasks.md) · [CW-000 closeout](cw-000-closeout.md)
 
 ## 1. Purpose
 
@@ -898,16 +898,18 @@ Deliverables:
 
 Requires a later explicit Founder/governance authorization with scope, environment, data class, users, retention, model/runtime, connector, and stop conditions.
 
-## 28. Exit condition for planning issue #459
+## 28. Planning closeout for issue #459
 
-The planning issue may close only when:
+The planning exit conditions are satisfied:
 
-- ADR-0038 is explicitly accepted by the Founder;
-- this package is independently reviewed with no unresolved material contradictions;
-- task dependencies are complete;
-- all existing MRL evidence remains unchanged;
-- the planning PR is exact-head qualified;
-- the PR is normally merged;
-- fresh-main qualification succeeds.
+- ADR-0038 was explicitly ratified by the Founder under R6;
+- the planning package received independent exact-head review with no material defect;
+- the task dependency graph remained complete and acyclic;
+- existing MRL evidence and authority boundaries remained unchanged;
+- PR #460 exact head `f1f35558599fbbacd4c4045731496531d3a5eb34` qualified;
+- PR #460 merged normally at `b9d122cb59a11eb1195e9caa0e9ae3cd03705265`;
+- fresh-main CI, CodeQL, Optional Extras / Backends, and Hugging Face Publication Qualification all succeeded on that merge SHA.
 
-Implementation remains separately gated after planning closeout.
+CW-000 is `CLOSED_CANONICAL`. Exact closure evidence is recorded in [cw-000-closeout.md](cw-000-closeout.md).
+
+CW-001 is eligible for separate activation but is not active. Implementation remains separately gated after planning closeout.
