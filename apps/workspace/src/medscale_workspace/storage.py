@@ -488,6 +488,24 @@ class WorkspaceStore:
         row = self._connection.execute("SELECT COUNT(*) FROM objects").fetchone()
         return int(row[0])
 
+    def object_revisions(
+        self,
+        object_type: WorkspaceObjectType,
+    ) -> tuple[tuple[UUID, str], ...]:
+        """List ``(object_id, object_revision)`` for one admitted object type.
+
+        Read-only, workspace-scoped and deterministically ordered. CW-003 uses it to
+        enumerate the append-only audit spine; it exposes no payload content and no
+        key material.
+        """
+
+        rows = self._connection.execute(
+            "SELECT object_id, object_revision FROM objects WHERE workspace_id = ? "
+            "AND object_type = ? ORDER BY object_id, object_revision",
+            (str(self._workspace_id), object_type.value),
+        ).fetchall()
+        return tuple((UUID(str(object_id)), str(revision)) for object_id, revision in rows)
+
     def put_objects_atomic(self, writes: tuple[ObjectWrite, ...]) -> None:
         """Encrypt and insert immutable object revisions in one transaction."""
 
@@ -536,6 +554,80 @@ class WorkspaceStore:
             self._connection.execute("ROLLBACK")
             raise
         self._connection.execute("COMMIT")
+
+    def delete_and_put_atomic(
+        self,
+        *,
+        deletions: tuple[ObjectBinding, ...],
+        writes: tuple[ObjectWrite, ...],
+    ) -> int:
+        """Delete object revisions and insert new ones in one transaction.
+
+        CW-003 uses this so "remove content, record the deletion in the audit spine"
+        is one atomic state transition: either both happen or neither does.
+        """
+
+        if not deletions and not writes:
+            raise StoreIntegrityError("at least one deletion or write is required")
+        prepared: list[tuple[ObjectBinding, bytes]] = []
+        admitted_deletions: list[ObjectBinding] = []
+        for binding in deletions:
+            admitted = binding.validated()
+            self._require_workspace(admitted)
+            admitted_deletions.append(admitted)
+        for write in writes:
+            binding = write.binding.validated()
+            self._require_workspace(binding)
+            if not isinstance(write.payload, bytes) or not write.payload:
+                raise StoreIntegrityError("object payload must be non-empty bytes")
+            envelope = encrypt_payload(
+                key=self._active_key,
+                plaintext=write.payload,
+                associated_data=binding.canonical_associated_data(
+                    key_version=self._active_key_version,
+                    encryption_format_version=self._versions.encryption_format_version,
+                ),
+                key_version=self._active_key_version,
+            )
+            prepared.append((binding, envelope))
+        self._connection.execute("BEGIN IMMEDIATE")
+        deleted = 0
+        try:
+            for admitted in admitted_deletions:
+                cursor = self._connection.execute(
+                    "DELETE FROM objects WHERE workspace_id = ? AND object_id = ? "
+                    "AND object_revision = ?",
+                    (
+                        str(admitted.workspace_id),
+                        str(admitted.object_id),
+                        admitted.object_revision,
+                    ),
+                )
+                deleted += cursor.rowcount
+            for binding, envelope in prepared:
+                self._connection.execute(
+                    "INSERT INTO objects ("
+                    "workspace_id, object_id, object_type, object_revision, key_version, "
+                    "encryption_format_version, envelope"
+                    ") VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        str(binding.workspace_id),
+                        str(binding.object_id),
+                        binding.object_type.value,
+                        binding.object_revision,
+                        self._active_key_version,
+                        self._versions.encryption_format_version,
+                        envelope,
+                    ),
+                )
+        except sqlite3.IntegrityError as error:
+            self._connection.execute("ROLLBACK")
+            raise StoreConflictError("atomic deletion/write violated a store constraint") from error
+        except BaseException:
+            self._connection.execute("ROLLBACK")
+            raise
+        self._connection.execute("COMMIT")
+        return deleted
 
     def get_object(self, binding: ObjectBinding) -> bytes:
         """Decrypt and return one object revision, failing closed on any mismatch."""

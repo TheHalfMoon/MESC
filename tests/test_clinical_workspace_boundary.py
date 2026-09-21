@@ -620,3 +620,18 @@ def test_cw002_guard_rejects_a_production_resolver_that_can_reach_test_keys(
     assert (
         "the production provider resolver must not reach InMemoryTestKeyProvider" in result.stderr
     )
+
+
+def test_cw003_guard_rejects_private_store_connection_access(tmp_path: Path) -> None:
+    """CW-003 spines must use the public store API, never the private connection."""
+
+    (tmp_path / "audit.py").write_text(
+        "def events(store: object) -> object:\n    return store._connection.execute('SELECT 1')\n",
+        encoding="utf-8",
+    )
+    result = _run_guard(tmp_path)
+    assert result.returncode == 1
+    assert (
+        "only storage.py may touch the private store connection; every other module must "
+        "use the public store API" in result.stderr
+    )

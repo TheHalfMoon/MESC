@@ -4,6 +4,8 @@ CW-001 established a Python-only application boundary for the future local Clini
 CW-002 adds governed local protected storage under [ADR-0039](../../docs/adr/0039-local-protected-storage-and-key-management.md),
 ratified by the Founder under R6 with amendment A1
 ([ratification record](../../specs/medscale-clinical-workspace-v1/adr-0039-founder-ratification.md)).
+CW-003 adds the provenance spine and the append-only audit spine on top of that store
+(activated under Issue #471).
 
 Current scope:
 
@@ -19,6 +21,12 @@ Current scope:
   secret that is never persisted;
 - an `ACTIVE -> ROTATING -> RETIRING -> RETIRED` key-version state machine with
   deterministic resume after interruption and no writes under a retired key;
+- a provenance record per object revision: producer identity, explicit source references,
+  review state, recorded content digest, format and policy versions, and a rule that
+  generated content must reference at least one source;
+- an append-only audit spine: one immutable object per event, digest-derived event identity,
+  predecessor-digest chaining, replay collision instead of append, caller-supplied occurrence
+  time, and one transaction that deletes content while recording the deletion;
 - no plaintext fallback anywhere in the path;
 - no microphone or ambient capture;
 - no EHR/FHIR connector;
@@ -54,6 +62,10 @@ Recorded limitations, not hidden:
   (A1.11).
 - CW-002 implements store initialization only; the remaining migration classes and their
   manifest/preflight/rollback machinery are CW-018.
+- the audit spine is append-only at the API, identity and chain level; there is no
+  database-level write-once trigger, and a removed tail event verifies internally unless a
+  head digest is retained outside the store. Stricter storage-level enforcement belongs to
+  CW-018, and the independent security lane at CW-019 owns attacking it.
 
 CW-002 does not authorize PHI, real-patient import, clinical production use, EHR writes,
 external model execution, training on Workspace data, research admission, publication, paid
