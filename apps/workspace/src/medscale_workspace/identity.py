@@ -19,6 +19,8 @@ class WorkspaceObjectType(StrEnum):
     # workspace store as the objects they describe.
     PROVENANCE_RECORD = "ProvenanceRecord"
     AUDIT_EVENT = "AuditEvent"
+    ENCOUNTER_SESSION = "EncounterSession"
+    ENCOUNTER_CHUNK = "EncounterChunk"
 
 
 @dataclass(frozen=True, slots=True)
