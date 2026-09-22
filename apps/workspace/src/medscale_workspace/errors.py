@@ -130,3 +130,39 @@ class ExplicitExportRequestError(BackflowError):
 
 class ExportBoundaryError(BackflowError):
     """An export destination escaped, or could not be proven to stay inside, Domain X."""
+
+
+class EncounterSessionError(WorkspaceStoreError):
+    """Base class for every CW-005 synthetic encounter session lifecycle failure."""
+
+
+class EncounterConsentError(EncounterSessionError):
+    """Simulated capture was attempted without valid recording consent and policy."""
+
+
+class EncounterStateError(EncounterSessionError):
+    """A session lifecycle transition violated the deterministic state machine."""
+
+
+class EncounterIdentityError(EncounterSessionError):
+    """A session, chunk, or encounter identity was stale, foreign, or malformed."""
+
+
+class EncounterChunkError(EncounterSessionError):
+    """A synthetic audio chunk identity, order, or payload was refused."""
+
+
+class EncounterReplayError(EncounterChunkError):
+    """A chunk identity or sequence was replayed instead of appended exactly once."""
+
+
+class EncounterRetentionError(EncounterSessionError):
+    """Retention metadata was missing, malformed, or contradicted session policy."""
+
+
+class EncounterDeleteError(EncounterSessionError):
+    """A delete-cascade precondition failed or an orphaned session object remains."""
+
+
+class EncounterConcurrentError(EncounterSessionError):
+    """A concurrent lifecycle or chunk transition collided and was refused."""
