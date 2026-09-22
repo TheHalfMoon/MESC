@@ -166,3 +166,39 @@ class EncounterDeleteError(EncounterSessionError):
 
 class EncounterConcurrentError(EncounterSessionError):
     """A concurrent lifecycle or chunk transition collided and was refused."""
+
+
+class AsrError(WorkspaceStoreError):
+    """Base class for every CW-006 offline ASR adapter failure."""
+
+
+class AsrManifestError(AsrError):
+    """A local ASR artifact manifest member is missing or drifts from the ADR identities."""
+
+
+class AsrModelUnavailableError(AsrError):
+    """The verified local model snapshot is absent, so transcription fails closed."""
+
+
+class AsrRevisionError(AsrManifestError):
+    """A model, runtime, or artifact revision is mutable, missing, or mismatched."""
+
+
+class AsrInputError(AsrError):
+    """An ASR input identity, payload, language, or binding was refused."""
+
+
+class AsrTimestampError(AsrInputError):
+    """A transcript timestamp is malformed, impossible, or out of order."""
+
+
+class AsrLanguageError(AsrInputError):
+    """A requested or detected language tag is not admitted here."""
+
+
+class AsrBackendError(AsrError):
+    """A transcription backend returned malformed output or broke the local-only contract."""
+
+
+class AsrConflictError(AsrError):
+    """A transcript identity was replayed instead of stored exactly once."""

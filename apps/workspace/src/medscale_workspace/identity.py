@@ -21,6 +21,9 @@ class WorkspaceObjectType(StrEnum):
     AUDIT_EVENT = "AuditEvent"
     ENCOUNTER_SESSION = "EncounterSession"
     ENCOUNTER_CHUNK = "EncounterChunk"
+    # CW-006 (Issue #480) admits the transcript class so offline ASR results
+    # live in the same workspace store as the audio they describe.
+    ASR_TRANSCRIPT = "AsrTranscript"
 
 
 @dataclass(frozen=True, slots=True)

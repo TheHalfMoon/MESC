@@ -17,3 +17,5 @@ dependencies = ["cryptography==50.0.1"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/medscale_workspace"]
+[project.optional-dependencies]
+asr-local = ["torch==2.13.0", "transformers==5.16.1"]
