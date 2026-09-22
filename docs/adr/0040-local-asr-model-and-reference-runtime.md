@@ -1,11 +1,13 @@
 # ADR-0040 — Local ASR model and reference runtime for Clinical Workspace
 
-- **Status:** Proposed
-- **Date:** 2026-09-22
+- **Status:** Accepted by Founder under R6 -- ratified 2026-09-22 with no amendment
+- **Date:** 2026-09-22 (proposed and ratified the same day)
+- **Ratified:** 2026-09-22 by the Founder (Abdulaziz M. Alshehri) under R6 with no amendment -- see the [Founder ratification record](../../specs/medscale-clinical-workspace-v1/adr-0040-founder-ratification.md)
 - **Deciders:** Founder
 - **Supersedes:** none
 - **Superseded by:** none
-- **Related:** Issue #480, ADR-0006, ADR-0012, ADR-0015, ADR-0035, ADR-0038, ADR-0039, R1, R2, R3, R4, R5, R6, R7, specs/medscale-clinical-workspace-v1/tasks.md, specs/medscale-clinical-workspace-v1/capability_map.md, docs/models/model_registry.md, apps/workspace/pyproject.toml, root pyproject.toml
+- **Decision history:** Proposed 2026-09-22 (PR #481); ratified 2026-09-22 in response to the Founder decision recorded in the ratification record under Issue #480 governance. Superseded proposal status is annotated in place rather than deleted.
+- **Related:** Issue #480, ADR-0006, ADR-0012, ADR-0015, ADR-0035, ADR-0038, ADR-0039, R1, R2, R3, R4, R5, R6, R7, specs/medscale-clinical-workspace-v1/tasks.md, specs/medscale-clinical-workspace-v1/capability_map.md, docs/models/model_registry.md, apps/workspace/pyproject.toml, root pyproject.toml, [ratification record](../../specs/medscale-clinical-workspace-v1/adr-0040-founder-ratification.md)
 
 ## 1. Live verification basis
 
@@ -479,3 +481,30 @@ Challenges and dispositions:
 - Alternatives verdict wording changed from larger and costlier to larger in parameter count and artifact size. Reason: host review flagged costlier as potentially reading as measured. The comparison now rests only on verified parameter counts and byte sizes, consistent with the no measurement statement in section 15.
 - This section 21 appended with the complete run record. Reason: R5 requires executed commands with observed outputs, not claims.
 - No model identity, revision, digest, license, version, contract, manifest, or scope value was changed by repair. All identities remain as verified in sections 1, 4, 5, and 7.
+
+---
+
+## 22. Founder ratification (2026-09-22)
+
+This section records the Founder ratification that moves ADR-0040 from Proposed to Accepted under R6. Live governance truth overrides any handoff text. On conflict between this section and earlier proposal wording for ratification facts, this section and the separate ratification record control. No model, revision, digest, license, version, contract, manifest, or scope value is changed by ratification.
+
+### 22.1 Prior canonical record check
+
+Issue 480 comments were listed live and the result was empty. PR 481 comments were listed live and contained only automated entries from qodo-code-review for billing status and from coderabbitai for skip review configuration, with no Founder decision text. Therefore no canonical Founder ratification was recorded in Issue 480 or PR 481 before this session. The decision below, supplied in this session by the Founder, is the ratification authority recorded here.
+
+### 22.2 Decision
+
+The Founder ratifies ADR-0040 under R6 with no amendment, adopting the exact identities in Sections 4, 5, 7, and 9 for governed CW-006 execution only.
+
+```text
+I, Abdulaziz M. Alshehri, Founder, hereby ratify ADR-0040 (Local ASR model and reference runtime for Clinical Workspace), adopting openai/whisper-large-v3-turbo at revision 41f01f3fe87f28c78e2fbf8b568835947dd65ed9 (MIT) with reference runtime transformers 5.16.1 and torch 2.13.0 under the local-only fail-closed contract, with no implementation authority beyond governed CW-006 execution and no PHI, clinical production, remote ASR, training, or MRL authority.
+```
+
+### 22.3 Identities and scope restated
+
+
+MODEL_ID openai/whisper-large-v3-turbo at FULL_IMMUTABLE_REVISION 41f01f3fe87f28c78e2fbf8b568835947dd65ed9 with MODEL_LICENSE mit and REFERENCE_RUNTIME transformers 5.16.1 with torch 2.13.0 under the local-only fail-closed contract with trust_remote_code false and local_files_only true. WEIGHT_FILE model.safetensors with WEIGHT_SHA256 542566a422ae4f3fd23f1ba11add198fca01bbf82e66e6a2857b3f608b1eb9d1 and WEIGHT_SIZE 1617824864 bytes. Hugging Face live check on 2026-09-22 returns the same sha and mit declarations with author openai and parameters 808878080 and base model openai/whisper-large-v3, consistent with Sections 4 and 5. Canonical main at decision ab29ca613cd1ec19460809a2708d2c315d191b9f. Proposal PR 481 head at decision 0173f81c05ad83c0812f120dfcb4c1a0002295e6 on base ab29ca613cd1ec19460809a2708d2c315d191b9f with MERGEABLE and CLEAN and all required checks SUCCESS. This ratification grants no PHI ingestion, no real patient audio, no clinical production use, no EHR write, no remote ASR, no automatic model download, no training, no fine tuning, no weight mutation, no research admission from Workspace state, no new MRL Stage 4 attempt, and no paid compute. Issues 429, 450, and 464 remain separately governed. Frozen MRL evidence, root pyproject.toml, and uv.lock remain unmodified. Full canonical record: [adr-0040-founder-ratification.md](../../specs/medscale-clinical-workspace-v1/adr-0040-founder-ratification.md).
+
+### 22.4 Effect
+
+ADR-0040 is Accepted by the Founder under R6 as of 2026-09-22 with no amendment. CW-006 implementation may proceed only under Issue 480 within the protected contract, with its own exact-head and fresh-main qualification. Proposal alone granted no implementation authority.
