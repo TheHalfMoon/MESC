@@ -82,3 +82,51 @@ class AuditChainError(AuditError):
 
 class AuditReplayError(AuditError):
     """An audit event was replayed instead of appended exactly once."""
+
+
+class DataClassificationError(WorkspaceStoreError):
+    """A data class, trust domain or classification document is unknown or malformed.
+
+    CW-004 fails closed here rather than defaulting: an unadmitted classification
+    never resolves to a domain, and therefore never becomes Research Core admission.
+    """
+
+
+class BackflowError(WorkspaceStoreError):
+    """Base class for every flow the CW-004 no-backflow guard refused."""
+
+
+class ResearchBackflowError(BackflowError):
+    """Workspace-side data was refused admission into Research Core (W/E/P -> R)."""
+
+
+class ExportAdmissionError(BackflowError):
+    """A quarantined export was refused automatic admission into Research Core (X -> R)."""
+
+
+class TelemetryBackflowError(BackflowError):
+    """Workspace telemetry, analytics or log state was refused as Research Core data."""
+
+
+class SecretEgressError(BackflowError):
+    """Secret-class material was refused: it is never a payload, log or prompt class."""
+
+
+class WorkspaceAdmissionError(BackflowError):
+    """A quarantined export was refused admission into the Workspace domain (X -> W)."""
+
+
+class UndeclaredFlowError(BackflowError):
+    """The requested trust-domain flow is not declared, so the guard refuses it."""
+
+
+class UnavailableAuthorityError(BackflowError):
+    """The flow is declared, but the governance authority it needs is not granted here."""
+
+
+class ExplicitExportRequestError(BackflowError):
+    """An export was refused because no explicit user export request was recorded."""
+
+
+class ExportBoundaryError(BackflowError):
+    """An export destination escaped, or could not be proven to stay inside, Domain X."""

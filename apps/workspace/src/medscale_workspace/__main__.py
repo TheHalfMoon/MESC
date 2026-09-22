@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 
+from medscale_workspace.data_class import synthetic_data_class_value
+
 
 def main() -> int:
     """Emit only non-object startup metadata.
@@ -14,7 +16,7 @@ def main() -> int:
 
     status = {
         "application": "medscale-workspace",
-        "data_class": "SYNTHETIC",
+        "data_class": synthetic_data_class_value(),
         "mode": "offline-shell",
         "ready": True,
     }
