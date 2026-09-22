@@ -479,4 +479,3 @@ Challenges and dispositions:
 - Alternatives verdict wording changed from larger and costlier to larger in parameter count and artifact size. Reason: host review flagged costlier as potentially reading as measured. The comparison now rests only on verified parameter counts and byte sizes, consistent with the no measurement statement in section 15.
 - This section 21 appended with the complete run record. Reason: R5 requires executed commands with observed outputs, not claims.
 - No model identity, revision, digest, license, version, contract, manifest, or scope value was changed by repair. All identities remain as verified in sections 1, 4, 5, and 7.
-
