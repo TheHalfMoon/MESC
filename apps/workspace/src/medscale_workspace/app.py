@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from medscale_workspace.data_class import synthetic_data_class_value
 from medscale_workspace.fixtures import synthetic_encounter, synthetic_patient
 
 
@@ -12,7 +13,7 @@ def workspace_snapshot() -> dict[str, object]:
     encounter = synthetic_encounter(patient)
     return {
         "workspace_id": str(patient.identity.workspace_id),
-        "data_class": "SYNTHETIC",
+        "data_class": synthetic_data_class_value(),
         "patient": {
             "object_id": str(patient.identity.object_id),
             "object_type": patient.identity.object_type.value,

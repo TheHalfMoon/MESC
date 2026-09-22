@@ -15,6 +15,13 @@ structural rules that make the expansion mechanical rather than conventional:
 * the nonce size is a single 96-bit constant used by every nonce call (A1.3);
 * the production key-provider resolver cannot reach the in-memory test provider.
 
+CW-003 adds the rule that only ``storage.py`` may touch the private store connection.
+CW-004 adds the classification and no-backflow rules: the typed vocabulary is defined
+once in ``data_class.py``, the declared flow table and every guard entry point live
+once in ``nobackflow.py``, a classification literal may be written only in
+``data_class.py``, no other module may name a ``TrustDomain``/``DataClass`` member,
+and both tables must be validated at import time so an incomplete table fails closed.
+
 Network, process, dynamic-import and persistent-mutation prohibitions are unchanged.
 """
 
@@ -85,6 +92,43 @@ _NONCE_CONSTANT = "NONCE_SIZE_BYTES"
 _ADMITTED_NONCE_SIZE_BYTES = 12
 _RESERVED_PASSWORD_KDF = "scrypt"
 _PRIVATE_CONNECTION_ATTRIBUTE = "_connection"
+
+_CW004_CLASSIFICATION_MODULE = "data_class.py"
+_CW004_GUARD_MODULE = "nobackflow.py"
+_CW004_TYPED_DEFINITIONS = (
+    "TrustDomain",
+    "DataClass",
+    "DataClassification",
+    "DATA_CLASS_ADMISSIONS",
+)
+_CW004_GUARD_DEFINITIONS = (
+    "DOMAIN_FLOWS",
+    "admit_flow",
+    "evaluate_flow",
+    "evaluate_object_flow",
+    "guard_object_handoff",
+    "admit_export_path",
+    "stage_export",
+)
+# Literals that carry classification meaning and are therefore single-sourced. The
+# ordinary English word "Workspace" is deliberately not listed: it appears in prose
+# and messages, so its literal would not be a reliable bypass signal. The mechanical
+# protection for the W -> R direction is the unconditional Domain R destination rule.
+_CW004_SINGLE_SOURCED_LITERALS = (
+    "SYNTHETIC",
+    "ResearchCore",
+    "ExportQuarantine",
+    "ExternalConnector",
+    "PluginRuntime",
+)
+_CW004_CLASSIFICATION_TYPES = frozenset({"TrustDomain", "DataClass"})
+_CW004_MODULES_ALLOWED_TO_NAME_CLASSIFICATION_TYPES = frozenset(
+    {_CW004_CLASSIFICATION_MODULE, _CW004_GUARD_MODULE}
+)
+_CW004_IMPORT_TIME_VALIDATORS = (
+    (_CW004_CLASSIFICATION_MODULE, "validate_admission_table"),
+    (_CW004_GUARD_MODULE, "validate_flow_table"),
+)
 
 _FORBIDDEN_CALL_PRIMITIVES = {
     "__import__",
@@ -300,6 +344,108 @@ def inspect_workspace_source(source_root: Path) -> list[str]:
 
         errors.extend(_capability_errors(relative, tree))
     errors.extend(_cw002_structure_errors(source_root, trees))
+    errors.extend(_cw004_structure_errors(source_root, trees))
+    return errors
+
+
+def _defined_names(tree: ast.AST) -> set[str]:
+    """Return names bound at module level by a class, function or assignment."""
+
+    names: set[str] = set()
+    for node in tree.body if isinstance(tree, ast.Module) else []:
+        if isinstance(node, ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef):
+            names.add(node.name)
+        elif isinstance(node, ast.Assign):
+            names.update(target.id for target in node.targets if isinstance(target, ast.Name))
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            names.add(node.target.id)
+    return names
+
+
+def _exact_string_literals(tree: ast.AST) -> set[str]:
+    return {
+        node.value
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Constant) and isinstance(node.value, str)
+    }
+
+
+def _classification_member_references(tree: ast.AST) -> set[str]:
+    """Return ``TrustDomain``/``DataClass`` member names used as attribute access."""
+
+    return {
+        node.attr
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Attribute)
+        and isinstance(node.value, ast.Name)
+        and node.value.id in _CW004_CLASSIFICATION_TYPES
+    }
+
+
+def _module_level_calls(tree: ast.AST) -> set[str]:
+    names: set[str] = set()
+    for node in tree.body if isinstance(tree, ast.Module) else []:
+        value = node.value if isinstance(node, ast.Expr) else None
+        if isinstance(value, ast.Call) and isinstance(value.func, ast.Name):
+            names.add(value.func.id)
+    return names
+
+
+def _exclusive_definition(
+    name: str,
+    expected_module: str,
+    trees: dict[str, tuple[Path, ast.AST]],
+) -> list[str]:
+    observed = sorted(
+        module_name for module_name, (_, tree) in trees.items() if name in _defined_names(tree)
+    )
+    if observed == [expected_module]:
+        return []
+    rendered = ", ".join(observed) if observed else "none"
+    return [
+        f"{name} must be defined exactly once in {expected_module} (CW-004); observed: {rendered}"
+    ]
+
+
+def _cw004_structure_errors(source_root: Path, trees: dict[Path, ast.AST]) -> list[str]:
+    """Report violations of the CW-004 classification and no-backflow rules."""
+
+    errors: list[str] = []
+    by_name = {path.name: (path.relative_to(source_root), tree) for path, tree in trees.items()}
+    for required in (_CW004_CLASSIFICATION_MODULE, _CW004_GUARD_MODULE):
+        if required not in by_name:
+            errors.append(f"CW-004 requires {required}")
+    for name in _CW004_TYPED_DEFINITIONS:
+        errors.extend(_exclusive_definition(name, _CW004_CLASSIFICATION_MODULE, by_name))
+    for name in _CW004_GUARD_DEFINITIONS:
+        errors.extend(_exclusive_definition(name, _CW004_GUARD_MODULE, by_name))
+
+    for module_name, (relative, tree) in sorted(by_name.items()):
+        literals = _exact_string_literals(tree)
+        if module_name != _CW004_CLASSIFICATION_MODULE:
+            for literal in _CW004_SINGLE_SOURCED_LITERALS:
+                if literal in literals:
+                    errors.append(
+                        f"{relative}: the classification literal {literal!r} must be "
+                        f"declared only in {_CW004_CLASSIFICATION_MODULE} (CW-004)"
+                    )
+        if module_name in _CW004_MODULES_ALLOWED_TO_NAME_CLASSIFICATION_TYPES:
+            continue
+        for member in sorted(_classification_member_references(tree)):
+            errors.append(
+                f"{relative}: TrustDomain/DataClass member {member!r} may be named only in "
+                f"{_CW004_CLASSIFICATION_MODULE} or {_CW004_GUARD_MODULE} (CW-004)"
+            )
+
+    for module_name, validator in _CW004_IMPORT_TIME_VALIDATORS:
+        entry = by_name.get(module_name)
+        if entry is None:
+            continue
+        if validator not in _module_level_calls(entry[1]):
+            errors.append(
+                f"{module_name}: must call {validator}() at import time so an incomplete "
+                "declared table fails closed (CW-004)"
+            )
     return errors
 
 

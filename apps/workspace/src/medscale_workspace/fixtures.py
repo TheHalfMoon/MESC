@@ -1,10 +1,16 @@
-"""Synthetic patient and encounter fixtures for CW-001."""
+"""Synthetic patient and encounter fixtures for CW-001.
+
+CW-004 (Issue #464 item 3) replaced the repeated ``"SYNTHETIC"`` data-class literal
+with the canonical typed classification, so the fixture class value now comes from
+:mod:`medscale_workspace.data_class` instead of a local string.
+"""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from uuid import UUID
 
+from medscale_workspace.data_class import synthetic_data_class_value
 from medscale_workspace.identity import (
     WorkspaceObjectIdentity,
     WorkspaceObjectType,
@@ -20,7 +26,7 @@ class SyntheticPatient:
 
     identity: WorkspaceObjectIdentity
     display_name: str = "Synthetic Patient Alpha"
-    data_class: str = "SYNTHETIC"
+    data_class: str = synthetic_data_class_value()
 
 
 @dataclass(frozen=True, slots=True)
@@ -30,7 +36,7 @@ class SyntheticEncounter:
     identity: WorkspaceObjectIdentity
     patient_id: UUID
     encounter_label: str = "Synthetic Encounter 001"
-    data_class: str = "SYNTHETIC"
+    data_class: str = synthetic_data_class_value()
 
 
 def synthetic_patient() -> SyntheticPatient:

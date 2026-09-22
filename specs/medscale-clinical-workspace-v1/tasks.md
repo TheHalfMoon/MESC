@@ -1,12 +1,12 @@
 # Clinical Workspace V1 — Dependency-Ordered Task Ledger
 
-- **Status:** Canonical implementation ledger — CW-001, CW-002 and CW-003 closed; CW-004 eligible
-- **Date:** 2026-09-20 (frontier reconciled 2026-09-22; CW-002 closed 2026-09-21; CW-003 activated and closed 2026-09-22)
+- **Status:** Canonical implementation ledger — CW-001, CW-002 and CW-003 closed; CW-004 activated
+- **Date:** 2026-09-20 (frontier reconciled 2026-09-22; CW-002 closed 2026-09-21; CW-003 closed 2026-09-22; CW-004 activated 2026-09-22)
 - **Parent:** [Clinical Workspace V1](README.md)
 - **Architecture gate:** ADR-0038 canonically effective after PR #460 protected merge and fresh-main qualification
-- **Current implementation authority:** NONE — CW-003 closed canonically; CW-004 is eligible but requires separate activation before any implementation begins
+- **Current implementation authority:** CW-004 only — activated 2026-09-22 under Issue #474, within the no-backflow and data-classification contract fixed by the CW-000 planning package
 
-This ledger is implementation-ready planning. It is not an executable backlog until ADR-0038 is canonically effective, the applicable dependencies are closed canonically, and the applicable task is separately activated. Admissibility is per task: it held for CW-002 while that task was active, and it now holds for CW-003 only after separate activation.
+This ledger is implementation-ready planning. It is not an executable backlog until ADR-0038 is canonically effective, the applicable dependencies are closed canonically, and the applicable task is separately activated. Admissibility is per task: it held for CW-003 while that task was active, and it now holds for CW-004 only after separate activation under Issue #474.
 
 ## Global gates
 
@@ -177,13 +177,21 @@ license record is [cw-002-dependency-license-review.md](cw-002-dependency-licens
 
 ## CW-004 — No-backflow and data-classification guard
 
-**State:** `ELIGIBLE` (not activated)
+**State:** `IN_PROGRESS` (activated under Issue #474; not yet `CLOSED_CANONICAL`)
 
 **Depends on:** CW-001, CW-003.
 
-**Activation:** requires separate activation under repository governance. Its dependencies are `CLOSED_CANONICAL`; eligibility is not implementation authority.
+**Activation:** Issue #474 — CW-004 activation. Its dependencies are `CLOSED_CANONICAL`; activation confers no acceptance and no authority beyond this bounded unit.
 
 **Purpose:** mechanically enforce Domain R/W/X separation.
+
+**Implemented surfaces (classification):** one canonical typed vocabulary in `data_class.py`: the five trust domains of the planning package, the admitted data classes, and one table binding every class to exactly one domain. A domain is therefore always derived from a class and never supplied by the caller. An unknown or malformed class, an unsupported classification version, or a document whose recorded domain contradicts the table fails closed. The repeated `"SYNTHETIC"` literal of Issue #464 item 3 is replaced by that one canonical value.
+
+**Implemented surfaces (no-backflow):** `nobackflow.py` holds the single declared trust-domain flow table and the only guard entry points. Domain R is refused as a destination for every source, so no write, copy, import or automatic admission into Research Core exists from the Workspace package. A quarantined export is refused automatic Research admission and refused re-admission into the Workspace; operational telemetry, analytics and logs are refused as Research Core data; secret-class material is refused every flow, including inside Domain W. Flows that the planning package declares but for which no authority exists in this unit (external connector, plugin/model runtime, external write) are refused rather than silently permitted, and any undeclared edge is refused by default. Refusals return provenance metadata — rule, domains, object identity — and never carry payload content.
+
+**Implemented surfaces (export containment):** `admit_export_path` and `stage_export` prove that an export target is a strict path below a declared Domain X quarantine root and outside every declared Research Core root, using pure path algebra over caller-supplied absolute paths. De-identification is recorded as a transformation of an export and never as an admission.
+
+**Recorded limitation of this unit:** the Workspace package holds no filesystem capability (no `os`, no `pathlib`, no `open`; the boundary guard forbids them), so the file-level rule is a lexical containment proof and does not resolve symlinks, junctions or reparse points; resolving them would require exactly the capability this package is denied. Link-based escape is therefore recorded as a limitation owned by the first later unit that obtains a filesystem capability, and by CW-019.
 
 **Acceptance**
 - direct W -> R write/copy/import paths fail;
@@ -640,8 +648,8 @@ Current frontier:
 1. CW-001 is `CLOSED_CANONICAL`: implementation PR #463 merged through the protected path at canonical merge `1ec0c3dd2e379649fd0b6a710b9dbde0f60490f3` and completed fresh-main qualification;
 2. CW-002 is `CLOSED_CANONICAL`: ADR-0039 was ratified under R6 with Amendment A1, CW-002 was activated under Issue #467, implementation PR #469 merged through the protected path at `19743d6b6b46f7729883e67f4cee26e72be2b323` with fresh-main qualification, and the closeout increment merged at `6f8d20c368549ed8640cfa9f197c7e0eb3d9ca56`;
 3. CW-003 is `CLOSED_CANONICAL`: activated under Issue #471, implementation PR #472 merged at `c47bab9aa3b0805b4939eba47ee1c3c296995155` with fresh-main qualification, and closure evidence is recorded in [cw-003-closeout.md](cw-003-closeout.md);
-4. CW-004 is `ELIGIBLE` because CW-001 and CW-003 are `CLOSED_CANONICAL`, but it is **not activated** and no implementation authority exists for it;
-5. CW-005 through CW-021 remain `BLOCKED_DEPENDENCY` until their declared predecessors close canonically;
+4. CW-004 is `IN_PROGRESS`: activated under Issue #474 as the single active implementation unit, and not yet `CLOSED_CANONICAL`;
+5. CW-005 through CW-021 remain `BLOCKED_DEPENDENCY` until their declared predecessors close canonically (CW-005, CW-007, CW-009, CW-011, CW-013, CW-014, CW-015, CW-016 and CW-017 each depend on CW-004);
 6. CW-021 additionally requires the bounded explicit Founder/governance clinical-pilot authorization defined in its task contract.
 
 No closeout or eligibility statement grants PHI, clinical production, EHR write, Workspace-data training/evaluation, publication, paid-compute, MRL-contract, or Stage-4 authority.
