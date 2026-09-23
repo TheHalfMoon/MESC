@@ -407,4 +407,3 @@ def test_arabic_text_roundtrip(tmp_path: Path) -> None:
         loaded = asr_mod.read_transcript(store, transcript_id)
         assert loaded.transcript == result.transcript
         assert loaded.segments[0].text == result.segments[0].text
-
