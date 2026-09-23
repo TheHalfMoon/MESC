@@ -29,36 +29,30 @@ from medscale_workspace import (  # noqa: E402 runtime import
     AuditTrail,
     WorkspaceStore,
     workspace_snapshot,
-)  # noqa: E402 runtime import
+)
 from medscale_workspace import asr as asr_mod  # noqa: E402 runtime import
 from medscale_workspace import encounter as encounter_mod  # noqa: E402 runtime import
 from medscale_workspace.asr import (  # noqa: E402 runtime import
     AsrResult,
     AsrStatus,
-)  # noqa: E402 runtime import
+)
 from medscale_workspace.encounter import (  # noqa: E402 runtime import
     EncounterState,
-    create_session,
-    grant_consent,
-    start_capture,
-)  # noqa: E402 runtime import
+)
 from medscale_workspace.errors import (  # noqa: E402 runtime import
     AsrBackendError,
-    AsrInputError,
-    AsrManifestError,
     AsrModelUnavailableError,
     AsrRevisionError,
     AsrTimestampError,
-)  # noqa: E402 runtime import
+)
 from medscale_workspace.keyprovider import (  # noqa: E402 runtime import
     InMemoryTestKeyProvider,
     new_root_secret,
-)  # noqa: E402 runtime import
+)
 from medscale_workspace.provenance import (  # noqa: E402 runtime import
     read_provenance,
     verify_provenance,
-)  # noqa: E402 runtime import
-
+)
 
 APPLICATION_VERSION = medscale_workspace.__version__
 WORKSPACE_ALPHA = UUID("6cd9e9f4-1c3b-40b4-b10f-5b16db71a9fe")
@@ -188,7 +182,7 @@ def test_read_returns_stored_result(tmp_path: Path) -> None:
 
 def test_missing_snapshot_fails_closed(tmp_path: Path) -> None:
     with open_store(tmp_path) as store:
-        trail = AuditTrail(store)
+        AuditTrail(store)
         with pytest.raises(AsrModelUnavailableError):
             asr_mod.transcribe_synthetic(
                 WORKSPACE_ALPHA,
@@ -210,7 +204,7 @@ def test_missing_snapshot_fails_closed(tmp_path: Path) -> None:
 
 def test_revision_mismatch_fails_closed(tmp_path: Path) -> None:
     with open_store(tmp_path) as store:
-        trail = AuditTrail(store)
+        AuditTrail(store)
         with pytest.raises(AsrRevisionError):
             asr_mod.transcribe_synthetic(
                 WORKSPACE_ALPHA,
@@ -232,23 +226,23 @@ def test_revision_mismatch_fails_closed(tmp_path: Path) -> None:
 
 def test_trust_flags_enforced(tmp_path: Path) -> None:
     with open_store(tmp_path) as store:
-        trail = AuditTrail(store)
-        base = dict(
-            manifest=asr_mod.expected_manifest(),
-            model_snapshot_present=True,
-        model_snapshot_revision=asr_mod.MODEL_REVISION,
-        trust_remote_code=False,
-        local_files_only=True,
-        allow_download=False,
-        workspace_id=WORKSPACE_ALPHA,
-        session_id=SESSION_ONE,
-        input_id=INPUT_ONE,
-        input_revision=INPUT_REVISION,
-        audio_bytes=synthetic_audio(1),
-        requested_language="en",
-        input_occurred_at=T1,
-        result_occurred_at=T2,
-    )
+        AuditTrail(store)
+        base = {
+            "manifest": asr_mod.expected_manifest(),
+            "model_snapshot_present": True,
+            "model_snapshot_revision": asr_mod.MODEL_REVISION,
+            "trust_remote_code": False,
+            "local_files_only": True,
+            "allow_download": False,
+            "workspace_id": WORKSPACE_ALPHA,
+            "session_id": SESSION_ONE,
+            "input_id": INPUT_ONE,
+            "input_revision": INPUT_REVISION,
+            "audio_bytes": synthetic_audio(1),
+            "requested_language": "en",
+            "input_occurred_at": T1,
+            "result_occurred_at": T2,
+        }
     with pytest.raises(AsrBackendError):
         asr_mod.transcribe_synthetic(**dict(base, trust_remote_code=True))
     with pytest.raises(AsrBackendError):
@@ -267,7 +261,7 @@ def failed_backend(audio_bytes: bytes, manifest: object, requested_language: str
 
 def test_partial_and_failed_typing(tmp_path: Path) -> None:
     with open_store(tmp_path) as store:
-        trail = AuditTrail(store)
+        AuditTrail(store)
         partial = asr_mod.transcribe_with_backend(
             WORKSPACE_ALPHA,
             SESSION_ONE,
@@ -323,7 +317,7 @@ def test_audit_carries_no_transcript_text(tmp_path: Path) -> None:
 
 def test_malformed_timestamps_rejected(tmp_path: Path) -> None:
     with open_store(tmp_path) as store:
-        trail = AuditTrail(store)
+        AuditTrail(store)
         with pytest.raises(AsrTimestampError):
             asr_mod.transcribe_synthetic(
                 WORKSPACE_ALPHA,

@@ -25,13 +25,13 @@ import medscale_workspace  # noqa: E402 runtime import
 from medscale_workspace import (  # noqa: E402 runtime import
     AuditTrail,
     WorkspaceStore,
-)  # noqa: E402 runtime import
+)
 from medscale_workspace import asr as asr_mod  # noqa: E402 runtime import
 from medscale_workspace.data_class import (  # noqa: E402 runtime import
     DataClass,
     TrustDomain,
     classify,
-)  # noqa: E402 runtime import
+)
 from medscale_workspace.errors import (  # noqa: E402 runtime import
     AsrBackendError,
     AsrConflictError,
@@ -41,11 +41,11 @@ from medscale_workspace.errors import (  # noqa: E402 runtime import
     AsrRevisionError,
     AsrTimestampError,
     WorkspaceIsolationError,
-)  # noqa: E402 runtime import
+)
 from medscale_workspace.keyprovider import (  # noqa: E402 runtime import
     InMemoryTestKeyProvider,
     new_root_secret,
-)  # noqa: E402 runtime import
+)
 from medscale_workspace.nobackflow import evaluate_flow  # noqa: E402 runtime import
 
 APPLICATION_VERSION = medscale_workspace.__version__
@@ -84,22 +84,22 @@ def synthetic_audio(sequence: int) -> bytes:
 
 
 def base_kwargs() -> dict:
-    return dict(
-        workspace_id=WORKSPACE_ALPHA,
-        session_id=SESSION_ONE,
-        input_id=INPUT_ONE,
-        input_revision=INPUT_REVISION,
-        audio_bytes=synthetic_audio(1),
-        requested_language="en",
-        input_occurred_at=T1,
-        result_occurred_at=T2,
-        manifest=asr_mod.expected_manifest(),
-        model_snapshot_present=True,
-        model_snapshot_revision=asr_mod.MODEL_REVISION,
-        trust_remote_code=False,
-        local_files_only=True,
-        allow_download=False,
-    )
+    return {
+        "workspace_id": WORKSPACE_ALPHA,
+        "session_id": SESSION_ONE,
+        "input_id": INPUT_ONE,
+        "input_revision": INPUT_REVISION,
+        "audio_bytes": synthetic_audio(1),
+        "requested_language": "en",
+        "input_occurred_at": T1,
+        "result_occurred_at": T2,
+        "manifest": asr_mod.expected_manifest(),
+        "model_snapshot_present": True,
+        "model_snapshot_revision": asr_mod.MODEL_REVISION,
+        "trust_remote_code": False,
+        "local_files_only": True,
+        "allow_download": False,
+    }
 
 
 def drifted_manifest(field: str, value: object) -> asr_mod.AsrManifest:

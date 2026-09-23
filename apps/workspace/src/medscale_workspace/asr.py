@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from enum import StrEnum
+from pathlib import Path
 from uuid import UUID, uuid5
 
 from medscale_workspace.audit import AuditEventType, AuditTrail
@@ -46,7 +47,6 @@ from medscale_workspace.provenance import (
 )
 from medscale_workspace.storage import WorkspaceStore
 from medscale_workspace.versions import POLICY_VERSION
-
 
 MODEL_ID = "openai/whisper-large-v3-turbo"
 MODEL_REVISION = "41f01f3fe87f28c78e2fbf8b568835947dd65ed9"
@@ -661,14 +661,12 @@ def _admit_actor(raw):
 
 def _check_segment_order(segments):
     """Fail closed unless segment indexes order and times do not overlap."""
-    expected = 0
     previous_end = 0.0
-    for segment in segments:
+    for expected, segment in enumerate(segments):
         if segment.index != expected:
             raise AsrInputError("segment indexes must order from zero without gaps")
         if segment.start_s < previous_end:
             raise AsrTimestampError("segments must not overlap")
-        expected += 1
         previous_end = segment.end_s
 
 
@@ -695,16 +693,13 @@ def _admit_runtime_contract(trust_remote_code, local_files_only, allow_download)
 
 def mock_backend(audio_bytes, manifest, requested_language):
     """Deterministic synthetic backend with mock outputs only, never a model."""
-    verified = verify_manifest(manifest)
+    verify_manifest(manifest)
     payload = _admit_audio_bytes(audio_bytes)
     requested = _admit_requested_language(requested_language)
     digest = content_digest_of(payload)
     short = digest[7:15]
     duration = len(payload) / SAMPLES_PER_SECOND
-    if requested == "auto":
-        detected = "en"
-    else:
-        detected = requested
+    detected = "en" if requested == "auto" else requested
     if requested == "ar":
         transcript = f"synthetic transcript ar {short}"
     else:
@@ -834,8 +829,10 @@ def store_transcript(store, trail, result, actor_id, occurred_at):
         raise WorkspaceIsolationError("a transcript crossed the workspace boundary")
     actor = _admit_actor(actor_id)
     moment = _admit_occurred_at(occurred_at)
-    binding = transcript_binding(admitted.workspace_id, transcript_id_for(
-        admitted.workspace_id, admitted.session_id, admitted.input_id))
+    binding = transcript_binding(
+        admitted.workspace_id,
+        transcript_id_for(admitted.workspace_id, admitted.session_id, admitted.input_id),
+    )
     payload = transcript_payload_bytes(admitted)
     producer = ProducerIdentity(
         kind=ProducerKind.MODEL,
@@ -907,20 +904,23 @@ def read_transcript(store, transcript_id):
 # Heavy runtime dependencies stay lazy so the base Workspace shell imports
 # and tests without torch or transformers installed.
 # ---------------------------------------------------------------------------
-import hashlib
-from pathlib import Path
-
 ADAPTER_CONTRACT_VERSION = "cw006-v1"
-SNAPSHOT_REQUIRED_FILES = ("config.json", "preprocessor_config.json", "tokenizer.json", "model.safetensors")
+SNAPSHOT_REQUIRED_FILES = (
+    "config.json",
+    "preprocessor_config.json",
+    "tokenizer.json",
+    "model.safetensors",
+)
 SNAPSHOT_CONFIG_FILE = "config.json"
 SNAPSHOT_PROCESSOR_FILE = "preprocessor_config.json"
 SNAPSHOT_TOKENIZER_FILE = "tokenizer.json"
 
+
 def _require_asr_runtime():
     """Import torch and transformers lazily and bind exact versions."""
     try:
-        import transformers as transformers_mod
         import torch as torch_mod
+        import transformers as transformers_mod
     except Exception as error:
         raise AsrBackendError("asr-local optional dependencies are not installed") from error
     try:
@@ -937,6 +937,7 @@ def _require_asr_runtime():
     if torch_version != TORCH_VERSION:
         raise AsrRevisionError("the torch version is mismatched")
     return (transformers_mod, torch_mod)
+
 
 def _admit_snapshot_dir(raw):
     """Admit a local snapshot directory and never a Hub identity."""
@@ -962,13 +963,16 @@ def _admit_snapshot_dir(raw):
         raise AsrModelUnavailableError("the local model snapshot is absent")
     return candidate
 
+
 def _git_blob_id(path):
     """Return the git blob SHA1 for one snapshot file."""
     import hashlib as hashlib_mod
+
     content = Path(path).read_bytes()
     header = b"blob " + str(len(content)).encode("ascii") + b"\x00"
     digest = hashlib_mod.sha1(header + content).hexdigest()
     return digest
+
 
 def _verify_git_blob(path, expected, label):
     """Fail closed unless one snapshot file matches its manifest blob."""
@@ -977,9 +981,11 @@ def _verify_git_blob(path, expected, label):
         raise AsrManifestError("the snapshot file is mismatched")
     return actual
 
+
 def _verify_snapshot_weight(weight_path, manifest):
     """Fail closed unless the weight file size and SHA256 match."""
     import hashlib as hashlib_mod
+
     weight_file = Path(weight_path)
     if not weight_file.is_file():
         raise AsrModelUnavailableError("the local snapshot weight is absent")
@@ -987,7 +993,7 @@ def _verify_snapshot_weight(weight_path, manifest):
     if actual_size != manifest.weight_size_bytes:
         raise AsrManifestError("the snapshot weight size is mismatched")
     digest = hashlib_mod.sha256()
-    with open(weight_file, "rb") as handle:
+    with weight_file.open("rb") as handle:
         while True:
             chunk = handle.read(8388608)
             if not chunk:
@@ -997,6 +1003,7 @@ def _verify_snapshot_weight(weight_path, manifest):
     if actual_hex != manifest.weight_sha256:
         raise AsrManifestError("the snapshot weight digest is mismatched")
     return weight_path
+
 
 def verify_local_snapshot(snapshot_dir, manifest):
     """Verify a local snapshot directory against its manifest."""
@@ -1014,12 +1021,14 @@ def verify_local_snapshot(snapshot_dir, manifest):
     _verify_git_blob(snapshot_path / SNAPSHOT_TOKENIZER_FILE, verified.tokenizer_blob, "tokenizer")
     return snapshot_path
 
+
 def _audio_bytes_to_waveform(audio_bytes):
     """Convert admitted audio bytes to mono float32 samples at 16000 Hz."""
     payload = _admit_audio_bytes(audio_bytes)
     import io as io_mod
     import struct as struct_mod
     import wave as wave_mod
+
     try:
         with wave_mod.open(io_mod.BytesIO(payload), "rb") as handle:
             channels = handle.getnchannels()
@@ -1039,7 +1048,7 @@ def _audio_bytes_to_waveform(audio_bytes):
         if channels == 2:
             left = ints[0::2]
             right = ints[1::2]
-            waveform = [(float(a) + float(b)) / 65536.0 for a, b in zip(left, right)]
+            waveform = [(float(a) + float(b)) / 65536.0 for a, b in zip(left, right, strict=False)]
         else:
             waveform = [float(v) / 32768.0 for v in ints]
         if len(waveform) == 0:
@@ -1057,6 +1066,7 @@ def _audio_bytes_to_waveform(audio_bytes):
     ints_raw = struct_mod.unpack("<" + "h" * count_raw, payload)
     waveform_raw = [float(v) / 32768.0 for v in ints_raw]
     return waveform_raw
+
 
 class TransformersWhisperBackend:
     """Local-only Transformers Whisper backend bound to the pinned snapshot."""
@@ -1151,6 +1161,7 @@ class TransformersWhisperBackend:
             duration = MAXIMUM_SEGMENT_SECONDS
         segment = AsrSegment(index=0, start_s=0.0, end_s=duration, text=transcript).validated()
         return ("success", transcript, (segment,), detected, "")
+
 
 def transcribe_with_transformers(
     workspace_id,
