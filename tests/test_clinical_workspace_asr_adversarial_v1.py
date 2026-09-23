@@ -83,7 +83,7 @@ def synthetic_audio(sequence: int) -> bytes:
     return f"synthetic-pcm-{sequence:08d}".encode("ascii")
 
 
-def base_kwargs() -> dict:
+def base_kwargs() -> dict[str, object]:
     return {
         "workspace_id": WORKSPACE_ALPHA,
         "session_id": SESSION_ONE,
@@ -157,7 +157,9 @@ def test_audio_shapes_rejected() -> None:
         asr_mod.transcribe_synthetic(**dict(base_kwargs(), audio_bytes=oversize))
 
 
-def french_backend(audio_bytes: bytes, manifest: object, requested_language: str) -> tuple:
+def french_backend(
+    audio_bytes: bytes, manifest: object, requested_language: str
+) -> tuple[object, ...]:
     one = asr_mod.AsrSegment(
         index=0,
         start_s=0.0,
@@ -167,58 +169,78 @@ def french_backend(audio_bytes: bytes, manifest: object, requested_language: str
     return ("success", "transcript francais", (one,), "fr", "")
 
 
-def empty_backend(audio_bytes: bytes, manifest: object, requested_language: str) -> tuple:
+def empty_backend(
+    audio_bytes: bytes, manifest: object, requested_language: str
+) -> tuple[object, ...]:
     return ("success", "", (), "en", "")
 
 
-def reasonless_failed_backend(audio: bytes, manifest: object, language: str) -> tuple:
+def reasonless_failed_backend(audio: bytes, manifest: object, language: str) -> tuple[object, ...]:
     return ("failed", "", (), "en", "")
 
 
-def reasonless_partial_backend(audio: bytes, manifest: object, language: str) -> tuple:
+def reasonless_partial_backend(audio: bytes, manifest: object, language: str) -> tuple[object, ...]:
     return ("partial", "partial transcript", (), "en", "")
 
 
-def list_backend(audio_bytes: bytes, manifest: object, requested_language: str) -> tuple:
+def list_backend(
+    audio_bytes: bytes, manifest: object, requested_language: str
+) -> tuple[object, ...]:
     return ("success", "text", ["not-a-segment"], "en", "")
 
 
-def short_backend(audio_bytes: bytes, manifest: object, requested_language: str) -> tuple:
+def short_backend(
+    audio_bytes: bytes, manifest: object, requested_language: str
+) -> tuple[object, ...]:
     return ("success", "text", ())
 
 
-def weird_backend(audio_bytes: bytes, manifest: object, requested_language: str) -> tuple:
+def weird_backend(
+    audio_bytes: bytes, manifest: object, requested_language: str
+) -> tuple[object, ...]:
     return ("weird", "text", (), "en", "")
 
 
-def overlap_backend(audio_bytes: bytes, manifest: object, requested_language: str) -> tuple:
+def overlap_backend(
+    audio_bytes: bytes, manifest: object, requested_language: str
+) -> tuple[object, ...]:
     first = asr_mod.AsrSegment(index=0, start_s=0.0, end_s=1.0, text="first")
     second = asr_mod.AsrSegment(index=1, start_s=0.5, end_s=2.0, text="second")
     return ("success", "first second", (first, second), "en", "")
 
 
-def gap_backend(audio_bytes: bytes, manifest: object, requested_language: str) -> tuple:
+def gap_backend(
+    audio_bytes: bytes, manifest: object, requested_language: str
+) -> tuple[object, ...]:
     first = asr_mod.AsrSegment(index=0, start_s=0.0, end_s=1.0, text="first")
     third = asr_mod.AsrSegment(index=2, start_s=1.0, end_s=2.0, text="third")
     return ("success", "first third", (first, third), "en", "")
 
 
-def nan_backend(audio_bytes: bytes, manifest: object, requested_language: str) -> tuple:
+def nan_backend(
+    audio_bytes: bytes, manifest: object, requested_language: str
+) -> tuple[object, ...]:
     bad = asr_mod.AsrSegment(index=0, start_s=float("nan"), end_s=1.0, text="bad")
     return ("success", "bad", (bad,), "en", "")
 
 
-def inf_backend(audio_bytes: bytes, manifest: object, requested_language: str) -> tuple:
+def inf_backend(
+    audio_bytes: bytes, manifest: object, requested_language: str
+) -> tuple[object, ...]:
     bad = asr_mod.AsrSegment(index=0, start_s=0.0, end_s=float("inf"), text="bad")
     return ("success", "bad", (bad,), "en", "")
 
 
-def reversed_backend(audio_bytes: bytes, manifest: object, requested_language: str) -> tuple:
+def reversed_backend(
+    audio_bytes: bytes, manifest: object, requested_language: str
+) -> tuple[object, ...]:
     bad = asr_mod.AsrSegment(index=0, start_s=2.0, end_s=1.0, text="bad")
     return ("success", "bad", (bad,), "en", "")
 
 
-def overseg_backend(audio_bytes: bytes, manifest: object, requested_language: str) -> tuple:
+def overseg_backend(
+    audio_bytes: bytes, manifest: object, requested_language: str
+) -> tuple[object, ...]:
     many = tuple(
         asr_mod.AsrSegment(index=i, start_s=float(i), end_s=float(i) + 0.5, text="seg")
         for i in range(257)
@@ -226,7 +248,9 @@ def overseg_backend(audio_bytes: bytes, manifest: object, requested_language: st
     return ("success", "many", many, "en", "")
 
 
-def longtext_backend(audio_bytes: bytes, manifest: object, requested_language: str) -> tuple:
+def longtext_backend(
+    audio_bytes: bytes, manifest: object, requested_language: str
+) -> tuple[object, ...]:
     big = "y" * 4097  # long text
     one = asr_mod.AsrSegment(index=0, start_s=0.0, end_s=1.0, text=big)
     return ("success", big, (one,), "en", "")

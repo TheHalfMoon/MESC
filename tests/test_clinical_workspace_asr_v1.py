@@ -251,11 +251,15 @@ def test_trust_flags_enforced(tmp_path: Path) -> None:
         asr_mod.transcribe_synthetic(**dict(base, allow_download=True))
 
 
-def partial_backend(audio_bytes: bytes, manifest: object, requested_language: str) -> tuple:
+def partial_backend(
+    audio_bytes: bytes, manifest: object, requested_language: str
+) -> tuple[object, ...]:
     return ("partial", "partial transcript", (), requested_language, "decoder stopped early")
 
 
-def failed_backend(audio_bytes: bytes, manifest: object, requested_language: str) -> tuple:
+def failed_backend(
+    audio_bytes: bytes, manifest: object, requested_language: str
+) -> tuple[object, ...]:
     return ("failed", "", (), requested_language, "audio too short")
 
 
@@ -368,7 +372,9 @@ def test_cw005_lifecycle_without_asr(tmp_path: Path) -> None:
         assert snapshot["capabilities"]["microphone"] is False
 
 
-def arabic_backend(audio_bytes: bytes, manifest: object, requested_language: str) -> tuple:
+def arabic_backend(
+    audio_bytes: bytes, manifest: object, requested_language: str
+) -> tuple[object, ...]:
     word = chr(0x0646) + chr(0x0635) + chr(0x0020) + chr(0x0645)
     text = "synthetic ar " + word
     segment = asr_mod.AsrSegment(index=0, start_s=0.0, end_s=1.0, text=text).validated()

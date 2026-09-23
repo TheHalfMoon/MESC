@@ -11,6 +11,10 @@ from uuid import UUID
 
 import pytest
 
+# mypy: disable-error-code="import-not-found"
+# The Workspace package under apps/workspace is deliberately outside strict mypy file
+# set while Issue 464 item 1 is open. These tests import it at runtime through sys.path.
+
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 WORKSPACE_SRC = REPOSITORY_ROOT / "apps" / "workspace" / "src"
 
@@ -37,7 +41,7 @@ def synthetic_audio(sequence: int) -> bytes:
     return f"synthetic-pcm-{sequence:08d}".encode("ascii")
 
 
-def drifted_manifest(field: str, value: object):
+def drifted_manifest(field: str, value: object) -> object:
     base = asr_mod.expected_manifest().to_document()
     base[field] = value
     return asr_mod.AsrManifest.from_document(base)
@@ -47,7 +51,7 @@ def test_no_top_level_heavy_imports() -> None:
     """Base shell must import without torch or transformers at top level."""
     path = WORKSPACE_SRC / "medscale_workspace" / "asr.py"
     tree = ast.parse(path.read_text(encoding="utf-8"))
-    top_names: list = []
+    top_names: list[str] = []
     for node in tree.body:
         if isinstance(node, ast.Import):
             for alias in node.names:
@@ -145,10 +149,10 @@ class _FakeTensor:
 class _FakeProcessorInstance:
     def __call__(
         self, waveform: object, sampling_rate: int = 16000, return_tensors: str = "pt"
-    ) -> dict:
+    ) -> dict[str, object]:
         return {"input_features": _FakeTensor()}
 
-    def batch_decode(self, generated: object, skip_special_tokens: bool = True) -> list:
+    def batch_decode(self, generated: object, skip_special_tokens: bool = True) -> list[str]:
         return ["hello world"]
 
 
@@ -159,7 +163,7 @@ class _FakeModelInstance:
     def eval(self) -> None:
         return None
 
-    def generate(self, features: object) -> list:
+    def generate(self, features: object) -> list[list[int]]:
         return [[1, 2, 3]]
 
 
@@ -167,18 +171,20 @@ class _NoGrad:
     def __enter__(self) -> None:
         return None
 
-    def __exit__(self, *args: object) -> bool:
-        return False
+    def __exit__(self, *args: object) -> None:
+        return None
 
 
-def _install_fake_runtime(monkeypatch: pytest.MonkeyPatch, calls: list) -> None:
+def _install_fake_runtime(
+    monkeypatch: pytest.MonkeyPatch, calls: list[tuple[str, str, dict[str, object]]]
+) -> None:
     """Install fake transformers and torch modules bound to exact versions."""
     fake_transformers = types.ModuleType("transformers")
-    fake_transformers.__version__ = asr_mod.RUNTIME_VERSION
+    fake_transformers.__version__ = asr_mod.RUNTIME_VERSION  # type: ignore[attr-defined]
     fake_torch = types.ModuleType("torch")
-    fake_torch.__version__ = asr_mod.TORCH_VERSION
-    fake_torch.float32 = "float32"
-    fake_torch.no_grad = lambda: _NoGrad()
+    fake_torch.__version__ = asr_mod.TORCH_VERSION  # type: ignore[attr-defined]
+    fake_torch.float32 = "float32"  # type: ignore[attr-defined]
+    fake_torch.no_grad = lambda: _NoGrad()  # type: ignore[attr-defined]
 
     class FakeProcessorClass:
         @staticmethod
@@ -192,8 +198,8 @@ def _install_fake_runtime(monkeypatch: pytest.MonkeyPatch, calls: list) -> None:
             calls.append(("model", str(name), dict(kwargs)))
             return _FakeModelInstance()
 
-    fake_transformers.WhisperProcessor = FakeProcessorClass
-    fake_transformers.WhisperForConditionalGeneration = FakeModelClass
+    fake_transformers.WhisperProcessor = FakeProcessorClass  # type: ignore[attr-defined]
+    fake_transformers.WhisperForConditionalGeneration = FakeModelClass  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "transformers", fake_transformers)
     monkeypatch.setitem(sys.modules, "torch", fake_torch)
 
@@ -208,7 +214,7 @@ def _make_snapshot_dir(path: Path) -> Path:
 
 def test_loader_calls_are_local_only(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """Every loader call must use the local path with fail-closed flags."""
-    calls: list = []
+    calls: list[tuple[str, str, dict[str, object]]] = []
     _install_fake_runtime(monkeypatch, calls)
     snapshot = _make_snapshot_dir(tmp_path / "snapshot")
     manifest = asr_mod.expected_manifest()
@@ -229,7 +235,7 @@ def test_real_backend_output_passes_same_validation(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """Fake real backend output must survive the shared validation boundary."""
-    calls: list = []
+    calls: list[tuple[str, str, dict[str, object]]] = []
     _install_fake_runtime(monkeypatch, calls)
     snapshot = _make_snapshot_dir(tmp_path / "snapshot")
     manifest = asr_mod.expected_manifest()
@@ -267,7 +273,7 @@ def test_real_path_rejects_malformed_backend_output(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """Shared boundary must reject bad output even on the real path."""
-    calls: list = []
+    calls: list[tuple[str, str, dict[str, object]]] = []
     _install_fake_runtime(monkeypatch, calls)
     snapshot = _make_snapshot_dir(tmp_path / "snapshot")
     manifest = asr_mod.expected_manifest()
@@ -275,7 +281,7 @@ def test_real_path_rejects_malformed_backend_output(
     monkeypatch.setattr(asr_mod, "_verify_git_blob", lambda path, expected, label: expected)
     asr_mod.TransformersWhisperBackend(snapshot, manifest)
 
-    def bad_backend(audio_bytes: bytes, manifest: object, requested: str) -> tuple:
+    def bad_backend(audio_bytes: bytes, manifest: object, requested: str) -> tuple[object, ...]:
         return ("success", "", (), "en", "")
 
     with pytest.raises(AsrError):
