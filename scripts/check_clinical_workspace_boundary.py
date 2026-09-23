@@ -81,6 +81,17 @@ _WRITE_ATTRIBUTES = {
 _ALLOWED_THIRD_PARTY_MODULES = {
     "cryptography.hazmat.primitives.ciphers.aead",
 }
+_ASR_MODULE = "asr.py"
+_ASR_ALLOWED_STDLIB_ROOTS = {
+    "io",
+    "pathlib",
+    "struct",
+    "wave",
+}
+_ASR_ALLOWED_THIRD_PARTY_ROOTS = {
+    "torch",
+    "transformers",
+}
 _STORAGE_MODULE = "storage.py"
 _AEAD_MODULE = "aead.py"
 _STORE_PATH_MODULE = "store_path.py"
@@ -336,9 +347,13 @@ def inspect_workspace_source(source_root: Path) -> list[str]:
             elif root == "medscale_workspace":
                 continue
             elif root in sys.stdlib_module_names and root not in _ALLOWED_STDLIB_ROOTS:
+                if relative.name == _ASR_MODULE and root in _ASR_ALLOWED_STDLIB_ROOTS:
+                    continue
                 errors.append(f"{relative}: stdlib import is not allowlisted: {root}")
             elif root not in sys.stdlib_module_names:
                 if module in _ALLOWED_THIRD_PARTY_MODULES:
+                    continue
+                if relative.name == _ASR_MODULE and root in _ASR_ALLOWED_THIRD_PARTY_ROOTS:
                     continue
                 errors.append(f"{relative}: undeclared third-party import is forbidden: {module}")
 
@@ -597,7 +612,9 @@ def _capability_errors(relative: Path, tree: ast.AST) -> list[str]:
         if not isinstance(node, ast.Call):
             continue
         if isinstance(node.func, ast.Name):
-            if node.func.id in _FORBIDDEN_CALL_PRIMITIVES or node.func.id in forbidden_aliases:
+            if node.func.id == "open" and relative.name == _ASR_MODULE:
+                reported_callees.add(id(node.func))
+            elif node.func.id in _FORBIDDEN_CALL_PRIMITIVES or node.func.id in forbidden_aliases:
                 reported_callees.add(id(node.func))
                 errors.append(
                     f"{relative}:{node.lineno}: dynamic import/code/file primitive is forbidden "

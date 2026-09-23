@@ -896,3 +896,296 @@ def read_transcript(store, transcript_id):
     record = read_provenance(store, binding)
     record.verify_payload(raw)
     return result
+
+
+# ---------------------------------------------------------------------------
+# CW-006 real local Transformers backend (forward-only addition).
+# Synthetic mock path above remains unchanged. The real path below loads
+# openai whisper-large-v3-turbo from a previously acquired local snapshot
+# directory only, with explicit local_files_only True and trust_remote_code
+# False on every loader call, with no Hub fetch and no network fallback.
+# Heavy runtime dependencies stay lazy so the base Workspace shell imports
+# and tests without torch or transformers installed.
+# ---------------------------------------------------------------------------
+import hashlib
+from pathlib import Path
+
+ADAPTER_CONTRACT_VERSION = "cw006-v1"
+SNAPSHOT_REQUIRED_FILES = ("config.json", "preprocessor_config.json", "tokenizer.json", "model.safetensors")
+SNAPSHOT_CONFIG_FILE = "config.json"
+SNAPSHOT_PROCESSOR_FILE = "preprocessor_config.json"
+SNAPSHOT_TOKENIZER_FILE = "tokenizer.json"
+
+def _require_asr_runtime():
+    """Import torch and transformers lazily and bind exact versions."""
+    try:
+        import transformers as transformers_mod
+        import torch as torch_mod
+    except Exception as error:
+        raise AsrBackendError("asr-local optional dependencies are not installed") from error
+    try:
+        transformers_version = str(transformers_mod.__version__)
+    except Exception as error:
+        raise AsrBackendError("asr-local optional dependencies are not installed") from error
+    try:
+        torch_version_full = str(torch_mod.__version__)
+    except Exception as error:
+        raise AsrBackendError("asr-local optional dependencies are not installed") from error
+    torch_version = torch_version_full.split("+")[0]
+    if transformers_version != RUNTIME_VERSION:
+        raise AsrRevisionError("the transformers version is mismatched")
+    if torch_version != TORCH_VERSION:
+        raise AsrRevisionError("the torch version is mismatched")
+    return (transformers_mod, torch_mod)
+
+def _admit_snapshot_dir(raw):
+    """Admit a local snapshot directory and never a Hub identity."""
+    if isinstance(raw, Path):
+        candidate = raw
+    elif isinstance(raw, str):
+        if raw == MODEL_ID:
+            raise AsrInputError("a model id is never a local snapshot path")
+        if raw in MUTABLE_REVISIONS:
+            raise AsrRevisionError("a mutable snapshot revision is never admitted")
+        if raw == "":
+            raise AsrInputError("a snapshot path must be non-empty")
+        candidate = Path(raw)
+    else:
+        raise AsrInputError("a snapshot path must be a string or path")
+    try:
+        as_text = candidate.as_posix()
+    except Exception as error:
+        raise AsrInputError("a snapshot path is not admitted here") from error
+    if as_text == MODEL_ID:
+        raise AsrInputError("a model id is never a local snapshot path")
+    if not candidate.is_dir():
+        raise AsrModelUnavailableError("the local model snapshot is absent")
+    return candidate
+
+def _git_blob_id(path):
+    """Return the git blob SHA1 for one snapshot file."""
+    import hashlib as hashlib_mod
+    content = Path(path).read_bytes()
+    header = b"blob " + str(len(content)).encode("ascii") + b"\x00"
+    digest = hashlib_mod.sha1(header + content).hexdigest()
+    return digest
+
+def _verify_git_blob(path, expected, label):
+    """Fail closed unless one snapshot file matches its manifest blob."""
+    actual = _git_blob_id(path)
+    if actual != expected:
+        raise AsrManifestError("the snapshot file is mismatched")
+    return actual
+
+def _verify_snapshot_weight(weight_path, manifest):
+    """Fail closed unless the weight file size and SHA256 match."""
+    import hashlib as hashlib_mod
+    weight_file = Path(weight_path)
+    if not weight_file.is_file():
+        raise AsrModelUnavailableError("the local snapshot weight is absent")
+    actual_size = weight_file.stat().st_size
+    if actual_size != manifest.weight_size_bytes:
+        raise AsrManifestError("the snapshot weight size is mismatched")
+    digest = hashlib_mod.sha256()
+    with open(weight_file, "rb") as handle:
+        while True:
+            chunk = handle.read(8388608)
+            if not chunk:
+                break
+            digest.update(chunk)
+    actual_hex = digest.hexdigest()
+    if actual_hex != manifest.weight_sha256:
+        raise AsrManifestError("the snapshot weight digest is mismatched")
+    return weight_path
+
+def verify_local_snapshot(snapshot_dir, manifest):
+    """Verify a local snapshot directory against its manifest."""
+    verified = verify_manifest(manifest)
+    if ADAPTER_CONTRACT_VERSION != PRODUCER_VERSION:
+        raise AsrManifestError("the adapter contract version is mismatched")
+    snapshot_path = _admit_snapshot_dir(snapshot_dir)
+    for name in SNAPSHOT_REQUIRED_FILES:
+        member = snapshot_path / name
+        if not member.is_file():
+            raise AsrModelUnavailableError("the local snapshot file is absent")
+    _verify_snapshot_weight(snapshot_path / WEIGHT_FILE, verified)
+    _verify_git_blob(snapshot_path / SNAPSHOT_CONFIG_FILE, verified.config_blob, "config")
+    _verify_git_blob(snapshot_path / SNAPSHOT_PROCESSOR_FILE, verified.processor_blob, "processor")
+    _verify_git_blob(snapshot_path / SNAPSHOT_TOKENIZER_FILE, verified.tokenizer_blob, "tokenizer")
+    return snapshot_path
+
+def _audio_bytes_to_waveform(audio_bytes):
+    """Convert admitted audio bytes to mono float32 samples at 16000 Hz."""
+    payload = _admit_audio_bytes(audio_bytes)
+    import io as io_mod
+    import struct as struct_mod
+    import wave as wave_mod
+    try:
+        with wave_mod.open(io_mod.BytesIO(payload), "rb") as handle:
+            channels = handle.getnchannels()
+            width = handle.getsampwidth()
+            rate = handle.getframerate()
+            frames = handle.readframes(handle.getnframes())
+        if width != 2:
+            raise AsrInputError("a wave payload must be 16-bit")
+        if rate != SAMPLES_PER_SECOND:
+            raise AsrInputError("a wave payload must be 16000 Hz")
+        if channels not in (1, 2):
+            raise AsrInputError("a wave payload must be mono or stereo")
+        if len(frames) == 0:
+            raise AsrInputError("a wave payload must be non-empty")
+        count = len(frames) // 2
+        ints = struct_mod.unpack("<" + "h" * count, frames)
+        if channels == 2:
+            left = ints[0::2]
+            right = ints[1::2]
+            waveform = [(float(a) + float(b)) / 65536.0 for a, b in zip(left, right)]
+        else:
+            waveform = [float(v) / 32768.0 for v in ints]
+        if len(waveform) == 0:
+            raise AsrInputError("a wave payload must be non-empty")
+        return waveform
+    except Exception as error:
+        if isinstance(error, AsrInputError):
+            raise
+        pass
+    if len(payload) % 2 != 0:
+        raise AsrInputError("a raw payload must carry whole 16-bit samples")
+    count_raw = len(payload) // 2
+    if count_raw == 0:
+        raise AsrInputError("an audio payload must be non-empty")
+    ints_raw = struct_mod.unpack("<" + "h" * count_raw, payload)
+    waveform_raw = [float(v) / 32768.0 for v in ints_raw]
+    return waveform_raw
+
+class TransformersWhisperBackend:
+    """Local-only Transformers Whisper backend bound to the pinned snapshot."""
+
+    def __init__(self, snapshot_dir, manifest):
+        """Load processor and model from the verified local snapshot only."""
+        verified = verify_manifest(manifest)
+        snapshot_path = verify_local_snapshot(snapshot_dir, verified)
+        transformers_mod, torch_mod = _require_asr_runtime()
+        snapshot_text = str(snapshot_path)
+        if snapshot_text == MODEL_ID:
+            raise AsrInputError("a model id is never a local snapshot path")
+        try:
+            processor = transformers_mod.WhisperProcessor.from_pretrained(
+                snapshot_text,
+                local_files_only=True,
+                trust_remote_code=False,
+            )
+        except Exception as error:
+            raise AsrBackendError("the local processor failed to load") from error
+        try:
+            model = transformers_mod.WhisperForConditionalGeneration.from_pretrained(
+                snapshot_text,
+                local_files_only=True,
+                trust_remote_code=False,
+                torch_dtype=torch_mod.float32,
+            )
+        except Exception as error:
+            raise AsrBackendError("the local model failed to load") from error
+        try:
+            model.to("cpu")
+        except Exception as error:
+            raise AsrBackendError("the local model device failed") from error
+        try:
+            model.eval()
+        except Exception as error:
+            raise AsrBackendError("the local model eval failed") from error
+        self._snapshot_path = snapshot_path
+        self._manifest = verified
+        self._processor = processor
+        self._model = model
+        self._transformers = transformers_mod
+        self._torch = torch_mod
+
+    def __call__(self, audio_bytes, manifest, requested_language):
+        """Run local inference and return a validation-ready tuple."""
+        verified = verify_manifest(manifest)
+        if verified.to_document() != self._manifest.to_document():
+            raise AsrManifestError("the backend manifest drifted from the loaded snapshot")
+        requested = _admit_requested_language(requested_language)
+        payload = _admit_audio_bytes(audio_bytes)
+        waveform = _audio_bytes_to_waveform(payload)
+        if len(waveform) == 0:
+            raise AsrBackendError("a backend waveform must be non-empty")
+        try:
+            inputs = self._processor(
+                waveform,
+                sampling_rate=SAMPLES_PER_SECOND,
+                return_tensors="pt",
+            )
+        except Exception as error:
+            raise AsrBackendError("the local processor failed") from error
+        try:
+            features = inputs["input_features"].to("cpu")
+        except Exception as error:
+            raise AsrBackendError("a backend feature payload is not admitted") from error
+        try:
+            with self._torch.no_grad():
+                generated = self._model.generate(features)
+        except Exception as error:
+            raise AsrBackendError("the local model failed to transcribe") from error
+        try:
+            texts = self._processor.batch_decode(generated, skip_special_tokens=True)
+        except Exception as error:
+            raise AsrBackendError("the local decode failed") from error
+        raw_text = texts[0] if len(texts) > 0 else ""
+        transcript = raw_text.strip()
+        if requested == "auto":
+            detected = "unknown"
+        elif requested in ("ar", "en"):
+            detected = requested
+        else:
+            detected = "unknown"
+        if transcript == "":
+            return ("failed", "", (), detected, "real backend produced no transcript")
+        duration = float(len(waveform)) / float(SAMPLES_PER_SECOND)
+        if duration <= 0.0:
+            duration = float(len(payload)) / float(SAMPLES_PER_SECOND)
+        if duration <= 0.0:
+            raise AsrBackendError("a backend duration must be positive")
+        if duration > MAXIMUM_SEGMENT_SECONDS:
+            duration = MAXIMUM_SEGMENT_SECONDS
+        segment = AsrSegment(index=0, start_s=0.0, end_s=duration, text=transcript).validated()
+        return ("success", transcript, (segment,), detected, "")
+
+def transcribe_with_transformers(
+    workspace_id,
+    session_id,
+    input_id,
+    input_revision,
+    audio_bytes,
+    requested_language,
+    input_occurred_at,
+    result_occurred_at,
+    manifest,
+    snapshot_dir,
+):
+    """Transcribe through the real local backend under the protected contract."""
+    verified = verify_manifest(manifest)
+    backend = TransformersWhisperBackend(snapshot_dir, verified)
+    return transcribe_with_backend(
+        workspace_id,
+        session_id,
+        input_id,
+        input_revision,
+        audio_bytes,
+        requested_language,
+        input_occurred_at,
+        result_occurred_at,
+        verified,
+        True,
+        verified.model_revision,
+        False,
+        True,
+        False,
+        backend,
+    )
+
+
+def adapter_contract_version():
+    """Return the governed adapter contract version."""
+    return ADAPTER_CONTRACT_VERSION

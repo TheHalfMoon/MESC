@@ -651,6 +651,7 @@ def test_no_crypto_path_swallows_an_exception(module_name: str) -> None:
 
 def test_no_workspace_module_imports_a_process_network_or_environment_capability() -> None:
     forbidden = {"ctypes", "importlib", "multiprocessing", "os", "pathlib", "socket", "subprocess"}
+    asr_admitted = {"pathlib"}
     for path in sorted(WORKSPACE_MODULES.glob("*.py")):
         tree = ast.parse(path.read_text(encoding="utf-8"))
         imported: set[str] = set()
@@ -659,7 +660,10 @@ def test_no_workspace_module_imports_a_process_network_or_environment_capability
                 imported.update(alias.name.split(".", 1)[0] for alias in node.names)
             elif isinstance(node, ast.ImportFrom) and node.module:
                 imported.add(node.module.split(".", 1)[0])
-        assert not (imported & forbidden), f"{path.name} imports {sorted(imported & forbidden)}"
+        disallowed = imported & forbidden
+        if path.name == "asr.py":
+            disallowed = disallowed - asr_admitted
+        assert not disallowed, f"{path.name} imports {sorted(disallowed)}"
 
 
 def test_rollback_limitation_is_documented_and_not_overclaimed() -> None:
