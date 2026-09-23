@@ -202,3 +202,31 @@ class AsrBackendError(AsrError):
 
 class AsrConflictError(AsrError):
     """A transcript identity was replayed instead of stored exactly once."""
+
+
+class DraftError(WorkspaceStoreError):
+    pass
+
+
+class DraftInputError(DraftError):
+    pass
+
+
+class DraftRevisionError(DraftInputError):
+    pass
+
+
+class DraftTemplateError(DraftError):
+    pass
+
+
+class DraftSupportError(DraftError):
+    pass
+
+
+class DraftBackendError(DraftError):
+    pass
+
+
+class DraftConflictError(DraftError):
+    pass
