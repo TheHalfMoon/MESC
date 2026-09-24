@@ -32,6 +32,13 @@ class WorkspaceObjectType(StrEnum):
     # and finalization revisions live in the same workspace store as the
     # drafts they review, with lineage bound to the reviewed draft.
     CLINICAL_REVIEW = "ClinicalReview"
+    # CW-009 (Issue #490) admits the evidence corpus classes so corpus
+    # sources, retrieval snapshots, queries, and result sets live in the
+    # same workspace store as the objects they describe.
+    EVIDENCE_CORPUS_SOURCE = "EvidenceCorpusSource"
+    EVIDENCE_SNAPSHOT = "EvidenceSnapshot"
+    EVIDENCE_QUERY = "EvidenceQuery"
+    EVIDENCE_RESULT = "EvidenceResult"
 
 
 @dataclass(frozen=True, slots=True)
