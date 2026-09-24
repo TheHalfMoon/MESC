@@ -230,3 +230,31 @@ class DraftBackendError(DraftError):
 
 class DraftConflictError(DraftError):
     pass
+
+
+class ReviewError(WorkspaceStoreError):
+    """Base class for every CW-008 human review and finalization failure."""
+
+
+class ReviewInputError(ReviewError):
+    """A review identity, actor, timestamp, or document member was refused."""
+
+
+class ReviewRevisionError(ReviewInputError):
+    """A review revision identity, lineage, or parent precondition was refused."""
+
+
+class ReviewTransitionError(ReviewError):
+    """A review state transition violated the deterministic state machine."""
+
+
+class ReviewSupportError(ReviewError):
+    """A span support claim inside a review revision failed mechanical checks."""
+
+
+class ReviewSuggestionError(ReviewError):
+    """An order/code/task suggestion identity, decision, or mutation was refused."""
+
+
+class ReviewConflictError(ReviewError):
+    """A review revision identity already exists and cannot be overwritten."""

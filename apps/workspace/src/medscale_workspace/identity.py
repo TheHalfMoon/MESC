@@ -28,6 +28,10 @@ class WorkspaceObjectType(StrEnum):
     # draft results live in the same workspace store as the transcripts
     # they are validated against.
     CLINICAL_DRAFT = "ClinicalDraft"
+    # CW-008 (Issue #487) admits the clinical review class so human review
+    # and finalization revisions live in the same workspace store as the
+    # drafts they review, with lineage bound to the reviewed draft.
+    CLINICAL_REVIEW = "ClinicalReview"
 
 
 @dataclass(frozen=True, slots=True)
