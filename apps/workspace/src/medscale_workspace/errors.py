@@ -258,3 +258,47 @@ class ReviewSuggestionError(ReviewError):
 
 class ReviewConflictError(ReviewError):
     """A review revision identity already exists and cannot be overwritten."""
+
+
+class CorpusError(WorkspaceStoreError):
+    """Base class for every CW-009 evidence corpus and retrieval failure."""
+
+
+class CorpusInputError(CorpusError):
+    """A corpus identity, source field, actor, or timestamp was refused."""
+
+
+class CorpusRevisionError(CorpusInputError):
+    """A corpus source revision identity or lineage precondition was refused."""
+
+
+class CorpusConflictError(CorpusError):
+    """A corpus source identity already exists and cannot be overwritten."""
+
+
+class SnapshotError(WorkspaceStoreError):
+    """Base class for every CW-009 retrieval snapshot failure."""
+
+
+class SnapshotInputError(SnapshotError):
+    """A snapshot identity, manifest member, or parameter was refused."""
+
+
+class SnapshotConflictError(SnapshotError):
+    """A snapshot identity already exists and cannot be overwritten."""
+
+
+class RetrievalError(WorkspaceStoreError):
+    """Base class for every CW-009 query execution and replay failure."""
+
+
+class RetrievalInputError(RetrievalError):
+    """A query identity, parameter, or document member was refused."""
+
+
+class RetrievalReplayError(RetrievalError):
+    """A deterministic replay precondition failed or a replay diverged."""
+
+
+class RetrievalConflictError(RetrievalError):
+    """A query or result identity already exists and cannot be overwritten."""
