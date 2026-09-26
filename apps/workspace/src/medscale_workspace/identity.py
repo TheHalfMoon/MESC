@@ -47,6 +47,13 @@ class WorkspaceObjectType(StrEnum):
     EVIDENCE_CLAIM_SET = "EvidenceClaimSet"
     EVIDENCE_CLAIM_LINK = "EvidenceClaimLink"
     EVIDENCE_ASSESSMENT = "EvidenceAssessment"
+    # CW-011 (Issue #498) admits the longitudinal patient graph classes so nodes,
+    # edges, and derived graph views live in the same workspace store as the
+    # corpus sources they are derived from. Graph state is derived, never
+    # authoritative; source objects remain the truth.
+    GRAPH_NODE = "PatientGraphNode"
+    GRAPH_EDGE = "PatientGraphEdge"
+    GRAPH_VIEW = "PatientGraphView"
 
 
 @dataclass(frozen=True, slots=True)
