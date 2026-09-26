@@ -354,3 +354,27 @@ class StrengthReplayError(StrengthError):
 
 class StrengthConflictError(StrengthError):
     """An assessment identity already exists and cannot be overwritten."""
+
+
+class GraphError(WorkspaceStoreError):
+    """Base class for every CW-011 longitudinal patient graph failure."""
+
+
+class GraphInputError(GraphError):
+    """A graph node, edge, view, relationship, epistemic, or parameter was refused."""
+
+
+class GraphRevisionError(GraphInputError):
+    """A graph identity, lineage, source revision, or digest precondition was refused."""
+
+
+class GraphConflictError(GraphError):
+    """A graph node, edge, or view identity already exists and cannot be overwritten."""
+
+
+class GraphStaleError(GraphError):
+    """Derived graph state no longer matches its authoritative sources and was refused."""
+
+
+class GraphPathError(GraphError):
+    """A graph path/explain request could not be satisfied fail-closed."""
