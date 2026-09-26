@@ -77,6 +77,10 @@ class AuditEventType(StrEnum):
     TRANSCRIPT_DELETE = "transcript_delete"
     AI_GENERATION = "ai_generation"
     EVIDENCE_QUERY = "evidence_query"
+    # CW-010 (Issue #495) admits the assessment event so a recorded strength
+    # verdict is an explicit chained audit event carrying the verdict and the
+    # evidence method, never the assessed clinical text.
+    EVIDENCE_ASSESSMENT = "evidence_assessment"
     EXPORT = "export"
     CONNECTOR_READ = "connector_read"
     CONNECTOR_WRITE = "connector_write"
