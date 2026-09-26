@@ -302,3 +302,55 @@ class RetrievalReplayError(RetrievalError):
 
 class RetrievalConflictError(RetrievalError):
     """A query or result identity already exists and cannot be overwritten."""
+
+
+class ClaimError(WorkspaceStoreError):
+    """Base class for every CW-010 claim-set decomposition failure."""
+
+
+class ClaimInputError(ClaimError):
+    """A claim-set identity, answer field, claim field, or citation was refused."""
+
+
+class ClaimRevisionError(ClaimInputError):
+    """A claim-set revision identity or lineage precondition was refused."""
+
+
+class ClaimConflictError(ClaimError):
+    """A claim-set identity already exists and cannot be overwritten."""
+
+
+class LinkError(WorkspaceStoreError):
+    """Base class for every CW-010 claim-source link failure."""
+
+
+class LinkInputError(LinkError):
+    """A link identity, binding, stance, range, actor, or timestamp was refused."""
+
+
+class LinkRevisionError(LinkInputError):
+    """A linked source, snapshot, query, or result revision precondition was refused."""
+
+
+class LinkConflictError(LinkError):
+    """A claim-source link identity already exists and cannot be overwritten."""
+
+
+class StrengthError(WorkspaceStoreError):
+    """Base class for every CW-010 evidence-strength assessment failure."""
+
+
+class StrengthInputError(StrengthError):
+    """An assessment identity, method, date, limit, reason, or parameter was refused."""
+
+
+class StrengthVerdictError(StrengthError):
+    """A verdict contradicted its linked evidence stances or freshness state."""
+
+
+class StrengthReplayError(StrengthError):
+    """A stored assessment no longer verifies against its linked evidence."""
+
+
+class StrengthConflictError(StrengthError):
+    """An assessment identity already exists and cannot be overwritten."""

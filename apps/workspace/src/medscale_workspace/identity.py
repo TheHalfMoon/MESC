@@ -39,6 +39,14 @@ class WorkspaceObjectType(StrEnum):
     EVIDENCE_SNAPSHOT = "EvidenceSnapshot"
     EVIDENCE_QUERY = "EvidenceQuery"
     EVIDENCE_RESULT = "EvidenceResult"
+    # CW-010 (Issue #495) admits the claim-source and evidence-strength classes so
+    # claim sets, claim-source links, and strength assessments live in the same
+    # workspace store as the corpus sources and snapshots they are validated
+    # against. A citation string alone is never a link; only a stored link object
+    # counts as SOURCE_LINKED evidence.
+    EVIDENCE_CLAIM_SET = "EvidenceClaimSet"
+    EVIDENCE_CLAIM_LINK = "EvidenceClaimLink"
+    EVIDENCE_ASSESSMENT = "EvidenceAssessment"
 
 
 @dataclass(frozen=True, slots=True)
