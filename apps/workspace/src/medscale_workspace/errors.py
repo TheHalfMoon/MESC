@@ -398,3 +398,23 @@ class LinkedConflictError(LinkedError):
 
 class LinkedStaleError(LinkedError):
     """A linked member or source is no longer current and was refused."""
+
+
+class FhirError(WorkspaceStoreError):
+    """Base class for every CW-013 bounded FHIR R4 import/export failure."""
+
+
+class FhirInputError(FhirError):
+    """A FHIR resource identity, payload, field, reference, or parameter was refused."""
+
+
+class FhirRevisionError(FhirInputError):
+    """A FHIR identity, lineage, binding, reference, or version precondition was refused."""
+
+
+class FhirConflictError(FhirError):
+    """A FHIR resource identity already exists and cannot be overwritten."""
+
+
+class FhirStaleError(FhirError):
+    """An admitted FHIR resource, binding, or reference is no longer current and was refused."""
