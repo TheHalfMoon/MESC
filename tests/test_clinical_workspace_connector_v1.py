@@ -50,17 +50,24 @@ QUERY = "Observation?patient=pat-001"
 class FixtureTransport:
     """Deterministic in-memory fixture transport with scripted behavior."""
 
-    def __init__(self, payload=None, source_version="1", failures=()):
-        self.payload = {"synthetic": "response"} if payload is None else payload
+    def __init__(
+        self,
+        payload: dict[str, object] | None = None,
+        source_version: str = "1",
+        failures: tuple[object, ...] = (),
+    ) -> None:
+        self.payload: dict[str, object] = {"synthetic": "response"} if payload is None else payload
         self.source_version = source_version
-        self.failures = list(failures)
-        self.calls = []
+        self.failures: list[object] = list(failures)
+        self.calls: list[dict[str, object]] = []
 
-    def fetch(self, *, destination, query, timeout_ms):
+    def fetch(self, *, destination: str, query: str, timeout_ms: int) -> dict[str, object]:
         self.calls.append({"destination": destination, "query": query, "timeout_ms": timeout_ms})
         if self.failures:
             behavior = self.failures.pop(0)
-            raise behavior
+            if isinstance(behavior, BaseException):
+                raise behavior
+            raise TransportTemporaryError("scripted transport failure")
         return {
             "source_version": self.source_version,
             "retrieved_at": T1,
@@ -77,8 +84,8 @@ def open_store(root: Path, workspace_id: UUID = WORKSPACE_ALPHA) -> WorkspaceSto
     )
 
 
-def admit_manifest(**overrides):
-    arguments = {
+def admit_manifest(**overrides: object) -> connector_mod.ConnectorManifest:
+    arguments: dict[str, object] = {
         "manifest_name": "synthetic-connector",
         "manifest_version": "1",
         "capabilities": (connector_mod.ConnectorCapability.READ_FHIR,),
@@ -151,10 +158,10 @@ def test_timeout_retry_bounds_and_offline_state(tmp_path: Path) -> None:
         trail = AuditTrail(store)
         manifest = admit_manifest()
         flaky = FixtureTransport(
-            failures=[
+            failures=(
                 TransportTemporaryError("boom"),
                 TransportTemporaryError("boom"),
-            ]
+            )
         )
         binding = connector_mod.fetch_envelope(
             store,
@@ -172,11 +179,11 @@ def test_timeout_retry_bounds_and_offline_state(tmp_path: Path) -> None:
         assert all(item["timeout_ms"] == 1000 for item in flaky.calls)
         assert binding.object_id is not None
         down = FixtureTransport(
-            failures=[
+            failures=(
                 TransportTemporaryError("boom"),
                 TransportTemporaryError("boom"),
                 TransportTemporaryError("boom"),
-            ]
+            )
         )
         with pytest.raises(ConnectorRevisionError):
             connector_mod.fetch_envelope(
@@ -258,11 +265,18 @@ def test_stale_version_metadata_yields_new_identity(tmp_path: Path) -> None:
 class RawTransport:
     """Fixture transport returning a fixed raw response object verbatim."""
 
-    def __init__(self, raw):
+    def __init__(self, raw: object) -> None:
         self.raw = raw
 
-    def fetch(self, *, destination, query, timeout_ms):
+    def fetch(self, *, destination: str, query: str, timeout_ms: int) -> object:
         return self.raw
+
+
+class RejectingTransport:
+    """Fixture transport refusing every fetch as a permanent failure."""
+
+    def fetch(self, *, destination: str, query: str, timeout_ms: int) -> object:
+        raise TransportPermanentError("rejected")
 
 
 def test_malformed_responses_fail_explicitly(tmp_path: Path) -> None:
@@ -305,10 +319,7 @@ def test_malformed_responses_fail_explicitly(tmp_path: Path) -> None:
                     ACTOR,
                     T1,
                 )
-        permanent = FixtureTransport()
-        permanent.fetch = lambda **kwargs: (_ for _ in ()).throw(
-            TransportPermanentError("rejected")
-        )
+        permanent = RejectingTransport()
         with pytest.raises(ConnectorInputError):
             connector_mod.fetch_envelope(
                 store,

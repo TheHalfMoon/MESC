@@ -45,19 +45,31 @@ FAKE_SECRET = "fixture-secret-9f8e7d6c5b4a39482716"
 class FixtureTransport:
     """Deterministic in-memory fixture transport holding a secret it must not leak."""
 
-    def __init__(self, payload=None, source_version="1"):
+    def __init__(self, payload: dict[str, object] | None = None, source_version: str = "1") -> None:
         self.secret = FAKE_SECRET
-        self.payload = {"synthetic": "response"} if payload is None else payload
+        self.payload: dict[str, object] = {"synthetic": "response"} if payload is None else payload
         self.source_version = source_version
-        self.calls = []
+        self.calls: list[dict[str, object]] = []
 
-    def fetch(self, *, destination, query, timeout_ms):
+    def fetch(self, *, destination: str, query: str, timeout_ms: int) -> dict[str, object]:
         self.calls.append({"destination": destination, "query": query, "timeout_ms": timeout_ms})
         return {
             "source_version": self.source_version,
             "retrieved_at": T1,
             "payload": self.payload,
         }
+
+
+class ScriptedTransport:
+    """Fixture transport replaying fixed raw responses in order."""
+
+    def __init__(self, responses: list[object]) -> None:
+        self.responses = list(responses)
+        self.calls: list[dict[str, object]] = []
+
+    def fetch(self, *, destination: str, query: str, timeout_ms: int) -> object:
+        self.calls.append({"destination": destination, "query": query, "timeout_ms": timeout_ms})
+        return self.responses.pop(0)
 
 
 def open_store(root: Path, workspace_id: UUID = WORKSPACE_ALPHA) -> WorkspaceStore:
@@ -69,8 +81,8 @@ def open_store(root: Path, workspace_id: UUID = WORKSPACE_ALPHA) -> WorkspaceSto
     )
 
 
-def admit_manifest(**overrides):
-    arguments = {
+def admit_manifest(**overrides: object) -> connector_mod.ConnectorManifest:
+    arguments: dict[str, object] = {
         "manifest_name": "synthetic-connector",
         "manifest_version": "1",
         "capabilities": (connector_mod.ConnectorCapability.READ_FHIR,),
@@ -247,35 +259,14 @@ def test_bad_response_metadata_refused(tmp_path: Path) -> None:
     with open_store(tmp_path) as store:
         trail = AuditTrail(store)
         manifest = admit_manifest()
-        for bad_response, query in (
-            (
-                {"source_version": "", "retrieved_at": T1, "payload": {"ok": True}},
-                "q-meta-1",
-            ),
-            (
-                {"source_version": "v" * 65, "retrieved_at": T1, "payload": {"ok": True}},
-                "q-meta-2",
-            ),
-            (
-                {"source_version": "1", "retrieved_at": "not-a-time", "payload": {"ok": True}},
-                "q-meta-3",
-            ),
-            (
-                {"source_version": "1", "retrieved_at": T1, "payload": {"ok": "x" * 2000}},
-                "q-meta-4",
-            ),
-        ):
-            transport = FixtureTransport()
-            transport.payload = bad_response["payload"]
-            transport.source_version = bad_response["source_version"]
-
-            def fetch(*, destination, query, timeout_ms, _t=transport, _r=bad_response):
-                _t.calls.append(
-                    {"destination": destination, "query": query, "timeout_ms": timeout_ms}
-                )
-                return dict(_r)
-
-            transport.fetch = fetch
+        bad_responses: list[object] = [
+            {"source_version": "", "retrieved_at": T1, "payload": {"ok": True}},
+            {"source_version": "v" * 65, "retrieved_at": T1, "payload": {"ok": True}},
+            {"source_version": "1", "retrieved_at": "not-a-time", "payload": {"ok": True}},
+            {"source_version": "1", "retrieved_at": T1, "payload": {"ok": "x" * 2000}},
+        ]
+        for index, bad_response in enumerate(bad_responses):
+            transport = ScriptedTransport([bad_response])
             with pytest.raises(ConnectorInputError):
                 connector_mod.fetch_envelope(
                     store,
@@ -284,7 +275,7 @@ def test_bad_response_metadata_refused(tmp_path: Path) -> None:
                     manifest,
                     transport,
                     DESTINATION,
-                    query,
+                    f"q-meta-{index + 1}",
                     connector_mod.ConnectorCapability.READ_FHIR,
                     ACTOR,
                     T1,
