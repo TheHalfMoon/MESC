@@ -66,6 +66,11 @@ class WorkspaceObjectType(StrEnum):
     # the objects they are derived from. Resources are immutable revisions;
     # export artifacts are computed manifests, never stored objects.
     FHIR_RESOURCE = "FhirResource"
+    # CW-014 (Issue #507) admits the connector envelope class so immutable
+    # read-only connector fetch results live in the same workspace store as
+    # the manifests they were fetched under. Manifests are caller-held
+    # validated values, never stored objects; only envelopes are stored.
+    CONNECTOR_ENVELOPE = "ConnectorEnvelope"
 
 
 @dataclass(frozen=True, slots=True)
