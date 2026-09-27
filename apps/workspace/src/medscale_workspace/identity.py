@@ -61,6 +61,11 @@ class WorkspaceObjectType(StrEnum):
     LINKED_DOCUMENT = "LinkedDocument"
     LINKED_TABLE = "LinkedTable"
     WORKSPACE_LINK = "WorkspaceLink"
+    # CW-013 (Issue #504) admits the bounded FHIR R4 resource class so locally
+    # validated synthetic FHIR resources live in the same workspace store as
+    # the objects they are derived from. Resources are immutable revisions;
+    # export artifacts are computed manifests, never stored objects.
+    FHIR_RESOURCE = "FhirResource"
 
 
 @dataclass(frozen=True, slots=True)
