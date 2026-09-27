@@ -45,6 +45,10 @@ class SourceKind(StrEnum):
     MODEL_GENERATION = "model_generation"
     HUMAN_EDIT = "human_edit"
     IMPORT = "import"
+    # CW-014 (Issue #507) admits the connector response class so envelopes
+    # fetched through the read-only connector framework trace to the
+    # connector fetch that produced them.
+    CONNECTOR_RESPONSE = "connector_response"
 
 
 class ProducerKind(StrEnum):

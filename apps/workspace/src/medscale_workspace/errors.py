@@ -418,3 +418,35 @@ class FhirConflictError(FhirError):
 
 class FhirStaleError(FhirError):
     """An admitted FHIR resource, binding, or reference is no longer current and was refused."""
+
+
+class ConnectorError(WorkspaceStoreError):
+    """Base class for every CW-014 read-only connector framework failure."""
+
+
+class ConnectorInputError(ConnectorError):
+    """A connector manifest, destination, query, capability, response, or parameter was refused."""
+
+
+class ConnectorRevisionError(ConnectorInputError):
+    """A connector identity, version, retry, or transport precondition was refused."""
+
+
+class ConnectorConflictError(ConnectorError):
+    """A connector envelope identity already exists and cannot be overwritten."""
+
+
+class ConnectorStaleError(ConnectorError):
+    """An admitted connector envelope is no longer current and was refused."""
+
+
+class ConnectorOfflineError(ConnectorError):
+    """A connector fetch was refused because the connector declares offline state."""
+
+
+class TransportTemporaryError(ConnectorError):
+    """A fixture transport reports a retryable failure; raised by transports only."""
+
+
+class TransportPermanentError(ConnectorError):
+    """A fixture transport reports a non-retryable failure; raised by transports only."""
