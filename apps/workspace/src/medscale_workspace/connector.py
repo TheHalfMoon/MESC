@@ -433,7 +433,10 @@ def fetch_envelope(
     admitted_query = _admit_query(query)
     actor = _admit_identifier(actor_id, "actor id")
     moment = _admit_occurred_at(occurred_at)
-    fetch = getattr(transport, "fetch", None)
+    try:
+        fetch = transport.fetch
+    except AttributeError as error:
+        raise ConnectorInputError("a fixture transport needs a fetch method") from error
     if not callable(fetch):
         raise ConnectorInputError("a fixture transport needs a fetch method")
     attempts = 1 + admitted.max_retries
