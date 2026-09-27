@@ -378,3 +378,23 @@ class GraphStaleError(GraphError):
 
 class GraphPathError(GraphError):
     """A graph path/explain request could not be satisfied fail-closed."""
+
+
+class LinkedError(WorkspaceStoreError):
+    """Base class for every CW-012 linked workspace object failure."""
+
+
+class LinkedInputError(LinkedError):
+    """A linked document, table, link, member, or parameter was refused."""
+
+
+class LinkedRevisionError(LinkedInputError):
+    """A linked identity, lineage, member, source revision, or digest precondition was refused."""
+
+
+class LinkedConflictError(LinkedError):
+    """A linked document, table, or link identity already exists and cannot be overwritten."""
+
+
+class LinkedStaleError(LinkedError):
+    """A linked member or source is no longer current and was refused."""

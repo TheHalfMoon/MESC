@@ -54,6 +54,13 @@ class WorkspaceObjectType(StrEnum):
     GRAPH_NODE = "PatientGraphNode"
     GRAPH_EDGE = "PatientGraphEdge"
     GRAPH_VIEW = "PatientGraphView"
+    # CW-012 (Issue #501) admits the linked workspace object classes so
+    # documents, tables, and cross-object links live in the same workspace
+    # store as the graph and corpus objects they are derived from. Links are
+    # derived state over stable object identities, never an independent truth.
+    LINKED_DOCUMENT = "LinkedDocument"
+    LINKED_TABLE = "LinkedTable"
+    WORKSPACE_LINK = "WorkspaceLink"
 
 
 @dataclass(frozen=True, slots=True)
