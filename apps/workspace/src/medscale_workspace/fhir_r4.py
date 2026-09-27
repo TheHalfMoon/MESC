@@ -594,45 +594,59 @@ def validate_payload(resource_type, fhir_id, payload_text):
     if not isinstance(resource_type, FhirResourceType):
         raise FhirInputError("a FHIR resource type is not admitted here")
     admitted_id = _admit_identifier(fhir_id, "FHIR resource id")
+    if isinstance(payload_text, str) and len(payload_text.encode("utf-8")) > MAXIMUM_RESOURCE_BYTES:
+        return _parse_failed_report(
+            resource_type, admitted_id, "the payload exceeds the admitted resource size"
+        )
     try:
         payload = json.loads(payload_text)
     except (TypeError, json.JSONDecodeError):
-        return ValidationReport(
-            resource_type=resource_type,
-            fhir_id=admitted_id,
-            stages=(
-                ValidationStage(
-                    stage="parse",
-                    passed=False,
-                    evaluated=True,
-                    detail="the payload is not JSON",
-                ),
-                ValidationStage(
-                    stage="structure",
-                    passed=False,
-                    evaluated=False,
-                    detail="structure was not evaluated because parsing failed",
-                ),
-                ValidationStage(
-                    stage="profile",
-                    passed=False,
-                    evaluated=False,
-                    detail="profile was not evaluated because parsing failed",
-                ),
-                ValidationStage(
-                    stage="reference",
-                    passed=False,
-                    evaluated=False,
-                    detail="reference needs a workspace store",
-                ),
-                ValidationStage(
-                    stage="provenance",
-                    passed=False,
-                    evaluated=False,
-                    detail="provenance needs a workspace store",
-                ),
+        return _parse_failed_report(resource_type, admitted_id, "the payload is not JSON")
+    return _validate_parsed_payload(resource_type, admitted_id, payload)
+
+
+def _parse_failed_report(resource_type, fhir_id, detail):
+    """Return a parse-stage refusal with later stages unevaluated."""
+    return ValidationReport(
+        resource_type=resource_type,
+        fhir_id=fhir_id,
+        stages=(
+            ValidationStage(
+                stage="parse",
+                passed=False,
+                evaluated=True,
+                detail=detail,
             ),
-        )
+            ValidationStage(
+                stage="structure",
+                passed=False,
+                evaluated=False,
+                detail="structure was not evaluated because parsing failed",
+            ),
+            ValidationStage(
+                stage="profile",
+                passed=False,
+                evaluated=False,
+                detail="profile was not evaluated because parsing failed",
+            ),
+            ValidationStage(
+                stage="reference",
+                passed=False,
+                evaluated=False,
+                detail="reference needs a workspace store",
+            ),
+            ValidationStage(
+                stage="provenance",
+                passed=False,
+                evaluated=False,
+                detail="provenance needs a workspace store",
+            ),
+        ),
+    )
+
+
+def _validate_parsed_payload(resource_type, admitted_id, payload):
+    """Validate the structure and profile stages of an already-parsed payload."""
     try:
         _check_structure(resource_type, admitted_id, payload)
     except FhirInputError as error:

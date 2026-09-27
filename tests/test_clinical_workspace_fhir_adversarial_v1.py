@@ -277,6 +277,27 @@ def test_export_path_escape_refused(tmp_path: Path) -> None:
             )
 
 
+def test_oversized_payload_refused_at_parse_stage(tmp_path: Path) -> None:
+    oversized = '"' + "y" * (fhir_mod.MAXIMUM_RESOURCE_BYTES + 1) + '"'
+    report = fhir_mod.validate_payload(fhir_mod.FhirResourceType.OBSERVATION, "obs-001", oversized)
+    assert report.stage("parse").passed is False
+    assert report.stage("structure").evaluated is False
+    with open_store(tmp_path) as store:
+        trail = AuditTrail(store)
+        admit_patient(store, trail)
+        with pytest.raises(FhirInputError):
+            fhir_mod.admit_resource(
+                store,
+                trail,
+                WORKSPACE_ALPHA,
+                fhir_mod.FhirResourceType.OBSERVATION,
+                "obs-001",
+                oversized,
+                ACTOR,
+                T1,
+            )
+
+
 def test_no_network_or_model_surface_in_module() -> None:
     source = (
         REPOSITORY_ROOT / "apps" / "workspace" / "src" / "medscale_workspace" / "fhir_r4.py"
