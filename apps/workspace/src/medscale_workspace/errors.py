@@ -450,3 +450,23 @@ class TransportTemporaryError(ConnectorError):
 
 class TransportPermanentError(ConnectorError):
     """A fixture transport reports a non-retryable failure; raised by transports only."""
+
+
+class AnalyticsError(WorkspaceStoreError):
+    """Base class for every CW-015 local workspace analytics failure."""
+
+
+class AnalyticsInputError(AnalyticsError):
+    """A metric name, version, review identity, actor, timestamp, or parameter was refused."""
+
+
+class AnalyticsRevisionError(AnalyticsInputError):
+    """An analytics identity, lineage, metric-version, or input precondition was refused."""
+
+
+class AnalyticsConflictError(AnalyticsError):
+    """An analytics result identity already exists and cannot be overwritten."""
+
+
+class AnalyticsStaleError(AnalyticsError):
+    """An admitted analytics input or result is no longer current and was refused."""

@@ -71,6 +71,11 @@ class WorkspaceObjectType(StrEnum):
     # the manifests they were fetched under. Manifests are caller-held
     # validated values, never stored objects; only envelopes are stored.
     CONNECTOR_ENVELOPE = "ConnectorEnvelope"
+    # CW-015 (Issue #510) admits the workspace analytics class so immutable
+    # locally computed operational aggregates live in the same workspace
+    # store as the review revisions they are derived from. Analytics results
+    # are derived Workspace-domain state, never research evidence.
+    WORKSPACE_ANALYTICS = "WorkspaceAnalytics"
 
 
 @dataclass(frozen=True, slots=True)
