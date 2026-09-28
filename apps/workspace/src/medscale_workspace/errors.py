@@ -470,3 +470,23 @@ class AnalyticsConflictError(AnalyticsError):
 
 class AnalyticsStaleError(AnalyticsError):
     """An admitted analytics input or result is no longer current and was refused."""
+
+
+class ResearchViewError(WorkspaceStoreError):
+    """Base class for every CW-016 research workspace view failure."""
+
+
+class ResearchViewInputError(ResearchViewError):
+    """A view descriptor, artifact identity, actor, timestamp, or parameter was refused."""
+
+
+class ResearchViewRevisionError(ResearchViewInputError):
+    """A view identity, lineage, interface-version, or revision precondition was refused."""
+
+
+class ResearchViewConflictError(ResearchViewError):
+    """A research view identity already exists and cannot be overwritten."""
+
+
+class ResearchViewStaleError(ResearchViewError):
+    """An admitted research view is no longer current and was refused."""

@@ -76,6 +76,11 @@ class WorkspaceObjectType(StrEnum):
     # store as the review revisions they are derived from. Analytics results
     # are derived Workspace-domain state, never research evidence.
     WORKSPACE_ANALYTICS = "WorkspaceAnalytics"
+    # CW-016 (Issue #513) admits the research view class so immutable pinned
+    # views of Research Core artifact identities live in the same workspace
+    # store as the descriptors they were admitted from. Views pin identities
+    # only; they never mutate Research Core and never carry patient context.
+    WORKSPACE_RESEARCH_VIEW = "WorkspaceResearchView"
 
 
 @dataclass(frozen=True, slots=True)
