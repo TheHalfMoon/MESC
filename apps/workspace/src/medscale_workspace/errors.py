@@ -490,3 +490,39 @@ class ResearchViewConflictError(ResearchViewError):
 
 class ResearchViewStaleError(ResearchViewError):
     """An admitted research view is no longer current and was refused."""
+
+
+class DatasetCollectionError(WorkspaceStoreError):
+    """Base class for every CW-017 dataset collection failure."""
+
+
+class DatasetCollectionInputError(DatasetCollectionError):
+    """A collection name, view identity, actor, timestamp, or parameter was refused."""
+
+
+class DatasetCollectionRevisionError(DatasetCollectionInputError):
+    """A collection identity, lineage, interface-version, or revision precondition was refused."""
+
+
+class DatasetCollectionConflictError(DatasetCollectionError):
+    """A dataset collection identity already exists and cannot be overwritten."""
+
+
+class DatasetCollectionStaleError(DatasetCollectionError):
+    """An admitted dataset collection is no longer current and was refused."""
+
+
+class ExportStagingError(WorkspaceStoreError):
+    """Base class for every CW-017 export staging failure."""
+
+
+class ExportStagingInputError(ExportStagingError):
+    """An export source, path, consent, rights, actor, timestamp, or parameter was refused."""
+
+
+class ExportStagingConflictError(ExportStagingError):
+    """An export manifest identity already exists and cannot be overwritten."""
+
+
+class ExportStagingStaleError(ExportStagingError):
+    """An admitted export manifest is no longer current and was refused."""

@@ -81,6 +81,14 @@ class WorkspaceObjectType(StrEnum):
     # store as the descriptors they were admitted from. Views pin identities
     # only; they never mutate Research Core and never carry patient context.
     WORKSPACE_RESEARCH_VIEW = "WorkspaceResearchView"
+    # CW-017 (Issue #516) admits the dataset collection and export manifest
+    # classes so immutable research dataset collections and Domain X export
+    # staging manifests live in the same workspace store as the pinned views
+    # and staged sources they were admitted from. Collections pin identities
+    # only and manifests stage references only; neither mutates Research Core
+    # and neither admits anything into it.
+    WORKSPACE_DATASET_COLLECTION = "WorkspaceDatasetCollection"
+    WORKSPACE_EXPORT_MANIFEST = "WorkspaceExportManifest"
 
 
 @dataclass(frozen=True, slots=True)
