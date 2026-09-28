@@ -53,6 +53,10 @@ class SourceKind(StrEnum):
     # computed operational aggregates trace to the exact stored review
     # revisions they were derived from, without becoming research evidence.
     ANALYTICS_INPUT = "analytics_input"
+    # CW-016 (Issue #513) admits the research artifact class so pinned
+    # workspace views trace to the exact versioned artifact identities they
+    # display, without mutating Research Core or admitting patient context.
+    RESEARCH_ARTIFACT_VIEW = "research_artifact_view"
 
 
 class ProducerKind(StrEnum):
