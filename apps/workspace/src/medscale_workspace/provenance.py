@@ -49,6 +49,10 @@ class SourceKind(StrEnum):
     # fetched through the read-only connector framework trace to the
     # connector fetch that produced them.
     CONNECTOR_RESPONSE = "connector_response"
+    # CW-015 (Issue #510) admits the analytics input class so locally
+    # computed operational aggregates trace to the exact stored review
+    # revisions they were derived from, without becoming research evidence.
+    ANALYTICS_INPUT = "analytics_input"
 
 
 class ProducerKind(StrEnum):
