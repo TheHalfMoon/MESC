@@ -724,6 +724,7 @@ def test_m1_migration_is_atomic_under_a_mid_transaction_crash(
             available_bytes=PLENTY,
             actor_id=ACTOR,
             occurred_at=T2,
+            acknowledge_unsealed_legacy_state=True,
         )
     monkeypatch.undo()
     connection = sqlite3.connect(path)
@@ -746,6 +747,7 @@ def test_m1_migration_is_atomic_under_a_mid_transaction_crash(
         available_bytes=PLENTY,
         actor_id=ACTOR,
         occurred_at=T3,
+        acknowledge_unsealed_legacy_state=True,
     )
     assert report.state is JournalState.COMPLETED
     with pytest.raises(MigrationError, match="already at the current"):
@@ -758,6 +760,7 @@ def test_m1_migration_is_atomic_under_a_mid_transaction_crash(
             available_bytes=PLENTY,
             actor_id=ACTOR,
             occurred_at=T3,
+            acknowledge_unsealed_legacy_state=True,
         )
 
 

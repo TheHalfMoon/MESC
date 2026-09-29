@@ -1455,6 +1455,7 @@ def migrate_schema_to_current(
     available_bytes: int,
     actor_id: str,
     occurred_at: str,
+    acknowledge_unsealed_legacy_state: bool = False,
 ) -> MigrationReport:
     """Run the M1 additive migrations up to the current workspace schema.
 
@@ -1464,7 +1465,22 @@ def migrate_schema_to_current(
     migration simply runs again. The declared rollback class is forward repair: once a
     newer schema is committed, an application that reads only older schemas refuses the
     store rather than guessing.
+
+    Schema-1 and schema-2 stores carry no integrity seal, so nothing in the file can prove
+    that such a store was not produced by stripping the seal from a schema-3 store and
+    then tampering with it. The first seal is written over whatever the store holds, so
+    migration is refused unless the caller explicitly acknowledges that it is sealing
+    unverified legacy state (``acknowledge_unsealed_legacy_state=True``). A store that was
+    already at schema 3 and now presents as legacy must be treated as compromised and
+    recovered from a verified backup instead (recovery runbook section 5.0).
     """
+
+    if acknowledge_unsealed_legacy_state is not True:
+        raise MigrationError(
+            "migrating an unsealed schema-1 or schema-2 store seals state that cannot be "
+            "verified; pass acknowledge_unsealed_legacy_state=True only for a store known "
+            "never to have been sealed, otherwise recover from a verified backup"
+        )
 
     last_manifest: MigrationManifest | None = None
     last_event: AuditEvent | None = None

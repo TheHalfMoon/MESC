@@ -305,6 +305,59 @@ def test_the_seal_is_rewritten_by_every_mutating_api_path(tmp_path: Path) -> Non
     reopen(live)
 
 
+def test_tampering_while_the_store_is_open_is_not_blessed_by_the_next_write(
+    tmp_path: Path,
+) -> None:
+    provider = InMemoryTestKeyProvider(new_root_secret())
+    path = rotated_store_with_deletion(tmp_path, provider)
+    with open_live(tmp_path, provider) as store:
+        raw(path, *TAMPERING["tombstone_removed"])
+        with pytest.raises(StoreSealError):
+            store.put_objects_atomic((ObjectWrite(binding=binding(5), payload=b"later write"),))
+        with pytest.raises(StoreSealError):
+            lc.rotate_workspace_key(
+                store, new_key_version=3, batch_size=10, actor_id=ACTOR, occurred_at=T3
+            )
+    with pytest.raises(StoreSealError):
+        open_live(tmp_path, provider)
+
+
+def test_an_unsealed_legacy_store_is_not_sealed_without_explicit_acknowledgement(
+    tmp_path: Path,
+) -> None:
+    """A sealed store stripped back to "schema 2" and tampered is not silently re-sealed."""
+
+    provider = InMemoryTestKeyProvider(new_root_secret())
+    path = rotated_store_with_deletion(tmp_path, provider)
+    raw(
+        path,
+        ("DELETE FROM store_metadata WHERE name IN ('seal_salt', 'integrity_seal')", ()),
+        (
+            "UPDATE store_metadata SET value = '2' WHERE name IN ('workspace_schema_version', "
+            "'minimum_readable_workspace_schema', 'maximum_readable_workspace_schema')",
+            (),
+        ),
+        ("DELETE FROM deletion_tombstones", ()),
+    )
+    with pytest.raises(StoreMigrationRequiredError):
+        open_live(tmp_path, provider)
+    with pytest.raises(lc.MigrationError, match="acknowledge_unsealed_legacy_state"):
+        lc.migrate_schema_to_current(
+            store_root=str(tmp_path),
+            workspace_id=WORKSPACE_ALPHA,
+            key_provider=provider,
+            source_application_version=APPLICATION_VERSION,
+            target_application_version=APPLICATION_VERSION,
+            available_bytes=PLENTY,
+            actor_id=ACTOR,
+            occurred_at=T3,
+        )
+    with open_maintenance(tmp_path, provider) as store:
+        assert store.versions.workspace_schema_version == 2
+        with pytest.raises(StoreMigrationRequiredError):
+            store.put_objects_atomic((ObjectWrite(binding=binding(5), payload=b"x"),))
+
+
 def test_whole_store_rollback_remains_undetected_by_the_seal(tmp_path: Path) -> None:
     """Residual risk (ADR-0039 A1.5): an older, internally consistent copy still opens."""
 
@@ -345,6 +398,7 @@ def test_schema_2_stores_are_migrated_and_sealed_but_never_opened_normally(
         available_bytes=PLENTY,
         actor_id=ACTOR,
         occurred_at=T2,
+        acknowledge_unsealed_legacy_state=True,
     )
     with open_live(tmp_path, provider) as store:
         assert store.versions.workspace_schema_version == 3

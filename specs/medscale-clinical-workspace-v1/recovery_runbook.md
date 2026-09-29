@@ -70,6 +70,7 @@ Every state-changing migration has a manifest (contract section 5) and runs the 
 ### 5.1 Schema-1 or schema-2 store (M1 additive, 1 to 2 to 3)
 
 - Symptom: normal open raises `StoreMigrationRequiredError`.
+- First decide whether the store could ever have been at schema 3. If it could, it presents as legacy only because its seal was stripped, so treat it as compromised and recover from a verified backup (section 3). Migrate only a store known never to have been sealed, and pass `acknowledge_unsealed_legacy_state=True`: the first seal is written over whatever the store holds.
 - Action: `migrate_schema_to_current(store_root=..., workspace_id=..., key_provider=..., source_application_version=..., target_application_version=..., available_bytes=..., actor_id=..., occurred_at=...)`.
 - Each step is one SQLite transaction. Step 1 to 2 adds the tables, store role, version metadata, migration log row, completed journal row and `migration` audit event. Step 2 to 3 (CW-019) adds the seal salt and version metadata, its own log and journal rows and audit event, and writes the first integrity seal. An interruption leaves the store at the last completed schema, and the migration is simply rerun.
 - Rollback class: forward repair. An application that reads only schema 1 refuses a schema-2 store rather than guessing.

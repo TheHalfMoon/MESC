@@ -564,6 +564,7 @@ def test_legacy_schema_1_store_is_migrated_forward_by_the_m1_migration(tmp_path:
         available_bytes=PLENTY_OF_SPACE,
         actor_id=ACTOR,
         occurred_at=T2,
+        acknowledge_unsealed_legacy_state=True,
     )
     assert report.state is JournalState.COMPLETED
     with open_live(tmp_path, provider) as store:

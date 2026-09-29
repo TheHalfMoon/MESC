@@ -856,6 +856,20 @@ class WorkspaceStore:
         except ValueError as error:
             raise StoreIntegrityError("recorded restored backup id is not a UUID") from error
 
+    def _verify_before_change(self) -> None:
+        """Refuse to mutate a store whose seal no longer matches (schema 3 only).
+
+        Called right after ``BEGIN IMMEDIATE``, while this connection holds the write
+        lock, so a change made to the file by anything else since the last commit is
+        detected before this transaction can reseal over it.
+        """
+
+        if self._versions.workspace_schema_version != WORKSPACE_SCHEMA_VERSION:
+            return
+        if self._seal_key is None:
+            raise StoreSealError("the store integrity seal key is unavailable")
+        _verify_seal(self._connection, self._seal_key)
+
     def _reseal(self) -> None:
         """Rewrite the integrity seal inside the current transaction (schema 3 only)."""
 
@@ -1033,6 +1047,11 @@ class WorkspaceStore:
         prepared = self._prepare_writes(writes)
         self._connection.execute("BEGIN IMMEDIATE")
         try:
+            self._verify_before_change()
+        except BaseException:
+            self._connection.execute("ROLLBACK")
+            raise
+        try:
             for binding, envelope in prepared:
                 self._insert_object(binding, envelope)
         except sqlite3.IntegrityError as error:
@@ -1099,6 +1118,11 @@ class WorkspaceStore:
         if journal is not None and not isinstance(journal, JournalUpdate):
             raise StoreIntegrityError("journal update must be a JournalUpdate value")
         self._connection.execute("BEGIN IMMEDIATE")
+        try:
+            self._verify_before_change()
+        except BaseException:
+            self._connection.execute("ROLLBACK")
+            raise
         deleted = 0
         try:
             for admitted in admitted_deletions:
@@ -1273,6 +1297,11 @@ class WorkspaceStore:
         self._require_workspace(admitted)
         self._connection.execute("BEGIN IMMEDIATE")
         try:
+            self._verify_before_change()
+        except BaseException:
+            self._connection.execute("ROLLBACK")
+            raise
+        try:
             deleted = self._delete_with_tombstone(admitted, TombstoneReason.USER_DELETION)
         except BaseException:
             self._connection.execute("ROLLBACK")
@@ -1301,6 +1330,11 @@ class WorkspaceStore:
         if self.key_state(self._active_key_version) is not KeyState.ACTIVE:
             raise KeyRotationError("the store is not in a rotatable ACTIVE state")
         self._connection.execute("BEGIN IMMEDIATE")
+        try:
+            self._verify_before_change()
+        except BaseException:
+            self._connection.execute("ROLLBACK")
+            raise
         try:
             self._connection.execute(
                 "UPDATE key_versions SET state = ? WHERE state = ?",
@@ -1385,6 +1419,11 @@ class WorkspaceStore:
             )
         self._connection.execute("BEGIN IMMEDIATE")
         try:
+            self._verify_before_change()
+        except BaseException:
+            self._connection.execute("ROLLBACK")
+            raise
+        try:
             for rotated, workspace_id, object_id, object_revision, object_type in prepared:
                 self._connection.execute(
                     "UPDATE objects SET key_version = ?, envelope = ? WHERE workspace_id = ? "
@@ -1418,6 +1457,11 @@ class WorkspaceStore:
         rotating = [version for version, state in self.key_states() if state is KeyState.ROTATING]
         self._connection.execute("BEGIN IMMEDIATE")
         try:
+            self._verify_before_change()
+        except BaseException:
+            self._connection.execute("ROLLBACK")
+            raise
+        try:
             self._connection.execute(
                 "UPDATE key_versions SET state = ? WHERE state = ?",
                 (KeyState.RETIRING.value, KeyState.ROTATING.value),
@@ -1443,6 +1487,11 @@ class WorkspaceStore:
         if self._pending_rotation_rows(key_version):
             raise KeyRotationError("a key version that still protects rows cannot be retired")
         self._connection.execute("BEGIN IMMEDIATE")
+        try:
+            self._verify_before_change()
+        except BaseException:
+            self._connection.execute("ROLLBACK")
+            raise
         try:
             self._connection.execute(
                 "UPDATE key_versions SET state = ? WHERE key_version = ?",
@@ -1663,6 +1712,11 @@ class WorkspaceStore:
             if (tombstone_binding.object_id, tombstone_binding.object_revision) in object_keys:
                 raise StoreIntegrityError("a restored object cannot also be tombstoned")
         self._connection.execute("BEGIN IMMEDIATE")
+        try:
+            self._verify_before_change()
+        except BaseException:
+            self._connection.execute("ROLLBACK")
+            raise
         try:
             for binding, envelope in prepared:
                 self._insert_object(binding, envelope)
