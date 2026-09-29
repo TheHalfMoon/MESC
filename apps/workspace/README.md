@@ -8,6 +8,13 @@ CW-003 adds the provenance spine and the append-only audit spine on top of that 
 (activated under Issue #471).
 CW-004 adds the canonical typed data classification and the mechanical no-backflow guard that
 enforces the Research Core / Workspace / Domain X separation (activated under Issue #474).
+CW-018 adds lifecycle protection (activated under Issue #520): encrypted, integrity-manifested
+backups under a separate backup key, restore into a quarantine store, promotion and snapshot
+rollback that never silently overwrite newer state or resurrect deleted content, a
+deletion-tombstone ledger, deletion reconciliation across derived state, key-rotation
+resume, and journaled migrations with manifest, preflight and checkpoint resume (workspace
+schema 2). The operational procedures are in the
+[recovery runbook](../../specs/medscale-clinical-workspace-v1/recovery_runbook.md).
 
 Current scope:
 
@@ -79,12 +86,19 @@ Recorded limitations, not hidden:
   `WorkspaceStore.plaintext_metadata_scope()` remain visible in a copied store (A1.10).
 - `secure_delete=ON` is defense in depth only and is not proof of cryptographic erasure
   (A1.11).
-- CW-002 implements store initialization only; the remaining migration classes and their
-  manifest/preflight/rollback machinery are CW-018.
+- CW-018 implements the M1 additive migration (schema 1 to 2), a generic journaled M2
+  semantic-migration engine, and M3 key-rotation orchestration. M0, M4 and M5 have no
+  dedicated engine: projection rebuild (M4) uses each unit's deterministic rebuild, and no
+  connector contract migration (M5) exists because no connector write authority exists.
 - the audit spine is append-only at the API, identity and chain level; there is no
   database-level write-once trigger, and a removed tail event verifies internally unless a
-  head digest is retained outside the store. Stricter storage-level enforcement belongs to
-  CW-018, and the independent security lane at CW-019 owns attacking it.
+  head digest is retained outside the store. CW-018 adds one such retained anchor (every
+  backup manifest records the audit head, and restore verifies against it) and audit-chain
+  ancestry checks for promotion and rollback. It does not add a database-level write-once
+  trigger or audit append checkpointing; both remain recorded limitations, and the
+  independent security lane at CW-019 owns attacking the spine.
+- CW-018 backups and store keys both derive from the root secret, so root-secret loss loses
+  both; free disk space is declared by the caller, because this package cannot measure it.
 - the CW-004 export containment check is pure path algebra over caller-supplied absolute paths,
   because this package holds no filesystem capability (`os`, `pathlib` and `open` are forbidden
   by the boundary guard). It therefore does not resolve symlinks, junctions or reparse points:
@@ -93,6 +107,6 @@ Recorded limitations, not hidden:
 - the CW-004 guard decides and records; it performs no I/O, so it neither stages an export on
   disk nor asserts that a chosen destination exists.
 
-CW-002, CW-003 and CW-004 do not authorize PHI, real-patient import, clinical production use,
+CW-002, CW-003, CW-004 and CW-018 do not authorize PHI, real-patient import, clinical production use,
 EHR writes, external model execution, training on Workspace data, research admission,
 publication, paid compute, or MRL changes.
