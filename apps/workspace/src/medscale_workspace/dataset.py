@@ -29,6 +29,13 @@ request; automatic staging is refused.
 De-identification is recorded as a transformation of an export, never as an
 admission: a staged export remains Domain X and is never marked research
 admitted.
+
+Reads re-verify currency as well as integrity. Reading a collection re-reads
+every pinned member view, and reading an export manifest re-reads every staged
+source and recomputes its digest; a deleted, drifted, or re-kinded reference
+fails closed as stale instead of returning a record that points at state which
+no longer exists. Deletion verifies integrity only, so a stale record can
+still be removed.
 """
 
 from __future__ import annotations
@@ -237,9 +244,13 @@ class DatasetCollectionRecord:
         return DatasetCollectionRecord(
             workspace_id=workspace_id,
             collection_id=collection_id,
-            collection_name=_string_member(document, "collection_name"),
+            collection_name=_string_member(
+                document, "collection_name", DatasetCollectionInputError
+            ),
             view_ids=members,
-            interface_version=_string_member(document, "interface_version"),
+            interface_version=_string_member(
+                document, "interface_version", DatasetCollectionInputError
+            ),
         ).validated()
 
 
@@ -410,15 +421,30 @@ class ExportManifestRecord:
             workspace_id=workspace_id,
             export_id=export_id,
             items=items,
-            payload_digests=tuple(_string_member(member, "payload_digest") for member in raw_items),
-            quarantine_target=_string_member(document, "quarantine_target"),
-            consent_scope=_string_member(document, "consent_scope"),
-            source_rights=_string_member(document, "source_rights"),
-            deidentification_method=_string_member(raw_deidentification, "method"),
-            deidentification_version=_string_member(raw_deidentification, "version"),
-            deidentification_input_digest=_string_member(raw_deidentification, "input_digest"),
-            deidentification_output_digest=_string_member(raw_deidentification, "output_digest"),
-            interface_version=_string_member(document, "interface_version"),
+            payload_digests=tuple(
+                _string_member(member, "payload_digest", ExportStagingInputError)
+                for member in raw_items
+            ),
+            quarantine_target=_string_member(
+                document, "quarantine_target", ExportStagingInputError
+            ),
+            consent_scope=_string_member(document, "consent_scope", ExportStagingInputError),
+            source_rights=_string_member(document, "source_rights", ExportStagingInputError),
+            deidentification_method=_string_member(
+                raw_deidentification, "method", ExportStagingInputError
+            ),
+            deidentification_version=_string_member(
+                raw_deidentification, "version", ExportStagingInputError
+            ),
+            deidentification_input_digest=_string_member(
+                raw_deidentification, "input_digest", ExportStagingInputError
+            ),
+            deidentification_output_digest=_string_member(
+                raw_deidentification, "output_digest", ExportStagingInputError
+            ),
+            interface_version=_string_member(
+                document, "interface_version", ExportStagingInputError
+            ),
         ).validated()
 
 
@@ -580,7 +606,19 @@ def store_dataset_collection(store, trail, workspace_id, descriptor, actor_id, o
 
 
 def read_dataset_collection(store, collection_id):
-    """Read and verify one stored dataset collection."""
+    """Read and verify one stored dataset collection with every member view still current."""
+    record = _read_collection_record(store, collection_id)
+    _current_collection_views(store, record)
+    return record
+
+
+def list_collection_views(store, collection_id):
+    """Resolve every pinned view of one stored dataset collection, read-only."""
+    record = _read_collection_record(store, collection_id)
+    return _current_collection_views(store, record)
+
+
+def _read_collection_record(store, collection_id):
     if not isinstance(store, WorkspaceStore):
         raise DatasetCollectionInputError("a workspace store is required")
     if not isinstance(collection_id, UUID):
@@ -613,10 +651,17 @@ def read_dataset_collection(store, collection_id):
     return record.validated()
 
 
-def list_collection_views(store, collection_id):
-    """Resolve every pinned view of one stored dataset collection, read-only."""
-    record = read_dataset_collection(store, collection_id)
-    return tuple(research_view_mod.read_research_view(store, member) for member in record.view_ids)
+def _current_collection_views(store, record):
+    views = []
+    for member in record.view_ids:
+        try:
+            view = research_view_mod.read_research_view(store, member)
+        except (ResearchViewInputError, ResearchViewStaleError, ObjectNotFoundError) as error:
+            raise DatasetCollectionStaleError("a collected view is no longer current") from error
+        if view.artifact_kind is not research_view_mod.ArtifactKind.DATASET_MANIFEST:
+            raise DatasetCollectionStaleError("a collected view kind is no longer admitted")
+        views.append(view)
+    return tuple(views)
 
 
 def delete_dataset_collection(store, trail, collection_id, actor_id, occurred_at):
@@ -629,7 +674,7 @@ def delete_dataset_collection(store, trail, collection_id, actor_id, occurred_at
         raise DatasetCollectionInputError("a collection identity must be a UUID value")
     actor = _admit_collection_identifier(actor_id, "actor id")
     moment = _admit_collection_occurred_at(occurred_at)
-    record = read_dataset_collection(store, collection_id)
+    record = _read_collection_record(store, collection_id)
     binding = dataset_collection_binding(store.workspace_id, record.collection_id)
     trail.record_object_deletion(binding=binding, actor_id=actor, occurred_at=moment)
     trail.record_object_deletion(
@@ -859,7 +904,19 @@ def stage_export_manifest(
 
 
 def read_export_manifest(store, export_id):
-    """Read and verify one staged export manifest."""
+    """Read and verify one staged export manifest with every staged source still current."""
+    record = _read_export_record(store, export_id)
+    for item, digest in zip(record.items, record.payload_digests, strict=True):
+        try:
+            current = _recorded_payload_digest(store, record.workspace_id, item)
+        except ExportStagingInputError as error:
+            raise ExportStagingStaleError("a staged export source is no longer present") from error
+        if current != digest:
+            raise ExportStagingStaleError("a staged export source digest no longer matches")
+    return record
+
+
+def _read_export_record(store, export_id):
     if not isinstance(store, WorkspaceStore):
         raise ExportStagingInputError("a workspace store is required")
     if not isinstance(export_id, UUID):
@@ -900,7 +957,7 @@ def delete_export_manifest(store, trail, export_id, actor_id, occurred_at):
         raise ExportStagingInputError("an export identity must be a UUID value")
     actor = _admit_identifier(actor_id, "actor id")
     moment = _admit_occurred_at(occurred_at)
-    record = read_export_manifest(store, export_id)
+    record = _read_export_record(store, export_id)
     binding = export_binding(store.workspace_id, record.export_id)
     trail.record_object_deletion(binding=binding, actor_id=actor, occurred_at=moment)
     trail.record_object_deletion(
@@ -954,7 +1011,7 @@ def _admit_items(raw):
     if not raw or len(raw) > MAXIMUM_EXPORT_ITEMS:
         raise ExportStagingInputError("an export needs 1 to 64 source items")
     items = tuple(
-        item.validated() if isinstance(item, ExportSourceDescriptor) else _refuse_item(item)
+        item.validated() if isinstance(item, ExportSourceDescriptor) else _refuse_item()
         for item in raw
     )
     identities = [(item.object_id, item.object_kind, item.object_revision) for item in items]
@@ -963,7 +1020,7 @@ def _admit_items(raw):
     return items
 
 
-def _refuse_item(raw):
+def _refuse_item():
     raise ExportStagingInputError("an export item needs an ExportSourceDescriptor instance")
 
 
@@ -1197,8 +1254,10 @@ def _export_item_from_document(document):
         raise ExportStagingInputError("a stored export source identity is not admitted") from error
     return ExportSourceDescriptor(
         object_id=object_id,
-        object_kind=_admit_source_kind(_string_member(document, "object_kind")),
-        object_revision=_string_member(document, "object_revision"),
+        object_kind=_admit_source_kind(
+            _string_member(document, "object_kind", ExportStagingInputError)
+        ),
+        object_revision=_string_member(document, "object_revision", ExportStagingInputError),
     ).validated()
 
 
@@ -1208,8 +1267,8 @@ def _canonical_bytes(document):
     )
 
 
-def _string_member(document, name):
+def _string_member(document, name, error_class):
     value = document[name]
     if not isinstance(value, str):
-        raise ExportStagingInputError(f"a stored {name} must be a string")
+        raise error_class(f"a stored {name} must be a string")
     return value
