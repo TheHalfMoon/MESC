@@ -33,9 +33,11 @@ from medscale_workspace.errors import (  # noqa: E402 runtime import
     BackflowError,
     DatasetCollectionConflictError,
     DatasetCollectionInputError,
+    DatasetCollectionStaleError,
     ExportAdmissionError,
     ExportStagingConflictError,
     ExportStagingInputError,
+    ExportStagingStaleError,
     ResearchBackflowError,
     WorkspaceIsolationError,
 )
@@ -55,6 +57,7 @@ from medscale_workspace.provenance import (  # noqa: E402 runtime import
     SourceKind,
     SourceRef,
     describe_revision,
+    provenance_binding_for,
     read_provenance,
     store_with_provenance,
 )
@@ -272,6 +275,10 @@ def test_forged_collection_documents_fail_closed(tmp_path: Path) -> None:
         forged_class["data_class"] = "EXPORT_QUARANTINE"
         with pytest.raises(DatasetCollectionInputError):
             dataset_mod.DatasetCollectionRecord.from_document(forged_class)
+        forged_type = dict(record.to_document())
+        forged_type["collection_name"] = 7
+        with pytest.raises(DatasetCollectionInputError):
+            dataset_mod.DatasetCollectionRecord.from_document(forged_type)
 
 
 def test_export_source_absent_refused(tmp_path: Path) -> None:
@@ -444,3 +451,66 @@ def test_oversized_inputs_refused(tmp_path: Path) -> None:
             stage_manifest(store, trail, (admit_item(),) * 65)
         with pytest.raises(ExportStagingInputError):
             dataset_mod.read_export_manifest(store, UNKNOWN_ID)
+
+
+def remove_object(store: WorkspaceStore, trail: AuditTrail, binding: ObjectBinding) -> None:
+    trail.record_object_deletion(binding=binding, actor_id=ACTOR, occurred_at=T2)
+    trail.record_object_deletion(
+        binding=provenance_binding_for(binding), actor_id=ACTOR, occurred_at=T2
+    )
+
+
+def test_stale_export_source_reads_fail_closed(tmp_path: Path) -> None:
+    with open_store(tmp_path) as store:
+        trail = AuditTrail(store)
+        source = seed_source(
+            store,
+            SOURCE_ONE,
+            WorkspaceObjectType.LINKED_DOCUMENT,
+            "linked-document-00000001",
+            "synthetic dataset source",
+        )
+        binding = stage_manifest(store, trail, (admit_item(),))
+        dataset_mod.read_export_manifest(store, binding.object_id)
+        remove_object(store, trail, source)
+        with pytest.raises(ExportStagingStaleError):
+            dataset_mod.read_export_manifest(store, binding.object_id)
+        seed_source(
+            store,
+            SOURCE_ONE,
+            WorkspaceObjectType.LINKED_DOCUMENT,
+            "linked-document-00000001",
+            "drifted synthetic dataset source",
+        )
+        with pytest.raises(ExportStagingStaleError):
+            dataset_mod.read_export_manifest(store, binding.object_id)
+        dataset_mod.delete_export_manifest(store, trail, binding.object_id, ACTOR, T2)
+        with pytest.raises(ExportStagingInputError):
+            dataset_mod.read_export_manifest(store, binding.object_id)
+
+
+def test_stale_collection_member_reads_fail_closed(tmp_path: Path) -> None:
+    with open_store(tmp_path) as store:
+        trail = AuditTrail(store)
+        view = store_dataset_view(store, trail, ARTIFACT_ONE)
+        binding = dataset_mod.store_dataset_collection(
+            store,
+            trail,
+            WORKSPACE_ALPHA,
+            dataset_mod.admit_dataset_collection(
+                collection_name="fixture-collection",
+                view_ids=(view.object_id,),
+                interface_version="1",
+            ),
+            ACTOR,
+            T1,
+        )
+        dataset_mod.read_dataset_collection(store, binding.object_id)
+        remove_object(store, trail, view)
+        with pytest.raises(DatasetCollectionStaleError):
+            dataset_mod.read_dataset_collection(store, binding.object_id)
+        with pytest.raises(DatasetCollectionStaleError):
+            dataset_mod.list_collection_views(store, binding.object_id)
+        dataset_mod.delete_dataset_collection(store, trail, binding.object_id, ACTOR, T2)
+        with pytest.raises(DatasetCollectionInputError):
+            dataset_mod.read_dataset_collection(store, binding.object_id)
