@@ -526,3 +526,39 @@ class ExportStagingConflictError(ExportStagingError):
 
 class ExportStagingStaleError(ExportStagingError):
     """An admitted export manifest is no longer current and was refused."""
+
+
+class StoreMigrationRequiredError(StoreVersionError):
+    """The store needs a migration, or holds an unfinished one, and cannot open normally."""
+
+
+class StoreRoleError(StoreIntegrityError):
+    """A live store was used as a quarantine store, or the reverse."""
+
+
+class LifecycleError(WorkspaceStoreError):
+    """Base class for CW-018 backup, restore, migration and deletion lifecycle failures."""
+
+
+class BackupFormatError(LifecycleError):
+    """Backup bytes are not a supported, well-formed CW-018 backup."""
+
+
+class BackupIntegrityError(LifecycleError):
+    """A backup failed authentication, digest reconciliation, or binding checks."""
+
+
+class RestoreConflictError(LifecycleError):
+    """A restore, promotion, or rollback would overwrite newer or divergent state."""
+
+
+class MigrationError(LifecycleError):
+    """A migration manifest, journal, or step was refused."""
+
+
+class MigrationPreflightError(MigrationError):
+    """A migration prerequisite failed before any mutation."""
+
+
+class MigrationValidationError(MigrationError):
+    """A migration postcondition failed; the migration was not activated."""

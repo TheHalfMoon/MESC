@@ -376,12 +376,14 @@ def test_version_tuple_is_recorded_first_class(tmp_path: Path) -> None:
         versions = store.versions
         migration_log = store.migration_log()
     assert versions.application_version == APPLICATION_VERSION
-    assert versions.workspace_schema_version == 1
-    assert versions.minimum_readable_workspace_schema == 1
-    assert versions.maximum_readable_workspace_schema == 1
+    # CW-018 (Issue #520) made workspace schema 2 current; a new store is created
+    # directly at schema 2 by the single initialization migration.
+    assert versions.workspace_schema_version == 2
+    assert versions.minimum_readable_workspace_schema == 2
+    assert versions.maximum_readable_workspace_schema == 2
     assert versions.policy_version == "mesc-clinical-workspace-synthetic-only/1"
     assert versions.encryption_format_version == 1
-    assert migration_log == (("cw-002-store-initialization", "M1", 0, 1, "COMPLETED"),)
+    assert migration_log == (("cw-002-store-initialization", "M1", 0, 2, "COMPLETED"),)
 
 
 def test_versions_survive_reopening_with_the_same_key_provider(tmp_path: Path) -> None:
@@ -603,12 +605,13 @@ def test_store_refuses_a_newer_recorded_schema_version(tmp_path: Path) -> None:
     connection = sqlite3.connect(store_path)
     try:
         connection.execute(
-            "UPDATE store_metadata SET value = '2' WHERE name = 'workspace_schema_version'"
+            "UPDATE store_metadata SET value = '3' WHERE name = 'workspace_schema_version'"
         )
         connection.commit()
     finally:
         connection.close()
-    with pytest.raises(StoreVersionError):
+    # Schema 3 is newer than the current schema 2 that CW-018 made readable.
+    with pytest.raises(StoreVersionError, match="downgrade is refused"):
         open_store(tmp_path)
 
 
