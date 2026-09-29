@@ -377,8 +377,12 @@ def _recorded_versions(
     return versions
 
 
-def _seal_rows(connection: sqlite3.Connection, query: str) -> list[list[object]]:
-    rows = connection.execute(query).fetchall()
+def _seal_rows(
+    connection: sqlite3.Connection,
+    query: str,
+    parameters: tuple[object, ...] = (),
+) -> list[list[object]]:
+    rows = connection.execute(query, parameters).fetchall()
     admitted: list[list[object]] = []
     for row in rows:
         admitted.append([value.hex() if isinstance(value, bytes) else value for value in row])
@@ -405,8 +409,8 @@ def _compute_seal(connection: sqlite3.Connection, seal_key: bytes) -> str:
         "format": _SEAL_FORMAT,
         "metadata": _seal_rows(
             connection,
-            "SELECT name, value FROM store_metadata WHERE name <> "
-            f"'{_SEAL_METADATA_KEY}' ORDER BY name",
+            "SELECT name, value FROM store_metadata WHERE name <> ? ORDER BY name",
+            (_SEAL_METADATA_KEY,),
         ),
         "key_versions": _seal_rows(
             connection, "SELECT key_version, state, salt FROM key_versions ORDER BY key_version"
