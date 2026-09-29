@@ -562,3 +562,7 @@ class MigrationPreflightError(MigrationError):
 
 class MigrationValidationError(MigrationError):
     """A migration postcondition failed; the migration was not activated."""
+
+
+class StoreSealError(StoreIntegrityError):
+    """The store integrity seal is missing or does not match the store contents."""

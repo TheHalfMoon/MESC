@@ -61,6 +61,7 @@ from medscale_workspace.storage import (  # noqa: E402 runtime import
 )
 from medscale_workspace.versions import (  # noqa: E402 runtime import
     SCHEMA_V2_MIGRATION_ID,
+    SCHEMA_V3_MIGRATION_ID,
     SUPPORTED_DOWNGRADE_TARGETS,
     WORKSPACE_SCHEMA_VERSION,
 )
@@ -206,6 +207,9 @@ def make_legacy_schema_1_store(root: Path, provider: InMemoryTestKeyProvider) ->
         connection.execute("DROP TABLE deletion_tombstones")
         connection.execute("DROP TABLE migration_journal")
         connection.execute("DELETE FROM store_metadata WHERE name = 'store_role'")
+        connection.execute(
+            "DELETE FROM store_metadata WHERE name IN ('seal_salt', 'integrity_seal')"
+        )
         for name in (
             "workspace_schema_version",
             "minimum_readable_workspace_schema",
@@ -563,18 +567,21 @@ def test_legacy_schema_1_store_is_migrated_forward_by_the_m1_migration(tmp_path:
     )
     assert report.state is JournalState.COMPLETED
     with open_live(tmp_path, provider) as store:
-        assert store.versions.workspace_schema_version == 2
+        assert store.versions.workspace_schema_version == 3
         assert store.role is StoreRole.LIVE
         log = store.migration_log()
         journal = store.journal_entries()
         migrated_content = content_of(store)
         events = audit_events(store)
+    # CW-019 (Issue #523): the migration chains 1 -> 2 -> 3, one M1 step per schema.
     assert log == (
         ("cw-002-store-initialization", "M1", 0, 1, "COMPLETED"),
         (SCHEMA_V2_MIGRATION_ID, "M1", 1, 2, "COMPLETED"),
+        (SCHEMA_V3_MIGRATION_ID, "M1", 2, 3, "COMPLETED"),
     )
     assert [(entry.migration_id, entry.state) for entry in journal] == [
-        (SCHEMA_V2_MIGRATION_ID, JournalState.COMPLETED)
+        (SCHEMA_V2_MIGRATION_ID, JournalState.COMPLETED),
+        (SCHEMA_V3_MIGRATION_ID, JournalState.COMPLETED),
     ]
     manifest = json.loads(journal[0].manifest)["manifest"]
     assert set(manifest) >= SECTION_5_MANIFEST_FIELDS
@@ -582,8 +589,10 @@ def test_legacy_schema_1_store_is_migrated_forward_by_the_m1_migration(tmp_path:
     assert manifest["rollback_strategy"] == "forward_repair"
     assert manifest["external_side_effects"] == []
     assert non_audit(migrated_content) == non_audit(legacy_content)
-    assert events[-1][0] == AuditEventType.MIGRATION.value
-    assert events[-1][1]["migration_id"] == SCHEMA_V2_MIGRATION_ID
+    assert [meta["migration_id"] for kind, meta in events if kind == "migration"] == [
+        SCHEMA_V2_MIGRATION_ID,
+        SCHEMA_V3_MIGRATION_ID,
+    ]
 
 
 def content_of_legacy(store: WorkspaceStore) -> dict[tuple[str, str, str], bytes]:
@@ -608,7 +617,7 @@ def test_supported_upgrade_and_downgrade_refusal_semantics(tmp_path: Path) -> No
     connection = sqlite3.connect(path)
     try:
         connection.execute(
-            "UPDATE store_metadata SET value = '3' WHERE name = 'workspace_schema_version'"
+            "UPDATE store_metadata SET value = '4' WHERE name = 'workspace_schema_version'"
         )
         connection.commit()
     finally:
@@ -653,7 +662,7 @@ def test_semantic_migration_records_object_by_object_digest_evidence(tmp_path: P
         assert old_digest != new_digest
         assert UUID(old_id) in PATIENT_IDS
     assert journal[-1].state is JournalState.COMPLETED
-    assert (MIGRATION_ID, "M2", 2, 2, "COMPLETED") in log
+    assert (MIGRATION_ID, "M2", 3, 3, "COMPLETED") in log
     assert phases == ["PREPARED", "COMPLETED"]
 
 

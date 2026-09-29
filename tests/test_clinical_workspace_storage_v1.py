@@ -42,9 +42,9 @@ from medscale_workspace.aead import (  # noqa: E402
 )
 from medscale_workspace.binding import ObjectBinding  # noqa: E402
 from medscale_workspace.errors import (  # noqa: E402
-    EnvelopeAuthenticationError,
     KeyProviderUnavailableError,
     ObjectNotFoundError,
+    StoreSealError,
     StoreVersionError,
     WorkspaceIsolationError,
 )
@@ -337,7 +337,9 @@ def test_synthetic_payload_plaintext_is_absent_from_every_store_artifact(tmp_pat
 
 
 def test_store_declares_which_metadata_stays_plaintext(tmp_path: Path) -> None:
-    with open_store(tmp_path) as store:
+    # CW-019: the store is sealed with its root secret, so both opens use the same one.
+    root_secret = new_root_secret()
+    with open_store(tmp_path, root_secret=root_secret) as store:
         scope = store.plaintext_metadata_scope()
     assert "sqlite_structural_metadata" in scope
     assert "object_revision_ids" in scope
@@ -345,7 +347,7 @@ def test_store_declares_which_metadata_stays_plaintext(tmp_path: Path) -> None:
     assert "sensitive_payload" not in scope
     # The declared scope is a real property of the store, not prose: object identity
     # is visible while payload content is not.
-    with open_store(tmp_path) as store:
+    with open_store(tmp_path, root_secret=root_secret) as store:
         store.put_objects_atomic(
             (ObjectWrite(binding=binding_for(), payload=SENSITIVE_SYNTHETIC_PAYLOAD),)
         )
@@ -376,14 +378,14 @@ def test_version_tuple_is_recorded_first_class(tmp_path: Path) -> None:
         versions = store.versions
         migration_log = store.migration_log()
     assert versions.application_version == APPLICATION_VERSION
-    # CW-018 (Issue #520) made workspace schema 2 current; a new store is created
-    # directly at schema 2 by the single initialization migration.
-    assert versions.workspace_schema_version == 2
-    assert versions.minimum_readable_workspace_schema == 2
-    assert versions.maximum_readable_workspace_schema == 2
+    # CW-019 (Issue #523) made workspace schema 3 current (CW-018 introduced schema 2);
+    # a new store is created directly at schema 3 by the single initialization migration.
+    assert versions.workspace_schema_version == 3
+    assert versions.minimum_readable_workspace_schema == 3
+    assert versions.maximum_readable_workspace_schema == 3
     assert versions.policy_version == "mesc-clinical-workspace-synthetic-only/1"
     assert versions.encryption_format_version == 1
-    assert migration_log == (("cw-002-store-initialization", "M1", 0, 2, "COMPLETED"),)
+    assert migration_log == (("cw-002-store-initialization", "M1", 0, 3, "COMPLETED"),)
 
 
 def test_versions_survive_reopening_with_the_same_key_provider(tmp_path: Path) -> None:
@@ -605,12 +607,13 @@ def test_store_refuses_a_newer_recorded_schema_version(tmp_path: Path) -> None:
     connection = sqlite3.connect(store_path)
     try:
         connection.execute(
-            "UPDATE store_metadata SET value = '3' WHERE name = 'workspace_schema_version'"
+            "UPDATE store_metadata SET value = '4' WHERE name = 'workspace_schema_version'"
         )
         connection.commit()
     finally:
         connection.close()
-    # Schema 3 is newer than the current schema 2 that CW-018 made readable.
+    # Schema 4 is newer than the current schema 3 that CW-019 made readable; the
+    # version refusal precedes seal verification, so the downgrade message is kept.
     with pytest.raises(StoreVersionError, match="downgrade is refused"):
         open_store(tmp_path)
 
@@ -621,11 +624,15 @@ def test_copied_store_is_unreadable_without_the_original_root_secret(tmp_path: P
         store.put_objects_atomic(
             (ObjectWrite(binding=binding_for(), payload=SENSITIVE_SYNTHETIC_PAYLOAD),)
         )
+    # Before CW-019 a store opened with the wrong root secret and failed on the first
+    # decryption. The CW-019 integrity seal is keyed from the root secret, so the wrong
+    # secret is now refused at open, before any envelope is touched.
+    with pytest.raises(StoreSealError):
+        open_store(tmp_path, root_secret=new_root_secret())
     with (
-        open_store(tmp_path, root_secret=new_root_secret()) as wrong_key_store,
-        pytest.raises(EnvelopeAuthenticationError),
+        open_store(tmp_path, root_secret=original) as store,
     ):
-        wrong_key_store.get_object(binding_for())
+        assert store.get_object(binding_for()) == SENSITIVE_SYNTHETIC_PAYLOAD
 
 
 def test_associated_data_is_canonical_and_binds_every_component() -> None:
