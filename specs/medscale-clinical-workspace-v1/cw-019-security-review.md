@@ -36,6 +36,7 @@ Severity reflects impact on the synthetic/local implementation. The attacker for
 | F9 | MEDIUM (self-introduced) | While schema 3 was being introduced, the schema 1 to 2 migration step wrote the current-schema constants and jumped straight to an unsealed "schema 3". | FIXED before commit: caught by the CW-018 legacy-migration regression tests; the step is pinned to schema 2 |
 | F10 | MEDIUM (found by Jev on the first CW-019 commit) | The seal was verified only at open. A file edited by another process while a store was open was resealed, and so legitimized, by the next legitimate write. | FIXED: every mutating transaction verifies the existing seal right after taking the write lock (`test_tampering_while_the_store_is_open_is_not_blessed_by_the_next_write`) |
 | F11 | MEDIUM (found by Jev on the first CW-019 commit) | Downgrade to legacy. Stripping the seal from a schema-3 store and marking it schema 2 made it look like an unsealed legacy store, and the M1 migration would then seal whatever tampered state it held. | MITIGATED: migrating unsealed legacy state now requires `acknowledge_unsealed_legacy_state=True`, and the runbook treats an unexpected legacy store as compromised (`test_an_unsealed_legacy_store_is_not_sealed_without_explicit_acknowledgement`). Nothing inside the file can prove a legacy store was never sealed, so a residual remains (R3). |
+| F12 | LOW (found by host review after the second Jev screen) | `export_snapshot`, used by backups and promotion, read state tampered while the store was open without checking the seal. | FIXED: the snapshot read transaction verifies the seal first (`test_a_backup_is_never_taken_from_state_tampered_while_open`) |
 
 **The integrity seal (fix for F1 to F6).** Workspace schema 3 records a keyed seal:
 - HMAC-SHA-256 under a seal key derived with HKDF-SHA-256 from the root secret, with a distinct label, the workspace id and a per-store random salt;
@@ -64,6 +65,7 @@ All six are **EXPLOITABLE** on main. On the CW-019 branch all six are refused wi
 | R5 | LOW | **Plaintext metadata remains readable.** Identities, types, revisions, salts, tombstones and journal manifests stay visible in a copied store (A1.10); the seal protects their integrity, not their confidentiality. | Declared in `plaintext_metadata_scope()` and tested by `test_store_declares_which_metadata_stays_plaintext`. |
 | R6 | LOW | **O(n) write cost.** The seal and audit verification are both linear in store size per write. | Acceptable at synthetic scale; a performance item, not a security one. |
 | R7 | MEDIUM | **No human independent review.** | See section 1; carried to CW-020. |
+| R8 | LOW | **Pure reads between a mid-session tamper and the next write or open.** `get_object`, `key_states`, `tombstones` and `journal_entries` can return tampered plaintext metadata until then. | Object content stays AEAD-authenticated. Every write and every snapshot re-verifies the seal, so no decision that leads to a change or a backup acts on tampered state. |
 
 No residual risk is rated HIGH or CRITICAL. The only HIGH finding (F1) is fixed.
 

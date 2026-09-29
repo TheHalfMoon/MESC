@@ -1635,6 +1635,9 @@ class WorkspaceStore:
         self._require_current_schema()
         self._connection.execute("BEGIN")
         try:
+            # CW-019: a snapshot feeds backups and promotion decisions, so it is taken only
+            # from state that still matches the seal inside the same read transaction.
+            self._verify_before_change()
             rows = self._connection.execute(
                 "SELECT workspace_id, object_id, object_type, object_revision, key_version, "
                 "encryption_format_version, envelope FROM objects "

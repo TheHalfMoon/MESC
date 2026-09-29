@@ -322,6 +322,17 @@ def test_tampering_while_the_store_is_open_is_not_blessed_by_the_next_write(
         open_live(tmp_path, provider)
 
 
+def test_a_backup_is_never_taken_from_state_tampered_while_open(tmp_path: Path) -> None:
+    provider = InMemoryTestKeyProvider(new_root_secret())
+    path = rotated_store_with_deletion(tmp_path, provider)
+    with open_live(tmp_path, provider) as store:
+        raw(path, *TAMPERING["object_row_deleted"])
+        with pytest.raises(StoreSealError):
+            store.export_snapshot()
+        with pytest.raises(StoreSealError):
+            lc.create_backup(store, provider, actor_id=ACTOR, occurred_at=T3)
+
+
 def test_an_unsealed_legacy_store_is_not_sealed_without_explicit_acknowledgement(
     tmp_path: Path,
 ) -> None:
