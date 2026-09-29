@@ -38,6 +38,7 @@ from medscale_workspace.errors import (  # noqa: E402 runtime import
     MigrationPreflightError,
     RestoreConflictError,
     StoreConflictError,
+    StoreIntegrityError,
     StoreMigrationRequiredError,
     StoreRoleError,
     WorkspaceIsolationError,
@@ -50,9 +51,13 @@ from medscale_workspace.keyprovider import (  # noqa: E402 runtime import
     resolve_platform_key_provider,
 )
 from medscale_workspace.storage import (  # noqa: E402 runtime import
+    JournalEntry,
     JournalState,
+    JournalUpdate,
     ObjectWrite,
     StoreRole,
+    Tombstone,
+    TombstoneReason,
 )
 
 APPLICATION_VERSION = medscale_workspace.__version__
@@ -991,3 +996,67 @@ def test_edited_journal_inventory_cannot_redirect_a_resumed_migration(tmp_path: 
             )
         assert store.export_snapshot().objects == before
         AuditTrail(store).verify()
+
+
+def test_journal_transitions_are_enforced_by_the_store(tmp_path: Path) -> None:
+    provider = InMemoryTestKeyProvider(new_root_secret())
+    with open_live(tmp_path, provider) as store:
+        seed(store, 1)
+        lc.begin_semantic_migration(
+            store,
+            manifest_for(store),
+            Doubler(),
+            provider,
+            available_bytes=PLENTY,
+            snapshot=None,
+            actor_id=ACTOR,
+            occurred_at=T2,
+        )
+        (finished,) = store.journal_entries()
+        assert finished.state is JournalState.COMPLETED
+        reopened = JournalUpdate(entry=replace(finished, state=JournalState.MUTATING))
+        with pytest.raises(StoreIntegrityError, match="immutable"):
+            store.apply_state_change(journal=reopened)
+        first = JournalEntry(
+            migration_id="cw-018-first",
+            migration_class="M2",
+            state=JournalState.PREPARED,
+            checkpoint=0,
+            manifest="{}",
+        )
+        store.apply_state_change(journal=JournalUpdate(entry=first))
+        second = replace(first, migration_id="cw-018-second")
+        with pytest.raises(StoreIntegrityError, match="only one migration"):
+            store.apply_state_change(journal=JournalUpdate(entry=second))
+        assert [entry.migration_id for entry in store.journal_entries()] == [
+            "cw-018-adversarial-m2",
+            "cw-018-first",
+        ]
+
+
+def test_a_user_deletion_tombstone_can_never_be_weakened(tmp_path: Path) -> None:
+    provider = InMemoryTestKeyProvider(new_root_secret())
+    with open_live(tmp_path, provider) as store:
+        seed(store, 1)
+        store.delete_object(binding_of(PATIENTS[0]))
+        weaker = Tombstone(
+            object_id=PATIENTS[0],
+            object_type=WorkspaceObjectType.PATIENT,
+            object_revision="rev-00000001",
+            reason=TombstoneReason.MIGRATION_SUPERSEDED,
+        )
+        store.apply_state_change(record_tombstones=(weaker,))
+        store.apply_state_change(
+            record_tombstones=(replace(weaker, reason=TombstoneReason.ROLLBACK_DISCARDED),)
+        )
+        assert [item.reason for item in store.tombstones()] == [TombstoneReason.USER_DELETION]
+        other = replace(weaker, object_id=PATIENTS[1])
+        store.apply_state_change(record_tombstones=(other,))
+        store.apply_state_change(
+            record_tombstones=(replace(other, reason=TombstoneReason.USER_DELETION),)
+        )
+        reasons = {item.object_id: item.reason for item in store.tombstones()}
+    assert reasons == {
+        PATIENTS[0]: TombstoneReason.USER_DELETION,
+        PATIENTS[1]: TombstoneReason.USER_DELETION,
+    }

@@ -35,7 +35,13 @@ Recorded limits: the quarantine store records no audit event of its own because 
 content must equal the backup exactly (the ``RESTORE`` event is written to the live
 store on promotion or rollback); the backup key comes from the same root secret as
 the store keys, so root-secret loss loses both; disk space is not measured by this
-package and must be declared by the caller.
+package and must be declared by the caller. The journal state, store role and
+tombstone reasons are declared plaintext metadata (A1.10): someone able to write the
+store file can edit them, as they can already roll back the whole store (A1.5). Every
+decision that could destroy or resurrect content is therefore bound to authenticated
+audit evidence (the PREPARED migration event, ``object_delete`` events), while the
+normal-open refusals driven by journal state and role guard against operator error,
+not against a malicious writer; the CW-019 security lane owns attacking them.
 """
 
 from __future__ import annotations

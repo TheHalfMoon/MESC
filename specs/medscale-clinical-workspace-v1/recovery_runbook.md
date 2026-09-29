@@ -24,6 +24,7 @@ Limits that are recorded, not hidden:
 - AES-256-GCM does not detect a whole-store rollback made with a valid key (A1.5). Rollback detection comes from the audit-chain ancestry check at promotion and rollback, and from an anchored head digest held outside the store.
 - `secure_delete=ON` is defense in depth only and is not cryptographic erasure (A1.11). Deleting a revision does not erase copies inside backups the operator still holds; expiring backups is an operator duty.
 - Free disk space cannot be measured inside the package. The caller declares it to preflight, which refuses anything below twice the stored envelope size.
+- Journal state, store role and tombstone reasons are plaintext metadata (A1.10). Anyone who can write the store file can edit them, just as they can roll back the whole store. Resuming a migration and returning deleted content therefore depend on authenticated audit events, not on this metadata. The normal-open refusals protect against operator error, not a malicious writer.
 
 ## 2. Routine protected backup
 

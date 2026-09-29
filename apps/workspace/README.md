@@ -99,6 +99,11 @@ Recorded limitations, not hidden:
   independent security lane at CW-019 owns attacking the spine.
 - CW-018 backups and store keys both derive from the root secret, so root-secret loss loses
   both; free disk space is declared by the caller, because this package cannot measure it.
+- the CW-018 journal state, store role and tombstone reasons are declared plaintext metadata
+  (A1.10). A writer of the store file can edit them, as it can already roll back the whole
+  store (A1.5). Decisions that could destroy or resurrect content are bound to authenticated
+  audit evidence; the normal-open refusals driven by journal state and role guard against
+  operator error, not a malicious writer, and CW-019 owns attacking them.
 - the CW-004 export containment check is pure path algebra over caller-supplied absolute paths,
   because this package holds no filesystem capability (`os`, `pathlib` and `open` are forbidden
   by the boundary guard). It therefore does not resolve symlinks, junctions or reparse points:

@@ -843,10 +843,20 @@ class WorkspaceStore:
         return deleted
 
     def _insert_tombstone(self, binding: ObjectBinding, reason: TombstoneReason) -> None:
+        """Record a revision's absence; a USER_DELETION reason is never weakened.
+
+        A later tombstone for the same revision may strengthen its reason to
+        ``USER_DELETION`` but can never replace ``USER_DELETION`` with a migration or
+        rollback reason, so no subsequent write can make a user deletion returnable.
+        """
+
         self._connection.execute(
-            "INSERT OR REPLACE INTO deletion_tombstones ("
+            "INSERT INTO deletion_tombstones ("
             "workspace_id, object_id, object_type, object_revision, reason"
-            ") VALUES (?, ?, ?, ?, ?)",
+            ") VALUES (?, ?, ?, ?, ?) "
+            "ON CONFLICT (workspace_id, object_id, object_revision) DO UPDATE SET "
+            "object_type = excluded.object_type, reason = excluded.reason "
+            "WHERE deletion_tombstones.reason <> 'USER_DELETION'",
             (
                 str(binding.workspace_id),
                 str(binding.object_id),
@@ -861,6 +871,8 @@ class WorkspaceStore:
 
         Re-creating a revision that was deleted earlier clears its tombstone in the
         same transaction, so the tombstone ledger always describes current absence.
+        Re-creation is an explicit write by a caller that holds the plaintext; the
+        CW-018 promotion and rollback paths never re-create a user-deleted revision.
         """
 
         self._require_writable()
@@ -969,10 +981,14 @@ class WorkspaceStore:
         if not isinstance(entry.checkpoint, int) or entry.checkpoint < 0:
             raise StoreIntegrityError("journal checkpoint must be a non-negative integer")
         existing = self._connection.execute(
-            "SELECT migration_class FROM migration_journal WHERE migration_id = ?",
+            "SELECT migration_class, state FROM migration_journal WHERE migration_id = ?",
             (entry.migration_id,),
         ).fetchone()
         if existing is None:
+            if _unfinished_journal(self._connection):
+                raise StoreIntegrityError(
+                    "another migration is unfinished; only one migration may be in flight"
+                )
             self._connection.execute(
                 "INSERT INTO migration_journal ("
                 "migration_id, migration_class, state, checkpoint, manifest"
@@ -988,6 +1004,8 @@ class WorkspaceStore:
         else:
             if str(existing[0]) != entry.migration_class:
                 raise StoreIntegrityError("a journal entry cannot change its migration class")
+            if JournalState(str(existing[1])) in TERMINAL_JOURNAL_STATES:
+                raise StoreIntegrityError("a finished migration journal entry is immutable")
             self._connection.execute(
                 "UPDATE migration_journal SET state = ?, checkpoint = ?, manifest = ? "
                 "WHERE migration_id = ?",
