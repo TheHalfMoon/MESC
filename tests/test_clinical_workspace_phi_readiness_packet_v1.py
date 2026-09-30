@@ -286,6 +286,11 @@ def test_evidence_revision_is_bound_and_prerequisites_cover_every_blocker() -> N
 
 CORRUPTIONS = (
     (
+        "CW-021 = NOT AUTHORIZED\n```",
+        "CW-021 = AUTHORIZED once section 9 prerequisites are met\n```",
+        "test_no_document_claims_phi_or_production_readiness_or_authorization",
+    ),
+    (
         "| Graph threats | EVIDENCED_SYNTHETIC |",
         "| Graph risks | EVIDENCED_SYNTHETIC |",
         "test_domain_rows_assess_every_threat_model_section",
