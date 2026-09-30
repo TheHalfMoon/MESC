@@ -24,7 +24,7 @@ QUALIFICATION_SCOPE = SYNTHETIC_ONLY
 CW-021 = NOT AUTHORIZED
 ```
 
-The synthetic/local implementation is well evidenced for encryption, integrity, backup, deletion, audit, no-backflow, offline operation, connector least privilege, prompt-injection inertness and model isolation. It is **not** PHI-ready. Blocking gaps, each recorded in sections 4 and 5:
+The synthetic/local implementation is well evidenced for encryption, integrity, backup, deletion, audit, no-backflow, offline operation, connector least privilege, prompt-injection inertness and model isolation. It is **not** PHI-ready. Blocking gaps, each recorded in sections 4, 5 and 6:
 - **Architecture blocked:** no platform protected-key provider exists, so no production or PHI store can open (R2).
 - **Missing controls:** there is no user authentication or patient/encounter access control (G1), and reads are never audited (G2).
 - **No independent review:** no human independent security review or penetration assessment has been performed (R7).
@@ -48,18 +48,20 @@ IDENTITIES          WORKSPACE_SCHEMA_VERSION = 3
                     AEAD dependency cryptography==50.0.1
 ```
 
+**Scope.** This packet assesses the Clinical Workspace package (`apps/workspace/`) and its specifications only. Research Core, MRL, model qualification and the Hugging Face publication path were **not** assessed for PHI handling. They stay synthetic-only, and PHI must never reach them: the Workspace-side no-backflow guard refuses every flow toward Research Core (section 7), but this packet is not a PHI assessment of those components.
+
 Every test cited below exists at the evidence revision. The binding test checks that each cited test function exists, and that each identity above equals the code constant. CI runs the whole suite at every head, so the cited evidence is re-executed at the head that carries this packet.
 
 ## 3. Acceptance mapping (tasks.md CW-020)
 
 | Acceptance item | Status | Evidence |
 |---|---|---|
-| all security/data-flow evidence bound to exact canonical revision | EVIDENCED_SYNTHETIC | section 2; section 6 data-flow diagram; the binding test |
-| runtime/model identities | PARTIAL | ASR identity is pinned and enforced (section 7). No real generation model is admitted: the draft engine uses synthetic placeholder identities (`test_mutable_model_revision_rejected`, `test_no_ehr_write_or_remote_api_exists`) |
+| all security/data-flow evidence bound to exact canonical revision | EVIDENCED_SYNTHETIC | section 2; section 7 data-flow diagram; the binding test |
+| runtime/model identities | PARTIAL | ASR identity is pinned and enforced (section 8). No real generation model is admitted: the draft engine uses synthetic placeholder identities (`test_mutable_model_revision_rejected`, `test_no_ehr_write_or_remote_api_exists`) |
 | connector scope | EVIDENCED_SYNTHETIC | fixture-only (`fixture://` allowlist) and read-only, with writes mechanically disabled: `test_capability_manifest_least_privilege`, `test_destination_allowlist_enforced`, `test_writes_mechanically_disabled`, `test_credential_material_never_enters_store_or_audit`, `test_cross_workspace_fetch_refused`, `test_timeout_retry_bounds_and_offline_state`. No real connector exists |
 | retention/deletion | PARTIAL | deletion is evidenced (gate row "deletion tests"). Retention is a single synthetic class, `session-scoped` v1, with no time-based expiry and no real-data retention policy (G6) |
 | incident response | PARTIAL | [incident_response.md](incident_response.md) maps every raised security signal to a response and is mechanically bound to `errors.py`; it has never been drilled with humans (G7) |
-| unresolved risk register | EVIDENCED_SYNTHETIC | section 5 |
+| unresolved risk register | EVIDENCED_SYNTHETIC | section 6 |
 | independent review | NOT_MET | **no human independent security review has been performed** (R7); every review so far is agent and tool lanes (tests, Jev, Alibaba Open Code Review local lanes, host review) |
 
 ## 4. PHI-readiness gate (data_security.md section 20)
@@ -67,7 +69,7 @@ Every test cited below exists at the evidence revision. The binding test checks 
 | Gate item | Status | Evidence | Blocking risks |
 |---|---|---|---|
 | accepted scope ADR | NOT_MET | ADR-0038 is accepted, but it keeps `PHI_INGESTION = NOT_AUTHORIZED`; no ADR scopes a PHI pilot | G5 |
-| data-flow diagram matches implementation | EVIDENCED_SYNTHETIC | section 6, with each edge bound to tests | R4 |
+| data-flow diagram matches implementation | EVIDENCED_SYNTHETIC | section 7, with each edge bound to tests | R4 |
 | encryption/key tests | EVIDENCED_SYNTHETIC | `test_payload_round_trips_through_the_store`, `test_every_encryption_uses_a_fresh_96_bit_nonce`, `test_derived_keys_are_separated_per_workspace_and_key_version`, `test_tampered_envelopes_fail_closed`, `test_swapping_ciphertext_between_objects_fails_authentication`, `test_a_retired_key_version_cannot_read_or_write_objects`, `test_rotation_retires_the_previous_key_after_verified_migration`, `test_copied_store_is_unreadable_without_the_original_root_secret`, `test_the_integrity_seal_refuses_every_raw_tampering_class`, `test_platform_provider_is_unavailable_and_fails_closed_before_any_file` | R1, R2, R5 |
 | backup/restore tests | EVIDENCED_SYNTHETIC | `test_backup_is_encrypted_and_carries_a_versioned_integrity_manifest`, `test_backup_key_is_separate_from_every_store_key`, `test_restore_lands_in_quarantine_that_normal_mode_refuses`, `test_promotion_never_overwrites_newer_live_state`, `test_tampered_backup_bytes_fail_closed`, `test_forged_backups_with_consistent_encryption_are_still_refused`, `test_a_backup_is_never_taken_from_state_tampered_while_open`, `test_the_recovery_runbook_exercises_pass_end_to_end` | R1 |
 | deletion tests | EVIDENCED_SYNTHETIC | `test_delete_removes_the_row_and_makes_the_object_unreadable`, `test_every_deletion_path_records_a_tombstone`, `test_delete_cascade_removes_session_and_chunks`, `test_deletion_reconciliation_removes_stale_graph_state_and_rebuilds`, `test_deletion_policy_declares_every_required_scope`, `test_rollback_discards_newer_state_and_keeps_user_deletions`, `test_a_user_deletion_tombstone_can_never_be_weakened`, `test_deletion_makes_no_cryptographic_erasure_claim` | no cryptographic erasure; copies in retained backups persist |
@@ -83,9 +85,34 @@ Every test cited below exists at the evidence revision. The binding test checks 
 | privacy/retention policy | NOT_MET | only the synthetic `session-scoped` v1 retention class exists; there is no privacy policy, retention schedule or data-subject process for real data | G6 |
 | incident/recovery runbook | PARTIAL | [recovery_runbook.md](recovery_runbook.md), exercised end to end by `test_the_recovery_runbook_exercises_pass_end_to_end`; [incident_response.md](incident_response.md), not drilled | G7 |
 
-## 5. Unresolved risk register
+## 5. ADR-0038 Clinical Workspace invariants
 
-### 5.1 CW-019 residual risks (severities exactly as in the CW-019 review record)
+ADR-0038 requires the Workspace specification to enforce these invariants before any PHI-capable implementation is authorized.
+
+| Invariant | Status | Evidence | Blocking risks |
+|---|---|---|---|
+| local-first operation for the core path | EVIDENCED_SYNTHETIC | `test_workspace_shell_runs_offline_with_deterministic_synthetic_identity`, `test_no_hidden_egress_across_the_full_lifecycle` | none |
+| explicit network boundaries and no silent cloud fallback | EVIDENCED_SYNTHETIC | `test_no_workspace_module_imports_a_process_network_or_environment_capability`, `test_trust_flags_enforced`, `test_destination_allowlist_enforced` | none |
+| encryption-at-rest and protected key material | ARCHITECTURE_BLOCKED | encryption is evidenced (section 4), but protected key material needs a platform key provider, and none exists: `test_platform_provider_is_unavailable_and_fails_closed_before_any_file`, `test_in_memory_test_provider_is_not_production_selectable` | R2 |
+| encounter/patient access controls | NOT_MET | no authentication or authorization layer exists | G1 |
+| immutable audit events for reads, writes, exports, deletion, model actions, and connector actions | PARTIAL | writes, deletion, model actions and connector reads are audited: `test_audit_events_cover_lifecycle`, `test_store_provenance_and_audit`, `test_synthetic_draft_validates_and_stores` (AI generation), `test_writes_mechanically_disabled` (connector read), `test_query_audit_records_evidence_query`. Exports: FHIR staging emits an `export` event, but no test asserts it, and dataset export staging is audited as `object_create`. **Reads are never audited** | G2, G3, G4 |
+| explicit retention and deletion semantics for audio, transcripts, notes, embeddings/indexes, graphs, and backups | PARTIAL | the deletion policy covers every scope: `test_deletion_policy_declares_every_required_scope`, `test_delete_cascade_removes_session_and_chunks`, `test_chunk_identity_order_digests_and_retention`; retention is one synthetic class with no expiry | G6 |
+| human review before any drafted clinical note, order, code, or other write is treated as final | EVIDENCED_SYNTHETIC | `test_direct_draft_to_finalized_is_forbidden`, `test_no_finalization_api_exists`, `test_edited_text_cannot_retain_supported_status`, `test_finalize_audit_uses_note_finalize` | synthetic actor identities (G1) |
+| source linkage/provenance for AI-generated clinical content | EVIDENCED_SYNTHETIC | `test_all_five_support_states_first_class`, `test_unsupported_fact_remains_unsupported`, `test_invented_fact_cannot_become_source_backed` | no real generation model |
+| no automatic training or model-improvement upload from local clinical content | EVIDENCED_SYNTHETIC | `test_no_workspace_data_class_can_flow_into_research_core`, `test_no_hidden_egress_across_the_full_lifecycle` | none |
+| fail-closed behavior when a required local model, evidence source, validator, or security capability is unavailable | EVIDENCED_SYNTHETIC | `test_missing_optional_deps_fail_cleanly`, `test_missing_snapshot_fails_closed`, `test_a_store_without_an_active_key_fails_closed`, `test_platform_provider_is_unavailable_and_fails_closed_before_any_file` | none |
+
+Additional safeguards that bear on PHI readiness:
+
+| Safeguard | Status | Evidence |
+|---|---|---|
+| consent gate before capture | EVIDENCED_SYNTHETIC | `test_consent_required_before_simulated_capture`; the vocabulary is synthetic-only consent (CW-017) |
+| failure text carries no payload or key material | EVIDENCED_SYNTHETIC | `test_failure_messages_never_carry_payload_or_key_material` |
+| every Workspace data class refused toward Research Core | EVIDENCED_SYNTHETIC | `test_no_workspace_data_class_can_flow_into_research_core`; derived-sensitivity inheritance (`data_security.md` section 4) is not separately tested |
+
+## 6. Unresolved risk register
+
+### 6.1 CW-019 residual risks (severities exactly as in the CW-019 review record)
 
 | ID | Severity | Risk | State for PHI readiness |
 |---|---|---|---|
@@ -98,7 +125,7 @@ Every test cited below exists at the evidence revision. The binding test checks 
 | R7 | MEDIUM | no human independent security review | OPEN, blocking |
 | R8 | LOW | pure-read window: `get_object`, `key_states`, `tombstones` and `journal_entries` can return tampered plaintext metadata between a mid-session tamper and the next verified write, snapshot or open | OPEN |
 
-### 5.2 PHI-readiness gaps found by this packet
+### 6.2 PHI-readiness gaps found by this packet
 
 | ID | Severity for PHI readiness | Gap | Evidence |
 |---|---|---|---|
@@ -112,7 +139,7 @@ Every test cited below exists at the evidence revision. The binding test checks 
 
 Also declared but never emitted are `TRANSCRIPT_EDIT`, `TRANSCRIPT_DELETE` and `CONNECTOR_WRITE`. No transcript-edit path exists and connector writes are mechanically disabled, so these three are recorded as consistent with the current scope rather than as gaps. The binding test checks the whole declared-but-unemitted set, so this record goes stale loudly if emission changes.
 
-### 5.3 Limitations carried from earlier closeouts (unchanged unless stated)
+### 6.3 Limitations carried from earlier closeouts (unchanged unless stated)
 
 ```text
 CW-002  secure_delete=ON is defense in depth only, never cryptographic erasure (A1.11); single-writer store
@@ -138,7 +165,7 @@ CW-018  root-secret loss loses both store and backup keys; backups are not expir
 all     no multi-writer merge; bounded inputs are refused, not truncated; Issue #464 typing and version items separate
 ```
 
-## 6. Data-flow diagram (implementation, not intent)
+## 7. Data-flow diagram (implementation, not intent)
 
 ```text
                       explicit boolean export request only
@@ -170,7 +197,7 @@ all     no multi-writer merge; bounded inputs are refused, not truncated; Issue 
 | P <-> W | local-only model runtime | `test_trust_flags_enforced`, `test_revision_mismatch_fails_closed` |
 | W -> hidden egress | refused | `test_no_hidden_egress_across_the_full_lifecycle` |
 
-## 7. Runtime and model identities
+## 8. Runtime and model identities
 
 ```text
 ASR MODEL_ID          openai/whisper-large-v3-turbo
@@ -182,7 +209,7 @@ AEAD                  cryptography==50.0.1 (AES-256-GCM, HKDF-SHA-256, HMAC-SHA-
 PYTHON                CI py3.11 and py3.12
 ```
 
-## 8. Prerequisites before any CW-021 authorization could be considered
+## 9. Prerequisites before any CW-021 authorization could be considered
 
 These prerequisites are necessary, not sufficient. Meeting them would still grant nothing: CW-021 requires the separate explicit Founder and governance authorization defined in `tasks.md`.
 
@@ -196,7 +223,7 @@ These prerequisites are necessary, not sufficient. Meeting them would still gran
 8. A drilled incident-response process, with breach and clinical-safety reporting paths (G7).
 9. Separate model ADRs and qualification for any generation model that would touch real data.
 
-## 9. Non-grants
+## 10. Non-grants
 
 ```text
 MODEL_AUTHORITY = NONE

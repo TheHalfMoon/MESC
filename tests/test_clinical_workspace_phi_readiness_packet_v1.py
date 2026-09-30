@@ -33,7 +33,7 @@ from medscale_workspace.audit import AuditEventType  # noqa: E402 runtime import
 
 ADMITTED_STATUSES = frozenset({"EVIDENCED_SYNTHETIC", "PARTIAL", "NOT_MET", "ARCHITECTURE_BLOCKED"})
 
-# Declared audit event types the packet records as never emitted (section 5.2).
+# Declared audit event types the packet records as never emitted (section 6.2).
 PACKET_UNEMITTED_EVENT_TYPES = frozenset(
     {
         "PATIENT_READ",
@@ -151,6 +151,20 @@ def test_acceptance_rows_assess_every_cw020_acceptance_item() -> None:
         assert row[1] in ADMITTED_STATUSES, row
 
 
+def test_invariant_rows_assess_every_adr_0038_workspace_invariant() -> None:
+    adr = _read(REPOSITORY_ROOT / "docs" / "adr" / "0038-local-clinical-workspace-boundary.md")
+    invariants = adr.split("### Clinical Workspace invariants")[1].split("### ")[0]
+    required = set(_bullets(invariants))
+    assert len(required) == 10
+    section = _section(_read(PACKET), "## 5. ADR-0038")
+    rows = _table_rows(section.split("Additional safeguards")[0])
+    assert sorted(row[0] for row in rows) == sorted(required)
+    status = {row[0]: row[1] for row in rows}
+    assert status["encounter/patient access controls"] == "NOT_MET"
+    for row in rows:
+        assert row[1] in ADMITTED_STATUSES, row
+
+
 def test_independent_review_is_not_met_while_no_human_review_exists() -> None:
     review = _read(SPECS / "cw-019-security-review.md")
     assert "No human independent security review has been performed" in review
@@ -246,12 +260,22 @@ def test_evidence_revision_is_bound_and_prerequisites_cover_every_blocker() -> N
     (revision,) = re.findall(r"^EVIDENCE_REVISION   ([0-9a-f]{40})$", packet, re.M)
     assert f"`{revision}`" in packet
     assert len(re.findall(r"fresh-main [A-Za-z /]+ +\d{11} \(push\): SUCCESS", packet)) == 4
-    prerequisites = _section(packet, "## 8. Prerequisites")
+    prerequisites = _section(packet, "## 9. Prerequisites")
     for blocker in ("G1", "G2", "G3", "G4", "G5", "G6", "G7", "R1", "R2", "R7"):
         assert f"{blocker})" in prerequisites or f"{blocker}," in prerequisites, blocker
 
 
 CORRUPTIONS = (
+    (
+        "| encounter/patient access controls | NOT_MET |",
+        "| encounter/patient access controls | EVIDENCED_SYNTHETIC |",
+        "test_invariant_rows_assess_every_adr_0038_workspace_invariant",
+    ),
+    (
+        "| local-first operation for the core path |",
+        "| local operation |",
+        "test_invariant_rows_assess_every_adr_0038_workspace_invariant",
+    ),
     (
         "| R1 | MEDIUM | whole-store rollback",
         "| R1 | LOW | whole-store rollback",
@@ -278,8 +302,8 @@ CORRUPTIONS = (
         "test_gate_rows_assess_every_section_20_item",
     ),
     (
-        "`test_missing_optional_deps_fail_cleanly`",
-        "`test_missing_optional_deps_fail_quietly`",
+        "`test_query_audit_records_evidence_query`",
+        "`test_query_audit_records_nothing`",
         "test_every_cited_test_function_exists",
     ),
     (
