@@ -112,7 +112,16 @@ Recorded limitations, not hidden:
   the first later unit that obtains a filesystem capability, and it remains in scope for CW-019.
 - the CW-004 guard decides and records; it performs no I/O, so it neither stages an export on
   disk nor asserts that a chosen destination exists.
+- there is no user authentication or patient/encounter access control, and the audit
+  vocabulary declares read, session and security-failure events (`PATIENT_READ`,
+  `ENCOUNTER_READ`, `LOGIN`, `WORKSPACE_OPEN`, `WORKSPACE_CLOSE`, `SECURITY_FAILURE`) that no
+  code path emits. The
+  [CW-020 PHI-readiness evidence packet](../../specs/medscale-clinical-workspace-v1/cw-020-phi-readiness-evidence-packet.md)
+  (Issue #526) records these as gaps G1-G4 and assesses the workspace as
+  `PHI_READINESS = NOT_READY`; the
+  [incident response procedure](../../specs/medscale-clinical-workspace-v1/incident_response.md)
+  maps every raised security signal to a response.
 
-CW-002, CW-003, CW-004 and CW-018 do not authorize PHI, real-patient import, clinical production use,
+CW-002, CW-003, CW-004, CW-018 and CW-020 do not authorize PHI, real-patient import, clinical production use,
 EHR writes, external model execution, training on Workspace data, research admission,
 publication, paid compute, or MRL changes.
