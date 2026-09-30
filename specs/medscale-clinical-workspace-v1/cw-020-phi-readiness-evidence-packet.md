@@ -95,7 +95,7 @@ ADR-0038 requires the Workspace specification to enforce these invariants before
 | explicit network boundaries and no silent cloud fallback | EVIDENCED_SYNTHETIC | `test_no_workspace_module_imports_a_process_network_or_environment_capability`, `test_trust_flags_enforced`, `test_destination_allowlist_enforced` | none |
 | encryption-at-rest and protected key material | ARCHITECTURE_BLOCKED | encryption is evidenced (section 4), but protected key material needs a platform key provider, and none exists: `test_platform_provider_is_unavailable_and_fails_closed_before_any_file`, `test_in_memory_test_provider_is_not_production_selectable` | R2 |
 | encounter/patient access controls | NOT_MET | no authentication or authorization layer exists | G1 |
-| immutable audit events for reads, writes, exports, deletion, model actions, and connector actions | PARTIAL | writes, deletion, model actions and connector reads are audited: `test_audit_events_cover_lifecycle`, `test_store_provenance_and_audit`, `test_synthetic_draft_validates_and_stores` (AI generation), `test_writes_mechanically_disabled` (connector read), `test_query_audit_records_evidence_query`. Exports: FHIR staging emits an `export` event, but no test asserts it, and dataset export staging is audited as `object_create`. **Reads are never audited** | G2, G3, G4 |
+| immutable audit events for reads, writes, exports, deletion, model actions, and connector actions | PARTIAL | writes, deletion, model actions and connector reads are audited: `test_audit_events_cover_lifecycle`, `test_store_provenance_and_audit`, `test_synthetic_draft_validates_and_stores` (AI generation), `test_writes_mechanically_disabled` (connector read), `test_query_audit_records_evidence_query`. Exports: FHIR staging emits an `export` event, but no test asserts it, and dataset export staging is audited as `object_create`. **Reads are never audited** | G2, G3, G4, G8 |
 | explicit retention and deletion semantics for audio, transcripts, notes, embeddings/indexes, graphs, and backups | PARTIAL | the deletion policy covers every scope: `test_deletion_policy_declares_every_required_scope`, `test_delete_cascade_removes_session_and_chunks`, `test_chunk_identity_order_digests_and_retention`; retention is one synthetic class with no expiry | G6 |
 | human review before any drafted clinical note, order, code, or other write is treated as final | EVIDENCED_SYNTHETIC | `test_direct_draft_to_finalized_is_forbidden`, `test_no_finalization_api_exists`, `test_edited_text_cannot_retain_supported_status`, `test_finalize_audit_uses_note_finalize` | synthetic actor identities (G1) |
 | source linkage/provenance for AI-generated clinical content | EVIDENCED_SYNTHETIC | `test_all_five_support_states_first_class`, `test_unsupported_fact_remains_unsupported`, `test_invented_fact_cannot_become_source_backed` | no real generation model |
@@ -109,6 +109,25 @@ Additional safeguards that bear on PHI readiness:
 | consent gate before capture | EVIDENCED_SYNTHETIC | `test_consent_required_before_simulated_capture`; the vocabulary is synthetic-only consent (CW-017) |
 | failure text carries no payload or key material | EVIDENCED_SYNTHETIC | `test_failure_messages_never_carry_payload_or_key_material` |
 | every Workspace data class refused toward Research Core | EVIDENCED_SYNTHETIC | `test_no_workspace_data_class_can_flow_into_research_core`; derived-sensitivity inheritance (`data_security.md` section 4) is not separately tested |
+
+Threat-model domains (`data_security.md` sections 5 to 18):
+
+| Domain | Status | Evidence | Blocking risks |
+|---|---|---|---|
+| Encryption and key lifecycle | ARCHITECTURE_BLOCKED | section 4 encryption/key tests; no platform key provider | R2, R1, R5 |
+| Identity, tenancy, and authorization | PARTIAL | workspace ownership and cross-workspace refusal: `test_two_workspaces_are_isolated_in_separate_stores`, `test_a_store_file_cannot_be_adopted_as_another_workspace`, `test_cross_workspace_fetch_refused`, `test_cross_workspace_traversal_fails`. No authorization, and actor identities are caller-supplied | G1 |
+| Recording and audio lifecycle | PARTIAL | simulated capture only: `test_consent_required_before_simulated_capture`, `test_consent_revocation_forces_stop`, `test_writes_after_stop_fail_closed`, `test_crash_between_chunk_and_state_commits_detected`, `test_delete_cascade_removes_session_and_chunks`. No microphone or device path and no visible recording-state UI exist | G6 |
+| Transcript and note integrity | EVIDENCED_SYNTHETIC | `test_edit_forces_draft_and_invalidates_support`, `test_edited_text_cannot_retain_supported_status`, `test_invented_fact_cannot_become_source_backed` | synthetic actors (G1) |
+| Prompt injection and untrusted content | EVIDENCED_SYNTHETIC | section 4 prompt-injection row; `test_injection_content_stays_inert_data` | no real generation model |
+| Model isolation | EVIDENCED_SYNTHETIC | section 4 model-isolation row | ASR only |
+| Connector security | EVIDENCED_SYNTHETIC | section 4 connector row; TLS and identity validation are not applicable because no network transport exists | fixture-only |
+| FHIR import/export threats | EVIDENCED_SYNTHETIC | `test_workspace_patient_binding_checked`, `test_security_labels_retained_where_present`, `test_cross_workspace_reference_refused`, `test_export_path_escape_refused`, `test_oversized_payload_refused_at_parse_stage`, `test_malformed_and_unsupported_fail_explicitly` | structural validity only; R4; G8 |
+| Evidence retrieval threats | EVIDENCED_SYNTHETIC | `test_provenance_tampering_detected`, `test_replay_after_member_deletion_fails_closed`, `test_no_network_remote_model_or_write_capability`, `test_contradicted_verdict_dominates_support` | lexical ranking only |
+| Graph threats | EVIDENCED_SYNTHETIC | `test_edge_requires_epistemic_and_source_refs`, `test_deleted_source_makes_edge_stale`, `test_malicious_edge_text_grants_no_authority`, `test_mixed_workspace_path_refused` | none |
+| Plugin and supply-chain threats | EVIDENCED_SYNTHETIC | no plugin loader exists; `test_workspace_boundary_guard_rejects_dynamic_import`, `test_workspace_boundary_guard_rejects_nonallowlisted_stdlib`, `test_the_admitted_runtime_dependency_surface_is_pinned_and_permissive` | self-review only (R7) |
+| Backup and restore | EVIDENCED_SYNTHETIC | section 4 backup/restore row | R1 |
+| Deletion | EVIDENCED_SYNTHETIC | section 4 deletion row | no cryptographic erasure |
+| Logging and diagnostics | EVIDENCED_SYNTHETIC | the package cannot import `logging` (boundary guard allowlist); `test_failure_messages_never_carry_payload_or_key_material`, `test_audit_events_carry_no_clinical_text`, `test_lifecycle_audit_events_carry_no_payload_content` | no security-failure record (G4) |
 
 ## 6. Unresolved risk register
 
@@ -136,6 +155,7 @@ Additional safeguards that bear on PHI readiness:
 | G5 | HIGH | no accepted ADR scopes any PHI use (environment, users, data class, connectors, retention, runtime, stop conditions) | ADR list `docs/adr/`; ADR-0038 `PHI_INGESTION = NOT_AUTHORIZED` |
 | G6 | MEDIUM | no privacy or retention policy for real data; one synthetic retention class with no time-based expiry | `RETENTION_CLASS = "session-scoped"`, `RETENTION_VERSION = 1` in `encounter.py` |
 | G7 | LOW | incident response has never been drilled; there is no on-call, paging, breach-notification or clinical-safety reporting process | [incident_response.md](incident_response.md) section 4 |
+| G8 | LOW | export audit is untested and inconsistent: FHIR export staging emits an `export` audit event that no test asserts, and dataset export staging is recorded only as `object_create` | `apps/workspace/src/medscale_workspace/fhir_r4.py`, `apps/workspace/src/medscale_workspace/dataset.py` |
 
 Also declared but never emitted are `TRANSCRIPT_EDIT`, `TRANSCRIPT_DELETE` and `CONNECTOR_WRITE`. No transcript-edit path exists and connector writes are mechanically disabled, so these three are recorded as consistent with the current scope rather than as gaps. The binding test checks the whole declared-but-unemitted set, so this record goes stale loudly if emission changes.
 
@@ -216,7 +236,7 @@ These prerequisites are necessary, not sufficient. Meeting them would still gran
 1. An accepted PHI-scope ADR that names the environment, users, data class, connectors, retention, runtime and stop conditions (G5).
 2. A platform protected-key provider, designed and ratified under ADR-0039 A1.7 and A1.8 (R2).
 3. User authentication plus patient/encounter access control (G1).
-4. Read, session and security-failure audit, including an external tamper-evident record (G2, G3, G4).
+4. Read, session, export and security-failure audit, including an external tamper-evident record (G2, G3, G4, G8).
 5. A human independent security review and a penetration assessment appropriate to the named deployment (R7).
 6. A decision on whole-store rollback: an external monotonic anchor, or an explicitly accepted residual (R1).
 7. A privacy and retention policy for real data (G6).

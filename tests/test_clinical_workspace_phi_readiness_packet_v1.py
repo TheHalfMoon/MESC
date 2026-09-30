@@ -165,6 +165,17 @@ def test_invariant_rows_assess_every_adr_0038_workspace_invariant() -> None:
         assert row[1] in ADMITTED_STATUSES, row
 
 
+def test_domain_rows_assess_every_threat_model_section() -> None:
+    headings = re.findall(r"^## (\d+)\. (.+)$", _read(SPECS / "data_security.md"), re.M)
+    required = {title for number, title in headings if 5 <= int(number) <= 18}
+    assert len(required) == 14
+    section = _section(_read(PACKET), "## 5. ADR-0038")
+    rows = _table_rows(section.split("Threat-model domains")[1])
+    assert sorted(row[0] for row in rows) == sorted(required)
+    for row in rows:
+        assert row[1] in ADMITTED_STATUSES, row
+
+
 def test_independent_review_is_not_met_while_no_human_review_exists() -> None:
     review = _read(SPECS / "cw-019-security-review.md")
     assert "No human independent security review has been performed" in review
@@ -261,11 +272,16 @@ def test_evidence_revision_is_bound_and_prerequisites_cover_every_blocker() -> N
     assert f"`{revision}`" in packet
     assert len(re.findall(r"fresh-main [A-Za-z /]+ +\d{11} \(push\): SUCCESS", packet)) == 4
     prerequisites = _section(packet, "## 9. Prerequisites")
-    for blocker in ("G1", "G2", "G3", "G4", "G5", "G6", "G7", "R1", "R2", "R7"):
+    for blocker in ("G1", "G2", "G3", "G4", "G5", "G6", "G7", "G8", "R1", "R2", "R7"):
         assert f"{blocker})" in prerequisites or f"{blocker}," in prerequisites, blocker
 
 
 CORRUPTIONS = (
+    (
+        "| Graph threats | EVIDENCED_SYNTHETIC |",
+        "| Graph risks | EVIDENCED_SYNTHETIC |",
+        "test_domain_rows_assess_every_threat_model_section",
+    ),
     (
         "| encounter/patient access controls | NOT_MET |",
         "| encounter/patient access controls | EVIDENCED_SYNTHETIC |",
