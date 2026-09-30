@@ -198,7 +198,11 @@ def test_v1_trust_root_overwrite_blocks_even_a_trusted_successor_pass(tmp_path: 
         (_V1_RECORD, b'"pass_claimed":false', b'"pass_claimed":true'),
         (_V1_RECORD, b'"gemma_tested":false', b'"gemma_tested":true'),
         (_ROSTER, b'"state":"UNCHANGED"', b'"state":"REPLACED"'),
-        (_OBJECTIVE_V2, b'"research_question":"RQ1"', b'"research_question":"RQ2"'),
+        (
+            _OBJECTIVE_V2,
+            b'"evidence_production_authorized":true',
+            b'"evidence_production_authorized":false',
+        ),
         (_V1_ROSTER, b'"PREFERRED_FOUNDATION_CANDIDATE"', b'"DEPRECATED_CANDIDATE"'),
     ],
 )
