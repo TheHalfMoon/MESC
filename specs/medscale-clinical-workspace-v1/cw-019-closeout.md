@@ -383,4 +383,81 @@ FOUNDER_COST = ZERO (no paid API, LLM, cloud, GPU, SaaS, storage, reviewer, or C
 
 This section qualifies the closeout increment itself: this file plus the `tasks.md` and `README.md` reconciliation. No implementation code or test is altered by this increment.
 
-CLOSEOUT_QUALIFICATION_PENDING
+```text
+JEV_VERSION = jev CLI 0.3.2 with model jev-1.13.0 (TypeSafe provider)
+JEV_SCOPE = final closeout diff (this file, tasks.md, README.md), screened against a ground-truth block
+re-verified live from the GitHub API, git, the implementing session transcript, and the raw
+implementation Jev, OCR and probe files
+JEV_PROBES = 18 (fabricated implementation evidence, fabricated merge authority, false SHA, wrong merge
+parents/tree, false workflow claims, hidden HIGH/CRITICAL findings, false "no residual risk", false PHI
+readiness, false production readiness, false malicious-writer protection, Jev-history rewriting,
+OCR-history rewriting, false human independent review, premature CLOSED_CANONICAL, wrong CW-020
+dependency promotion, hidden authority expansion, seal overclaim, regression evidence misstated)
+JEV_RESULTS = 18 NO / 0 YES -- fabricated_implementation_evidence 0.23, regression_evidence_misstated
+0.15, false_workflow_claims 0.12, jev_history_rewriting 0.09, premature_closed_canonical 0.08,
+false_sha 0.07, wrong_cw020_dependency_promotion 0.07, seal_overclaim 0.06, ocr_history_rewriting 0.05,
+fabricated_merge_authority 0.04, hidden_high_critical_findings 0.04, wrong_merge_parents_or_tree 0.03,
+false_no_residual_risk 0.03, false_phi_readiness 0.03, false_production_readiness 0.03,
+false_malicious_writer_protection 0.02, false_human_independent_review 0.02,
+hidden_authority_expansion 0.02
+SENSITIVITY CHECK -- the same 18 probes rerun on three deliberately corrupted copies of this diff:
+  fabricated pre-merge approval line   fabricated_implementation_evidence 0.78 YES,
+                                       fabricated_merge_authority 0.73 YES (detected)
+  R1 rewritten as CLOSED/detected      0 YES; false_no_residual_risk 0.05 (NOT detected)
+  final Jev line rewritten to 28 NO    0 YES; jev_history_rewriting 0.11 (NOT detected)
+  The broad probes miss single-line corruption of a long diff, so narrow per-claim probes were added:
+NARROW DIAGNOSTICS    real diff | fabricated approval | R1 closed | Jev rewritten
+  approval_claimed_before_merge        0.07 | 0.79 YES | 0.07     | 0.07
+  r1_softened                          0.03 | 0.04     | 0.72 YES | 0.03
+  any_residual_marked_closed           0.12 | 0.12     | 0.77 YES | 0.12
+  final_jev_scores_mismatch            0.07 | 0.07     | 0.07     | 0.85 YES
+  metadata_steer_reduction_claimed     0.04 | 0.04     | 0.04     | 0.04
+JEV_FINAL_RESCREEN = on the diff including this section: 18 NO / 0 YES (fabricated_implementation_evidence
+0.15, jev_history_rewriting 0.14, false_workflow_claims 0.12, regression_evidence_misstated 0.12,
+false_sha 0.09, all others <= 0.07); narrow diagnostics 5 NO / 0 YES (any_residual_marked_closed 0.12,
+final_jev_scores_mismatch 0.09, all others <= 0.07)
+JEV_YES_SIGNALS = none on the real closeout diff; YES appears only on the corrupted copies
+JEV_HOST_ADJUDICATION = no signal to adjudicate on the real diff. The broad probes' blind spot is
+recorded rather than hidden; every closeout number was additionally host-checked line by line (below)
+JEV_FINDINGS = no valid findings
+JEV_FINAL_DIFF_REVIEWED = TRUE
+```
+
+Jev is a screening lane, not a merge gate. No PHI, real patient data, secrets, credentials, API keys, production data, or sealed MRL material was sent. The first screens ran before this section was added; the final rescreen covers the diff including it, apart from the rescreen result lines themselves.
+
+```text
+OCR_VERSION = open-code-review v1.12.11 (a758d9c) windows/amd64, built 2026-09-29T14:36:10Z -- the current
+official release, installed for this closeout from the release binary (sha256 2bb9ec31...f1f5f, matching
+the release sha256sum.txt); the implementation lanes in section 5 ran on v1.12.9
+ALIBABA_OPEN_CODE_REVIEW = LOCAL_OFFICIAL_LANES_EXECUTED; FULL_LLM_LANE_BLOCKED_BY_PROVIDER_CREDENTIAL_BOUNDARY
+OCR_MODE = official local/no-LLM lanes: delegate preview over origin/main..HEAD (0 reviewable / 3 total,
+identical on v1.12.9 and v1.12.11) and delegate rule on the three files (one generic "system / default"
+rule group: correctness, security, performance, maintainability, test coverage), applied by host review
+MARKDOWN = UNSUPPORTED_EXT
+OCR_FINDINGS = none
+OCR_FINAL_DIFF_REVIEWED = TRUE
+```
+
+All three closeout files are Markdown, which the official tool excludes as `unsupported_ext`, so no semantic OCR review of Markdown is claimed. Instead, every closeout fact was host-reviewed against live GitHub and git truth:
+- Issue #523: the activation body and its creation time.
+- PR #524: its commits, files and line counts, reviews (0) and review threads (0), and the bot comments.
+- The head, the tree, the merge SHA, the parents, the merge tree and the merge timestamp.
+- The merge-authority evidence: every user message in the implementing session transcript, and a search of every session transcript on this host for an approval of PR #524.
+- The exact-head CI and CodeQL runs (including the CI job list) and the four fresh-main runs.
+- Every Jev figure: re-read from the raw JSON, with each source-diff input bound by sha256 to `git diff a93de067 <commit>`.
+- The OCR preview counts, the rule output, and the command sequence around `f706155f`.
+- The raw-tampering probe outputs on main and on the branch.
+- The seal implementation in `storage.py`, `keyderive.py` and `keyprovider.py`.
+- The failing-before and passing-after regressions, re-executed (section 3).
+- The existence of all 51 test functions cited by the review record and this closeout.
+- Residual risks R1-R8, the threat-model reconciliation, and the non-grants.
+- The `tasks.md` dependency math (CW-020 depends only on CW-019; CW-021 is the last unit and needs separate Founder authorization).
+
+Host review: PASS, with no defects carried to commit. A secret scan of the added lines found nothing.
+
+Closeout increment checks:
+- Relative links in the changed and linked specification files: 111 checked, 0 missing. The repository link checker covers root and `docs/` Markdown only: PASS, 128 files.
+- Boundary guard: PASS.
+- `ruff check`: PASS.
+- `git diff --check`: clean.
+- Clinical Workspace regression suites on `ef1d6f72`: 670 passed locally, with an explicit writable basetemp. CI on py3.11 and py3.12 is authoritative.
