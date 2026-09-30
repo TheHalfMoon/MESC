@@ -46,6 +46,11 @@ IDENTITIES          WORKSPACE_SCHEMA_VERSION = 3
                     ENCRYPTION_FORMAT_VERSION = 1
                     POLICY_VERSION = mesc-clinical-workspace-synthetic-only/1
                     AEAD dependency cryptography==50.0.1
+EVIDENCE_SIZE       670 Clinical Workspace tests passed locally on the evidence revision's Workspace code
+                    (py3.12), including the 30-test CW-019 security-closure suite
+CI_LANES            CI: static (py3.11, py3.12), eight pytest shards (py3.11, py3.12 x 4), quality
+                    (py3.11, py3.12) over the full repository suite; CodeQL; Optional Extras / Backends;
+                    Hugging Face Publication Qualification
 ```
 
 **Scope.** This packet assesses the Clinical Workspace package (`apps/workspace/`) and its specifications only. Research Core, MRL, model qualification and the Hugging Face publication path were **not** assessed for PHI handling. They stay synthetic-only, and PHI must never reach them: the Workspace-side no-backflow guard refuses every flow toward Research Core (section 7), but this packet is not a PHI assessment of those components.
@@ -101,6 +106,15 @@ ADR-0038 requires the Workspace specification to enforce these invariants before
 | source linkage/provenance for AI-generated clinical content | EVIDENCED_SYNTHETIC | `test_all_five_support_states_first_class`, `test_unsupported_fact_remains_unsupported`, `test_invented_fact_cannot_become_source_backed` | no real generation model |
 | no automatic training or model-improvement upload from local clinical content | EVIDENCED_SYNTHETIC | `test_no_workspace_data_class_can_flow_into_research_core`, `test_no_hidden_egress_across_the_full_lifecycle` | none |
 | fail-closed behavior when a required local model, evidence source, validator, or security capability is unavailable | EVIDENCED_SYNTHETIC | `test_missing_optional_deps_fail_cleanly`, `test_missing_snapshot_fails_closed`, `test_a_store_without_an_active_key_fails_closed`, `test_platform_provider_is_unavailable_and_fails_closed_before_any_file` | none |
+
+Data classes (`data_security.md` section 4; `DataClass` in `data_class.py`):
+
+```text
+SYNTHETIC, PUBLIC, INTERNAL, SENSITIVE_CLINICAL, AUDIO_CLINICAL, SECRET, AUDIT_METADATA,
+OPERATIONAL_TELEMETRY, OPERATIONAL_ANALYTICS, OPERATIONAL_LOG, RESEARCH_ARTIFACT, EXPORT_QUARANTINE
+```
+
+Every class is bound to exactly one trust domain, an unknown classification fails closed, and no class can reach Research Core: `test_every_admitted_data_class_is_bound_to_exactly_one_domain`, `test_unknown_classification_state_fails_closed`, `test_research_core_is_not_a_reachable_destination_for_any_class`. `SENSITIVE_CLINICAL` and `AUDIO_CLINICAL` exist as classes, but only synthetic content has ever been stored under them. `SECRET` material never enters the store (`test_credential_material_never_enters_store_or_audit`).
 
 Additional safeguards that bear on PHI readiness:
 

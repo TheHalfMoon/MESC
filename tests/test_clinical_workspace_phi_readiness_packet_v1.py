@@ -30,6 +30,7 @@ sys.path.insert(0, str(WORKSPACE_SRC))
 
 from medscale_workspace import asr, errors, versions  # noqa: E402 runtime import
 from medscale_workspace.audit import AuditEventType  # noqa: E402 runtime import
+from medscale_workspace.data_class import DataClass  # noqa: E402 runtime import
 
 ADMITTED_STATUSES = frozenset({"EVIDENCED_SYNTHETIC", "PARTIAL", "NOT_MET", "ARCHITECTURE_BLOCKED"})
 
@@ -174,6 +175,13 @@ def test_domain_rows_assess_every_threat_model_section() -> None:
     assert sorted(row[0] for row in rows) == sorted(required)
     for row in rows:
         assert row[1] in ADMITTED_STATUSES, row
+
+
+def test_data_class_inventory_equals_the_code_enumeration() -> None:
+    section = _section(_read(PACKET), "## 5. ADR-0038")
+    block = section.split("Data classes (")[1].split("```text")[1].split("```")[0]
+    listed = {name.strip(",") for name in block.split()}
+    assert listed == {member.name for member in DataClass}
 
 
 def test_independent_review_is_not_met_while_no_human_review_exists() -> None:
