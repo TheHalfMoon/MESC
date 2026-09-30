@@ -25,6 +25,7 @@ from medscale_workspace import (  # noqa: E402 runtime import
 )
 from medscale_workspace import encounter as encounter_mod  # noqa: E402 runtime import
 from medscale_workspace import lifecycle as lc  # noqa: E402 runtime import
+from medscale_workspace import storage as storage_module  # noqa: E402 runtime import
 from medscale_workspace.aead import encrypt_payload  # noqa: E402 runtime import
 from medscale_workspace.binding import ObjectBinding  # noqa: E402 runtime import
 from medscale_workspace.errors import (  # noqa: E402 runtime import
@@ -128,6 +129,28 @@ def seed(store: WorkspaceStore, count: int = 3, workspace_id: UUID = WORKSPACE_A
         trail.record_object_write(
             binding=binding, payload=payload_of(index), actor_id=ACTOR, occurred_at=T1
         )
+
+
+def reseal_after_raw_tampering(store_path: str, provider: KeyProvider) -> None:
+    """Reseal raw tampering with the genuine key provider (CW-019, Issue #523).
+
+    The CW-019 integrity seal now detects every raw edit below at open; that detection is
+    proven in test_clinical_workspace_security_closure_v1.py. Resealing simulates a
+    holder of the root secret so these CW-018 cases keep proving the lifecycle's own
+    defense-in-depth checks behind the seal.
+    """
+
+    connection = sqlite3.connect(store_path)
+    try:
+        metadata = dict(connection.execute("SELECT name, value FROM store_metadata").fetchall())
+        seal_key = provider.seal_key(
+            workspace_id=UUID(str(metadata["workspace_id"])),
+            salt=bytes.fromhex(str(metadata["seal_salt"])),
+        )
+        storage_module._write_seal(connection, seal_key)
+        connection.commit()
+    finally:
+        connection.close()
 
 
 def roots(tmp_path: Path) -> tuple[Path, Path, Path]:
@@ -260,7 +283,8 @@ def test_forged_backups_with_consistent_encryption_are_still_refused(tmp_path: P
         ({"objects": objects_doc[1:]}, BackupIntegrityError),
         ({"included_data_classes": ["PHI"]}, BackupIntegrityError),
         ({"audit_event_count": 0}, BackupIntegrityError),
-        ({"workspace_schema_version": 3}, BackupFormatError),
+        ({"workspace_schema_version": 4}, BackupFormatError),
+        ({"workspace_schema_version": 2}, BackupFormatError),
         ({"workspace_schema_version": 1}, BackupFormatError),
         ({"policy_version": "production/1"}, BackupFormatError),
         ({"backup_format_version": 2}, BackupFormatError),
@@ -421,6 +445,7 @@ def test_rollback_refuses_newer_forked_and_untracked_state(tmp_path: Path) -> No
         connection.commit()
     finally:
         connection.close()
+    reseal_after_raw_tampering(path, provider)
     with (
         open_live(live, provider) as store,
         open_quarantine(second_quarantine, provider) as source,
@@ -674,6 +699,9 @@ def test_m1_migration_is_atomic_under_a_mid_transaction_crash(
         connection.execute("DROP TABLE migration_journal")
         connection.execute("DELETE FROM store_metadata WHERE name = 'store_role'")
         connection.execute(
+            "DELETE FROM store_metadata WHERE name IN ('seal_salt', 'integrity_seal')"
+        )
+        connection.execute(
             "UPDATE store_metadata SET value = '1' WHERE name IN ("
             "'workspace_schema_version', 'minimum_readable_workspace_schema', "
             "'maximum_readable_workspace_schema')"
@@ -696,6 +724,7 @@ def test_m1_migration_is_atomic_under_a_mid_transaction_crash(
             available_bytes=PLENTY,
             actor_id=ACTOR,
             occurred_at=T2,
+            acknowledge_unsealed_legacy_state=True,
         )
     monkeypatch.undo()
     connection = sqlite3.connect(path)
@@ -718,6 +747,7 @@ def test_m1_migration_is_atomic_under_a_mid_transaction_crash(
         available_bytes=PLENTY,
         actor_id=ACTOR,
         occurred_at=T3,
+        acknowledge_unsealed_legacy_state=True,
     )
     assert report.state is JournalState.COMPLETED
     with pytest.raises(MigrationError, match="already at the current"):
@@ -730,6 +760,7 @@ def test_m1_migration_is_atomic_under_a_mid_transaction_crash(
             available_bytes=PLENTY,
             actor_id=ACTOR,
             occurred_at=T3,
+            acknowledge_unsealed_legacy_state=True,
         )
 
 
@@ -774,7 +805,7 @@ def test_crash_after_switch_resumes_to_completion(
         )
     assert report.state is JournalState.COMPLETED
     with open_live(tmp_path, provider) as store:
-        assert (MIGRATION_ID, "M2", 2, 2, "COMPLETED") in store.migration_log()
+        assert (MIGRATION_ID, "M2", 3, 3, "COMPLETED") in store.migration_log()
 
 
 def test_tampered_journal_and_bad_transforms_are_refused(tmp_path: Path) -> None:
@@ -808,6 +839,7 @@ def test_tampered_journal_and_bad_transforms_are_refused(tmp_path: Path) -> None
             )
     finally:
         connection.close()
+    reseal_after_raw_tampering(path, provider)
     with WorkspaceStore.open_for_maintenance(
         store_root=str(tmp_path),
         workspace_id=WORKSPACE_ALPHA,
@@ -931,6 +963,7 @@ def test_edited_tombstone_reason_cannot_resurrect_an_audited_user_deletion(
         connection.commit()
     finally:
         connection.close()
+    reseal_after_raw_tampering(path, provider)
     lc.restore_backup_to_quarantine(
         snapshot,
         provider,
@@ -983,6 +1016,7 @@ def test_edited_journal_inventory_cannot_redirect_a_resumed_migration(tmp_path: 
         connection.commit()
     finally:
         connection.close()
+    reseal_after_raw_tampering(path, provider)
     with WorkspaceStore.open_for_maintenance(
         store_root=str(tmp_path),
         workspace_id=WORKSPACE_ALPHA,

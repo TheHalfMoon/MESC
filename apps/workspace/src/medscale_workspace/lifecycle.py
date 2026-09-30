@@ -36,12 +36,12 @@ content must equal the backup exactly (the ``RESTORE`` event is written to the l
 store on promotion or rollback); the backup key comes from the same root secret as
 the store keys, so root-secret loss loses both; disk space is not measured by this
 package and must be declared by the caller. The journal state, store role and
-tombstone reasons are declared plaintext metadata (A1.10): someone able to write the
-store file can edit them, as they can already roll back the whole store (A1.5). Every
-decision that could destroy or resurrect content is therefore bound to authenticated
-audit evidence (the PREPARED migration event, ``object_delete`` events), while the
-normal-open refusals driven by journal state and role guard against operator error,
-not against a malicious writer; the CW-019 security lane owns attacking them.
+tombstone reasons are declared plaintext metadata (A1.10). CW-018 bound every decision
+that could destroy or resurrect content to authenticated audit evidence (the PREPARED
+migration event, ``object_delete`` events). CW-019 (Issue #523) added the schema-3
+integrity seal in ``storage.py``, so editing, deleting or inserting any of this
+metadata outside the store API is refused on open. Replacing the whole store with an
+older, internally consistent copy is still not detected (A1.5).
 """
 
 from __future__ import annotations
@@ -118,6 +118,8 @@ from medscale_workspace.versions import (
     POLICY_VERSION,
     SCHEMA_V2_MIGRATION_CLASS,
     SCHEMA_V2_MIGRATION_ID,
+    SCHEMA_V3_MIGRATION_CLASS,
+    SCHEMA_V3_MIGRATION_ID,
     SUPPORTED_BACKUP_FORMAT_VERSIONS,
     SUPPORTED_DOWNGRADE_TARGETS,
     WORKSPACE_SCHEMA_VERSION,
@@ -1419,6 +1421,30 @@ def preflight(
     )
 
 
+_SCHEMA_STEPS = {
+    1: (
+        SCHEMA_V2_MIGRATION_ID,
+        SCHEMA_V2_MIGRATION_CLASS,
+        (
+            "create deletion_tombstones and migration_journal tables",
+            "record store role LIVE",
+            "record workspace schema 2",
+            "append migration log, completed journal row and migration audit event",
+        ),
+    ),
+    2: (
+        SCHEMA_V3_MIGRATION_ID,
+        SCHEMA_V3_MIGRATION_CLASS,
+        (
+            "record a fresh integrity seal salt and derive the seal key",
+            "record workspace schema 3 and readable range 3..3",
+            "append migration log, completed journal row and migration audit event",
+            "write the first integrity seal over the whole store",
+        ),
+    ),
+}
+
+
 def migrate_schema_to_current(
     *,
     store_root: str,
@@ -1429,102 +1455,137 @@ def migrate_schema_to_current(
     available_bytes: int,
     actor_id: str,
     occurred_at: str,
+    acknowledge_unsealed_legacy_state: bool = False,
 ) -> MigrationReport:
-    """Run the M1 additive migration (schema 1 -> 2) with manifest and preflight.
+    """Run the M1 additive migrations up to the current workspace schema.
 
-    The whole migration -- new tables, recorded role, version metadata, migration log,
-    journal and audit event -- is one SQLite transaction, so an interruption leaves the
-    store at schema 1 (``NOT_STARTED``) and the migration can simply run again. Its
-    declared rollback class is forward repair: once schema 2 is committed, an
-    application that reads only schema 1 refuses the store rather than guessing.
+    Each step (schema 1 -> 2, then 2 -> 3) has its own manifest, preflight, migration
+    log row, completed journal row and ``migration`` audit event, and each is one SQLite
+    transaction: an interruption leaves the store at the last completed schema and the
+    migration simply runs again. The declared rollback class is forward repair: once a
+    newer schema is committed, an application that reads only older schemas refuses the
+    store rather than guessing.
+
+    Schema-1 and schema-2 stores carry no integrity seal, so nothing in the file can prove
+    that such a store was not produced by stripping the seal from a schema-3 store and
+    then tampering with it. The first seal is written over whatever the store holds, so
+    migration is refused unless the caller explicitly acknowledges that it is sealing
+    unverified legacy state (``acknowledge_unsealed_legacy_state=True``). A store that was
+    already at schema 3 and now presents as legacy must be treated as compromised and
+    recovered from a verified backup instead (recovery runbook section 5.0).
     """
 
+    if acknowledge_unsealed_legacy_state is not True:
+        raise MigrationError(
+            "migrating an unsealed schema-1 or schema-2 store seals state that cannot be "
+            "verified; pass acknowledge_unsealed_legacy_state=True only for a store known "
+            "never to have been sealed, otherwise recover from a verified backup"
+        )
+
+    last_manifest: MigrationManifest | None = None
+    last_event: AuditEvent | None = None
     with WorkspaceStore.open_for_maintenance(
         store_root=store_root,
         workspace_id=workspace_id,
         key_provider=key_provider,
         application_version=source_application_version,
     ) as store:
-        versions = store.versions
-        if versions.workspace_schema_version == WORKSPACE_SCHEMA_VERSION:
+        if store.versions.workspace_schema_version == WORKSPACE_SCHEMA_VERSION:
             raise MigrationError("the store is already at the current workspace schema")
-        manifest = MigrationManifest(
-            migration_id=SCHEMA_V2_MIGRATION_ID,
-            migration_class=MigrationClass(SCHEMA_V2_MIGRATION_CLASS),
-            workspace_id=workspace_id,
-            source_app_version=versions.application_version,
-            target_app_version=target_application_version,
-            source_workspace_schema_version=versions.workspace_schema_version,
-            target_workspace_schema_version=WORKSPACE_SCHEMA_VERSION,
-            source_policy_version=versions.policy_version,
-            target_policy_version=versions.policy_version,
-            source_encryption_format_version=versions.encryption_format_version,
-            target_encryption_format_version=versions.encryption_format_version,
-            required_key_versions=store.object_key_versions() or (store.active_key_version,),
-            affected_object_types=(),
-            affected_projection_types=(),
-            preconditions=("schema 1 store", "no unfinished migration", "keys available"),
-            expected_object_counts=expected_object_counts(store, ()),
-            pre_migration_snapshot_identity=None,
-            steps=(
-                "create deletion_tombstones and migration_journal tables",
-                "record store role LIVE",
-                "record workspace schema 2 and readable range 2..2",
-                "append migration log, completed journal row and migration audit event",
-            ),
-            postconditions=(
-                "object count unchanged",
-                "audit chain verifies",
-                "store opens in normal mode at schema 2",
-            ),
-            rollback_strategy=RollbackStrategy.FORWARD_REPAIR,
-            irreversible_operations=("schema 2 metadata commit",),
-            external_side_effects=(),
-            tool_version=LIFECYCLE_TOOL_VERSION,
-            started_at=occurred_at,
-        ).validated()
-        preflight(store, manifest, key_provider, available_bytes=available_bytes)
         before_count = store.object_count()
-        completed = replace(
-            manifest,
-            completed_at=occurred_at,
-            result=JournalState.COMPLETED.value,
-        )
-        event = prepare_next_event(
-            AuditTrail(store),
-            event_type=AuditEventType.MIGRATION,
-            actor_id=actor_id,
-            occurred_at=occurred_at,
-            metadata=(
-                ("migration_id", manifest.migration_id),
-                ("migration_class", manifest.migration_class.value),
-                ("source_workspace_schema_version", str(manifest.source_workspace_schema_version)),
-                ("target_workspace_schema_version", str(manifest.target_workspace_schema_version)),
-                ("rollback_strategy", manifest.rollback_strategy.value),
-                ("result", JournalState.COMPLETED.value),
-            ),
-        )
-        store.apply_schema_v2_migration(
-            target_application_version=target_application_version,
-            journal_manifest=_canonical_bytes({"manifest": completed.to_document()}).decode(
+        steps = 0
+        while store.versions.workspace_schema_version < WORKSPACE_SCHEMA_VERSION:
+            versions = store.versions
+            source = versions.workspace_schema_version
+            migration_id, migration_class, step_names = _SCHEMA_STEPS[source]
+            manifest = MigrationManifest(
+                migration_id=migration_id,
+                migration_class=MigrationClass(migration_class),
+                workspace_id=workspace_id,
+                source_app_version=versions.application_version,
+                target_app_version=target_application_version,
+                source_workspace_schema_version=source,
+                target_workspace_schema_version=source + 1,
+                source_policy_version=versions.policy_version,
+                target_policy_version=versions.policy_version,
+                source_encryption_format_version=versions.encryption_format_version,
+                target_encryption_format_version=versions.encryption_format_version,
+                required_key_versions=store.object_key_versions() or (store.active_key_version,),
+                affected_object_types=(),
+                affected_projection_types=(),
+                preconditions=(
+                    f"schema {source} store",
+                    "no unfinished migration",
+                    "keys available",
+                ),
+                expected_object_counts=expected_object_counts(store, ()),
+                pre_migration_snapshot_identity=None,
+                steps=step_names,
+                postconditions=(
+                    "object count unchanged apart from the migration audit event",
+                    "audit chain verifies",
+                    f"store records workspace schema {source + 1}",
+                ),
+                rollback_strategy=RollbackStrategy.FORWARD_REPAIR,
+                irreversible_operations=(f"schema {source + 1} metadata commit",),
+                external_side_effects=(),
+                tool_version=LIFECYCLE_TOOL_VERSION,
+                started_at=occurred_at,
+            ).validated()
+            preflight(store, manifest, key_provider, available_bytes=available_bytes)
+            completed = replace(
+                manifest,
+                completed_at=occurred_at,
+                result=JournalState.COMPLETED.value,
+            )
+            event = prepare_next_event(
+                AuditTrail(store),
+                event_type=AuditEventType.MIGRATION,
+                actor_id=actor_id,
+                occurred_at=occurred_at,
+                metadata=(
+                    ("migration_id", manifest.migration_id),
+                    ("migration_class", manifest.migration_class.value),
+                    ("source_workspace_schema_version", str(source)),
+                    ("target_workspace_schema_version", str(source + 1)),
+                    ("rollback_strategy", manifest.rollback_strategy.value),
+                    ("result", JournalState.COMPLETED.value),
+                ),
+            )
+            journal_manifest = _canonical_bytes({"manifest": completed.to_document()}).decode(
                 "ascii"
-            ),
-            audit_write=_audit_write(event),
-        )
+            )
+            if source == 1:
+                store.apply_schema_v2_migration(
+                    target_application_version=target_application_version,
+                    journal_manifest=journal_manifest,
+                    audit_write=_audit_write(event),
+                )
+            else:
+                store.apply_schema_v3_migration(
+                    target_application_version=target_application_version,
+                    journal_manifest=journal_manifest,
+                    audit_write=_audit_write(event),
+                )
+            steps += 1
+            last_manifest = manifest
+            last_event = event
+    if last_manifest is None or last_event is None:
+        raise MigrationError("no schema migration step ran")
     with WorkspaceStore.open(
         store_root=store_root,
         workspace_id=workspace_id,
         key_provider=key_provider,
         application_version=target_application_version,
     ) as migrated:
-        if migrated.object_count() != before_count + 1:
+        if migrated.object_count() != before_count + steps:
             raise MigrationValidationError("the object count changed across the M1 migration")
-        AuditTrail(migrated).verify(expected_head_event_digest=event.event_digest)
+        AuditTrail(migrated).verify(expected_head_event_digest=last_event.event_digest)
         migrated.integrity_check()
-        state = _journal_entry(migrated, manifest.migration_id).state
+        state = _journal_entry(migrated, last_manifest.migration_id).state
     return MigrationReport(
-        migration_id=manifest.migration_id,
-        migration_class=manifest.migration_class,
+        migration_id=last_manifest.migration_id,
+        migration_class=last_manifest.migration_class,
         state=state,
         migrated_objects=0,
     )

@@ -33,10 +33,19 @@ Known limits, recorded rather than hidden:
   explicit store role (``LIVE`` or ``QUARANTINE``). A schema-1 store, a store holding
   an unfinished journaled migration, and a quarantine store are never opened in
   normal live mode; the manifest/preflight/rollback policy lives in ``lifecycle.py``.
+* CW-019 (Issue #523) adds workspace schema 3: a keyed integrity seal (HMAC-SHA-256
+  under a seal key derived from the root secret) over every metadata table, the
+  key-version state, tombstones, the migration journal and log, and a digest of every
+  object row. It is rewritten inside every mutating transaction and verified on every
+  open, so editing, deleting or inserting rows outside this API fails closed. It does
+  not detect replacement of the whole store with an older consistent copy (A1.5).
 """
 
 from __future__ import annotations
 
+import hashlib
+import hmac
+import json
 import sqlite3
 from dataclasses import dataclass
 from enum import StrEnum
@@ -59,6 +68,7 @@ from medscale_workspace.errors import (
     StoreIntegrityError,
     StoreMigrationRequiredError,
     StoreRoleError,
+    StoreSealError,
     StoreVersionError,
     WorkspaceIsolationError,
 )
@@ -75,6 +85,8 @@ from medscale_workspace.versions import (
     POLICY_VERSION,
     SCHEMA_V2_MIGRATION_CLASS,
     SCHEMA_V2_MIGRATION_ID,
+    SCHEMA_V3_MIGRATION_CLASS,
+    SCHEMA_V3_MIGRATION_ID,
     WORKSPACE_SCHEMA_VERSION,
     unreadable_schema_reason,
 )
@@ -93,6 +105,10 @@ _METADATA_KEYS = (
     "store_role",
 )
 _RESTORED_BACKUP_METADATA_KEY = "restored_backup_id"
+_SEAL_METADATA_KEY = "integrity_seal"
+_SEAL_SALT_METADATA_KEY = "seal_salt"
+_SEAL_FORMAT = "mesc-clinical-workspace-store-seal/1"
+_SCHEMA_V2 = 2
 
 _SCHEMA_STATEMENTS = (
     """
@@ -361,6 +377,111 @@ def _recorded_versions(
     return versions
 
 
+def _seal_rows(
+    connection: sqlite3.Connection,
+    query: str,
+    parameters: tuple[object, ...] = (),
+) -> list[list[object]]:
+    rows = connection.execute(query, parameters).fetchall()
+    admitted: list[list[object]] = []
+    for row in rows:
+        admitted.append([value.hex() if isinstance(value, bytes) else value for value in row])
+    return admitted
+
+
+def _compute_seal(connection: sqlite3.Connection, seal_key: bytes) -> str:
+    """Return the keyed seal over every store table, excluding the seal row itself."""
+
+    objects_digest = hashlib.sha256()
+    for row in connection.execute(
+        "SELECT workspace_id, object_id, object_type, object_revision, key_version, "
+        "encryption_format_version, envelope FROM objects "
+        "ORDER BY workspace_id, object_id, object_revision"
+    ):
+        *identity, envelope = row
+        line = json.dumps(
+            [*identity, hashlib.sha256(bytes(envelope)).hexdigest()],
+            separators=(",", ":"),
+            ensure_ascii=True,
+        )
+        objects_digest.update(line.encode("ascii") + b"\n")
+    document = {
+        "format": _SEAL_FORMAT,
+        "metadata": _seal_rows(
+            connection,
+            "SELECT name, value FROM store_metadata WHERE name <> ? ORDER BY name",
+            (_SEAL_METADATA_KEY,),
+        ),
+        "key_versions": _seal_rows(
+            connection, "SELECT key_version, state, salt FROM key_versions ORDER BY key_version"
+        ),
+        "tombstones": _seal_rows(
+            connection,
+            "SELECT workspace_id, object_id, object_type, object_revision, reason "
+            "FROM deletion_tombstones ORDER BY workspace_id, object_id, object_revision",
+        ),
+        "journal": _seal_rows(
+            connection,
+            "SELECT migration_id, migration_class, state, checkpoint, manifest "
+            "FROM migration_journal ORDER BY migration_id",
+        ),
+        "migration_log": _seal_rows(
+            connection,
+            "SELECT migration_id, migration_class, source_workspace_schema_version, "
+            "target_workspace_schema_version, source_encryption_format_version, "
+            "target_encryption_format_version, result FROM migration_log ORDER BY migration_id",
+        ),
+        "objects": objects_digest.hexdigest(),
+    }
+    canonical = json.dumps(
+        document, sort_keys=True, separators=(",", ":"), ensure_ascii=True
+    ).encode("ascii")
+    return hmac.new(seal_key, canonical, hashlib.sha256).hexdigest()
+
+
+def _write_seal(connection: sqlite3.Connection, seal_key: bytes) -> None:
+    connection.execute(
+        "INSERT INTO store_metadata (name, value) VALUES (?, ?) "
+        "ON CONFLICT (name) DO UPDATE SET value = excluded.value",
+        (_SEAL_METADATA_KEY, _compute_seal(connection, seal_key)),
+    )
+
+
+def _verify_seal(connection: sqlite3.Connection, seal_key: bytes) -> None:
+    row = connection.execute(
+        "SELECT value FROM store_metadata WHERE name = ?",
+        (_SEAL_METADATA_KEY,),
+    ).fetchone()
+    if row is None:
+        raise StoreSealError("the store integrity seal is missing")
+    if not hmac.compare_digest(str(row[0]), _compute_seal(connection, seal_key)):
+        raise StoreSealError(
+            "the store integrity seal does not match the store contents; the store was "
+            "modified outside the store API"
+        )
+
+
+def _admit_seal_key(key: object) -> bytes:
+    if not isinstance(key, bytes) or len(key) != KEY_SIZE_BYTES:
+        raise KeyMaterialUnavailableError(
+            "the key provider returned seal key material of an unusable size"
+        )
+    return key
+
+
+def _recorded_seal_salt(metadata: dict[str, str]) -> bytes:
+    raw = metadata.get(_SEAL_SALT_METADATA_KEY)
+    if raw is None:
+        raise StoreSealError("the store integrity seal salt is missing")
+    try:
+        salt = bytes.fromhex(raw)
+    except ValueError as error:
+        raise StoreSealError("the store integrity seal salt is not hex") from error
+    if len(salt) != 16:
+        raise StoreSealError("the store integrity seal salt has the wrong size")
+    return salt
+
+
 def _recorded_role(metadata: dict[str, str]) -> StoreRole:
     raw = _required_metadata(metadata, "store_role")
     try:
@@ -426,10 +547,12 @@ class WorkspaceStore:
         salt_by_version: dict[int, bytes],
         role: StoreRole = StoreRole.LIVE,
         maintenance: bool = False,
+        seal_key: bytes | None = None,
     ) -> None:
         self._connection = connection
         self._role = role
         self._maintenance = maintenance
+        self._seal_key = seal_key
         self._path = path
         self._workspace_id = workspace_id
         self._key_provider = key_provider
@@ -515,6 +638,7 @@ class WorkspaceStore:
         if not isinstance(role, StoreRole):
             raise StoreRoleError("store role must be an admitted StoreRole value")
         key_provider.require_available()
+        seal_key: bytes | None = None
         path = resolve_workspace_store_path(store_root, workspace_id)
         connection = sqlite3.connect(path, isolation_level=None, timeout=busy_timeout_ms / 1000)
         try:
@@ -527,7 +651,15 @@ class WorkspaceStore:
                     raise WorkspaceIsolationError(
                         "the store belongs to a different workspace than the opened id"
                     )
-                if versions.workspace_schema_version not in MIGRATABLE_WORKSPACE_SCHEMAS:
+                if versions.workspace_schema_version == WORKSPACE_SCHEMA_VERSION:
+                    seal_key = _admit_seal_key(
+                        key_provider.seal_key(
+                            workspace_id=workspace_id,
+                            salt=_recorded_seal_salt(metadata),
+                        )
+                    )
+                    _verify_seal(connection, seal_key)
+                if versions.workspace_schema_version >= 2:
                     recorded_role = _recorded_role(metadata)
                     if recorded_role is not role:
                         raise StoreRoleError(
@@ -557,11 +689,17 @@ class WorkspaceStore:
                     policy_version=POLICY_VERSION,
                     encryption_format_version=ENCRYPTION_FORMAT_VERSION,
                 )
+                seal_salt = new_salt()
+                seal_key = _admit_seal_key(
+                    key_provider.seal_key(workspace_id=workspace_id, salt=seal_salt)
+                )
                 cls._initialise(
                     connection,
                     workspace_id=workspace_id,
                     versions=versions,
                     role=role,
+                    seal_salt=seal_salt,
+                    seal_key=seal_key,
                 )
             salt_by_version = cls._read_salts(connection)
             store = cls(
@@ -573,6 +711,7 @@ class WorkspaceStore:
                 salt_by_version=salt_by_version,
                 role=role,
                 maintenance=maintenance,
+                seal_key=seal_key,
             )
         except BaseException:
             connection.close()
@@ -586,6 +725,8 @@ class WorkspaceStore:
         workspace_id: UUID,
         versions: StoreVersions,
         role: StoreRole,
+        seal_salt: bytes,
+        seal_key: bytes,
     ) -> None:
         connection.execute("BEGIN IMMEDIATE")
         try:
@@ -630,6 +771,11 @@ class WorkspaceStore:
                     "COMPLETED",
                 ),
             )
+            connection.execute(
+                "INSERT INTO store_metadata (name, value) VALUES (?, ?)",
+                (_SEAL_SALT_METADATA_KEY, seal_salt.hex()),
+            )
+            _write_seal(connection, seal_key)
         except BaseException:
             connection.execute("ROLLBACK")
             raise
@@ -714,6 +860,29 @@ class WorkspaceStore:
         except ValueError as error:
             raise StoreIntegrityError("recorded restored backup id is not a UUID") from error
 
+    def _verify_before_change(self) -> None:
+        """Refuse to mutate a store whose seal no longer matches (schema 3 only).
+
+        Called right after ``BEGIN IMMEDIATE``, while this connection holds the write
+        lock, so a change made to the file by anything else since the last commit is
+        detected before this transaction can reseal over it.
+        """
+
+        if self._versions.workspace_schema_version != WORKSPACE_SCHEMA_VERSION:
+            return
+        if self._seal_key is None:
+            raise StoreSealError("the store integrity seal key is unavailable")
+        _verify_seal(self._connection, self._seal_key)
+
+    def _reseal(self) -> None:
+        """Rewrite the integrity seal inside the current transaction (schema 3 only)."""
+
+        if self._versions.workspace_schema_version != WORKSPACE_SCHEMA_VERSION:
+            return
+        if self._seal_key is None:
+            raise StoreSealError("the store integrity seal key is unavailable")
+        _write_seal(self._connection, self._seal_key)
+
     def _require_current_schema(self) -> None:
         if self._versions.workspace_schema_version != WORKSPACE_SCHEMA_VERSION:
             raise StoreMigrationRequiredError(
@@ -751,6 +920,7 @@ class WorkspaceStore:
             "deletion_tombstone_ids_types_revisions_and_reasons",
             "migration_journal_ids_states_checkpoints_and_manifests",
             "migration_log_version_transitions",
+            "integrity_seal_and_seal_salt",
         )
 
     def key_states(self) -> tuple[tuple[int, KeyState], ...]:
@@ -825,7 +995,7 @@ class WorkspaceStore:
                 envelope,
             ),
         )
-        if self._versions.workspace_schema_version == WORKSPACE_SCHEMA_VERSION:
+        if self._versions.workspace_schema_version >= 2:
             self._connection.execute(
                 "DELETE FROM deletion_tombstones WHERE workspace_id = ? AND object_id = ? "
                 "AND object_revision = ?",
@@ -881,6 +1051,11 @@ class WorkspaceStore:
         prepared = self._prepare_writes(writes)
         self._connection.execute("BEGIN IMMEDIATE")
         try:
+            self._verify_before_change()
+        except BaseException:
+            self._connection.execute("ROLLBACK")
+            raise
+        try:
             for binding, envelope in prepared:
                 self._insert_object(binding, envelope)
         except sqlite3.IntegrityError as error:
@@ -888,6 +1063,11 @@ class WorkspaceStore:
             raise StoreConflictError(
                 "object revision already exists or violated a store constraint"
             ) from error
+        except BaseException:
+            self._connection.execute("ROLLBACK")
+            raise
+        try:
+            self._reseal()
         except BaseException:
             self._connection.execute("ROLLBACK")
             raise
@@ -942,6 +1122,11 @@ class WorkspaceStore:
         if journal is not None and not isinstance(journal, JournalUpdate):
             raise StoreIntegrityError("journal update must be a JournalUpdate value")
         self._connection.execute("BEGIN IMMEDIATE")
+        try:
+            self._verify_before_change()
+        except BaseException:
+            self._connection.execute("ROLLBACK")
+            raise
         deleted = 0
         try:
             for admitted in admitted_deletions:
@@ -955,6 +1140,11 @@ class WorkspaceStore:
         except sqlite3.IntegrityError as error:
             self._connection.execute("ROLLBACK")
             raise StoreConflictError("atomic state change violated a store constraint") from error
+        except BaseException:
+            self._connection.execute("ROLLBACK")
+            raise
+        try:
+            self._reseal()
         except BaseException:
             self._connection.execute("ROLLBACK")
             raise
@@ -1111,7 +1301,17 @@ class WorkspaceStore:
         self._require_workspace(admitted)
         self._connection.execute("BEGIN IMMEDIATE")
         try:
+            self._verify_before_change()
+        except BaseException:
+            self._connection.execute("ROLLBACK")
+            raise
+        try:
             deleted = self._delete_with_tombstone(admitted, TombstoneReason.USER_DELETION)
+        except BaseException:
+            self._connection.execute("ROLLBACK")
+            raise
+        try:
+            self._reseal()
         except BaseException:
             self._connection.execute("ROLLBACK")
             raise
@@ -1135,6 +1335,11 @@ class WorkspaceStore:
             raise KeyRotationError("the store is not in a rotatable ACTIVE state")
         self._connection.execute("BEGIN IMMEDIATE")
         try:
+            self._verify_before_change()
+        except BaseException:
+            self._connection.execute("ROLLBACK")
+            raise
+        try:
             self._connection.execute(
                 "UPDATE key_versions SET state = ? WHERE state = ?",
                 (KeyState.ROTATING.value, KeyState.ACTIVE.value),
@@ -1144,6 +1349,11 @@ class WorkspaceStore:
                 "INSERT INTO key_versions (key_version, state, salt) VALUES (?, ?, ?)",
                 (new_key_version, KeyState.ACTIVE.value, salt),
             )
+        except BaseException:
+            self._connection.execute("ROLLBACK")
+            raise
+        try:
+            self._reseal()
         except BaseException:
             self._connection.execute("ROLLBACK")
             raise
@@ -1213,6 +1423,11 @@ class WorkspaceStore:
             )
         self._connection.execute("BEGIN IMMEDIATE")
         try:
+            self._verify_before_change()
+        except BaseException:
+            self._connection.execute("ROLLBACK")
+            raise
+        try:
             for rotated, workspace_id, object_id, object_revision, object_type in prepared:
                 self._connection.execute(
                     "UPDATE objects SET key_version = ?, envelope = ? WHERE workspace_id = ? "
@@ -1229,6 +1444,11 @@ class WorkspaceStore:
         except BaseException:
             self._connection.execute("ROLLBACK")
             raise
+        try:
+            self._reseal()
+        except BaseException:
+            self._connection.execute("ROLLBACK")
+            raise
         self._connection.execute("COMMIT")
         return len(prepared)
 
@@ -1241,10 +1461,20 @@ class WorkspaceStore:
         rotating = [version for version, state in self.key_states() if state is KeyState.ROTATING]
         self._connection.execute("BEGIN IMMEDIATE")
         try:
+            self._verify_before_change()
+        except BaseException:
+            self._connection.execute("ROLLBACK")
+            raise
+        try:
             self._connection.execute(
                 "UPDATE key_versions SET state = ? WHERE state = ?",
                 (KeyState.RETIRING.value, KeyState.ROTATING.value),
             )
+        except BaseException:
+            self._connection.execute("ROLLBACK")
+            raise
+        try:
+            self._reseal()
         except BaseException:
             self._connection.execute("ROLLBACK")
             raise
@@ -1262,10 +1492,20 @@ class WorkspaceStore:
             raise KeyRotationError("a key version that still protects rows cannot be retired")
         self._connection.execute("BEGIN IMMEDIATE")
         try:
+            self._verify_before_change()
+        except BaseException:
+            self._connection.execute("ROLLBACK")
+            raise
+        try:
             self._connection.execute(
                 "UPDATE key_versions SET state = ? WHERE key_version = ?",
                 (KeyState.RETIRED.value, key_version),
             )
+        except BaseException:
+            self._connection.execute("ROLLBACK")
+            raise
+        try:
+            self._reseal()
         except BaseException:
             self._connection.execute("ROLLBACK")
             raise
@@ -1333,7 +1573,7 @@ class WorkspaceStore:
     def journal_entries(self) -> tuple[JournalEntry, ...]:
         """List every migration journal row in deterministic order."""
 
-        if self._versions.workspace_schema_version in MIGRATABLE_WORKSPACE_SCHEMAS:
+        if self._versions.workspace_schema_version < 2:
             return ()
         rows = self._connection.execute(
             "SELECT migration_id, migration_class, state, checkpoint, manifest "
@@ -1399,6 +1639,9 @@ class WorkspaceStore:
         self._require_current_schema()
         self._connection.execute("BEGIN")
         try:
+            # CW-019: a snapshot feeds backups and promotion decisions, so it is taken only
+            # from state that still matches the seal inside the same read transaction.
+            self._verify_before_change()
             rows = self._connection.execute(
                 "SELECT workspace_id, object_id, object_type, object_revision, key_version, "
                 "encryption_format_version, envelope FROM objects "
@@ -1477,6 +1720,11 @@ class WorkspaceStore:
                 raise StoreIntegrityError("a restored object cannot also be tombstoned")
         self._connection.execute("BEGIN IMMEDIATE")
         try:
+            self._verify_before_change()
+        except BaseException:
+            self._connection.execute("ROLLBACK")
+            raise
+        try:
             for binding, envelope in prepared:
                 self._insert_object(binding, envelope)
             for tombstone_binding, reason in admitted_tombstones:
@@ -1499,6 +1747,11 @@ class WorkspaceStore:
         except sqlite3.IntegrityError as error:
             self._connection.execute("ROLLBACK")
             raise StoreConflictError("restored state violated a store constraint") from error
+        except BaseException:
+            self._connection.execute("ROLLBACK")
+            raise
+        try:
+            self._reseal()
         except BaseException:
             self._connection.execute("ROLLBACK")
             raise
@@ -1535,10 +1788,12 @@ class WorkspaceStore:
                 "INSERT INTO store_metadata (name, value) VALUES (?, ?)",
                 ("store_role", StoreRole.LIVE.value),
             )
+            # The schema 1 -> 2 step always lands on schema 2; later steps are separate
+            # migrations (CW-019 adds 2 -> 3), so the current-schema constants are not used.
             for name, value in (
-                ("workspace_schema_version", str(WORKSPACE_SCHEMA_VERSION)),
-                ("minimum_readable_workspace_schema", str(MINIMUM_READABLE_WORKSPACE_SCHEMA)),
-                ("maximum_readable_workspace_schema", str(MAXIMUM_READABLE_WORKSPACE_SCHEMA)),
+                ("workspace_schema_version", str(_SCHEMA_V2)),
+                ("minimum_readable_workspace_schema", str(_SCHEMA_V2)),
+                ("maximum_readable_workspace_schema", str(_SCHEMA_V2)),
                 ("application_version", target_application_version),
             ):
                 cursor = self._connection.execute(
@@ -1557,7 +1812,7 @@ class WorkspaceStore:
                     SCHEMA_V2_MIGRATION_ID,
                     SCHEMA_V2_MIGRATION_CLASS,
                     1,
-                    WORKSPACE_SCHEMA_VERSION,
+                    _SCHEMA_V2,
                     self._versions.encryption_format_version,
                     self._versions.encryption_format_version,
                     JournalState.COMPLETED.value,
@@ -1584,6 +1839,99 @@ class WorkspaceStore:
             self._connection.execute("ROLLBACK")
             raise
         self._connection.execute("COMMIT")
+        self._versions = _recorded_versions(_read_metadata(self._connection), allow_migratable=True)
+        return self._versions
+
+    def apply_schema_v3_migration(
+        self,
+        *,
+        target_application_version: str,
+        journal_manifest: str,
+        audit_write: ObjectWrite,
+    ) -> StoreVersions:
+        """Run the CW-019 M1 additive migration (schema 2 -> 3) as one transaction.
+
+        It records a fresh seal salt, derives the seal key, bumps the version metadata,
+        appends the migration log row, the completed journal row and the migration audit
+        event, and writes the first integrity seal over the result. A crash leaves the
+        store exactly at schema 2.
+        """
+
+        if not self._maintenance:
+            raise StoreMigrationRequiredError("schema migration runs in maintenance mode only")
+        if self._versions.workspace_schema_version != 2:
+            raise StoreVersionError("the schema 2 -> 3 migration applies to schema 2 stores only")
+        if not isinstance(target_application_version, str) or not target_application_version:
+            raise StoreVersionError("target application version must be recorded explicitly")
+        if not isinstance(journal_manifest, str) or not journal_manifest:
+            raise StoreIntegrityError("the migration journal manifest must be recorded")
+        if _unfinished_journal(self._connection):
+            raise StoreMigrationRequiredError(
+                "an unfinished migration must be resumed or rolled back before the schema 3 "
+                "migration"
+            )
+        seal_salt = new_salt()
+        seal_key = _admit_seal_key(
+            self._key_provider.seal_key(workspace_id=self._workspace_id, salt=seal_salt)
+        )
+        prepared = self._prepare_writes((audit_write,))
+        self._connection.execute("BEGIN IMMEDIATE")
+        try:
+            self._connection.execute(
+                "INSERT INTO store_metadata (name, value) VALUES (?, ?)",
+                (_SEAL_SALT_METADATA_KEY, seal_salt.hex()),
+            )
+            for name, value in (
+                ("workspace_schema_version", str(WORKSPACE_SCHEMA_VERSION)),
+                ("minimum_readable_workspace_schema", str(MINIMUM_READABLE_WORKSPACE_SCHEMA)),
+                ("maximum_readable_workspace_schema", str(MAXIMUM_READABLE_WORKSPACE_SCHEMA)),
+                ("application_version", target_application_version),
+            ):
+                cursor = self._connection.execute(
+                    "UPDATE store_metadata SET value = ? WHERE name = ?",
+                    (value, name),
+                )
+                if cursor.rowcount != 1:
+                    raise StoreIntegrityError(f"recorded store metadata is missing {name!r}")
+            self._connection.execute(
+                "INSERT INTO migration_log ("
+                "migration_id, migration_class, source_workspace_schema_version, "
+                "target_workspace_schema_version, source_encryption_format_version, "
+                "target_encryption_format_version, result"
+                ") VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (
+                    SCHEMA_V3_MIGRATION_ID,
+                    SCHEMA_V3_MIGRATION_CLASS,
+                    2,
+                    WORKSPACE_SCHEMA_VERSION,
+                    self._versions.encryption_format_version,
+                    self._versions.encryption_format_version,
+                    JournalState.COMPLETED.value,
+                ),
+            )
+            self._connection.execute(
+                "INSERT INTO migration_journal ("
+                "migration_id, migration_class, state, checkpoint, manifest"
+                ") VALUES (?, ?, ?, ?, ?)",
+                (
+                    SCHEMA_V3_MIGRATION_ID,
+                    SCHEMA_V3_MIGRATION_CLASS,
+                    JournalState.COMPLETED.value,
+                    1,
+                    journal_manifest,
+                ),
+            )
+            for binding, envelope in prepared:
+                self._insert_object(binding, envelope)
+            _write_seal(self._connection, seal_key)
+        except sqlite3.IntegrityError as error:
+            self._connection.execute("ROLLBACK")
+            raise StoreConflictError("the schema migration violated a store constraint") from error
+        except BaseException:
+            self._connection.execute("ROLLBACK")
+            raise
+        self._connection.execute("COMMIT")
+        self._seal_key = seal_key
         self._versions = _recorded_versions(_read_metadata(self._connection))
         return self._versions
 

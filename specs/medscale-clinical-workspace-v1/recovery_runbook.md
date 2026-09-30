@@ -24,7 +24,7 @@ Limits that are recorded, not hidden:
 - AES-256-GCM does not detect a whole-store rollback made with a valid key (A1.5). Rollback detection comes from the audit-chain ancestry check at promotion and rollback, and from an anchored head digest held outside the store.
 - `secure_delete=ON` is defense in depth only and is not cryptographic erasure (A1.11). Deleting a revision does not erase copies inside backups the operator still holds; expiring backups is an operator duty.
 - Free disk space cannot be measured inside the package. The caller declares it to preflight, which refuses anything below twice the stored envelope size.
-- Journal state, store role and tombstone reasons are plaintext metadata (A1.10). Anyone who can write the store file can edit them, just as they can roll back the whole store. Resuming a migration and returning deleted content therefore depend on authenticated audit events, not on this metadata. The normal-open refusals protect against operator error, not a malicious writer.
+- Journal state, store role, tombstone reasons and key-version state stay readable plaintext (A1.10). Since CW-019 (workspace schema 3), a keyed integrity seal covering them and every object row is verified on every open. An edit made outside the store API fails with `StoreSealError`. Replacing the whole store with an older, internally consistent copy still opens (A1.5); the backup manifest's audit anchor and the promotion/rollback ancestry checks are the only mitigations.
 
 ## 2. Routine protected backup
 
@@ -62,11 +62,17 @@ Use this when a change must be undone before any external side effect. No extern
 
 Every state-changing migration has a manifest (contract section 5) and runs the eleven preflight checks (section 6) before any mutation: exclusive lock, workspace identity, source versions, database and audit integrity, key availability, declared space, no active encounter capture, snapshot integrity when the rollback class needs it, object inventory, no external side effects, and failure before mutation.
 
-### 5.1 Schema-1 store (M1 additive, 1 to 2)
+### 5.0 Integrity seal failure
+
+- Symptom: open raises `StoreSealError`, which means the store was modified outside the store API or opened with the wrong root secret.
+- Action: do not repair the store in place, and do not reseal it. Confirm that the correct root secret is in use. If it is, treat the store as compromised: recover from a verified backup using section 3 into a fresh live root, then investigate how the file was modified.
+
+### 5.1 Schema-1 or schema-2 store (M1 additive, 1 to 2 to 3)
 
 - Symptom: normal open raises `StoreMigrationRequiredError`.
+- First decide whether the store could ever have been at schema 3. If it could, it presents as legacy only because its seal was stripped, so treat it as compromised and recover from a verified backup (section 3). Migrate only a store known never to have been sealed, and pass `acknowledge_unsealed_legacy_state=True`: the first seal is written over whatever the store holds.
 - Action: `migrate_schema_to_current(store_root=..., workspace_id=..., key_provider=..., source_application_version=..., target_application_version=..., available_bytes=..., actor_id=..., occurred_at=...)`.
-- The whole migration is one SQLite transaction: new tables, store role, version metadata, migration log row, completed journal row and `migration` audit event. An interruption leaves the store at schema 1 (`NOT_STARTED`), and the migration is simply rerun.
+- Each step is one SQLite transaction. Step 1 to 2 adds the tables, store role, version metadata, migration log row, completed journal row and `migration` audit event. Step 2 to 3 (CW-019) adds the seal salt and version metadata, its own log and journal rows and audit event, and writes the first integrity seal. An interruption leaves the store at the last completed schema, and the migration is simply rerun.
 - Rollback class: forward repair. An application that reads only schema 1 refuses a schema-2 store rather than guessing.
 
 ### 5.2 Semantic migration (M2) and checkpoint resume

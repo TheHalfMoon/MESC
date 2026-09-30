@@ -47,6 +47,7 @@ from medscale_workspace import (  # noqa: E402
     store_with_provenance,
     verify_provenance,
 )
+from medscale_workspace import storage as storage_module  # noqa: E402
 from medscale_workspace.audit import (  # noqa: E402
     EVENT_ID_PREFIX,
     GENESIS_EVENT_DIGEST,
@@ -64,6 +65,7 @@ from medscale_workspace.errors import (  # noqa: E402
     StoreConflictError,
     WorkspaceIsolationError,
 )
+from medscale_workspace.keyderive import derive_seal_key  # noqa: E402
 from medscale_workspace.keyprovider import InMemoryTestKeyProvider, new_root_secret  # noqa: E402
 from medscale_workspace.provenance import _record_from_document  # noqa: E402
 from medscale_workspace.store_path import resolve_workspace_store_path  # noqa: E402
@@ -87,11 +89,23 @@ def note_binding(revision: str = "rev-0001") -> ObjectBinding:
     )
 
 
+# CW-019 (Issue #523) seals every store with a key derived from its root secret. These
+# CW-003 cases attack the inner AEAD and audit-chain layers, so raw tampering is resealed
+# with the genuine root secret (simulating a holder of that secret); the CW-019 security
+# suite proves the seal itself catches the same tampering.
+GENUINE_ROOT_SECRETS: dict[str, bytes] = {}
+
+
 def open_store(root: Path, *, root_secret: bytes | None = None) -> WorkspaceStore:
+    store_path = resolve_workspace_store_path(str(root), WORKSPACE_ALPHA)
+    if root_secret is None:
+        root_secret = GENUINE_ROOT_SECRETS.setdefault(store_path, new_root_secret())
+    else:
+        GENUINE_ROOT_SECRETS.setdefault(store_path, root_secret)
     return WorkspaceStore.open(
         store_root=str(root),
         workspace_id=WORKSPACE_ALPHA,
-        key_provider=InMemoryTestKeyProvider(root_secret or new_root_secret()),
+        key_provider=InMemoryTestKeyProvider(root_secret),
         application_version=APPLICATION_VERSION,
     )
 
@@ -118,12 +132,30 @@ def raw(store_path: str) -> sqlite3.Connection:
     return connection
 
 
+def reseal_with_genuine_root_secret(store_path: str) -> None:
+    root_secret = GENUINE_ROOT_SECRETS.get(store_path)
+    if root_secret is None:
+        return
+    connection = raw(store_path)
+    try:
+        metadata = dict(connection.execute("SELECT name, value FROM store_metadata").fetchall())
+        seal_key = derive_seal_key(
+            root_secret=root_secret,
+            workspace_id=UUID(str(metadata["workspace_id"])),
+            salt=bytes.fromhex(str(metadata["seal_salt"])),
+        )
+        storage_module._write_seal(connection, seal_key)
+    finally:
+        connection.close()
+
+
 def raw_execute(store_path: str, statement: str, parameters: tuple[object, ...] = ()) -> None:
     connection = raw(store_path)
     try:
         connection.execute(statement, parameters)
     finally:
         connection.close()
+    reseal_with_genuine_root_secret(store_path)
 
 
 def seeded_trail(tmp_path: Path, root_secret: bytes) -> tuple[AuditEvent, ...]:

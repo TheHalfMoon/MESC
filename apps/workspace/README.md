@@ -94,16 +94,17 @@ Recorded limitations, not hidden:
   database-level write-once trigger, and a removed tail event verifies internally unless a
   head digest is retained outside the store. CW-018 adds one such retained anchor (every
   backup manifest records the audit head, and restore verifies against it) and audit-chain
-  ancestry checks for promotion and rollback. It does not add a database-level write-once
-  trigger or audit append checkpointing; both remain recorded limitations, and the
-  independent security lane at CW-019 owns attacking the spine.
+  ancestry checks for promotion and rollback. CW-019's integrity seal detects audit rows
+  deleted or altered outside the API. There is still no audit append checkpointing, and a
+  whole-store rollback to an older sealed copy is not detected.
 - CW-018 backups and store keys both derive from the root secret, so root-secret loss loses
   both; free disk space is declared by the caller, because this package cannot measure it.
-- the CW-018 journal state, store role and tombstone reasons are declared plaintext metadata
-  (A1.10). A writer of the store file can edit them, as it can already roll back the whole
-  store (A1.5). Decisions that could destroy or resurrect content are bound to authenticated
-  audit evidence; the normal-open refusals driven by journal state and role guard against
-  operator error, not a malicious writer, and CW-019 owns attacking them.
+- store metadata (journal state, store role, tombstone reasons, key-version state) stays
+  readable plaintext (A1.10). Since CW-019 (Issue #523, workspace schema 3), a keyed integrity
+  seal over all metadata and every object row is verified on every open, so edits, deletions
+  or insertions outside the store API fail closed with `StoreSealError`. Replacing the whole
+  store with an older consistent copy is still not detected (A1.5); see the
+  [CW-019 security review](../../specs/medscale-clinical-workspace-v1/cw-019-security-review.md).
 - the CW-004 export containment check is pure path algebra over caller-supplied absolute paths,
   because this package holds no filesystem capability (`os`, `pathlib` and `open` are forbidden
   by the boundary guard). It therefore does not resolve symlinks, junctions or reparse points:
