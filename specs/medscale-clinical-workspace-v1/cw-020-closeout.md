@@ -287,4 +287,140 @@ FOUNDER_COST = ZERO (no paid API, LLM, cloud, GPU, SaaS, storage, reviewer, or C
 
 This section qualifies the closeout increment itself. The increment adds this file and `tests/test_clinical_workspace_cw020_closeout_binding_v1.py`, and reconciles `tasks.md` and `README.md`. No implementation code changes.
 
-<!-- CLOSEOUT_QUALIFICATION_PLACEHOLDER -->
+### 12.1 Closeout binding test
+
+```text
+tests/test_clinical_workspace_cw020_closeout_binding_v1.py   35 tests: 10 binding checks + 22 closeout corruption
+                                                             cases + 3 ledger corruption cases
+```
+
+The checks bind this record to the verified ground truth and to the packet. They cover:
+- the head, tree, merge, base and parents, and the base equal to the packet's evidence revision;
+- the six workflow runs and their results;
+- G1-G8 with the packet severities, all `OPEN`;
+- R1-R8 with the packet severities and states, and F11 as mitigated only;
+- the verdict and every non-grant;
+- closure conditional on the approved closeout merge;
+- the merge-authority gap;
+- the Workspace-only scope;
+- the preserved Jev history;
+- the ledger keeping CW-021 `BLOCKED_DEPENDENCY` and unauthorized.
+
+Each corruption case makes its target check fail. The corruptions cover:
+- a fabricated pre-merge approval (two phrasings);
+- a wrong head, a wrong parent, a wrong tree;
+- a wrong run id and a failed run;
+- G1 downgraded, G3 closed, a fabricated PHI-scope ADR closing G5;
+- R1 closed, R7 downgraded, F11 fixed;
+- a READY PHI or production verdict, CW-021 authorized (in the verdict and in section 10), human review performed;
+- unconditional closure;
+- Research Core and MRL dropped from the scope limitation;
+- two rewritten Jev results;
+- the ledger's CW-021 made eligible or authorized, and CW-020 left in progress.
+
+### 12.2 Jev
+
+```text
+JEV_VERSION = jev CLI 0.3.2 with model jev-1.13.0 (TypeSafe provider)
+JEV_SCOPE = the closeout diff (this file before this section, the binding test, tasks.md, README.md;
+sha256 1d274deb6ed9...), screened against a ground-truth block re-verified live from the GitHub API, git, every
+session transcript on this host, and the raw implementation Jev and OCR files
+BROAD PROBES (20) = fabricated_evidence 0.15, premature_closed_canonical 0.08, jev_history_rewriting 0.08,
+false_workflow_ids 0.07, wrong_sha_tree_parents 0.05, hidden_residual_risks 0.05, hidden_gaps 0.04,
+false_phi_readiness 0.04, false_authentication_claim 0.03, phi_scope_adr_fabrication 0.03,
+retention_policy_fabrication 0.03, merge_authority_fabrication 0.03, false_production_readiness 0.02,
+cw021_authorization_creep 0.02, research_core_phi_overclaim 0.02, mrl_phi_overclaim 0.02,
+false_independent_review 0.02, false_access_control_claim 0.02, false_read_audit_claim 0.02,
+false_incident_drill_claim 0.02 -- 20 NO / 0 YES
+NARROW DIAGNOSTICS (10) = any_sha_mismatch 0.22, any_ready_or_granted 0.22, cw021_not_not_authorized 0.18,
+any_residual_closed_or_downgraded 0.17, jev_scores_mismatch 0.16, human_review_claimed 0.16,
+any_gap_closed_or_downgraded 0.15, any_run_id_mismatch 0.13, approval_claimed_before_merge 0.10,
+scope_generalized 0.07 -- 10 NO / 0 YES
+SECTION-SCOPED PROBES (3; the claim's own sections plus the ground truth) =
+approval_given_before_merge 0.06, cw021_authorized 0.05, non_workspace_phi_assessed 0.06 -- 3 NO / 0 YES
+```
+
+Sensitivity check: the same probes were rerun on deliberately corrupted copies.
+
+```text
+CORRUPTION                              BROAD                               NARROW / SECTION-SCOPED
+fabricated pre-merge approval of #527   merge_authority_fabrication 0.05    approval_claimed_before_merge 0.17
+                                        NO (NOT detected)                   NO; approval_given_before_merge 0.35
+                                                                            NO (NOT detected)
+G5 closed by a fabricated ADR-0041      phi_scope_adr_fabrication 0.64 YES  any_gap_closed_or_downgraded 0.64 YES
+                                        (detected)                          (detected)
+CW-021 rewritten as authorized (s. 10) cw021_authorization_creep 0.07 NO   cw021_not_not_authorized 0.44 NO;
+                                        (NOT detected)                      cw021_authorized 0.08 NO (NOT detected)
+Research Core and MRL claimed assessed  research_core_phi_overclaim 0.57    scope_generalized 0.23 NO;
+and PHI-ready                           YES, mrl_phi_overclaim 0.51 YES     non_workspace_phi_assessed 0.75 YES
+                                        (detected)                          (detected)
+```
+
+```text
+JEV_YES_SIGNALS = none on the real closeout diff; YES appears only on corrupted copies
+JEV_HOST_ADJUDICATION = no signal to adjudicate on the real diff. Blind spot recorded, not hidden: Jev did NOT
+detect a single-line fabricated pre-merge approval or a single-line CW-021 authorization, even on
+section-scoped inputs, when the rest of the record contradicts the corrupted line. This repeats the
+implementation blind spot (section 4.4). Both corruptions are rejected mechanically by the closeout binding
+test (section 12.1), and every closeout number was host-checked line by line (section 12.4)
+JEV_FINDINGS = no valid findings
+JEV_FINAL_DIFF_REVIEWED = TRUE (final rescreen in section 12.5)
+```
+
+Jev is a screening lane, not a merge gate. No PHI, real patient data, secrets, credentials, API keys, production data, or sealed MRL material was sent to Jev.
+
+### 12.3 Alibaba Open Code Review
+
+```text
+OCR_VERSION = open-code-review v1.12.11 (a758d9c) windows/amd64, built 2026-09-29T14:36:10Z -- the latest
+official release (gh release list alibaba/open-code-review), on both installed copies
+ALIBABA_OPEN_CODE_REVIEW = LOCAL_OFFICIAL_LANES_EXECUTED; FULL_LLM_LANE_BLOCKED_BY_PROVIDER_CREDENTIAL_BOUNDARY
+OCR_MODE = official local/no-LLM lanes: ocr delegate preview over origin/main..HEAD (0 reviewable / 4 total:
+the three Markdown files unsupported_ext, the binding test default_path) and ocr delegate rule on the
+binding test and this file (rule group 1 "system / **/*.{py,pyi,ipynb}" for the test; rule group 2
+"system / default" for this file), both applied by host review
+MARKDOWN = UNSUPPORTED_EXT
+OCR_FINDINGS = one maintainability nit from host-applying rule group 1: a literal substring check written as
+a regular expression, rewritten as a plain `not in` check before the final head; no correctness or
+security finding
+OCR_FINAL_DIFF_REVIEWED = TRUE (official local lanes only)
+```
+
+No semantic OCR review of Markdown is claimed. No provider key is configured and paid compute is not authorized, so no review content was sent anywhere and no LLM review is claimed. No OCR source, workflow, dependency or configuration was added to MESC.
+
+### 12.4 Host review
+
+Every closeout fact was host-reviewed against live GitHub and git truth:
+- Issue #526: its activation body, creation time, state (OPEN) and comments (none).
+- PR #527: its six commits and their commit times, open time, files and line counts, base, reviews (0), review threads (0) and bot comments.
+- The head, the tree, the merge SHA, the parents, the merge tree, the merge actor and the merge time.
+- The merge-authority evidence: every user message in the implementing session transcript, and a search of every session transcript on this host for an approval of, or a merge command for, PR #527.
+- The exact-head CI run (event, head SHA, all 12 jobs) and CodeQL run, and the four fresh-main runs (event, head SHA, result).
+- The packet: its verdict, G1-G8 and R1-R8 rows, section 6.3 limitations, scope statement and non-grants.
+- `incident_response.md`: that it maps signals only, and states it was never drilled and provides no breach process.
+- The implementation binding test: its 14 checks and 13 corruption cases, including the CW-021 corruption.
+- Every implementation Jev figure, re-read from the 29 raw JSON records in the implementation working directory.
+- The implementation OCR preview and rule output.
+- F11's state in the CW-019 review record.
+- The `tasks.md` dependency math: CW-021 depends on CW-020 plus a new explicit Founder/governance authorization that does not exist.
+
+Host review: PASS, with no defects carried to commit. A secret scan of the added lines found nothing.
+
+### 12.5 Closeout increment checks
+
+- Clinical Workspace suites on the closeout head: 732 passed locally (697 on `548df35c` plus the 35 closeout binding tests), with an explicit writable basetemp. CI on py3.11 and py3.12 is authoritative.
+- `ruff check` and `ruff format --check` over the repository: PASS. Strict mypy: PASS (534 source files).
+- Boundary guard: PASS.
+- Relative links in the changed specification files: 114 checked, 0 missing. The repository link checker covers root and `docs/` Markdown only: PASS, 128 files.
+- `git diff --check`: clean.
+- The binding test caught one real defect in a draft of this section: a sensitivity-table row that spelled out a CW-021 authorization. The row was reworded before commit.
+
+```text
+JEV_FINAL_RESCREEN = on the diff including section 12 (sha256 3f01ac4a4917...): broad 20 NO / 0 YES
+(fabricated_evidence 0.17, jev_history_rewriting 0.08, false_workflow_ids 0.07, all others <= 0.06); narrow
+10 NO / 0 YES (any_ready_or_granted 0.25, any_sha_mismatch 0.22, cw021_not_not_authorized 0.21,
+jev_scores_mismatch 0.19, approval_claimed_before_merge 0.18, all others <= 0.18); section-scoped 3 NO / 0 YES
+(approval_given_before_merge 0.06, cw021_authorized 0.05, non_workspace_phi_assessed 0.06)
+```
+
+The final rescreen covers the diff including this section, apart from the rescreen result line itself.

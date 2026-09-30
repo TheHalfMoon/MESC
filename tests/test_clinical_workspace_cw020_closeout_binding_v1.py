@@ -172,7 +172,7 @@ def test_the_merge_authority_gap_is_recorded_and_not_backfilled() -> None:
     )
     assert "does not create or imply a retroactive pre-merge approval" in authority
     assert "APPROVAL    none provable before merge" in closeout
-    assert not re.search(r"Approved: merge PR #527", closeout)
+    assert "Approved: merge PR #527" not in closeout
 
 
 def test_the_assessment_scope_stays_workspace_only() -> None:
