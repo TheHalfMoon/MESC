@@ -144,9 +144,19 @@ def test_trusted_but_forged_successor_receipt_fails_closed(tmp_path: Path) -> No
 def test_successor_receipt_from_a_non_ancestor_commit_is_not_admitted(tmp_path: Path) -> None:
     repo = _clone(tmp_path)
     receipt = _genuine_receipt(repo)
-    receipt["repository_sha"] = "0" * 40
+    orphan = _git(repo, "commit-tree", receipt["repository_tree"], "-m", "orphan producer")
+    receipt["repository_sha"] = orphan
     _admit(repo, receipt)
     assert _task_state(repo, tmp_path) == "PLANNED"
+
+
+def test_successor_receipt_from_an_unknown_commit_fails_closed(tmp_path: Path) -> None:
+    repo = _clone(tmp_path)
+    receipt = _genuine_receipt(repo)
+    receipt["repository_sha"] = "0" * 40
+    _admit(repo, receipt)
+    with pytest.raises(MachineStateGenerationError, match=_SUCCESSOR_FAILED):
+        _task_state(repo, tmp_path)
 
 
 def test_v1_slot_cannot_be_rewritten_into_a_pass(tmp_path: Path) -> None:
