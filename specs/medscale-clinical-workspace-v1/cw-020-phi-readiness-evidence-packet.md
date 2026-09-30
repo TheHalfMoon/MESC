@@ -50,7 +50,7 @@ IDENTITIES          WORKSPACE_SCHEMA_VERSION = 3
 
 **Scope.** This packet assesses the Clinical Workspace package (`apps/workspace/`) and its specifications only. Research Core, MRL, model qualification and the Hugging Face publication path were **not** assessed for PHI handling. They stay synthetic-only, and PHI must never reach them: the Workspace-side no-backflow guard refuses every flow toward Research Core (section 7), but this packet is not a PHI assessment of those components.
 
-Every test cited below exists at the evidence revision. The binding test checks that each cited test function exists, and that each identity above equals the code constant. CI runs the whole suite at every head, so the cited evidence is re-executed at the head that carries this packet.
+Every test cited below exists at the evidence revision. The binding test checks that each cited test function exists, and that each identity above equals the code constant. CI runs the whole suite at every head, so the cited evidence is re-executed at the head that carries this packet. This document states no CI result for that head: its exact-head CI and CodeQL are recorded in its pull request and in the CW-020 closeout.
 
 ## 3. Acceptance mapping (tasks.md CW-020)
 
@@ -116,7 +116,7 @@ Threat-model domains (`data_security.md` sections 5 to 18):
 |---|---|---|---|
 | Encryption and key lifecycle | ARCHITECTURE_BLOCKED | section 4 encryption/key tests; no platform key provider | R2, R1, R5 |
 | Identity, tenancy, and authorization | PARTIAL | workspace ownership and cross-workspace refusal: `test_two_workspaces_are_isolated_in_separate_stores`, `test_a_store_file_cannot_be_adopted_as_another_workspace`, `test_cross_workspace_fetch_refused`, `test_cross_workspace_traversal_fails`. No authorization, and actor identities are caller-supplied | G1 |
-| Recording and audio lifecycle | PARTIAL | simulated capture only: `test_consent_required_before_simulated_capture`, `test_consent_revocation_forces_stop`, `test_writes_after_stop_fail_closed`, `test_crash_between_chunk_and_state_commits_detected`, `test_delete_cascade_removes_session_and_chunks`. No microphone or device path and no visible recording-state UI exist | G6 |
+| Recording and audio lifecycle | PARTIAL | simulated capture only: `test_consent_required_before_simulated_capture`, `test_consent_revocation_forces_stop`, `test_writes_after_stop_fail_closed`, `test_crash_between_chunk_and_state_commits_detected`, `test_delete_cascade_removes_session_and_chunks`. Temporary lifetime is bounded because no temporary files exist: the package has no filesystem capability, and `DELETION_POLICY` declares none outside the store. No microphone or device path and no visible recording-state UI exist | G6 |
 | Transcript and note integrity | EVIDENCED_SYNTHETIC | `test_edit_forces_draft_and_invalidates_support`, `test_edited_text_cannot_retain_supported_status`, `test_invented_fact_cannot_become_source_backed` | synthetic actors (G1) |
 | Prompt injection and untrusted content | EVIDENCED_SYNTHETIC | section 4 prompt-injection row; `test_injection_content_stays_inert_data` | no real generation model |
 | Model isolation | EVIDENCED_SYNTHETIC | section 4 model-isolation row | ASR only |
