@@ -24,8 +24,12 @@ class _Model:
         buffers: list[tuple[str, object]] | None = None,
         device_map: object = ...,
     ) -> None:
-        self._parameters = parameters if parameters is not None else [("weight", _Tensor("cuda", 0))]
-        self._buffers = buffers if buffers is not None else [("cache", _Tensor("cuda", 0))]
+        self._parameters: list[tuple[str, object]] = (
+            parameters if parameters is not None else [("weight", _Tensor("cuda", 0))]
+        )
+        self._buffers: list[tuple[str, object]] = (
+            buffers if buffers is not None else [("cache", _Tensor("cuda", 0))]
+        )
         if device_map is not ...:
             self.hf_device_map = device_map
 
@@ -68,7 +72,7 @@ def test_metadata_cannot_override_real_cpu_parameter() -> None:
         parameters=[("weight", _Tensor("cpu"))],
         device_map={"": 0},
     )
-    with pytest.raises(PlacementAuditError, match="parameter 'weight'.*cpu"):
+    with pytest.raises(PlacementAuditError, match=r"parameter 'weight'.*cpu"):
         audit_model_cuda0_placement(model)
 
 
@@ -83,7 +87,7 @@ def test_meta_parameter_fails_closed() -> None:
 
 
 def test_cpu_buffer_fails_closed() -> None:
-    with pytest.raises(PlacementAuditError, match="buffer 'cache'.*cpu"):
+    with pytest.raises(PlacementAuditError, match=r"buffer 'cache'.*cpu"):
         audit_model_cuda0_placement(_Model(buffers=[("cache", _Tensor("cpu"))]))
 
 
@@ -92,7 +96,7 @@ def test_mixed_parameter_placement_fails_closed() -> None:
         parameters=[("a", _Tensor("cuda", 0)), ("b", _Tensor("cpu"))],
         buffers=[],
     )
-    with pytest.raises(PlacementAuditError, match="parameter 'b'.*cpu"):
+    with pytest.raises(PlacementAuditError, match=r"parameter 'b'.*cpu"):
         audit_model_cuda0_placement(model)
 
 
