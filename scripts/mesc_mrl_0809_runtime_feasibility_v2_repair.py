@@ -15,7 +15,7 @@ import sys
 import tempfile
 from pathlib import Path
 from types import ModuleType
-from typing import Final
+from typing import Any, Final, cast
 
 BASE_HARNESS: Final = Path("scripts/mesc_mrl_0809_runtime_feasibility_v2.py")
 BASE_HARNESS_SHA256: Final = "1516f2eb2b269a2a63db21413e365e2b1b39fc53fd012a94767bca7e1ae65579"
@@ -52,7 +52,7 @@ def _load_base() -> ModuleType:
     return module
 
 
-BASE = _load_base()
+BASE: Any = _load_base()
 BASE.HARNESS = REPAIR_HARNESS
 BASE.STATIC_MANIFEST = REPAIR_STATIC_MANIFEST
 
@@ -116,9 +116,12 @@ def _run_worker_repaired(
     if completed.returncode != 0:
         stderr = completed.stderr.decode("utf-8", "replace")[-6000:]
         raise BASE.HarnessError(f"isolated candidate probe failed: {stderr}")
-    return BASE.parse_canonical_object(
-        completed.stdout,
-        label="isolated repaired worker observation",
+    return cast(
+        dict[str, object],
+        BASE.parse_canonical_object(
+            completed.stdout,
+            label="isolated repaired worker observation",
+        ),
     )
 
 
