@@ -122,6 +122,9 @@ def test_ambiguous_actual_cuda_device_without_index_fails_closed() -> None:
 
 def test_malformed_named_tensor_entry_fails_closed() -> None:
     model = _Model()
-    model._parameters = [("weight", _Tensor("cuda", 0)), ("bad",)]  # type: ignore[list-item]
+    model._parameters = [
+        ("weight", _Tensor("cuda", 0)),
+        ("bad",),  # type: ignore[list-item]
+    ]
     with pytest.raises(PlacementAuditError, match="malformed parameter entry"):
         audit_model_cuda0_placement(model)
