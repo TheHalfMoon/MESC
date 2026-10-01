@@ -32,7 +32,9 @@ def _metadata_target(target: object) -> str:
             return CUDA0
         if normalized in {"cpu", "disk", "meta"}:
             raise PlacementAuditError(f"device map contains prohibited target {normalized}")
-        raise PlacementAuditError(f"device map target is not deterministically auditable: {target!r}")
+        raise PlacementAuditError(
+            f"device map target is not deterministically auditable: {target!r}"
+        )
 
     device_type = getattr(target, "type", None)
     device_index = getattr(target, "index", None)
@@ -57,9 +59,13 @@ def _tensor_device(tensor: object, *, kind: str, name: str) -> str:
         if normalized == CUDA0:
             return CUDA0
         if normalized in {"cpu", "meta", "cuda"}:
-            raise PlacementAuditError(f"{kind} {name!r} is on prohibited/ambiguous device {normalized}")
+            raise PlacementAuditError(
+                f"{kind} {name!r} is on prohibited/ambiguous device {normalized}"
+            )
         if normalized.startswith("cuda:"):
-            raise PlacementAuditError(f"{kind} {name!r} is not on CUDA device 0: {normalized}")
+            raise PlacementAuditError(
+                f"{kind} {name!r} is not on CUDA device 0: {normalized}"
+            )
         raise PlacementAuditError(f"{kind} {name!r} has unrecognized device {device!r}")
 
     device_type = getattr(device, "type", None)
@@ -107,10 +113,11 @@ def audit_model_cuda0_placement(model: object) -> dict[str, Any]:
     contradictory parameter/buffer placement.
     """
 
-    map_present = hasattr(model, "hf_device_map") and getattr(model, "hf_device_map") is not None
+    dynamic_model: Any = model
+    device_map = dynamic_model.hf_device_map if hasattr(dynamic_model, "hf_device_map") else None
+    map_present = device_map is not None
     map_entries = 0
     if map_present:
-        device_map = getattr(model, "hf_device_map")
         if not isinstance(device_map, Mapping) or not device_map:
             raise PlacementAuditError("present hf_device_map is empty or not a mapping")
         for key, target in device_map.items():
