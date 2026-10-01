@@ -7,7 +7,7 @@ import sys
 from collections.abc import Iterator
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
@@ -190,7 +190,7 @@ def _run(
     monkeypatch.setenv("HF_HUB_OFFLINE", "1")
     monkeypatch.setenv("TRANSFORMERS_OFFLINE", "1")
     WORKER.run_worker(_QWEN, snapshot)
-    return json.loads(capsysbinary.readouterr().out)
+    return cast(dict[str, object], json.loads(capsysbinary.readouterr().out))
 
 
 def test_worker_passes_without_hf_device_map_when_actual_tensors_are_cuda0(
@@ -200,7 +200,7 @@ def test_worker_passes_without_hf_device_map_when_actual_tensors_are_cuda0(
 ) -> None:
     result = _run(tmp_path, monkeypatch, capsysbinary)
     assert result["schema_version"] == WORKER.SCHEMA_WORKER
-    candidate = result["candidate"]
+    candidate = cast(dict[str, object], result["candidate"])
     assert candidate["all_modules_on_cuda_device_0"] is True
     assert candidate["load_completed"] is True
     assert candidate["synthetic_generation_completed"] is True
