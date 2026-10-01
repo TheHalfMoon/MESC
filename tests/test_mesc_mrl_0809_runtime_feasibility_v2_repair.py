@@ -63,9 +63,7 @@ def test_repaired_worker_launch_mounts_worker_and_placement_audit(
     assert isinstance(argv, list)
     worker = str((ROOT / REPAIR.REPAIR_WORKER).resolve())
     placement = str((ROOT / REPAIR.PLACEMENT_AUDIT).resolve())
-    assert [worker, "/mesc-run/worker.py"] == argv[
-        argv.index(worker) : argv.index(worker) + 2
-    ]
+    assert [worker, "/mesc-run/worker.py"] == argv[argv.index(worker) : argv.index(worker) + 2]
     assert [placement, "/mesc-run/placement_audit.py"] == argv[
         argv.index(placement) : argv.index(placement) + 2
     ]
