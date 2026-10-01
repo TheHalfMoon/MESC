@@ -172,10 +172,7 @@ def _package_versions() -> dict[str, str]:
 def run_worker(candidate: str, snapshot: Path) -> None:
     if candidate not in EXPECTED_CANDIDATES:
         raise RuntimeWorkerError("worker candidate is outside the frozen roster")
-    if (
-        os.environ.get("HF_HUB_OFFLINE") != "1"
-        or os.environ.get("TRANSFORMERS_OFFLINE") != "1"
-    ):
+    if os.environ.get("HF_HUB_OFFLINE") != "1" or os.environ.get("TRANSFORMERS_OFFLINE") != "1":
         raise RuntimeWorkerError("worker offline policy is missing")
     snapshot = snapshot.resolve(strict=True)
     expected = EXPECTED_CANDIDATES[candidate]
