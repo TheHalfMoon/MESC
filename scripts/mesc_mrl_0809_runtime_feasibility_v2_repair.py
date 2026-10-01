@@ -18,18 +18,10 @@ from types import ModuleType
 from typing import Final
 
 BASE_HARNESS: Final = Path("scripts/mesc_mrl_0809_runtime_feasibility_v2.py")
-BASE_HARNESS_SHA256: Final = (
-    "1516f2eb2b269a2a63db21413e365e2b1b39fc53fd012a94767bca7e1ae65579"
-)
-REPAIR_HARNESS: Final = Path(
-    "scripts/mesc_mrl_0809_runtime_feasibility_v2_repair.py"
-)
-REPAIR_WORKER: Final = Path(
-    "scripts/mesc_mrl_0809_runtime_worker_v2_repair.py"
-)
-PLACEMENT_AUDIT: Final = Path(
-    "src/medscale/mesc/_mrl_0809_device_placement_audit_v1.py"
-)
+BASE_HARNESS_SHA256: Final = "1516f2eb2b269a2a63db21413e365e2b1b39fc53fd012a94767bca7e1ae65579"
+REPAIR_HARNESS: Final = Path("scripts/mesc_mrl_0809_runtime_feasibility_v2_repair.py")
+REPAIR_WORKER: Final = Path("scripts/mesc_mrl_0809_runtime_worker_v2_repair.py")
+PLACEMENT_AUDIT: Final = Path("src/medscale/mesc/_mrl_0809_device_placement_audit_v1.py")
 REPAIR_STATIC_MANIFEST: Final = Path(
     "specs/mesc-experiment-0/mrl-0809-static-prerequisites-v2-repair-1.json"
 )
@@ -74,9 +66,7 @@ def _run_worker_repaired(
     root = Path(__file__).resolve().parents[1]
     worker_source = (root / REPAIR_WORKER).resolve(strict=True)
     placement_source = (root / PLACEMENT_AUDIT).resolve(strict=True)
-    python_binary = (
-        f"/mesc-run/python-base/bin/python{'.'.join(python_version.split('.')[:2])}"
-    )
+    python_binary = f"/mesc-run/python-base/bin/python{'.'.join(python_version.split('.')[:2])}"
     command = prefix.copy()
     command.extend(
         [
