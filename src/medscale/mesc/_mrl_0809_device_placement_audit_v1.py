@@ -114,7 +114,9 @@ def audit_model_cuda0_placement(model: object) -> dict[str, Any]:
     """
 
     dynamic_model: Any = model
-    device_map = dynamic_model.hf_device_map if hasattr(dynamic_model, "hf_device_map") else None
+    device_map = (
+        dynamic_model.hf_device_map if hasattr(dynamic_model, "hf_device_map") else None
+    )
     map_present = device_map is not None
     map_entries = 0
     if map_present:
