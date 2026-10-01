@@ -16,7 +16,10 @@ from pathlib import Path
 from typing import Any, Final, Never, cast
 
 try:
-    from placement_audit import PlacementAuditError, audit_model_cuda0_placement
+    from placement_audit import (  # type: ignore[import-not-found]
+        PlacementAuditError,
+        audit_model_cuda0_placement,
+    )
 except ModuleNotFoundError:  # repository-side tests/imports, never the sandbox path
     from medscale.mesc._mrl_0809_device_placement_audit_v1 import (
         PlacementAuditError,
