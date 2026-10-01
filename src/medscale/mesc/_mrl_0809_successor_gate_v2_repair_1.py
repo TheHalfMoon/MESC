@@ -157,7 +157,9 @@ def validate_repair_static_prerequisites(root: Path, revision: str) -> RepairSta
     try:
         preserved = validate_successor_static_prerequisites(root, revision)
     except MRL0809SuccessorGateError as exc:
-        raise MRL0809RepairGateError("preserved successor v2 prerequisites no longer validate") from exc
+        raise MRL0809RepairGateError(
+            "preserved successor v2 prerequisites no longer validate"
+        ) from exc
 
     manifest_raw = _git_bytes(root, revision, STATIC_MANIFEST)
     manifest = _canonical_object(manifest_raw, label="repair static manifest")
@@ -189,7 +191,10 @@ def validate_repair_static_prerequisites(root: Path, revision: str) -> RepairSta
     if old_sha != actual_old_sha or old_sha != preserved.manifest_sha256:
         _fail("preserved v2 static manifest identity drifted")
 
-    auth_binding = _mapping(manifest.get("repair_authorization"), label="repair authorization binding")
+    auth_binding = _mapping(
+        manifest.get("repair_authorization"),
+        label="repair authorization binding",
+    )
     if auth_binding.get("path") != AUTHORIZATION:
         _fail("repair manifest authorization path drifted")
     auth_sha = _sha(auth_binding.get("sha256"), label="repair authorization sha256")
