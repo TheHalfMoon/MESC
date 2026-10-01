@@ -18,8 +18,5 @@ PATHS = (
 
 
 def test_emit_repair_source_hashes_for_manifest_finalization() -> None:
-    hashes = {
-        path: hashlib.sha256((ROOT / path).read_bytes()).hexdigest()
-        for path in PATHS
-    }
+    hashes = {path: hashlib.sha256((ROOT / path).read_bytes()).hexdigest() for path in PATHS}
     raise AssertionError("REPAIR_SHA256=" + json.dumps(hashes, sort_keys=True))
