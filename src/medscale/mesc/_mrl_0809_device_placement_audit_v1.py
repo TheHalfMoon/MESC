@@ -63,9 +63,7 @@ def _tensor_device(tensor: object, *, kind: str, name: str) -> str:
                 f"{kind} {name!r} is on prohibited/ambiguous device {normalized}"
             )
         if normalized.startswith("cuda:"):
-            raise PlacementAuditError(
-                f"{kind} {name!r} is not on CUDA device 0: {normalized}"
-            )
+            raise PlacementAuditError(f"{kind} {name!r} is not on CUDA device 0: {normalized}")
         raise PlacementAuditError(f"{kind} {name!r} has unrecognized device {device!r}")
 
     device_type = getattr(device, "type", None)
@@ -73,14 +71,10 @@ def _tensor_device(tensor: object, *, kind: str, name: str) -> str:
     if device_type == "cuda" and device_index == 0:
         return CUDA0
     if device_type == "cuda":
-        raise PlacementAuditError(
-            f"{kind} {name!r} is not on CUDA device 0: cuda:{device_index}"
-        )
+        raise PlacementAuditError(f"{kind} {name!r} is not on CUDA device 0: cuda:{device_index}")
     if device_type in {"cpu", "meta"}:
         raise PlacementAuditError(f"{kind} {name!r} is on prohibited device {device_type}")
-    raise PlacementAuditError(
-        f"{kind} {name!r} has unrecognized device type {device_type!r}"
-    )
+    raise PlacementAuditError(f"{kind} {name!r} has unrecognized device type {device_type!r}")
 
 
 def _named_tensors(model: object, method_name: str, *, kind: str) -> list[tuple[str, object]]:
@@ -114,9 +108,7 @@ def audit_model_cuda0_placement(model: object) -> dict[str, Any]:
     """
 
     dynamic_model: Any = model
-    device_map = (
-        dynamic_model.hf_device_map if hasattr(dynamic_model, "hf_device_map") else None
-    )
+    device_map = dynamic_model.hf_device_map if hasattr(dynamic_model, "hf_device_map") else None
     map_present = device_map is not None
     map_entries = 0
     if map_present:
