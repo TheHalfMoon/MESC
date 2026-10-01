@@ -1,8 +1,18 @@
 # Founder decision packet — MRL-0809 successor v2 Stage-4 harness repair
 
-Status: PROPOSED_ONLY / NOT_ACCEPTED / NO_RUNTIME_AUTHORITY
+Status: ACCEPTED / REPOSITORY_REPAIR_ONLY / NO_RUNTIME_AUTHORITY
 
 Decision ID: `FD-MRL-0809-SUCCESSOR-V2-STAGE4-REPAIR-1`
+
+## Founder acceptance
+
+Accepted explicitly by the Founder on 2026-10-01 with the exact statement:
+
+```text
+I approve FD-MRL-0809-SUCCESSOR-V2-STAGE4-REPAIR-1 for repository repair only. No Stage-4 retry is authorized.
+```
+
+This acceptance authorizes only the repository-side repair and qualification scope defined below. It does not authorize any new hosted runtime attempt.
 
 ## Proven trigger
 
@@ -18,15 +28,9 @@ Gemma staging completed after notebook orchestration advanced past the Qwen fail
 
 See `docs/execution/mrl_0809_successor_v2_stage4_failure_postmortem.md`.
 
-## Decision requested
+## Authorized repository repair authority
 
-Authorize repository-side repair and qualification of the successor v2 placement-audit mechanism while preserving every substantive runtime constraint.
-
-The requested repository grant is deliberately separate from any hosted retry grant.
-
-### Requested repository repair authority
-
-If accepted, the repository repair may:
+The repository repair may:
 
 1. version the repaired successor harness/receipt contract as required so the consumed v2 attempt remains immutable;
 2. replace the mandatory-presence assumption for `model.hf_device_map` with a fail-closed multi-source placement audit;
@@ -107,7 +111,7 @@ This behavior must be mechanically tested where practical and stated in the runb
 
 ## Qualification sequence
 
-Repository repair qualification, if authorized, must follow:
+Repository repair qualification must follow:
 
 ```text
 IMPLEMENT
@@ -146,10 +150,9 @@ That later decision must state that the prior consumed v2 attempt remains FAIL a
 
 ## Current non-grants
 
-Until this packet is explicitly accepted and the repair is canonically merged:
+The accepted repository repair authority does not grant any of the following:
 
 ```text
-REPOSITORY_REPAIR_IMPLEMENTATION = NOT_AUTHORIZED_BY_THIS_DOCUMENT
 NEW_STAGE4_ATTEMPT = NOT_AUTHORIZED
 MODEL_SUBSTITUTION = NOT_AUTHORIZED
 REVISION_SUBSTITUTION = NOT_AUTHORIZED
@@ -162,8 +165,6 @@ MRL0809_CLOSEOUT = NOT_AUTHORIZED
 MRL0899_CLOSEOUT = NOT_AUTHORIZED
 ```
 
-## Acceptance
+## Acceptance boundary
 
-To accept the repository-repair scope, the Founder must explicitly approve `FD-MRL-0809-SUCCESSOR-V2-STAGE4-REPAIR-1` or an exact successor revision of this packet.
-
-Acceptance of this packet is not acceptance of a new Stage-4 runtime attempt.
+This packet is accepted for repository repair only. Acceptance is not acceptance of a new Stage-4 runtime attempt. No hosted retry may occur until a separate Founder decision explicitly authorizes it against an exact canonical repaired revision.
