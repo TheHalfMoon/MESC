@@ -15,7 +15,7 @@ import sys
 import tempfile
 from pathlib import Path
 from types import ModuleType
-from typing import Any, Final
+from typing import Final
 
 BASE_HARNESS: Final = Path("scripts/mesc_mrl_0809_runtime_feasibility_v2.py")
 BASE_HARNESS_SHA256: Final = (
