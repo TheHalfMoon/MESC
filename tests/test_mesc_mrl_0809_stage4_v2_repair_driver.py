@@ -37,6 +37,24 @@ def _fixture(tmp_path: Path) -> tuple[Path, Path, Path]:
     return root, python_executable, custody
 
 
+def test_missing_custody_directory_is_created(tmp_path: Path) -> None:
+    root, python_executable, _ = _fixture(tmp_path)
+    custody = tmp_path / "new" / "custody"
+
+    def runner(argv: list[str], **_: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(argv, 0)
+
+    DRIVER.run_stage4(
+        repository_root=root,
+        custody=custody,
+        python_executable=python_executable,
+        runner=runner,
+        remove_tree=lambda *_args, **_kwargs: None,
+    )
+
+    assert custody.is_dir()
+
+
 def test_first_probe_failure_prevents_gemma_and_assemble(tmp_path: Path) -> None:
     root, python_executable, custody = _fixture(tmp_path)
     calls: list[list[str]] = []
