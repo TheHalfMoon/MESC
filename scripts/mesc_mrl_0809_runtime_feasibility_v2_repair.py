@@ -25,6 +25,7 @@ PLACEMENT_AUDIT: Final = Path("src/medscale/mesc/_mrl_0809_device_placement_audi
 REPAIR_STATIC_MANIFEST: Final = Path(
     "specs/mesc-experiment-0/mrl-0809-static-prerequisites-v2-repair-1.json"
 )
+REPAIR_GATE_MODULE: Final = "medscale.mesc._mrl_0809_successor_gate_v2_repair_1"
 
 
 def _sha256_file(path: Path) -> str:
@@ -53,8 +54,25 @@ def _load_base() -> ModuleType:
 
 
 BASE: Any = _load_base()
+BASE_REQUIRE_REPOSITORY = BASE._require_repository
 BASE.HARNESS = REPAIR_HARNESS
 BASE.STATIC_MANIFEST = REPAIR_STATIC_MANIFEST
+
+
+def _require_repository_repaired(root: Path) -> tuple[str, str]:
+    """Require exact live main and the repair-1 static prerequisite gate."""
+
+    head, tree = BASE_REQUIRE_REPOSITORY(root)
+    root = root.resolve(strict=True)
+    source_root = str((root / "src").resolve(strict=True))
+    if source_root not in sys.path:
+        sys.path.insert(0, source_root)
+    gate: Any = importlib.import_module(REPAIR_GATE_MODULE)
+    try:
+        gate.validate_repair_static_prerequisites(root, head)
+    except gate.MRL0809RepairGateError as exc:
+        raise BASE.HarnessError("repair static prerequisite gate failed closed") from exc
+    return head, tree
 
 
 def _run_worker_repaired(
@@ -133,6 +151,7 @@ def _direct_worker_forbidden(candidate: str, snapshot: Path) -> None:
     )
 
 
+BASE._require_repository = _require_repository_repaired
 BASE._run_worker = _run_worker_repaired
 BASE._worker = _direct_worker_forbidden
 
