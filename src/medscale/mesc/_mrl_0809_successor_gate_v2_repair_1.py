@@ -176,7 +176,8 @@ def _validate_repair_authority(root: Path, revision: str, expected_sha: str) -> 
     decision_sha = _sha(decision.get("sha256"), label="repair decision sha256")
     if decision_sha != _DECISION_RECORD_SHA256:
         _fail("Founder repair decision identity drifted")
-    if hashlib.sha256(_git_bytes(root, revision, _DECISION_RECORD_PATH)).hexdigest() != decision_sha:
+    decision_raw = _git_bytes(root, revision, _DECISION_RECORD_PATH)
+    if hashlib.sha256(decision_raw).hexdigest() != decision_sha:
         _fail("Founder repair decision record drifted")
 
 
