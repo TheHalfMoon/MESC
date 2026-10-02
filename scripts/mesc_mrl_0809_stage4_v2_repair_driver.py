@@ -54,8 +54,9 @@ def run_stage4(
     root = repository_root.resolve(strict=True)
     python_path = python_executable.resolve(strict=True)
     harness = (root / HARNESS).resolve(strict=True)
-    custody = custody.resolve(strict=True)
+    custody = custody.resolve(strict=False)
     custody.mkdir(parents=True, exist_ok=True)
+    custody = custody.resolve(strict=True)
 
     qwen_snapshot = custody / "qwen-snapshot"
     gemma_snapshot = custody / "gemma-snapshot"
