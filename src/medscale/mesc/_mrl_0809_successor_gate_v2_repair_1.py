@@ -34,6 +34,29 @@ _TRUST_SCHEMA: Final = "MESC-MRL-0809-RUNTIME-FEASIBILITY-TRUST-V2-REPAIR-1"
 _SLOT_SCHEMA: Final = "MESC-MRL-0809-RUNTIME-FEASIBILITY-SLOT-V2-REPAIR-1"
 _SHA256: Final = re.compile(r"^[0-9a-f]{64}$", re.ASCII)
 _SHA40: Final = re.compile(r"^[0-9a-f]{40}$", re.ASCII)
+_AUTHORIZATION_KEYS: Final = frozenset(
+    {
+        "decision_id",
+        "decision_record",
+        "non_grants",
+        "repair_scope",
+        "runtime_attempts_authorized",
+        "schema_version",
+    }
+)
+_NON_GRANT_KEYS: Final = frozenset(
+    {
+        "mrl0809_closeout",
+        "mrl0899_closeout",
+        "new_stage4_attempt",
+        "offload_fallback",
+        "paid_compute",
+        "scientific_rq1_execution",
+        "training",
+        "weight_mutation",
+    }
+)
+_DECISION_RECORD_KEYS: Final = frozenset({"path", "sha256"})
 
 
 class MRL0809RepairGateError(ValueError):
@@ -121,6 +144,8 @@ def _validate_repair_authority(root: Path, revision: str, expected_sha: str) -> 
     if hashlib.sha256(raw).hexdigest() != expected_sha:
         _fail("repair authorization drifted")
     document = _canonical_object(raw, label="repair authorization")
+    if set(document) != _AUTHORIZATION_KEYS:
+        _fail("repair authorization envelope drifted")
     if document.get("schema_version") != _AUTH_SCHEMA:
         _fail("repair authorization schema drifted")
     if (
@@ -130,9 +155,13 @@ def _validate_repair_authority(root: Path, revision: str, expected_sha: str) -> 
     ):
         _fail("repair authorization scope was weakened or changed")
     non_grants = _mapping(document.get("non_grants"), label="repair non_grants")
-    if not non_grants or any(value is not False for value in non_grants.values()):
+    if set(non_grants) != _NON_GRANT_KEYS or any(
+        value is not False for value in non_grants.values()
+    ):
         _fail("repair non-grants were weakened")
     decision = _mapping(document.get("decision_record"), label="repair decision_record")
+    if set(decision) != _DECISION_RECORD_KEYS:
+        _fail("repair decision record envelope drifted")
     path = decision.get("path")
     if type(path) is not str:
         _fail("repair decision record path is missing")
