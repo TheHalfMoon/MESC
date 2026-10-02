@@ -2,15 +2,20 @@ from __future__ import annotations
 
 import hashlib
 import json
+import subprocess
 from pathlib import Path
 from typing import Any
+
+from medscale.mesc._mrl_0809_successor_gate_v2_repair_1 import (
+    validate_repair_static_prerequisites,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 REPAIR_MANIFEST = Path("specs/mesc-experiment-0/mrl-0809-static-prerequisites-v2-repair-1.json")
 ZERO_SHA256 = "0" * 64
 
 
-def _sha256(path: str) -> str:
+def _sha256(path: str | Path) -> str:
     return hashlib.sha256((ROOT / path).read_bytes()).hexdigest()
 
 
@@ -27,6 +32,18 @@ def _assert_bound_file(entry: object) -> None:
     assert isinstance(path, str) and path
     assert isinstance(expected, str) and expected != ZERO_SHA256
     assert expected == _sha256(path)
+
+
+def _head() -> str:
+    completed = subprocess.run(
+        ("git", "rev-parse", "HEAD"),
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    return completed.stdout.strip()
 
 
 def test_repair_source_hashes_are_finalized_and_match_repository_bytes() -> None:
@@ -56,3 +73,8 @@ def test_repair_authorization_binds_the_founder_decision_record() -> None:
     non_grants = authorization.get("non_grants")
     assert isinstance(non_grants, dict)
     assert non_grants.get("new_stage4_attempt") is False
+
+
+def test_repair_static_gate_accepts_current_repository_revision() -> None:
+    identity = validate_repair_static_prerequisites(ROOT, _head())
+    assert identity.manifest_sha256 == _sha256(REPAIR_MANIFEST)
