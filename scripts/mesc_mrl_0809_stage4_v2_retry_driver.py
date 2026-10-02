@@ -9,11 +9,12 @@ import subprocess
 from pathlib import Path
 from typing import Final
 
+from mesc_mrl_0809_stage4_v2_repair_driver import run_stage4
+
 from medscale.mesc._mrl_0809_stage4_retry_gate_v1 import (
     Stage4RetryAuthorityIdentity,
     validate_stage4_retry_authority,
 )
-from mesc_mrl_0809_stage4_v2_repair_driver import run_stage4
 
 _AUTHORITY_RECEIPT: Final = "stage4-retry-authority.json"
 

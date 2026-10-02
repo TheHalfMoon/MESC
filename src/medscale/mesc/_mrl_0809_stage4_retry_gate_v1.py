@@ -23,7 +23,9 @@ _REPAIR_MERGE_SHA: Final = "66c8d33eb48433f50b9e313ede804cf5fb31271a"
 _REPAIR_MERGE_TREE: Final = "8d6a818294f763c7e49ba0acfa172848f44607ee"
 _REPAIR_MANIFEST_SHA256: Final = "d943a8bc4fbc7f5c8baf8716dd206b6262966c43c37a7a257645518a620f2c7d"
 _DEPENDENCY_LOCK_SHA256: Final = "6fa0e0b49d19e305032ecd04940db0b9e252dd23b6fbec588b224f739048efc4"
-_PRESERVED_V2_MANIFEST_SHA256: Final = "56de494cf30b6d3dd3aa005e63d55ea7490f7645dd37cbb388188d635813a36d"
+_PRESERVED_V2_MANIFEST_SHA256: Final = (
+    "56de494cf30b6d3dd3aa005e63d55ea7490f7645dd37cbb388188d635813a36d"
+)
 
 
 class MRL0809Stage4RetryGateError(ValueError):
@@ -46,8 +48,7 @@ def _git_bytes(root: Path, revision: str, path: str) -> bytes:
     completed = subprocess.run(
         ["git", "-C", str(root), "show", f"{revision}:{path}"],
         check=False,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        capture_output=True,
     )
     if completed.returncode != 0:
         _fail(f"required retry-authority path is unavailable: {path}")
@@ -60,8 +61,7 @@ def _git_text(root: Path, *args: str) -> str:
         check=False,
         text=True,
         encoding="utf-8",
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        capture_output=True,
     )
     if completed.returncode != 0:
         _fail(f"git authority check failed: {' '.join(args)}")

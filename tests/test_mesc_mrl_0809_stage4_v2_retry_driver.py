@@ -15,7 +15,9 @@ SCRIPT = Path(__file__).resolve().parents[1] / "scripts/mesc_mrl_0809_stage4_v2_
 
 def _load() -> ModuleType:
     sys.path.insert(0, str(SCRIPT.parent))
-    spec = importlib.util.spec_from_file_location("mesc_mrl_0809_stage4_v2_retry_driver_test", SCRIPT)
+    spec = importlib.util.spec_from_file_location(
+        "mesc_mrl_0809_stage4_v2_retry_driver_test", SCRIPT
+    )
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
