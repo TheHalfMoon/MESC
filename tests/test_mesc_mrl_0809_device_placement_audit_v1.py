@@ -61,6 +61,11 @@ def test_present_device_map_and_actual_tensors_must_both_be_cuda0() -> None:
     assert result["hf_device_map_entry_count"] == 2
 
 
+def test_non_string_device_map_key_fails_closed() -> None:
+    with pytest.raises(PlacementAuditError, match="non-canonical module key"):
+        audit_model_cuda0_placement(_Model(device_map={0: "cuda:0"}))
+
+
 @pytest.mark.parametrize("target", ["cpu", "disk", "meta", "cuda:1", 1])
 def test_metadata_offload_or_other_cuda_device_fails_closed(target: object) -> None:
     with pytest.raises(PlacementAuditError):
