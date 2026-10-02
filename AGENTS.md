@@ -7,7 +7,7 @@ This file establishes cross-repository agent tooling. Existing project-specific 
 
 Graft is required as the default codebase context and navigation layer for coding agents in this repository.
 
-If Graft is unavailable, or the local `graft/` graph is absent or stale, initialize it from the upstream project at https://github.com/trailhq/Graft (`@nanonets/graft`). Run `graft init`, select the active agents (Codex and/or Claude as applicable), then run `graft build`.
+If Graft is unavailable, install the upstream CLI first with `npm install -g @nanonets/graft`. Then run `graft init`, select the active agents (Codex and/or Claude as applicable), and run `graft build`. If the CLI is already installed but the local `graft/` graph is absent or stale, skip installation and run the initialization/build steps directly. The upstream project is https://github.com/trailhq/Graft (`@nanonets/graft`).
 
 Before broad source exploration, prefer the Graft graph:
 
