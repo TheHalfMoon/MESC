@@ -60,9 +60,7 @@ _DECISION_RECORD_KEYS: Final = frozenset({"path", "sha256"})
 _DECISION_RECORD_PATH: Final = (
     f"{_EXPERIMENT}/mrl-0809-successor-v2/founder-decision-stage4-repair.md"
 )
-_DECISION_RECORD_SHA256: Final = (
-    "7a8d7ed8e6c79879cf01c9d846af031a8f38ca74f8382ebd681d32736889c7f0"
-)
+_DECISION_RECORD_SHA256: Final = "7a8d7ed8e6c79879cf01c9d846af031a8f38ca74f8382ebd681d32736889c7f0"
 
 
 class MRL0809RepairGateError(ValueError):
