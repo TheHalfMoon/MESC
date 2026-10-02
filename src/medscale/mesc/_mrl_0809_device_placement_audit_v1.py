@@ -28,22 +28,26 @@ def _metadata_target(target: object) -> str:
 
     if type(target) is str:
         normalized = target.strip().lower()
-        if normalized in {"cuda", CUDA0}:
+        if normalized == CUDA0:
             return CUDA0
-        if normalized in {"cpu", "disk", "meta"}:
-            raise PlacementAuditError(f"device map contains prohibited target {normalized}")
+        if normalized in {"cpu", "disk", "meta", "cuda"}:
+            raise PlacementAuditError(
+                f"device map contains prohibited/ambiguous target {normalized}"
+            )
         raise PlacementAuditError(
             f"device map target is not deterministically auditable: {target!r}"
         )
 
     device_type = getattr(target, "type", None)
     device_index = getattr(target, "index", None)
-    if device_type == "cuda" and device_index in (None, 0):
+    if device_type == "cuda" and device_index == 0:
         return CUDA0
     if device_type in {"cpu", "meta"}:
         raise PlacementAuditError(f"device map contains prohibited target {device_type}")
     if device_type == "cuda" and type(device_index) is int:
         raise PlacementAuditError(f"device map targets forbidden CUDA device {device_index}")
+    if device_type == "cuda":
+        raise PlacementAuditError("device map contains ambiguous CUDA target without device 0")
     raise PlacementAuditError(
         f"device map target is not deterministically auditable: {type(target).__name__}"
     )
