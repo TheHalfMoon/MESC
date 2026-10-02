@@ -31,6 +31,10 @@ EXPECTED_NON_GRANTS = {
     "training",
     "weight_mutation",
 }
+EXPECTED_DECISION_PATH = Path(
+    "specs/mesc-experiment-0/mrl-0809-successor-v2/founder-decision-stage4-repair.md"
+)
+EXPECTED_DECISION_SHA256 = "7a8d7ed8e6c79879cf01c9d846af031a8f38ca74f8382ebd681d32736889c7f0"
 
 
 def _sha256(path: str | Path) -> str:
@@ -85,7 +89,13 @@ def test_repair_authorization_binds_the_founder_decision_record() -> None:
 
     authorization = _load_json(authorization_path)
     assert set(authorization) == EXPECTED_AUTHORIZATION_KEYS
-    _assert_bound_file(authorization.get("decision_record"))
+
+    decision_record = authorization.get("decision_record")
+    assert isinstance(decision_record, dict)
+    assert set(decision_record) == {"path", "sha256"}
+    assert decision_record.get("path") == str(EXPECTED_DECISION_PATH)
+    assert decision_record.get("sha256") == EXPECTED_DECISION_SHA256
+    _assert_bound_file(decision_record)
 
     assert authorization.get("repair_scope") == "REPOSITORY_REPAIR_ONLY"
     assert type(authorization.get("runtime_attempts_authorized")) is int
