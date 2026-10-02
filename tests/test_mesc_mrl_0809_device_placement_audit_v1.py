@@ -66,9 +66,15 @@ def test_non_string_device_map_key_fails_closed() -> None:
         audit_model_cuda0_placement(_Model(device_map={0: "cuda:0"}))
 
 
-@pytest.mark.parametrize("target", ["cpu", "disk", "meta", "cuda:1", 1])
-def test_metadata_offload_or_other_cuda_device_fails_closed(target: object) -> None:
+@pytest.mark.parametrize("target", ["cpu", "disk", "meta", "cuda", "cuda:1", 1])
+def test_metadata_offload_ambiguous_or_other_cuda_device_fails_closed(target: object) -> None:
     with pytest.raises(PlacementAuditError):
+        audit_model_cuda0_placement(_Model(device_map={"model": target}))
+
+
+def test_ambiguous_metadata_cuda_device_without_index_fails_closed() -> None:
+    target = SimpleNamespace(type="cuda", index=None)
+    with pytest.raises(PlacementAuditError, match="ambiguous CUDA target"):
         audit_model_cuda0_placement(_Model(device_map={"model": target}))
 
 
