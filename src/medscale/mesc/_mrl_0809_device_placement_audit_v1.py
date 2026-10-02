@@ -115,7 +115,9 @@ def audit_model_cuda0_placement(model: object) -> dict[str, Any]:
         if not isinstance(device_map, Mapping) or not device_map:
             raise PlacementAuditError("present hf_device_map is empty or not a mapping")
         for key, target in device_map.items():
-            if type(key) is not str or not key:
+            # Hugging Face/Accelerate uses the empty string for the root module.
+            # It is a canonical string key, not missing metadata.
+            if type(key) is not str:
                 raise PlacementAuditError("hf_device_map contains a non-canonical module key")
             _metadata_target(target)
             map_entries += 1
