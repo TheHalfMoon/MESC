@@ -148,10 +148,12 @@ def _validate_repair_authority(root: Path, revision: str, expected_sha: str) -> 
         _fail("repair authorization envelope drifted")
     if document.get("schema_version") != _AUTH_SCHEMA:
         _fail("repair authorization schema drifted")
+    runtime_attempts = document.get("runtime_attempts_authorized")
     if (
         document.get("decision_id") != "FD-MRL-0809-SUCCESSOR-V2-STAGE4-REPAIR-1"
         or document.get("repair_scope") != "REPOSITORY_REPAIR_ONLY"
-        or document.get("runtime_attempts_authorized") != 0
+        or type(runtime_attempts) is not int
+        or runtime_attempts != 0
     ):
         _fail("repair authorization scope was weakened or changed")
     non_grants = _mapping(document.get("non_grants"), label="repair non_grants")
