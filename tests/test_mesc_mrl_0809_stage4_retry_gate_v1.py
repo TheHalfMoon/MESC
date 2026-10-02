@@ -36,7 +36,7 @@ def test_authorization_byte_drift_fails_closed(monkeypatch: pytest.MonkeyPatch) 
             return raw + b" "
         return raw
 
-    monkeypatch.setattr(GATE, "_git_bytes", drifted)
+    monkeypatch.setattr(gate, "_git_bytes", drifted)
     with pytest.raises(gate.MRL0809Stage4RetryGateError, match="authorization bytes drifted"):
         gate.validate_stage4_retry_authority(ROOT, _head())
 
@@ -50,6 +50,6 @@ def test_decision_byte_drift_fails_closed(monkeypatch: pytest.MonkeyPatch) -> No
             return raw + b" "
         return raw
 
-    monkeypatch.setattr(GATE, "_git_bytes", drifted)
+    monkeypatch.setattr(gate, "_git_bytes", drifted)
     with pytest.raises(gate.MRL0809Stage4RetryGateError, match="decision bytes drifted"):
         gate.validate_stage4_retry_authority(ROOT, _head())
