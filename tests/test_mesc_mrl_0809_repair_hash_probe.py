@@ -13,6 +13,24 @@ from medscale.mesc._mrl_0809_successor_gate_v2_repair_1 import (
 ROOT = Path(__file__).resolve().parents[1]
 REPAIR_MANIFEST = Path("specs/mesc-experiment-0/mrl-0809-static-prerequisites-v2-repair-1.json")
 ZERO_SHA256 = "0" * 64
+EXPECTED_AUTHORIZATION_KEYS = {
+    "decision_id",
+    "decision_record",
+    "non_grants",
+    "repair_scope",
+    "runtime_attempts_authorized",
+    "schema_version",
+}
+EXPECTED_NON_GRANTS = {
+    "mrl0809_closeout",
+    "mrl0899_closeout",
+    "new_stage4_attempt",
+    "offload_fallback",
+    "paid_compute",
+    "scientific_rq1_execution",
+    "training",
+    "weight_mutation",
+}
 
 
 def _sha256(path: str | Path) -> str:
@@ -66,13 +84,16 @@ def test_repair_authorization_binds_the_founder_decision_record() -> None:
     assert isinstance(authorization_path, str) and authorization_path
 
     authorization = _load_json(authorization_path)
+    assert set(authorization) == EXPECTED_AUTHORIZATION_KEYS
     _assert_bound_file(authorization.get("decision_record"))
 
     assert authorization.get("repair_scope") == "REPOSITORY_REPAIR_ONLY"
+    assert type(authorization.get("runtime_attempts_authorized")) is int
     assert authorization.get("runtime_attempts_authorized") == 0
     non_grants = authorization.get("non_grants")
     assert isinstance(non_grants, dict)
-    assert non_grants.get("new_stage4_attempt") is False
+    assert set(non_grants) == EXPECTED_NON_GRANTS
+    assert all(value is False for value in non_grants.values())
 
 
 def test_repair_static_gate_accepts_current_repository_revision() -> None:
