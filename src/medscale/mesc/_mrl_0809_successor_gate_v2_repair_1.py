@@ -57,6 +57,12 @@ _NON_GRANT_KEYS: Final = frozenset(
     }
 )
 _DECISION_RECORD_KEYS: Final = frozenset({"path", "sha256"})
+_DECISION_RECORD_PATH: Final = (
+    f"{_EXPERIMENT}/mrl-0809-successor-v2/founder-decision-stage4-repair.md"
+)
+_DECISION_RECORD_SHA256: Final = (
+    "7a8d7ed8e6c79879cf01c9d846af031a8f38ca74f8382ebd681d32736889c7f0"
+)
 
 
 class MRL0809RepairGateError(ValueError):
@@ -165,10 +171,12 @@ def _validate_repair_authority(root: Path, revision: str, expected_sha: str) -> 
     if set(decision) != _DECISION_RECORD_KEYS:
         _fail("repair decision record envelope drifted")
     path = decision.get("path")
-    if type(path) is not str:
-        _fail("repair decision record path is missing")
+    if path != _DECISION_RECORD_PATH:
+        _fail("repair decision record path drifted")
     decision_sha = _sha(decision.get("sha256"), label="repair decision sha256")
-    if hashlib.sha256(_git_bytes(root, revision, path)).hexdigest() != decision_sha:
+    if decision_sha != _DECISION_RECORD_SHA256:
+        _fail("Founder repair decision identity drifted")
+    if hashlib.sha256(_git_bytes(root, revision, _DECISION_RECORD_PATH)).hexdigest() != decision_sha:
         _fail("Founder repair decision record drifted")
 
 
@@ -215,6 +223,8 @@ def validate_repair_static_prerequisites(root: Path, revision: str) -> RepairSta
         manifest.get("preserved_v2_static_manifest"),
         label="preserved v2 manifest binding",
     )
+    if set(old_binding) != {"path", "sha256"}:
+        _fail("preserved v2 manifest binding envelope drifted")
     if old_binding.get("path") != PRESERVED_V2_MANIFEST:
         _fail("repair manifest no longer binds the preserved v2 manifest path")
     old_sha = _sha(old_binding.get("sha256"), label="preserved v2 manifest sha256")
@@ -226,6 +236,8 @@ def validate_repair_static_prerequisites(root: Path, revision: str) -> RepairSta
         manifest.get("repair_authorization"),
         label="repair authorization binding",
     )
+    if set(auth_binding) != {"path", "sha256"}:
+        _fail("repair authorization binding envelope drifted")
     if auth_binding.get("path") != AUTHORIZATION:
         _fail("repair manifest authorization path drifted")
     auth_sha = _sha(auth_binding.get("sha256"), label="repair authorization sha256")
