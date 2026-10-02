@@ -1,15 +1,20 @@
 # Founder decision proposal — MRL-0809 successor v2 Stage-4 retry
 
-Status: PROPOSED / NO_RUNTIME_AUTHORITY
+Status: ACCEPTED / PENDING_CANONICALIZATION / NO_RUNTIME_EXECUTION_BEFORE_FRESH_MAIN
 
 Decision ID: `FD-MRL-0809-SUCCESSOR-V2-STAGE4-RETRY-1`
 
 Date prepared: 2026-10-03
 
-This packet proposes the separate Founder decision required by
+Date accepted: 2026-10-03
+
+This packet records the separate Founder decision required by
 `FD-MRL-0809-SUCCESSOR-V2-STAGE4-REPAIR-1` after the repaired repository
-contract became canonical and fresh-main qualified. Merely adding or reviewing
-this file grants no runtime authority.
+contract became canonical and fresh-main qualified. Founder acceptance is
+recorded below. Runtime execution remains disabled until this accepted packet
+is itself canonical and fresh-main qualified.
+
+Machine-readable form: `../mrl-0809-successor-v2-stage4-retry-authorization.json`.
 
 ## Canonical repaired binding
 
@@ -49,13 +54,13 @@ PRIOR_GEMMA_RESULT = INCOMPLETE_NOT_QUALIFIED
 The prior failure does not establish T4 capacity infeasibility for the frozen
 Qwen candidate, and the incomplete Gemma probe remains non-qualifying evidence.
 
-## Proposed runtime grant
+## Runtime grant
 
-Only after explicit Founder acceptance and canonicalization of the accepted
-decision packet, the following single grant would become effective:
+The Founder accepted the following single grant. It becomes executable only
+after this accepted decision packet is canonical and fresh-main qualified:
 
 ```text
-PROPOSED_NEW_STAGE4_ATTEMPTS = 1
+NEW_STAGE4_ATTEMPTS_AUTHORIZED = 1
 PROVIDER = GOOGLE_COLAB_FREE
 GPU = Tesla T4
 MACHINE_SHAPE = STANDARD
@@ -102,7 +107,7 @@ MRL0899_CLOSEOUT = NOT_AUTHORIZED_BY_THIS_DECISION
 
 ## Attempt consumption and fail-stop rule
 
-The authorized attempt, if this proposal later becomes effective, is consumed
+The authorized attempt, after the effectiveness boundary below is satisfied, is consumed
 when execution crosses the canonical probe-start boundary for either candidate.
 Any genuine model/load/probe/runtime failure after that boundary records FAIL
 and terminates the attempt. No automatic retry, candidate substitution, offload,
@@ -114,28 +119,30 @@ boundary was crossed.
 
 ## Effectiveness boundary
 
-This proposal is not self-executing. It remains `NO_RUNTIME_AUTHORITY` unless:
+Founder acceptance is recorded in this file, but acceptance is not by itself
+runtime execution authority. The single attempt may execute only after:
 
-1. the Founder explicitly accepts `FD-MRL-0809-SUCCESSOR-V2-STAGE4-RETRY-1`;
-2. the accepted statement is persisted in this decision record;
-3. the corresponding machine-readable authorization and static bindings are implemented;
-4. the decision implementation is independently reviewed and exact-head qualified;
-5. the accepted packet is merged with an ordinary merge commit under the required governance; and
-6. the resulting `main` is fresh-main qualified.
+1. the accepted statement and machine-readable authorization are exact and fail-closed;
+2. the decision implementation is independently reviewed and exact-head qualified;
+3. this accepted packet is merged with an ordinary merge commit;
+4. the resulting canonical `main` passes fresh-main CI, CodeQL, Optional Extras / Backends, and Hugging Face Publication Qualification; and
+5. the runtime launch verifies the exact canonical repository state and the retry authority gate before any candidate staging begins.
 
-No hosted runtime attempt may occur before all six conditions are true.
-
-## Proposed Founder acceptance text
-
-If the Founder intends to grant the bounded retry after reviewing this packet,
-the explicit decision should be:
+Before all five conditions are true:
 
 ```text
-I approve FD-MRL-0809-SUCCESSOR-V2-STAGE4-RETRY-1, bound to canonical repair merge
-66c8d33eb48433f50b9e313ede804cf5fb31271a, tree
-8d6a818294f763c7e49ba0acfa172848f44607ee, and repair static manifest SHA-256
-d943a8bc4fbc7f5c8baf8716dd206b6262966c43c37a7a257645518a620f2c7d. I authorize
-exactly one further zero-cost STANDARD-T4 Stage-4 runtime-feasibility attempt after
-the accepted decision packet is canonical and fresh-main qualified. The prior
-consumed v2 attempt remains FAIL and must not be overwritten or relabeled.
+RUNTIME_EXECUTION = NOT_YET_EFFECTIVE
 ```
+
+## Founder acceptance
+
+Accepted explicitly by the Founder on 2026-10-03 with the exact statement:
+
+```text
+I approve FD-MRL-0809-SUCCESSOR-V2-STAGE4-RETRY-1, bound to canonical repair merge 66c8d33eb48433f50b9e313ede804cf5fb31271a, tree 8d6a818294f763c7e49ba0acfa172848f44607ee, and repair static manifest SHA-256 d943a8bc4fbc7f5c8baf8716dd206b6262966c43c37a7a257645518a620f2c7d. I authorize exactly one further zero-cost STANDARD-T4 Stage-4 runtime-feasibility attempt after the accepted decision packet is canonical and fresh-main qualified. The prior consumed v2 attempt remains FAIL and must not be overwritten or relabeled.
+```
+
+This acceptance grants no model, revision, GPU-class, quantization, offload,
+paid-compute, scientific-RQ1, training, weight-mutation, MRL-0809-closeout, or
+MRL-0899-closeout authority beyond the single bounded runtime-feasibility
+attempt defined above.
