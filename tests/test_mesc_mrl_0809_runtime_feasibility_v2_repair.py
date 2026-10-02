@@ -5,7 +5,7 @@ import importlib.util
 import subprocess
 import sys
 from pathlib import Path
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 
 import pytest
 
@@ -36,6 +36,65 @@ def test_preserved_v2_harness_is_sha_bound() -> None:
     assert _sha(ROOT / REPAIR.BASE_HARNESS) == REPAIR.BASE_HARNESS_SHA256
     assert REPAIR.BASE.HARNESS == REPAIR.REPAIR_HARNESS
     assert REPAIR.BASE.STATIC_MANIFEST == REPAIR.REPAIR_STATIC_MANIFEST
+    assert REPAIR.BASE._require_repository is REPAIR._require_repository_repaired
+
+
+def test_repair_repository_gate_runs_after_preserved_live_main_gate(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "repo"
+    (root / "src").mkdir(parents=True)
+    head = "a" * 40
+    tree = "b" * 40
+    captured: dict[str, object] = {}
+
+    def base_gate(received_root: Path) -> tuple[str, str]:
+        captured["base_root"] = received_root
+        return head, tree
+
+    def repair_gate(received_root: Path, revision: str) -> object:
+        captured["repair_root"] = received_root
+        captured["revision"] = revision
+        return object()
+
+    gate_error = type("FakeRepairGateError", (ValueError,), {})
+    gate = SimpleNamespace(
+        MRL0809RepairGateError=gate_error,
+        validate_repair_static_prerequisites=repair_gate,
+    )
+    monkeypatch.setattr(REPAIR, "BASE_REQUIRE_REPOSITORY", base_gate)
+    monkeypatch.setattr(REPAIR.importlib, "import_module", lambda name: gate)
+
+    assert REPAIR._require_repository_repaired(root) == (head, tree)
+    assert captured == {
+        "base_root": root,
+        "repair_root": root.resolve(),
+        "revision": head,
+    }
+
+
+def test_repair_repository_gate_failure_is_fail_closed(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "repo"
+    (root / "src").mkdir(parents=True)
+    head = "a" * 40
+    gate_error = type("FakeRepairGateError", (ValueError,), {})
+
+    def reject(_root: Path, _revision: str) -> object:
+        raise gate_error("drift")
+
+    gate = SimpleNamespace(
+        MRL0809RepairGateError=gate_error,
+        validate_repair_static_prerequisites=reject,
+    )
+    monkeypatch.setattr(REPAIR, "BASE_REQUIRE_REPOSITORY", lambda _root: (head, "b" * 40))
+    monkeypatch.setattr(REPAIR.importlib, "import_module", lambda name: gate)
+
+    with pytest.raises(REPAIR.BASE.HarnessError, match="repair static prerequisite gate"):
+        REPAIR._require_repository_repaired(root)
 
 
 def test_repaired_worker_launch_mounts_worker_and_placement_audit(
