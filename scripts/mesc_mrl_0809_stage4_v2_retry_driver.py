@@ -5,11 +5,18 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 import subprocess
+from collections.abc import Callable
 from pathlib import Path
 from typing import Final
 
-from mesc_mrl_0809_stage4_v2_repair_driver import run_stage4
+from mesc_mrl_0809_stage4_v2_repair_driver import (
+    GEMMA,
+    HARNESS,
+    QWEN,
+    _run,
+)
 
 from medscale.mesc._mrl_0809_stage4_retry_gate_v1 import (
     Stage4RetryAuthorityIdentity,
@@ -59,6 +66,129 @@ def _write_authority_receipt(
     (custody / _AUTHORITY_RECEIPT).write_text(raw, encoding="utf-8", newline="\n")
 
 
+def _python_launch_path(python_executable: Path) -> Path:
+    """Return an absolute executable path without dereferencing a venv symlink."""
+
+    path = python_executable.absolute()
+    if not path.is_file():
+        raise Stage4RetryLaunchError("python executable is missing")
+    return path
+
+
+def _run_retry_stage4(
+    *,
+    repository_root: Path,
+    custody: Path,
+    python_executable: Path,
+    runner: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
+    remove_tree: Callable[..., None] = shutil.rmtree,
+) -> None:
+    """Run the preserved fail-stop sequence while retaining venv executable identity."""
+
+    root = repository_root.resolve(strict=True)
+    python_path = _python_launch_path(python_executable)
+    harness = (root / HARNESS).resolve(strict=True)
+    custody = custody.resolve(strict=False)
+    custody.mkdir(parents=True, exist_ok=True)
+    custody = custody.resolve(strict=True)
+
+    qwen_snapshot = custody / "qwen-snapshot"
+    gemma_snapshot = custody / "gemma-snapshot"
+    qwen_stage = custody / "qwen-stage.json"
+    gemma_stage = custody / "gemma-stage.json"
+    qwen_observation = custody / "qwen-observation.json"
+    gemma_observation = custody / "gemma-observation.json"
+    common = [str(python_path), str(harness)]
+
+    _run(
+        [
+            *common,
+            "stage",
+            "--repository-root",
+            str(root),
+            "--candidate",
+            QWEN,
+            "--destination",
+            str(qwen_snapshot),
+            "--receipt-out",
+            str(qwen_stage),
+        ],
+        runner=runner,
+    )
+    _run(
+        [
+            *common,
+            "probe",
+            "--repository-root",
+            str(root),
+            "--candidate",
+            QWEN,
+            "--snapshot",
+            str(qwen_snapshot),
+            "--stage-receipt",
+            str(qwen_stage),
+            "--observation-out",
+            str(qwen_observation),
+            "--python-executable",
+            str(python_path),
+        ],
+        runner=runner,
+    )
+    remove_tree(qwen_snapshot, ignore_errors=False)
+
+    _run(
+        [
+            *common,
+            "stage",
+            "--repository-root",
+            str(root),
+            "--candidate",
+            GEMMA,
+            "--destination",
+            str(gemma_snapshot),
+            "--receipt-out",
+            str(gemma_stage),
+        ],
+        runner=runner,
+    )
+    _run(
+        [
+            *common,
+            "probe",
+            "--repository-root",
+            str(root),
+            "--candidate",
+            GEMMA,
+            "--snapshot",
+            str(gemma_snapshot),
+            "--stage-receipt",
+            str(gemma_stage),
+            "--observation-out",
+            str(gemma_observation),
+            "--python-executable",
+            str(python_path),
+        ],
+        runner=runner,
+    )
+    remove_tree(gemma_snapshot, ignore_errors=False)
+
+    _run(
+        [
+            *common,
+            "assemble",
+            "--repository-root",
+            str(root),
+            "--observation",
+            str(qwen_observation),
+            "--observation",
+            str(gemma_observation),
+            "--receipt-out",
+            str(custody / "runtime-feasibility-v2-repair-1.json"),
+        ],
+        runner=runner,
+    )
+
+
 def run_authorized_stage4(
     *,
     repository_root: Path,
@@ -83,7 +213,7 @@ def run_authorized_stage4(
     custody.mkdir(parents=True, exist_ok=False)
     _write_authority_receipt(custody, revision=current_head, authority=authority)
 
-    run_stage4(
+    _run_retry_stage4(
         repository_root=root,
         custody=custody,
         python_executable=python_executable,
