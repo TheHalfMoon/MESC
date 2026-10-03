@@ -16,9 +16,9 @@ import tempfile
 from pathlib import Path
 from typing import Any, Final
 
-import mesc_mrl_0809_runtime_feasibility_v2_repair as REPAIR
+import mesc_mrl_0809_runtime_feasibility_v2_repair as repair_module
 
-BASE: Any = REPAIR.BASE
+BASE: Any = repair_module.BASE
 BMM_HARNESS: Final = Path("scripts/mesc_mrl_0809_runtime_feasibility_v2_bmm_repair.py")
 BMM_WORKER: Final = Path("scripts/mesc_mrl_0809_runtime_worker_v2_bmm_repair.py")
 BMM_PREFLIGHT: Final = Path("scripts/mesc_mrl_0809_bmm_portability_preflight_v1.py")
@@ -27,11 +27,11 @@ PREFLIGHT_SCHEMA: Final = "MESC-MRL-0809-BMM-PORTABILITY-PREFLIGHT-V1"
 
 
 def _install_bmm_repair() -> None:
-    REPAIR.__dict__["REPAIR_WORKER"] = BMM_WORKER
+    repair_module.__dict__["REPAIR_WORKER"] = BMM_WORKER
     BASE.HARNESS = BMM_HARNESS
 
     def require_repository(root: Path) -> tuple[str, str]:
-        head, tree = REPAIR._require_repository_repaired(root)
+        head, tree = repair_module._require_repository_repaired(root)
         source_root = str((root.resolve(strict=True) / "src").resolve(strict=True))
         if source_root not in sys.path:
             sys.path.insert(0, source_root)
@@ -130,7 +130,7 @@ def main() -> None:
         )
         return
     _install_bmm_repair()
-    REPAIR.main()
+    repair_module.main()
 
 
 if __name__ == "__main__":
