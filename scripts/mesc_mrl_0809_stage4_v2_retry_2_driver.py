@@ -49,11 +49,7 @@ def _live_origin_main(root: Path) -> str:
     except (OSError, subprocess.CalledProcessError) as exc:
         raise Stage4Retry2LaunchError("live origin/main identity is unavailable") from exc
     fields = output.split()
-    if (
-        len(fields) != 2
-        or _SHA40.fullmatch(fields[0]) is None
-        or fields[1] != "refs/heads/main"
-    ):
+    if len(fields) != 2 or _SHA40.fullmatch(fields[0]) is None or fields[1] != "refs/heads/main":
         raise Stage4Retry2LaunchError("live origin/main identity is malformed")
     return fields[0]
 
