@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import subprocess
 import sys
 from pathlib import Path
 from types import ModuleType
@@ -38,7 +39,7 @@ def _authority() -> Stage4RetryAuthorityIdentity:
     )
 
 
-def test_authority_is_checked_before_preserved_driver(
+def test_authority_is_checked_before_retry_sequence(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -58,14 +59,14 @@ def test_authority_is_checked_before_preserved_driver(
         calls.append("authority")
         return _authority()
 
-    def preserved(**kwargs: object) -> None:
+    def retry_sequence(**kwargs: object) -> None:
         assert kwargs["repository_root"] == root.resolve()
         assert kwargs["custody"] == custody
         assert kwargs["python_executable"] == python_executable
         calls.append("driver")
 
     monkeypatch.setattr(DRIVER, "validate_stage4_retry_authority", validate)
-    monkeypatch.setattr(DRIVER, "run_stage4", preserved)
+    monkeypatch.setattr(DRIVER, "_run_retry_stage4", retry_sequence)
 
     DRIVER.run_authorized_stage4(
         repository_root=root,
@@ -119,3 +120,59 @@ def test_existing_custody_fails_before_runtime(
             python_executable=python_executable,
             expected_canonical_revision=REVISION,
         )
+
+
+def test_python_launch_path_preserves_venv_symlink(tmp_path: Path) -> None:
+    target = tmp_path / "base-python"
+    target.write_text("", encoding="utf-8")
+    venv_bin = tmp_path / ".venv" / "bin"
+    venv_bin.mkdir(parents=True)
+    python_link = venv_bin / "python"
+    try:
+        python_link.symlink_to(target)
+    except OSError as exc:
+        pytest.skip(f"symlink creation unavailable: {exc}")
+
+    launch_path = DRIVER._python_launch_path(python_link)
+
+    assert launch_path == python_link.absolute()
+    assert launch_path != python_link.resolve()
+
+
+def test_retry_sequence_uses_venv_symlink_and_stops_before_gemma(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "repo"
+    harness = root / DRIVER.HARNESS
+    harness.parent.mkdir(parents=True)
+    harness.write_text("# harness\n", encoding="utf-8")
+    target = tmp_path / "base-python"
+    target.write_text("", encoding="utf-8")
+    venv_bin = tmp_path / ".venv" / "bin"
+    venv_bin.mkdir(parents=True)
+    python_link = venv_bin / "python"
+    try:
+        python_link.symlink_to(target)
+    except OSError as exc:
+        pytest.skip(f"symlink creation unavailable: {exc}")
+    custody = tmp_path / "custody"
+    calls: list[list[str]] = []
+
+    def runner(argv: list[str], **_: object) -> subprocess.CompletedProcess[str]:
+        calls.append(argv)
+        return subprocess.CompletedProcess(argv, 1 if argv[2] == "probe" else 0)
+
+    with pytest.raises(RuntimeError, match="execution stopped without retry"):
+        DRIVER._run_retry_stage4(
+            repository_root=root,
+            custody=custody,
+            python_executable=python_link,
+            runner=runner,
+            remove_tree=lambda *_args, **_kwargs: None,
+        )
+
+    assert [call[2] for call in calls] == ["stage", "probe"]
+    assert calls[0][0] == str(python_link.absolute())
+    assert calls[0][0] != str(python_link.resolve())
+    assert DRIVER.QWEN in calls[0]
+    assert DRIVER.GEMMA not in {item for call in calls for item in call}
