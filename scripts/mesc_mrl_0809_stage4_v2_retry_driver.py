@@ -24,6 +24,9 @@ from medscale.mesc._mrl_0809_stage4_retry_gate_v1 import (
 )
 
 _AUTHORITY_RECEIPT: Final = "stage4-retry-authority.json"
+_CONSUMED_FAILURE_RECORD: Final = Path(
+    "specs/mesc-experiment-0/mrl-0809-successor-v2-stage4-retry-1-failure-record.json"
+)
 
 
 class Stage4RetryLaunchError(RuntimeError):
@@ -46,6 +49,13 @@ def _require_clean(root: Path) -> None:
     )
     if status:
         raise Stage4RetryLaunchError("repository has tracked working-tree changes")
+
+
+def _require_retry_unconsumed(root: Path) -> None:
+    if (root / _CONSUMED_FAILURE_RECORD).is_file():
+        raise Stage4RetryLaunchError(
+            "accepted Stage-4 retry-1 is already consumed; no additional retry is authorized"
+        )
 
 
 def _write_authority_receipt(
@@ -205,6 +215,7 @@ def run_authorized_stage4(
             "repository HEAD does not match the fresh-main-qualified canonical revision"
         )
     _require_clean(root)
+    _require_retry_unconsumed(root)
 
     if custody.exists():
         raise Stage4RetryLaunchError("custody path must not already exist")
