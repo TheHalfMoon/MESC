@@ -78,9 +78,7 @@ def test_launch_consumption_receipt_is_written_before_bmm_sequence(
     )
 
     assert calls == ["clean", "authority", "runtime"]
-    receipt = json.loads(
-        (custody / DRIVER._LAUNCH_CONSUMPTION_RECEIPT).read_text(encoding="utf-8")
-    )
+    receipt = json.loads((custody / DRIVER._LAUNCH_CONSUMPTION_RECEIPT).read_text(encoding="utf-8"))
     assert receipt["launch_authorization_consumed"] is True
     assert receipt["automatic_relaunch_authorized"] is False
     assert receipt["preflight_failure_exhausts_launch"] is True
