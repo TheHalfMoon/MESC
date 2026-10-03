@@ -1,18 +1,22 @@
-# Founder decision proposal — MRL-0809 successor v2 Stage-4 retry-2
+# Founder decision — MRL-0809 successor v2 Stage-4 retry-2
 
-Status: PROPOSED / NO_RUNTIME_AUTHORITY
+Status: ACCEPTED / BOUNDED_RUNTIME_AUTHORITY / EFFECTIVE_AFTER_CANONICAL_FRESH_MAIN
 
 Decision ID: `FD-MRL-0809-SUCCESSOR-V2-STAGE4-RETRY-2`
 
 Date prepared: 2026-10-03
 
-This packet proposes the separate Founder decision required after the BMM portability repair became canonical and fresh-main qualified. It is not accepted by repository inclusion, branch creation, pull-request creation, or any generic continuation instruction.
+Date accepted: 2026-10-03
 
-No hosted Stage-4 execution is authorized unless and until the Founder explicitly accepts this exact decision, the accepted decision is converted into fail-closed machine-readable authority, that accepted authority is independently reviewed and exact-head qualified, and the accepted packet becomes canonical and fresh-main qualified.
+This packet records the separate Founder decision required after the BMM portability
+repair became canonical and fresh-main qualified. Founder acceptance is recorded
+below. Runtime execution remains disabled until this accepted decision
+implementation is itself canonical and fresh-main qualified.
+
+Machine-readable form:
+`../mrl-0809-successor-v2-stage4-retry-2-authorization.json`.
 
 ## Canonical BMM-repair binding
-
-This proposal is bound to exactly the following canonical repaired state:
 
 ```text
 CANONICAL_BMM_REPAIR_MERGE_SHA = 07a20c8a01a6b3562b98fa48fbd19ed11be7a8eb
@@ -23,40 +27,23 @@ PRESERVED_REPAIR_STATIC_MANIFEST_SHA256 = d943a8bc4fbc7f5c8baf8716dd206b6262966c
 CONSUMED_RETRY_1_FAILURE_RECORD_SHA256 = 6b8ed146e82b705bc536530e60a10b0c81c32f3ab3dd16f4155562706a9ecf0f
 ```
 
-Fresh-main qualification on that exact merge completed successfully:
-
-```text
-CI_RUN = 37138797577 / SUCCESS
-CODEQL_RUN = 37138797582 / SUCCESS
-OPTIONAL_EXTRAS_RUN = 37138797581 / SUCCESS
-HF_PUBLICATION_RUN = 37138797607 / SUCCESS
-LOCAL_BMM_STATIC_GATE_PY311 = PASS
-LOCAL_BMM_STATIC_GATE_PY312 = PASS
-```
-
-The exact-head tree of PR #534 and the canonical merge tree are identical: `0ae92820f266bf17a23507e3286ae33f968a2972`.
+The bound BMM repair was fresh-main qualified by CI run `37138797577`, CodeQL
+run `37138797582`, Optional Extras / Backends run `37138797581`, Hugging Face
+Publication Qualification run `37138797607`, and local BMM static gates on
+Python 3.11 and 3.12. PR #534 exact-head tree and the canonical merge tree are
+both `0ae92820f266bf17a23507e3286ae33f968a2972`.
 
 ## Historical attempts remain immutable
 
-The original successor-v2 attempt and the separately authorized retry-1 remain historical evidence and are not overwritten, relabeled, erased, or converted into PASS.
+The original successor-v2 attempt and retry-1 remain historical FAIL evidence.
+Retry-1 remains Qwen stage PASS / Qwen probe FAIL with failure class
+`SANDBOX_TRITON_CUDA_HELPER_BUILD_FAILURE`, CUDA OOM false, and Gemma NOT_RUN.
+These facts must not be overwritten, relabeled, erased, or converted into PASS.
 
-The retry-1 result remains:
+## Runtime grant
 
-```text
-PRIOR_RETRY_1 = FAIL
-PRIOR_RETRY_1_QWEN_STAGE = PASS
-PRIOR_RETRY_1_QWEN_PROBE = FAIL
-PRIOR_RETRY_1_QWEN_FAILURE_CLASS = SANDBOX_TRITON_CUDA_HELPER_BUILD_FAILURE
-PRIOR_RETRY_1_QWEN_CUDA_OOM_OBSERVED = FALSE
-PRIOR_RETRY_1_GEMMA_STAGE = NOT_RUN
-PRIOR_RETRY_1_GEMMA_PROBE = NOT_RUN
-```
-
-The retry-1 failure does not establish T4 capacity infeasibility for the frozen Qwen candidate.
-
-## Proposed runtime grant
-
-If explicitly accepted by the Founder and only after the effectiveness boundary below is satisfied, this decision would authorize exactly one new zero-cost Stage-4 runtime-feasibility launch under the following frozen envelope:
+After the effectiveness boundary below is satisfied, exactly one launch is
+authorized:
 
 ```text
 NEW_STAGE4_LAUNCHES_AUTHORIZED = 1
@@ -70,7 +57,7 @@ SEALED_TIER3_ACCESS = FALSE
 SCIENTIFIC_RQ1_EXECUTION = FALSE
 ```
 
-The launch remains bounded to the already-frozen successor-v2 candidate roster and runtime representation:
+The frozen candidate roster and runtime representation remain:
 
 ```text
 CANDIDATE_1 = Qwen/Qwen3-8B
@@ -85,13 +72,13 @@ TRUST_REMOTE_CODE = FALSE
 ISOLATED_WORKER_NETWORK = FALSE
 ```
 
-The BMM portability preflight added by the canonical repair must execute first, inside the governed isolation boundary, before any candidate staging or canonical probe-start marker.
+The canonical BMM compatibility preflight must run first inside the governed
+isolation boundary.
 
 ## Fail-stop and launch-consumption rule
 
-The proposed authority permits one launch invocation only. No automatic relaunch is permitted under this decision.
-
-The runtime path must enforce:
+Exactly one hosted launch invocation is authorized. No automatic retry or
+relaunch is authorized.
 
 ```text
 FIRST_OPERATION = BMM_COMPATIBILITY_PREFLIGHT
@@ -102,13 +89,13 @@ NO_AUTOMATIC_RETRY
 NO_AUTOMATIC_RELAUNCH
 ```
 
-If the BMM preflight or provider/session startup fails before any canonical candidate probe-start boundary is crossed, the scientific attempt is classified as infrastructure non-execution, but the single launch authorization is nevertheless exhausted. Any subsequent hosted launch requires a new explicit Founder decision.
-
-If execution crosses the canonical probe-start boundary for a candidate, the scientific attempt is consumed. Any genuine model/load/probe/runtime failure after that boundary records FAIL and terminates the launch.
+The launch authorization is exhausted once the hosted launch is invoked,
+including provider/session or BMM-preflight infrastructure failure before a
+candidate probe-start boundary. The runtime controller must persist a
+launch-consumption receipt before invoking the BMM Stage-4 sequence. Any
+subsequent hosted launch requires a new explicit Founder decision.
 
 ## Non-grants
-
-The proposed grant must not be interpreted to authorize any of the following:
 
 ```text
 MODEL_SUBSTITUTION = NOT_AUTHORIZED
@@ -128,17 +115,13 @@ MRL0809_CLOSEOUT = NOT_AUTHORIZED_BY_THIS_DECISION
 MRL0899_CLOSEOUT = NOT_AUTHORIZED_BY_THIS_DECISION
 ```
 
-No scientific corpus, sealed Tier-3 data, final-role data, training labels, or model-weight mutation may be introduced by this runtime-feasibility launch.
-
-## Acceptance and implementation sequence
-
-If the Founder accepts this proposal, repository implementation must follow this order:
+## Accepted implementation sequence
 
 ```text
 FOUNDER_ACCEPTANCE
 -> RECORD EXACT ACCEPTANCE STATEMENT
 -> CREATE FAIL-CLOSED MACHINE-READABLE RETRY-2 AUTHORIZATION
--> CREATE/UPDATE RETRY-2 AUTHORITY GATE AND TESTS
+-> CREATE RETRY-2 AUTHORITY GATE AND TESTS
 -> LOCAL TESTS
 -> REGRESSION TESTS
 -> JEV
@@ -156,24 +139,23 @@ FOUNDER_ACCEPTANCE
 -> ONE HOSTED STAGE-4 LAUNCH
 ```
 
-Jev and Alibaba Open Code Review outcomes must be recorded exactly. A blocked provider lane is recorded as blocked; no review PASS may be fabricated.
+Blocked review lanes remain blocked; no review PASS may be fabricated.
 
 ## Effectiveness boundary
 
-Before the accepted decision implementation itself is canonical and fresh-main qualified:
+Founder acceptance alone is not executable runtime authority. Before the
+accepted retry-2 implementation is canonical and fresh-main qualified:
 
 ```text
-RUNTIME_EXECUTION = NOT_AUTHORIZED
+RUNTIME_EXECUTION = NOT_YET_EFFECTIVE
 ```
 
-Repository preparation, tests, review, CI, and decision implementation do not themselves grant hosted runtime authority.
+## Founder acceptance
 
-## Required Founder acceptance statement
-
-To accept this exact proposal, the Founder must explicitly state:
+Accepted explicitly by the Founder on 2026-10-03 with the exact statement:
 
 ```text
 I approve FD-MRL-0809-SUCCESSOR-V2-STAGE4-RETRY-2, bound to canonical BMM repair merge 07a20c8a01a6b3562b98fa48fbd19ed11be7a8eb, tree 0ae92820f266bf17a23507e3286ae33f968a2972, and BMM repair static manifest SHA-256 1868f5501903b921ace2db47511b89c50b0017136e3ebe4180a7493fdc395728. I authorize exactly one further zero-cost STANDARD-T4 Stage-4 runtime-feasibility launch after the accepted retry-2 decision implementation is canonical and fresh-main qualified. The prior successor-v2 attempts remain historical FAIL evidence and must not be overwritten or relabeled. No automatic relaunch is authorized.
 ```
 
-Until that exact decision is explicitly accepted, this file remains a proposal and grants no runtime authority.
+This acceptance grants no authority beyond the single bounded launch above.
