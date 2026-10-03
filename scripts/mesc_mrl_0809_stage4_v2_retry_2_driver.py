@@ -36,6 +36,25 @@ def _head(root: Path) -> str:
     ).strip()
 
 
+def _git_ref(root: Path, ref: str) -> str:
+    try:
+        return subprocess.check_output(
+            ["git", "-C", str(root), "rev-parse", "--verify", ref],
+            text=True,
+            encoding="utf-8",
+            stderr=subprocess.DEVNULL,
+        ).strip()
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise Stage4Retry2LaunchError(f"required git ref is unavailable: {ref}") from exc
+
+
+def _require_canonical_main(root: Path, revision: str) -> None:
+    if _git_ref(root, "refs/remotes/origin/main") != revision:
+        raise Stage4Retry2LaunchError(
+            "runtime revision is not the exact current origin/main revision"
+        )
+
+
 def _require_clean(root: Path) -> None:
     status = subprocess.check_output(
         ["git", "-C", str(root), "status", "--porcelain", "--untracked-files=no"],
@@ -115,6 +134,7 @@ def run_authorized_stage4_retry_2(
             "repository HEAD does not match the fresh-main-qualified canonical revision"
         )
     _require_clean(root)
+    _require_canonical_main(root, current_head)
     _require_unconsumed(root)
 
     if custody.exists():

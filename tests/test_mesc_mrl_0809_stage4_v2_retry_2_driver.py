@@ -52,6 +52,11 @@ def test_launch_consumption_receipt_is_written_before_bmm_sequence(
 
     monkeypatch.setattr(DRIVER, "_head", lambda _root: REVISION)
     monkeypatch.setattr(DRIVER, "_require_clean", lambda _root: calls.append("clean"))
+    monkeypatch.setattr(
+        DRIVER,
+        "_require_canonical_main",
+        lambda _root, _revision: calls.append("canonical-main"),
+    )
 
     def validate(root_arg: Path, revision: str) -> Stage4Retry2AuthorityIdentity:
         assert root_arg == root.resolve()
@@ -77,7 +82,7 @@ def test_launch_consumption_receipt_is_written_before_bmm_sequence(
         expected_canonical_revision=REVISION,
     )
 
-    assert calls == ["clean", "authority", "runtime"]
+    assert calls == ["clean", "canonical-main", "authority", "runtime"]
     receipt = json.loads((custody / DRIVER._LAUNCH_CONSUMPTION_RECEIPT).read_text(encoding="utf-8"))
     assert receipt["launch_authorization_consumed"] is True
     assert receipt["automatic_relaunch_authorized"] is False
@@ -101,6 +106,18 @@ def test_wrong_revision_fails_before_authority(
         )
 
 
+def test_noncanonical_main_fails_before_authority(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "repo"
+    root.mkdir()
+    monkeypatch.setattr(DRIVER, "_git_ref", lambda _root, _ref: "b" * 40)
+
+    with pytest.raises(DRIVER.Stage4Retry2LaunchError, match="exact current origin/main"):
+        DRIVER._require_canonical_main(root, REVISION)
+
+
 def test_existing_retry_2_record_blocks_relaunch_before_authority(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -116,6 +133,11 @@ def test_existing_retry_2_record_blocks_relaunch_before_authority(
     monkeypatch.setattr(DRIVER, "_require_clean", lambda _root: calls.append("clean"))
     monkeypatch.setattr(
         DRIVER,
+        "_require_canonical_main",
+        lambda _root, _revision: calls.append("canonical-main"),
+    )
+    monkeypatch.setattr(
+        DRIVER,
         "validate_stage4_retry_2_authority",
         lambda *_args, **_kwargs: calls.append("authority"),
     )
@@ -128,7 +150,7 @@ def test_existing_retry_2_record_blocks_relaunch_before_authority(
             expected_canonical_revision=REVISION,
         )
 
-    assert calls == ["clean"]
+    assert calls == ["clean", "canonical-main"]
 
 
 def test_existing_custody_fails_before_consumption(
@@ -142,6 +164,7 @@ def test_existing_custody_fails_before_consumption(
 
     monkeypatch.setattr(DRIVER, "_head", lambda _root: REVISION)
     monkeypatch.setattr(DRIVER, "_require_clean", lambda _root: None)
+    monkeypatch.setattr(DRIVER, "_require_canonical_main", lambda _root, _revision: None)
     monkeypatch.setattr(DRIVER, "validate_stage4_retry_2_authority", lambda *_: _authority())
 
     with pytest.raises(DRIVER.Stage4Retry2LaunchError, match="must not already exist"):
