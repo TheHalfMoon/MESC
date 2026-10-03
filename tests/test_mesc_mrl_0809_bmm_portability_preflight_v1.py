@@ -36,6 +36,7 @@ def test_preflight_disables_bmm_before_cuda_smoke(
             f"disable:{kwargs['disable_op_symbols']}"
         )
     )
+
     def bmm(left: object, right: object) -> str:
         del left, right
         events.append("bmm")
