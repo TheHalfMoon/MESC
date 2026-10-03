@@ -176,3 +176,34 @@ def test_retry_sequence_uses_venv_symlink_and_stops_before_gemma(
     assert calls[0][0] != str(python_link.resolve())
     assert DRIVER.QWEN in calls[0]
     assert DRIVER.GEMMA not in {item for call in calls for item in call}
+
+
+def test_consumed_retry_record_blocks_relaunch_before_authority(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "repo"
+    root.mkdir()
+    failure = root / DRIVER._CONSUMED_FAILURE_RECORD
+    failure.parent.mkdir(parents=True)
+    failure.write_text("{}\n", encoding="utf-8")
+    python_executable = tmp_path / "python"
+    python_executable.write_text("", encoding="utf-8")
+    calls: list[str] = []
+    monkeypatch.setattr(DRIVER, "_head", lambda _root: REVISION)
+    monkeypatch.setattr(DRIVER, "_require_clean", lambda _root: calls.append("clean"))
+    monkeypatch.setattr(
+        DRIVER,
+        "validate_stage4_retry_authority",
+        lambda *_args, **_kwargs: calls.append("authority"),
+    )
+
+    with pytest.raises(DRIVER.Stage4RetryLaunchError, match="already consumed"):
+        DRIVER.run_authorized_stage4(
+            repository_root=root,
+            custody=tmp_path / "custody",
+            python_executable=python_executable,
+            expected_canonical_revision=REVISION,
+        )
+
+    assert calls == ["clean"]
