@@ -188,6 +188,7 @@ def _run_retry_stage4(
         runner=runner,
     )
 
+
 def run_authorized_stage4(
     *,
     repository_root: Path,
