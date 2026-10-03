@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 from pathlib import Path
 from typing import Final
@@ -22,6 +23,7 @@ _CONSUMED_RECORDS: Final = (
     Path("specs/mesc-experiment-0/mrl-0809-successor-v2-stage4-retry-2-failure-record.json"),
     Path("specs/mesc-experiment-0/mrl-0809-successor-v2-stage4-retry-2-result.json"),
 )
+_SHA40: Final = re.compile(r"^[0-9a-f]{40}$", re.ASCII)
 
 
 class Stage4Retry2LaunchError(RuntimeError):
@@ -36,22 +38,30 @@ def _head(root: Path) -> str:
     ).strip()
 
 
-def _git_ref(root: Path, ref: str) -> str:
+def _live_origin_main(root: Path) -> str:
     try:
-        return subprocess.check_output(
-            ["git", "-C", str(root), "rev-parse", "--verify", ref],
+        output = subprocess.check_output(
+            ["git", "-C", str(root), "ls-remote", "--exit-code", "origin", "refs/heads/main"],
             text=True,
             encoding="utf-8",
             stderr=subprocess.DEVNULL,
         ).strip()
     except (OSError, subprocess.CalledProcessError) as exc:
-        raise Stage4Retry2LaunchError(f"required git ref is unavailable: {ref}") from exc
+        raise Stage4Retry2LaunchError("live origin/main identity is unavailable") from exc
+    fields = output.split()
+    if (
+        len(fields) != 2
+        or _SHA40.fullmatch(fields[0]) is None
+        or fields[1] != "refs/heads/main"
+    ):
+        raise Stage4Retry2LaunchError("live origin/main identity is malformed")
+    return fields[0]
 
 
 def _require_canonical_main(root: Path, revision: str) -> None:
-    if _git_ref(root, "refs/remotes/origin/main") != revision:
+    if _live_origin_main(root) != revision:
         raise Stage4Retry2LaunchError(
-            "runtime revision is not the exact current origin/main revision"
+            "runtime revision is not the exact current live origin/main revision"
         )
 
 

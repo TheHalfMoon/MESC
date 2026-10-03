@@ -106,15 +106,15 @@ def test_wrong_revision_fails_before_authority(
         )
 
 
-def test_noncanonical_main_fails_before_authority(
+def test_noncanonical_live_main_fails_before_authority(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     root = tmp_path / "repo"
     root.mkdir()
-    monkeypatch.setattr(DRIVER, "_git_ref", lambda _root, _ref: "b" * 40)
+    monkeypatch.setattr(DRIVER, "_live_origin_main", lambda _root: "b" * 40)
 
-    with pytest.raises(DRIVER.Stage4Retry2LaunchError, match="exact current origin/main"):
+    with pytest.raises(DRIVER.Stage4Retry2LaunchError, match="live origin/main"):
         DRIVER._require_canonical_main(root, REVISION)
 
 
