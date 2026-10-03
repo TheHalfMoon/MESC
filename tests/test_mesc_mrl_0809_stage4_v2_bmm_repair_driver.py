@@ -9,8 +9,7 @@ from types import ModuleType
 import pytest
 
 SCRIPT = (
-    Path(__file__).resolve().parents[1]
-    / "scripts/mesc_mrl_0809_stage4_v2_bmm_repair_driver.py"
+    Path(__file__).resolve().parents[1] / "scripts/mesc_mrl_0809_stage4_v2_bmm_repair_driver.py"
 )
 
 

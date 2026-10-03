@@ -9,8 +9,7 @@ from types import ModuleType, SimpleNamespace
 import pytest
 
 SCRIPT = (
-    Path(__file__).resolve().parents[1]
-    / "scripts/mesc_mrl_0809_bmm_portability_preflight_v1.py"
+    Path(__file__).resolve().parents[1] / "scripts/mesc_mrl_0809_bmm_portability_preflight_v1.py"
 )
 
 
@@ -37,6 +36,11 @@ def test_preflight_disables_bmm_before_cuda_smoke(
             f"disable:{kwargs['disable_op_symbols']}"
         )
     )
+    def bmm(left: object, right: object) -> str:
+        del left, right
+        events.append("bmm")
+        return "result"
+
     torch = SimpleNamespace(
         float32="float32",
         cuda=SimpleNamespace(
@@ -46,7 +50,7 @@ def test_preflight_disables_bmm_before_cuda_smoke(
         ),
         device=lambda value: value,
         ones=lambda shape, **kwargs: (shape, kwargs),
-        bmm=lambda left, right: events.append("bmm") or "result",
+        bmm=bmm,
         equal=lambda result, expected: result == "result",
     )
     monkeypatch.setattr(PREFLIGHT.importlib.metadata, "version", lambda name: "2.13.0")

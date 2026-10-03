@@ -8,8 +8,7 @@ from types import ModuleType, SimpleNamespace
 import pytest
 
 SCRIPT = (
-    Path(__file__).resolve().parents[1]
-    / "scripts/mesc_mrl_0809_runtime_worker_v2_bmm_repair.py"
+    Path(__file__).resolve().parents[1] / "scripts/mesc_mrl_0809_runtime_worker_v2_bmm_repair.py"
 )
 
 

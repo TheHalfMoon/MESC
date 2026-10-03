@@ -69,33 +69,88 @@ def run_stage4(
         runner=runner,
     )
     _run(
-        [*common, "stage", "--repository-root", str(root), "--candidate", QWEN,
-         "--destination", str(qwen_snapshot), "--receipt-out", str(qwen_stage)],
+        [
+            *common,
+            "stage",
+            "--repository-root",
+            str(root),
+            "--candidate",
+            QWEN,
+            "--destination",
+            str(qwen_snapshot),
+            "--receipt-out",
+            str(qwen_stage),
+        ],
         runner=runner,
     )
     _run(
-        [*common, "probe", "--repository-root", str(root), "--candidate", QWEN,
-         "--snapshot", str(qwen_snapshot), "--stage-receipt", str(qwen_stage),
-         "--observation-out", str(qwen_observation), "--python-executable", str(python_path)],
+        [
+            *common,
+            "probe",
+            "--repository-root",
+            str(root),
+            "--candidate",
+            QWEN,
+            "--snapshot",
+            str(qwen_snapshot),
+            "--stage-receipt",
+            str(qwen_stage),
+            "--observation-out",
+            str(qwen_observation),
+            "--python-executable",
+            str(python_path),
+        ],
         runner=runner,
     )
     remove_tree(qwen_snapshot, ignore_errors=False)
     _run(
-        [*common, "stage", "--repository-root", str(root), "--candidate", GEMMA,
-         "--destination", str(gemma_snapshot), "--receipt-out", str(gemma_stage)],
+        [
+            *common,
+            "stage",
+            "--repository-root",
+            str(root),
+            "--candidate",
+            GEMMA,
+            "--destination",
+            str(gemma_snapshot),
+            "--receipt-out",
+            str(gemma_stage),
+        ],
         runner=runner,
     )
     _run(
-        [*common, "probe", "--repository-root", str(root), "--candidate", GEMMA,
-         "--snapshot", str(gemma_snapshot), "--stage-receipt", str(gemma_stage),
-         "--observation-out", str(gemma_observation), "--python-executable", str(python_path)],
+        [
+            *common,
+            "probe",
+            "--repository-root",
+            str(root),
+            "--candidate",
+            GEMMA,
+            "--snapshot",
+            str(gemma_snapshot),
+            "--stage-receipt",
+            str(gemma_stage),
+            "--observation-out",
+            str(gemma_observation),
+            "--python-executable",
+            str(python_path),
+        ],
         runner=runner,
     )
     remove_tree(gemma_snapshot, ignore_errors=False)
     _run(
-        [*common, "assemble", "--repository-root", str(root),
-         "--observation", str(qwen_observation), "--observation", str(gemma_observation),
-         "--receipt-out", str(custody / "runtime-feasibility-v2-bmm-repair-1.json")],
+        [
+            *common,
+            "assemble",
+            "--repository-root",
+            str(root),
+            "--observation",
+            str(qwen_observation),
+            "--observation",
+            str(gemma_observation),
+            "--receipt-out",
+            str(custody / "runtime-feasibility-v2-bmm-repair-1.json"),
+        ],
         runner=runner,
     )
 
