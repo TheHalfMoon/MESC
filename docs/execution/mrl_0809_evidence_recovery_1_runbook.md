@@ -101,7 +101,13 @@ The driver must receive:
 --expected-canonical-revision <exact fresh-main-qualified main SHA>
 ```
 
-The driver writes the evidence-recovery authority receipt and launch-consumption receipt before invoking the preserved BMM fail-stop sequence. Once the hosted driver invocation begins, the single recovery launch is consumed even if provider/session or BMM preflight fails.
+The driver writes the evidence-recovery authority receipt and launch-consumption receipt before invoking the preserved BMM fail-stop sequence. Immediately after the launch-consumption receipt is fsync'd, the driver emits those exact consumption-receipt bytes to stdout with the prefix:
+
+```text
+MESC_EVIDENCE_RECOVERY_CONSUMPTION_V1_BASE64=
+```
+
+The early stdout copy must complete before the BMM sequence starts, so Colab CLI history retains byte-level proof of launch consumption even if provider/session failure, BMM preflight failure, probe failure, or session pruning prevents final bundle creation. Once the hosted driver invocation begins, the single recovery launch is consumed even if provider/session or BMM preflight fails.
 
 No retry or relaunch is authorized.
 
@@ -151,6 +157,7 @@ Stop immediately without retry if any of the following occurs:
 - cleanup failure;
 - missing required recovery artifact;
 - bundle creation failure;
+- early launch-consumption stdout emission failure;
 - stdout bundle emission failure; or
 - any unapproved model, revision, offload, placement, quantization, or runtime-representation drift.
 

@@ -105,20 +105,58 @@ def test_recovery_consumes_launch_before_runtime_and_emits_full_byte_bundle(
         assert raw == (custody / row["path"]).read_bytes()
         assert row["byte_count"] == len(raw)
 
-    output = capsys.readouterr().out.strip()
-    assert output.startswith(DRIVER._BUNDLE_STDOUT_PREFIX)
+    output_lines = capsys.readouterr().out.strip().splitlines()
+    assert len(output_lines) == 2
+    assert output_lines[0].startswith(DRIVER._CONSUMPTION_STDOUT_PREFIX)
+    consumption_raw = base64.b64decode(
+        output_lines[0].removeprefix(DRIVER._CONSUMPTION_STDOUT_PREFIX), validate=True
+    )
+    assert consumption_raw == (custody / DRIVER._LAUNCH_CONSUMPTION_RECEIPT).read_bytes()
+    assert output_lines[1].startswith(DRIVER._BUNDLE_STDOUT_PREFIX)
     stdout_bundle = base64.b64decode(
-        output.removeprefix(DRIVER._BUNDLE_STDOUT_PREFIX), validate=True
+        output_lines[1].removeprefix(DRIVER._BUNDLE_STDOUT_PREFIX), validate=True
     )
     assert stdout_bundle == bundle_raw
 
-    consumption = json.loads(
-        (custody / DRIVER._LAUNCH_CONSUMPTION_RECEIPT).read_text(encoding="utf-8")
-    )
+    consumption = json.loads(consumption_raw)
     assert consumption["launch_authorization_consumed"] is True
     assert consumption["automatic_retry_authorized"] is False
     assert consumption["automatic_relaunch_authorized"] is False
     assert consumption["purpose"] == "EVIDENCE_RECOVERY_ONLY"
+
+
+def test_consumption_stdout_is_emitted_before_runtime_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    root = tmp_path / "repo"
+    root.mkdir()
+    custody = tmp_path / "custody"
+    python_executable = tmp_path / "python"
+    python_executable.write_text("", encoding="utf-8")
+    _patch_prelaunch(monkeypatch)
+
+    def runtime(**_kwargs: object) -> None:
+        output = capsys.readouterr().out.strip()
+        assert output.startswith(DRIVER._CONSUMPTION_STDOUT_PREFIX)
+        raw = base64.b64decode(
+            output.removeprefix(DRIVER._CONSUMPTION_STDOUT_PREFIX), validate=True
+        )
+        assert raw == (custody / DRIVER._LAUNCH_CONSUMPTION_RECEIPT).read_bytes()
+        raise RuntimeError("synthetic runtime failure")
+
+    monkeypatch.setattr(DRIVER, "_run_bmm_stage4", runtime)
+    with pytest.raises(RuntimeError, match="synthetic runtime failure"):
+        DRIVER.run_authorized_evidence_recovery_1(
+            repository_root=root,
+            custody=custody,
+            python_executable=python_executable,
+            expected_canonical_revision=REVISION,
+        )
+
+    assert (custody / DRIVER._LAUNCH_CONSUMPTION_RECEIPT).is_file()
+    assert not (custody / DRIVER._BUNDLE).exists()
 
 
 def test_missing_runtime_artifact_fails_after_launch_consumption(

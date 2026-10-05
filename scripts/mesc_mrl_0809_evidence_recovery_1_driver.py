@@ -25,6 +25,7 @@ _LAUNCH_CONSUMPTION_RECEIPT: Final = "evidence-recovery-1-launch-consumption.jso
 _BUNDLE: Final = "evidence-recovery-1-bundle.json"
 _BUNDLE_SCHEMA: Final = "MESC-MRL-0809-EVIDENCE-RECOVERY-BUNDLE-V1"
 _BUNDLE_STDOUT_PREFIX: Final = "MESC_EVIDENCE_RECOVERY_BUNDLE_V1_BASE64="
+_CONSUMPTION_STDOUT_PREFIX: Final = "MESC_EVIDENCE_RECOVERY_CONSUMPTION_V1_BASE64="
 _PREDECESSOR_RESULT: Final = Path(
     "specs/mesc-experiment-0/mrl-0809-successor-v2-stage4-retry-2-result.json"
 )
@@ -251,6 +252,11 @@ def run_authorized_evidence_recovery_1(
         custody,
         revision=current_head,
         authority=authority,
+    )
+    consumption_raw = (custody / _LAUNCH_CONSUMPTION_RECEIPT).read_bytes()
+    print(
+        _CONSUMPTION_STDOUT_PREFIX + base64.b64encode(consumption_raw).decode("ascii"),
+        flush=True,
     )
 
     _run_bmm_stage4(
