@@ -35,6 +35,35 @@ def _completed(args: tuple[str, ...], returncode: int = 0) -> object:
     return subprocess.CompletedProcess(args, returncode, stdout="", stderr="")
 
 
+
+def _write_valid_host_receipt(
+    evidence: Path,
+    *,
+    session_name: str = "mesc-evidence-recovery-2",
+    revision: str = "a" * 40,
+) -> None:
+    (evidence / HOST._HOST_LAUNCH_RECEIPT).write_bytes(
+        HOST._canonical_json_bytes(
+            {
+                "authorization_sha256": "c" * 64,
+                "automatic_relaunch_authorized": False,
+                "automatic_retry_authorized": False,
+                "canonical_revision": revision,
+                "canonical_tree": "b" * 40,
+                "decision_sha256": "d" * 64,
+                "gpu_class": "STANDARD_T4",
+                "launch_authorization_consumed": True,
+                "monetary_cost_microunits": 0,
+                "provider_class": "GOOGLE_COLAB_FREE",
+                "purpose": "EVIDENCE_RECOVERY_ONLY",
+                "schema_version": (
+                    "MESC-MRL-0809-EVIDENCE-RECOVERY-2-HOST-LAUNCH-CONSUMPTION-V1"
+                ),
+                "session_name": session_name,
+            }
+        )
+    )
+
 def test_allocate_persists_consumption_before_colab_new(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -133,9 +162,9 @@ def test_continuous_retention_verifies_bytes_before_ack(
 ) -> None:
     evidence = tmp_path / "evidence"
     evidence.mkdir()
-    (evidence / HOST._HOST_LAUNCH_RECEIPT).write_text("{}\n", encoding="utf-8")
+    _write_valid_host_receipt(evidence)
     remote = _remote_fixture()
-    uploads: list[Path] = []
+    upload_attempts = 0
 
     def download(**kwargs: object) -> bool:
         name = kwargs["name"]
@@ -148,13 +177,16 @@ def test_continuous_retention_verifies_bytes_before_ack(
         return True
 
     def run(args: tuple[str, ...]) -> object:
+        nonlocal upload_attempts
         if "upload" in args:
+            upload_attempts += 1
             ack_path = Path(args[-2])
             assert ack_path.is_file()
             ack = json.loads(ack_path.read_text(encoding="utf-8"))
             assert ack["complete_local_evidence_verified"] is True
             assert (evidence / HOST._LOCAL_MANIFEST).is_file()
-            uploads.append(ack_path)
+            if upload_attempts == 1:
+                return _completed(args, returncode=1)
         return _completed(args)
 
     monkeypatch.setattr(HOST, "_download_once", download)
@@ -171,10 +203,49 @@ def test_continuous_retention_verifies_bytes_before_ack(
         poll_seconds=0.01,
     )
 
-    assert len(uploads) == 1
+    assert upload_attempts == 2
     assert all((evidence / name).is_file() for name in HOST._REQUIRED_REMOTE_FILES)
     manifest = json.loads((evidence / HOST._LOCAL_MANIFEST).read_text(encoding="utf-8"))
     assert manifest["complete_local_evidence_verified"] is True
+
+
+def test_force_refresh_replaces_early_partial_copy(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    evidence = tmp_path / "evidence"
+    evidence.mkdir()
+    target = evidence / "gemma-observation.json"
+    target.write_bytes(b"partial")
+
+    def run(args: tuple[str, ...]) -> object:
+        Path(args[-1]).write_bytes(b"complete-evidence")
+        return _completed(args)
+
+    monkeypatch.setattr(HOST, "_run_colab", run)
+    assert HOST._download_once(
+        colab_bin="colab",
+        session_name="mesc-evidence-recovery-2",
+        remote_custody="/content/custody",
+        local_dir=evidence,
+        name="gemma-observation.json",
+        force=True,
+    )
+    assert target.read_bytes() == b"complete-evidence"
+
+
+def test_run_rejects_host_receipt_for_different_session(tmp_path: Path) -> None:
+    _write_valid_host_receipt(tmp_path, session_name="different-session")
+    with pytest.raises(HOST.EvidenceRecovery2HostError, match="session_name"):
+        HOST.run_with_continuous_retention(
+            colab_bin="colab",
+            session_name="mesc-evidence-recovery-2",
+            local_evidence_dir=tmp_path,
+            remote_repository_root="/content/MESC",
+            remote_custody="/content/custody",
+            remote_python="/content/MESC/.venv/bin/python",
+            expected_canonical_revision="a" * 40,
+        )
 
 
 def test_corrupted_local_artifact_prevents_ack(
