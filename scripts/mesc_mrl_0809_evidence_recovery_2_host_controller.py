@@ -121,6 +121,37 @@ def _load_canonical_object(path: Path, *, label: str) -> dict[str, object]:
     return document
 
 
+def _validate_host_launch_receipt(
+    local_dir: Path,
+    *,
+    session_name: str,
+    expected_canonical_revision: str,
+) -> None:
+    receipt = _load_canonical_object(
+        local_dir / _HOST_LAUNCH_RECEIPT,
+        label="host launch-consumption receipt",
+    )
+    expected = {
+        "automatic_relaunch_authorized": False,
+        "automatic_retry_authorized": False,
+        "canonical_revision": expected_canonical_revision,
+        "gpu_class": "STANDARD_T4",
+        "launch_authorization_consumed": True,
+        "monetary_cost_microunits": 0,
+        "provider_class": "GOOGLE_COLAB_FREE",
+        "purpose": "EVIDENCE_RECOVERY_ONLY",
+        "schema_version": (
+            "MESC-MRL-0809-EVIDENCE-RECOVERY-2-HOST-LAUNCH-CONSUMPTION-V1"
+        ),
+        "session_name": session_name,
+    }
+    for key, value in expected.items():
+        if receipt.get(key) != value:
+            raise EvidenceRecovery2HostError(
+                f"host launch-consumption receipt binding mismatch: {key}"
+            )
+
+
 def allocate_single_t4_session(
     *,
     colab_bin: str,
@@ -171,9 +202,10 @@ def _download_once(
     remote_custody: str,
     local_dir: Path,
     name: str,
+    force: bool = False,
 ) -> bool:
     final_path = local_dir / name
-    if final_path.is_file():
+    if final_path.is_file() and not force:
         return True
     partial_dir = local_dir / ".partial"
     partial_dir.mkdir(parents=True, exist_ok=True)
@@ -304,7 +336,7 @@ def _upload_ack(
     session_name: str,
     remote_custody: str,
     ack_path: Path,
-) -> None:
+) -> bool:
     remote_path = f"{remote_custody.rstrip('/')}/{_REMOTE_ACK}"
     result = _run_colab(
         (
@@ -316,8 +348,7 @@ def _upload_ack(
             remote_path,
         )
     )
-    if result.returncode != 0:
-        raise EvidenceRecovery2HostError("failed to upload verified host acknowledgement")
+    return result.returncode == 0
 
 
 def _write_runner(
@@ -361,14 +392,18 @@ def run_with_continuous_retention(
     """Start watcher first, invoke remote driver, and ACK only complete local evidence."""
 
     local_dir = local_evidence_dir.resolve()
-    if not (local_dir / _HOST_LAUNCH_RECEIPT).is_file():
-        raise EvidenceRecovery2HostError("host launch-consumption receipt is missing")
+    _validate_host_launch_receipt(
+        local_dir,
+        session_name=session_name,
+        expected_canonical_revision=expected_canonical_revision,
+    )
 
     stop = threading.Event()
     ack_complete = threading.Event()
     watcher_error: list[BaseException] = []
 
     def watcher() -> None:
+        ack_path: Path | None = None
         try:
             while not stop.is_set():
                 for name in _REQUIRED_REMOTE_FILES:
@@ -379,17 +414,35 @@ def run_with_continuous_retention(
                         local_dir=local_dir,
                         name=name,
                     )
-                if all((local_dir / name).is_file() for name in _REQUIRED_REMOTE_FILES):
-                    manifest_raw = _verify_bundle_and_build_manifest(local_dir)
-                    ack_path = _write_ack(local_dir, manifest_raw)
-                    _upload_ack(
-                        colab_bin=colab_bin,
-                        session_name=session_name,
-                        remote_custody=remote_custody,
-                        ack_path=ack_path,
-                    )
-                    ack_complete.set()
-                    return
+
+                if (local_dir / _REMOTE_READY).is_file():
+                    refresh_complete = True
+                    for name in _REQUIRED_REMOTE_FILES:
+                        if not _download_once(
+                            colab_bin=colab_bin,
+                            session_name=session_name,
+                            remote_custody=remote_custody,
+                            local_dir=local_dir,
+                            name=name,
+                            force=True,
+                        ):
+                            refresh_complete = False
+                    if refresh_complete:
+                        try:
+                            manifest_raw = _verify_bundle_and_build_manifest(local_dir)
+                        except EvidenceRecovery2HostError:
+                            stop.wait(poll_seconds)
+                            continue
+                        if ack_path is None:
+                            ack_path = _write_ack(local_dir, manifest_raw)
+                        if _upload_ack(
+                            colab_bin=colab_bin,
+                            session_name=session_name,
+                            remote_custody=remote_custody,
+                            ack_path=ack_path,
+                        ):
+                            ack_complete.set()
+                            return
                 stop.wait(poll_seconds)
         except BaseException as exc:
             watcher_error.append(exc)
