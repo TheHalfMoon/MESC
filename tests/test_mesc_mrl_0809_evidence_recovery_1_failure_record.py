@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import hashlib
+import importlib
 import json
 import sys
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any, cast
 
@@ -15,10 +17,9 @@ RECORD = (
 EVIDENCE = ROOT / "specs/mesc-experiment-0/mrl-0809-successor-v2-evidence-recovery-1-evidence"
 
 sys.path.insert(0, str(ROOT / "scripts"))
-from mesc_mrl_0809_evidence_recovery_1_driver import (  # noqa: E402
-    EvidenceRecovery1LaunchError,
-    _require_recovery_unconsumed,
-)
+_driver: Any = importlib.import_module("mesc_mrl_0809_evidence_recovery_1_driver")
+EvidenceRecovery1LaunchError: type[RuntimeError] = _driver.EvidenceRecovery1LaunchError
+_require_recovery_unconsumed: Callable[[Path], None] = _driver._require_recovery_unconsumed
 
 
 def _load(path: Path) -> dict[str, Any]:
