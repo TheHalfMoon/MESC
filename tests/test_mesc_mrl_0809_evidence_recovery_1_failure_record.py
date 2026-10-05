@@ -4,6 +4,7 @@ import hashlib
 import json
 import sys
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 
@@ -20,8 +21,8 @@ from mesc_mrl_0809_evidence_recovery_1_driver import (  # noqa: E402
 )
 
 
-def _load(path: Path) -> dict[str, object]:
-    return json.loads(path.read_text(encoding="utf-8"))
+def _load(path: Path) -> dict[str, Any]:
+    return cast(dict[str, Any], json.loads(path.read_text(encoding="utf-8")))
 
 
 def _sha256(path: Path) -> str:
