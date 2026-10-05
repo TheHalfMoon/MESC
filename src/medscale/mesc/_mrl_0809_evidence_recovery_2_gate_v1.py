@@ -91,6 +91,16 @@ def _canonical_object(raw: bytes, *, label: str) -> dict[str, object]:
     return document
 
 
+def _json_object(raw: bytes, *, label: str) -> dict[str, object]:
+    try:
+        value = json.loads(raw.decode("utf-8"), parse_constant=_reject_constant)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise MRL0809EvidenceRecovery2GateError(f"{label} is not valid JSON") from exc
+    if type(value) is not dict:
+        _fail(f"{label} must be a JSON object")
+    return cast(dict[str, object], value)
+
+
 def _mapping(value: object, *, label: str) -> dict[str, object]:
     if type(value) is not dict:
         _fail(f"{label} must be an object")
@@ -112,7 +122,7 @@ def _require_ancestor(root: Path, ancestor: str, revision: str) -> None:
 
 
 def _validate_predecessor(raw: bytes) -> None:
-    document = _canonical_object(raw, label="Recovery-1 failure record")
+    document = _json_object(raw, label="Recovery-1 failure record")
     if document.get("disposition") != "FAIL_EVIDENCE_RETENTION_AFTER_RUNTIME_PASS":
         _fail("Recovery-1 disposition drifted")
     authority = _mapping(document.get("authority"), label="Recovery-1 authority")
