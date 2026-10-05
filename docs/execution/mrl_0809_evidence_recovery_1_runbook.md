@@ -4,7 +4,23 @@ Status: PREPARED_ONLY. Repository inclusion is not runtime authority.
 
 Decision: `FD-MRL-0809-SUCCESSOR-V2-EVIDENCE-RECOVERY-1`.
 
-The single evidence-recovery launch becomes executable only after the accepted implementation is canonical and the exact canonical merge commit is fresh-main qualified by CI, CodeQL, Optional Extras / Backends, and Hugging Face Publication Qualification.
+The single evidence-recovery launch becomes executable only after the accepted implementation is merged under explicit Founder exact-head approval naming the final qualified PR head, becomes canonical, and the exact canonical merge commit is fresh-main qualified by CI, CodeQL, Optional Extras / Backends, and Hugging Face Publication Qualification.
+
+## Merge adoption gate
+
+Founder acceptance of the evidence-recovery decision is not reusable as merge approval for an implementation head that did not yet exist. Before merge, the final PR head must be exact-head qualified and the Founder must explicitly approve that exact head for an ordinary merge commit. Any head change invalidates the prior merge approval and requires a new exact-head approval.
+
+Merge policy:
+
+```text
+NORMAL_MERGE_COMMIT_ONLY
+NO_SQUASH
+NO_REBASE
+NO_FORCE_PUSH
+MATCH_EXACT_HEAD
+```
+
+After the ordinary merge, the resulting canonical merge commit must complete all four fresh-main qualification lanes before any recovery runtime authority becomes effective.
 
 ## Frozen runtime contract
 
