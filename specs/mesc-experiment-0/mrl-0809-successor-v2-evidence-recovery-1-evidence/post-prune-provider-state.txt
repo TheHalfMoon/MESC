@@ -1,0 +1,8 @@
+===SESSIONS===
+[colab] No active sessions found on server.
+===USAGE===
+Current balance: 0.00 compute units
+Usage rate: 0.00/hr
+Active assignments: 0
+===STATUS===
+[colab] Session 'mesc-evidence-recovery-1' not found.
