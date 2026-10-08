@@ -123,8 +123,44 @@ def _check_ancestor(root: Path, revision: str) -> None:
         _fail("Recovery-2 canonical outcome merge tree drifted")
 
 
+def _historical_json_bytes(document: dict[str, object]) -> bytes:
+    """Canonical original JSON with finite floats in immutable provider telemetry.
+
+    Research-source canonical JSON forbids floats. Historical Colab telemetry
+    already contains finite floats; never rewrite those predecessor bytes.
+    """
+    return (
+        json.dumps(
+            document,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        )
+        + "\n"
+    ).encode("utf-8")
+
+
+def _historical_failure_object(raw: bytes) -> dict[str, object]:
+    try:
+        value = json.loads(
+            raw.decode("utf-8"),
+            parse_constant=lambda constant: _fail(f"invalid provider constant: {constant}"),
+        )
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise MRL0809EvidenceRecovery3GateError(
+            "Recovery-2 historical failure JSON is unreadable"
+        ) from exc
+    if type(value) is not dict:
+        _fail("Recovery-2 historical failure must be a JSON object")
+    doc = cast(dict[str, object], value)
+    if _historical_json_bytes(doc) != raw:
+        _fail("Recovery-2 historical failure JSON was rewritten")
+    return doc
+
+
 def _check_failure(raw: bytes) -> None:
-    failure = _canonical_object(raw, label="Recovery-2 failure record")
+    failure = _historical_failure_object(raw)
     if (
         failure.get("schema_version")
         != "MESC-MRL-0809-SUCCESSOR-V2-EVIDENCE-RECOVERY-2-FAILURE-RECORD-V1"
