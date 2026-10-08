@@ -1,0 +1,38 @@
+"""Read only Colab control-plane facts and persist an allowlisted diagnostic."""
+import json
+import os
+import sys
+from pathlib import Path
+from colab_cli.common import state
+from colab_cli.client import Accelerator, AssignmentVariant, Shape
+
+work = Path(__file__).resolve().parent
+mode = sys.argv[1]
+assert mode in ('before', 'after')
+info = state.client.get_consumption_user_info()
+assignments = state.client.list_assignments()
+document = {'schema_version': 'MESC-RECOVERY2-CONTROL-PLANE-DIAGNOSTIC-V1',
+            'phase': mode, 'balance': info.paid_compute_units_balance,
+            'usage_rate': info.consumption_rate_hourly,
+            'assignments': info.assignments_count,
+            'server_assignments': len(assignments), 'scientific_evidence': False}
+assert document['balance'] == 0 and document['usage_rate'] == 0
+assert document['assignments'] == document['server_assignments'] == (0 if mode == 'before' else 1)
+if mode == 'after':
+    session = state.get_session('mesc-evidence-recovery-2')
+    assert session is not None
+    assert session.accelerator == 'T4' and session.variant == 'GPU' and session.machine_shape == 'STANDARD'
+    assert len(assignments) == 1 and assignments[0].endpoint == session.endpoint
+    assignment = assignments[0]
+    assert assignment.accelerator == Accelerator.T4
+    assert assignment.variant == AssignmentVariant.GPU
+    assert assignment.machine_shape == Shape.STANDARD
+    document.update(runtime_id=session.endpoint, gpu=session.accelerator, machine_shape=session.machine_shape,
+                    session_name=session.name)
+path = work / ('recovery2-control-plane-' + mode + '.json')
+raw = (json.dumps(document, sort_keys=True, separators=(',', ':')) + '\n').encode()
+with path.open('xb') as handle:
+    handle.write(raw)
+    handle.flush()
+    os.fsync(handle.fileno())
+print(json.dumps(document, sort_keys=True))
