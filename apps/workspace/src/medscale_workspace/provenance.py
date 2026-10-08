@@ -45,6 +45,22 @@ class SourceKind(StrEnum):
     MODEL_GENERATION = "model_generation"
     HUMAN_EDIT = "human_edit"
     IMPORT = "import"
+    # CW-014 (Issue #507) admits the connector response class so envelopes
+    # fetched through the read-only connector framework trace to the
+    # connector fetch that produced them.
+    CONNECTOR_RESPONSE = "connector_response"
+    # CW-015 (Issue #510) admits the analytics input class so locally
+    # computed operational aggregates trace to the exact stored review
+    # revisions they were derived from, without becoming research evidence.
+    ANALYTICS_INPUT = "analytics_input"
+    # CW-016 (Issue #513) admits the research artifact class so pinned
+    # workspace views trace to the exact versioned artifact identities they
+    # display, without mutating Research Core or admitting patient context.
+    RESEARCH_ARTIFACT_VIEW = "research_artifact_view"
+    # CW-017 (Issue #516) admits the export source class so staged export
+    # manifests trace to the exact stored source revisions they stage, without
+    # copying content and without admitting anything into Research Core.
+    EXPORT_SOURCE = "export_source"
 
 
 class ProducerKind(StrEnum):

@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Final, cast
 
+from medscale.mesc import _mrl_0809_successor_gate_v2 as _successor_gate
 from medscale.mesc import _mrl_machine_state_generation_closeout_v1 as _closeout
 from medscale.mesc import _mrl_machine_state_generation_legacy_v1 as _legacy
 from medscale.mesc import _mrl_real_preflight_evidence_v1 as _real_preflight
@@ -471,8 +472,26 @@ def _unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
     return result
 
 
+_v1_special_gate = _legacy._special_gate
+
+
+def _special_gate(snapshot: _legacy.CanonicalRepositorySnapshot, task_id: str) -> bool:
+    """Evaluate the byte-identical v1 gate first; consult the MRL-0809 successor only after."""
+    if task_id != "MRL-0809":
+        return _v1_special_gate(snapshot, task_id)
+    if _v1_special_gate(snapshot, task_id):
+        return True
+    try:
+        return _successor_gate.mrl0809_successor_gate(snapshot.repository_root, snapshot.commit_sha)
+    except _successor_gate.MRL0809SuccessorGateError as exc:
+        raise MachineStateGenerationError(
+            "MRL-0809 successor prerequisite gate failed closed"
+        ) from exc
+
+
 vars(_legacy)["_closure_proof"] = _closure_proof
 vars(_legacy)["_project"] = _project
+vars(_legacy)["_special_gate"] = _special_gate
 
 admit_project_state_projection = _legacy.admit_project_state_projection
 generate_machine_state = _legacy.generate_machine_state

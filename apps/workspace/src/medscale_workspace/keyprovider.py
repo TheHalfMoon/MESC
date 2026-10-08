@@ -27,6 +27,8 @@ from medscale_workspace.keyderive import (
     DERIVED_KEY_SIZE_BYTES,
     ROOT_SECRET_MINIMUM_BYTES,
     SALT_SIZE_BYTES,
+    derive_backup_key,
+    derive_seal_key,
     derive_workspace_key,
 )
 
@@ -65,6 +67,20 @@ class KeyProvider:
             f"key provider {self.capabilities.identifier!r} cannot derive key version {key_version}"
         )
 
+    def backup_key(self, *, workspace_id: UUID, backup_id: UUID, salt: bytes) -> bytes:
+        """Return the CW-018 backup key for one workspace and backup."""
+
+        raise KeyMaterialUnavailableError(
+            f"key provider {self.capabilities.identifier!r} cannot derive backup keys"
+        )
+
+    def seal_key(self, *, workspace_id: UUID, salt: bytes) -> bytes:
+        """Return the CW-019 store integrity-seal key for one workspace store."""
+
+        raise KeyMaterialUnavailableError(
+            f"key provider {self.capabilities.identifier!r} cannot derive seal keys"
+        )
+
 
 class InMemoryTestKeyProvider(KeyProvider):
     """Derivation-capable test provider that never touches disk or a secret store.
@@ -98,6 +114,27 @@ class InMemoryTestKeyProvider(KeyProvider):
             workspace_id=workspace_id,
             salt=salt,
             key_version=key_version,
+        )
+        if len(derived) != DERIVED_KEY_SIZE_BYTES:
+            raise KeyMaterialUnavailableError("derived key size is not the admitted size")
+        return derived
+
+    def backup_key(self, *, workspace_id: UUID, backup_id: UUID, salt: bytes) -> bytes:
+        derived = derive_backup_key(
+            root_secret=self._root_secret,
+            workspace_id=workspace_id,
+            backup_id=backup_id,
+            salt=salt,
+        )
+        if len(derived) != DERIVED_KEY_SIZE_BYTES:
+            raise KeyMaterialUnavailableError("derived key size is not the admitted size")
+        return derived
+
+    def seal_key(self, *, workspace_id: UUID, salt: bytes) -> bytes:
+        derived = derive_seal_key(
+            root_secret=self._root_secret,
+            workspace_id=workspace_id,
+            salt=salt,
         )
         if len(derived) != DERIVED_KEY_SIZE_BYTES:
             raise KeyMaterialUnavailableError("derived key size is not the admitted size")

@@ -38,6 +38,7 @@ RATIFICATION_RECORD = (
 sys.path.insert(0, str(WORKSPACE_SRC))
 
 import medscale_workspace  # noqa: E402
+from medscale_workspace import storage as storage_module  # noqa: E402
 from medscale_workspace.aead import HEADER_SIZE_BYTES, parse_envelope_header  # noqa: E402
 from medscale_workspace.binding import MAXIMUM_REVISION_LENGTH, ObjectBinding  # noqa: E402
 from medscale_workspace.errors import (  # noqa: E402
@@ -54,6 +55,7 @@ from medscale_workspace.errors import (  # noqa: E402
     WorkspaceIsolationError,
 )
 from medscale_workspace.identity import WorkspaceObjectType  # noqa: E402
+from medscale_workspace.keyderive import derive_seal_key  # noqa: E402
 from medscale_workspace.keyprovider import (  # noqa: E402
     InMemoryTestKeyProvider,
     new_root_secret,
@@ -88,16 +90,31 @@ def binding_for(
     )
 
 
+# CW-019 (Issue #523) seals every store with a key derived from its root secret and
+# verifies the seal on open. These CW-002 cases attack the inner AEAD, envelope-format
+# and key-state layers, so each store is reopened with the genuine root secret it was
+# created with (earlier revisions of some cases reopened with a fresh random secret,
+# which made authentication fail for the wrong reason), and raw tampering is resealed
+# with that genuine secret. Resealing simulates tampering by a holder of the root
+# secret; the CW-019 security suite proves the seal itself catches the same tampering.
+GENUINE_ROOT_SECRETS: dict[str, bytes] = {}
+
+
 def open_store(
     root: Path,
     *,
     workspace_id: UUID = WORKSPACE_ALPHA,
     root_secret: bytes | None = None,
 ) -> WorkspaceStore:
+    store_path = resolve_workspace_store_path(str(root), workspace_id)
+    if root_secret is None:
+        root_secret = GENUINE_ROOT_SECRETS.setdefault(store_path, new_root_secret())
+    else:
+        GENUINE_ROOT_SECRETS.setdefault(store_path, root_secret)
     return WorkspaceStore.open(
         store_root=str(root),
         workspace_id=workspace_id,
-        key_provider=InMemoryTestKeyProvider(root_secret or new_root_secret()),
+        key_provider=InMemoryTestKeyProvider(root_secret),
         application_version=APPLICATION_VERSION,
     )
 
@@ -108,12 +125,32 @@ def raw(store_path: str) -> sqlite3.Connection:
     return connection
 
 
+def reseal_with_genuine_root_secret(store_path: str) -> None:
+    root_secret = GENUINE_ROOT_SECRETS.get(store_path)
+    if root_secret is None:
+        return
+    connection = raw(store_path)
+    try:
+        metadata = dict(connection.execute("SELECT name, value FROM store_metadata").fetchall())
+        if "seal_salt" not in metadata:
+            return
+        seal_key = derive_seal_key(
+            root_secret=root_secret,
+            workspace_id=UUID(str(metadata["workspace_id"])),
+            salt=bytes.fromhex(str(metadata["seal_salt"])),
+        )
+        storage_module._write_seal(connection, seal_key)
+    finally:
+        connection.close()
+
+
 def raw_execute(store_path: str, statement: str, parameters: tuple[object, ...] = ()) -> None:
     connection = raw(store_path)
     try:
         connection.execute(statement, parameters)
     finally:
         connection.close()
+    reseal_with_genuine_root_secret(store_path)
 
 
 def raw_fetch(
@@ -387,6 +424,11 @@ def test_store_bootstrap_refuses_key_material_of_the_wrong_size(tmp_path: Path) 
         def key_for_version(self, *, workspace_id: UUID, key_version: int, salt: bytes) -> bytes:
             del workspace_id, key_version, salt
             return b"\x00" * 16
+
+        def seal_key(self, *, workspace_id: UUID, salt: bytes) -> bytes:
+            # CW-019: a correctly sized seal key keeps this case about the data key.
+            del workspace_id, salt
+            return b"\x01" * 32
 
     store_path = Path(resolve_workspace_store_path(str(tmp_path), WORKSPACE_ALPHA))
     with pytest.raises(KeyMaterialUnavailableError):

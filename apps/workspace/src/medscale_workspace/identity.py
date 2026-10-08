@@ -39,6 +39,56 @@ class WorkspaceObjectType(StrEnum):
     EVIDENCE_SNAPSHOT = "EvidenceSnapshot"
     EVIDENCE_QUERY = "EvidenceQuery"
     EVIDENCE_RESULT = "EvidenceResult"
+    # CW-010 (Issue #495) admits the claim-source and evidence-strength classes so
+    # claim sets, claim-source links, and strength assessments live in the same
+    # workspace store as the corpus sources and snapshots they are validated
+    # against. A citation string alone is never a link; only a stored link object
+    # counts as SOURCE_LINKED evidence.
+    EVIDENCE_CLAIM_SET = "EvidenceClaimSet"
+    EVIDENCE_CLAIM_LINK = "EvidenceClaimLink"
+    EVIDENCE_ASSESSMENT = "EvidenceAssessment"
+    # CW-011 (Issue #498) admits the longitudinal patient graph classes so nodes,
+    # edges, and derived graph views live in the same workspace store as the
+    # corpus sources they are derived from. Graph state is derived, never
+    # authoritative; source objects remain the truth.
+    GRAPH_NODE = "PatientGraphNode"
+    GRAPH_EDGE = "PatientGraphEdge"
+    GRAPH_VIEW = "PatientGraphView"
+    # CW-012 (Issue #501) admits the linked workspace object classes so
+    # documents, tables, and cross-object links live in the same workspace
+    # store as the graph and corpus objects they are derived from. Links are
+    # derived state over stable object identities, never an independent truth.
+    LINKED_DOCUMENT = "LinkedDocument"
+    LINKED_TABLE = "LinkedTable"
+    WORKSPACE_LINK = "WorkspaceLink"
+    # CW-013 (Issue #504) admits the bounded FHIR R4 resource class so locally
+    # validated synthetic FHIR resources live in the same workspace store as
+    # the objects they are derived from. Resources are immutable revisions;
+    # export artifacts are computed manifests, never stored objects.
+    FHIR_RESOURCE = "FhirResource"
+    # CW-014 (Issue #507) admits the connector envelope class so immutable
+    # read-only connector fetch results live in the same workspace store as
+    # the manifests they were fetched under. Manifests are caller-held
+    # validated values, never stored objects; only envelopes are stored.
+    CONNECTOR_ENVELOPE = "ConnectorEnvelope"
+    # CW-015 (Issue #510) admits the workspace analytics class so immutable
+    # locally computed operational aggregates live in the same workspace
+    # store as the review revisions they are derived from. Analytics results
+    # are derived Workspace-domain state, never research evidence.
+    WORKSPACE_ANALYTICS = "WorkspaceAnalytics"
+    # CW-016 (Issue #513) admits the research view class so immutable pinned
+    # views of Research Core artifact identities live in the same workspace
+    # store as the descriptors they were admitted from. Views pin identities
+    # only; they never mutate Research Core and never carry patient context.
+    WORKSPACE_RESEARCH_VIEW = "WorkspaceResearchView"
+    # CW-017 (Issue #516) admits the dataset collection and export manifest
+    # classes so immutable research dataset collections and Domain X export
+    # staging manifests live in the same workspace store as the pinned views
+    # and staged sources they were admitted from. Collections pin identities
+    # only and manifests stage references only; neither mutates Research Core
+    # and neither admits anything into it.
+    WORKSPACE_DATASET_COLLECTION = "WorkspaceDatasetCollection"
+    WORKSPACE_EXPORT_MANIFEST = "WorkspaceExportManifest"
 
 
 @dataclass(frozen=True, slots=True)

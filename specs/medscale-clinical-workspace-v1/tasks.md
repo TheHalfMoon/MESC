@@ -1,10 +1,10 @@
 # Clinical Workspace V1 — Dependency-Ordered Task Ledger
 
-- **Status:** Canonical implementation ledger — CW-001, CW-002, CW-003, CW-004, CW-005, CW-006, CW-007, CW-008 and CW-009 closed; CW-010, CW-011, CW-013, CW-015, CW-016 and CW-017 eligible
-- **Date:** 2026-09-20 (frontier reconciled 2026-09-24; CW-002 closed 2026-09-21; CW-003 closed 2026-09-22; CW-004 activated and closed 2026-09-22; CW-005 activated and closed 2026-09-22; CW-006 activated 2026-09-22 and closed 2026-09-23; CW-007 activated 2026-09-23 and closed 2026-09-24; CW-008 activated 2026-09-24 and closed 2026-09-24; CW-009 activated 2026-09-24 and closed 2026-09-24)
+- **Status:** Canonical implementation ledger — CW-001, CW-002, CW-003, CW-004, CW-005, CW-006, CW-007, CW-008, CW-009, CW-010, CW-011, CW-012, CW-013, CW-014, CW-015, CW-016, CW-017, CW-018, CW-019 and CW-020 closed; CW-021 not authorized
+- **Date:** 2026-09-20 (frontier reconciled 2026-09-24; CW-002 closed 2026-09-21; CW-003 closed 2026-09-22; CW-004 activated and closed 2026-09-22; CW-005 activated and closed 2026-09-22; CW-006 activated 2026-09-22 and closed 2026-09-23; CW-007 activated 2026-09-23 and closed 2026-09-24; CW-008 activated 2026-09-24 and closed 2026-09-24; CW-009 activated 2026-09-24 and closed 2026-09-24; CW-010 activated 2026-09-26 and closed 2026-09-26; CW-011 activated 2026-09-26 and closed 2026-09-26; CW-012 activated 2026-09-26 and closed 2026-09-27; CW-013 activated 2026-09-27 and closed 2026-09-27; CW-014 activated 2026-09-27 and closed 2026-09-27; CW-015 activated 2026-09-28 and closed 2026-09-28; CW-016 activated 2026-09-28 and closed 2026-09-28; CW-017 activated 2026-09-28, repaired 2026-09-29 and closed 2026-09-29; CW-018 activated 2026-09-29 and closed 2026-09-29; CW-019 activated 2026-09-30 and closed 2026-09-30; CW-020 activated 2026-09-30 and closeout recorded 2026-09-30, closure effective on the approved closeout merge)
 - **Parent:** [Clinical Workspace V1](README.md)
 - **Architecture gate:** ADR-0038 canonically effective after PR #460 protected merge and fresh-main qualification
-- **Current implementation authority:** NONE — CW-009 closed canonically; CW-010, CW-011, CW-013, CW-015, CW-016 and CW-017 are eligible but each requires separate activation before any implementation begins
+- **Current implementation authority:** NONE — CW-020 closed canonically; CW-021 is NOT AUTHORIZED: it requires a separate explicit Founder/governance clinical-pilot authorization, and no standing activation authority covers it
 
 This ledger is implementation-ready planning. It is not an executable backlog until ADR-0038 is canonically effective, the applicable dependencies are closed canonically, and the applicable task is separately activated. Admissibility is per task: it held for CW-005 while that task was active; no implementation authority exists for any task until it is separately activated.
 
@@ -327,11 +327,13 @@ license record is [cw-002-dependency-license-review.md](cw-002-dependency-licens
 
 ## CW-010 — Claim-source and evidence-strength layer
 
-**State:** `ELIGIBLE` (not activated)
+**State:** `CLOSED_CANONICAL`
 
 **Depends on:** CW-009.
 
-**Activation:** requires separate activation under repository governance. Its dependencies are `CLOSED_CANONICAL`; eligibility is not implementation authority.
+**Activation:** Issue #495 -- CW-010 activation. Its dependencies are `CLOSED_CANONICAL`; activation conferred no acceptance and no authority beyond this bounded unit.
+
+**Closeout evidence:** [cw-010-closeout.md](cw-010-closeout.md) — implementation PR #496 merged at `be113e5ea37e197a777344e8bf6ca731fb82671f` (tree `1050f68c99bd2f43000eb1a195512cdbbdc6ff7e`) after exact-head qualification of `c75706c157b1a48b08378a281db4e138d15d459c`, followed by fresh-main CI, CodeQL, Optional Extras/Backends and HF Publication qualification.
 
 **Purpose:** prevent “has citations” from being equated with “is supported.”
 
@@ -349,11 +351,13 @@ license record is [cw-002-dependency-license-review.md](cw-002-dependency-licens
 
 ## CW-011 — Longitudinal patient graph and timeline
 
-**State:** `ELIGIBLE` (not activated)
+**State:** `CLOSED_CANONICAL`
 
 **Depends on:** CW-003, CW-004.
 
-**Activation:** requires separate activation under repository governance. Its dependencies are `CLOSED_CANONICAL`; eligibility is not implementation authority.
+**Activation:** Issue #498 — CW-011 activation. Its dependencies are `CLOSED_CANONICAL`; activation conferred no acceptance and no authority beyond this bounded unit.
+
+**Closeout evidence:** [cw-011-closeout.md](cw-011-closeout.md) — implementation PR #499 merged at `198cbc1ccc67d00bf06b748c382223e340338fa0` (tree `40f03fba4797bf70857862d92ebaf7805ce3ebb8`) after exact-head qualification of `b4be14dbb942e3e8cd9ec0a2854302d8599a154b`, followed by fresh-main CI, CodeQL, Optional Extras/Backends and HF Publication qualification.
 
 **Purpose:** build a derived graph over synthetic Workspace objects.
 
@@ -370,9 +374,13 @@ license record is [cw-002-dependency-license-review.md](cw-002-dependency-licens
 
 ## CW-012 — Linked document/table/graph workspace
 
-**State:** `BLOCKED_DEPENDENCY`
+**State:** `CLOSED_CANONICAL`
 
 **Depends on:** CW-011.
+
+**Activation:** Issue #501 — CW-012 activation. Its dependencies are `CLOSED_CANONICAL`; activation conferred no acceptance and no authority beyond this bounded unit.
+
+**Closeout evidence:** [cw-012-closeout.md](cw-012-closeout.md) — implementation PR #502 merged at `e0bee7cdecaa0506b03e8bc03635b0316de0bf75` (tree `a9a9028a3378eb1df8e85491abec36d2042898fe`) after exact-head qualification of `89dea31f2eb90f0c6ffa35c981a1a60b8cc0b3dc`, followed by fresh-main CI, CodeQL, Optional Extras/Backends and HF Publication qualification.
 
 **Purpose:** expose healthcare-specific linked workspace objects.
 
@@ -387,11 +395,13 @@ license record is [cw-002-dependency-license-review.md](cw-002-dependency-licens
 
 ## CW-013 — Bounded FHIR R4 import/export
 
-**State:** `ELIGIBLE` (not activated)
+**State:** `CLOSED_CANONICAL`
 
 **Depends on:** CW-003, CW-004.
 
-**Activation:** requires separate activation under repository governance. Its dependencies are `CLOSED_CANONICAL`; eligibility is not implementation authority.
+**Activation:** Issue #504 — CW-013 activation. Its dependencies are `CLOSED_CANONICAL`; activation conferred no acceptance and no authority beyond this bounded unit.
+
+**Closeout evidence:** [cw-013-closeout.md](cw-013-closeout.md) — implementation PR #505 merged at `235df781f9372d6479cd00bfc7ab60ce7449743b` (tree `d179aa6ac3336893ffcc22e5cde6e98429e5e47e`) after exact-head qualification of `8c837f6e83f6a53ab47028b6c6cf0997e7f528e5`, followed by fresh-main CI, CodeQL, Optional Extras/Backends and HF Publication qualification.
 
 **Purpose:** implement a small declared interoperability subset.
 
@@ -408,9 +418,13 @@ license record is [cw-002-dependency-license-review.md](cw-002-dependency-licens
 
 ## CW-014 — Read-only external connector framework
 
-**State:** `BLOCKED_DEPENDENCY`
+**State:** `CLOSED_CANONICAL`
 
 **Depends on:** CW-013, CW-003, CW-004.
+
+**Activation:** Issue #507 — CW-014 activation. Its dependencies are `CLOSED_CANONICAL`; activation conferred no acceptance and no authority beyond this bounded unit.
+
+**Closeout evidence:** [cw-014-closeout.md](cw-014-closeout.md) — implementation PR #508 merged at `5ee3a52de8e2f8d30477e089edc6b112be62a160` (tree `31f183f6cd0ec37d307c2a137bb0bd33496c8f77`) after exact-head qualification of `f4e24601c6c2821cbb394d09b0d9890e17a2eb16`, followed by fresh-main CI, CodeQL, Optional Extras/Backends and HF Publication qualification.
 
 **Purpose:** implement capability-scoped connector contracts without production credentials.
 
@@ -432,11 +446,13 @@ license record is [cw-002-dependency-license-review.md](cw-002-dependency-licens
 
 ## CW-015 — Local Workspace analytics
 
-**State:** `ELIGIBLE` (not activated)
+**State:** `CLOSED_CANONICAL`
 
 **Depends on:** CW-003, CW-004, CW-008.
 
-**Activation:** requires separate activation under repository governance. Its dependencies are `CLOSED_CANONICAL`; eligibility is not implementation authority.
+**Activation:** Issue #510 — CW-015 activation. Its dependencies are `CLOSED_CANONICAL`; activation conferred no acceptance and no authority beyond this bounded unit.
+
+**Closeout evidence:** [cw-015-closeout.md](cw-015-closeout.md) — implementation PR #511 merged at `6383cf48579cc4b233e8dd9c66b6f7b17dae6680` (tree `92dba57d351eeddc011ae0e2db149f1daeb0f0c5`) after exact-head qualification of `73a6eb7d45f475bbc26b3c5b4f2453b80890c13a`, followed by fresh-main CI, CodeQL, Optional Extras/Backends and HF Publication qualification.
 
 **Purpose:** compute local operational metrics without turning them into research claims.
 
@@ -452,11 +468,13 @@ license record is [cw-002-dependency-license-review.md](cw-002-dependency-licens
 
 ## CW-016 — Research Workspace UI
 
-**State:** `ELIGIBLE` (not activated)
+**State:** `CLOSED_CANONICAL`
 
 **Depends on:** CW-001, CW-004.
 
-**Activation:** requires separate activation under repository governance. Its dependencies are `CLOSED_CANONICAL`; eligibility is not implementation authority.
+**Activation:** Issue #513 — CW-016 activation. Its dependencies are `CLOSED_CANONICAL`; activation conferred no acceptance and no authority beyond this bounded unit.
+
+**Closeout evidence:** [cw-016-closeout.md](cw-016-closeout.md) — implementation PR #514 merged at `2c81795ec75e1b8291f39cc7641bfc63b80e723d` (tree `2509b6519d51f631346ec3b45709907dde62af85`) after exact-head qualification of `20eb7afd25862e531d9b6501508d026a23488864`, followed by fresh-main CI, CodeQL, Optional Extras/Backends and HF Publication qualification.
 
 **Purpose:** expose Research Core artifacts through a local product view.
 
@@ -470,11 +488,13 @@ license record is [cw-002-dependency-license-review.md](cw-002-dependency-licens
 
 ## CW-017 — Dataset Workspace and export quarantine
 
-**State:** `ELIGIBLE` (not activated)
+**State:** `CLOSED_CANONICAL`
 
 **Depends on:** CW-002, CW-003, CW-004.
 
-**Activation:** requires separate activation under repository governance. Its dependencies are `CLOSED_CANONICAL`; eligibility is not implementation authority.
+**Activation:** Issue #516 — CW-017 activation. Its dependencies are `CLOSED_CANONICAL`; activation conferred no acceptance and no authority beyond this bounded unit.
+
+**Closeout evidence:** [cw-017-closeout.md](cw-017-closeout.md) — implementation PR #517 merged at `a58d537de606dadcadbb165f1dc5981bd244f9a1` after exact-head qualification of `ecf25dd8a0d0cb13404884ba0f67bcd25afe9313`; post-merge review found stale-read and exception-class defects, repaired forward-only by PR #518 merged at `6a18b317a384749431146a8f3f7c1747e6e0f3bb` (tree `c75ea090d9d4dc21cf9b8be122dc0e0cacc7a1e8`) after exact-head qualification of `13d9dc0434e56f563de1027b346780fdf9496b5f`, each followed by fresh-main CI, CodeQL, Optional Extras/Backends and HF Publication qualification.
 
 **Purpose:** separate research datasets from clinical export staging.
 
@@ -492,9 +512,13 @@ license record is [cw-002-dependency-license-review.md](cw-002-dependency-licens
 
 ## CW-018 — Backup, restore, deletion, and key rotation
 
-**State:** `BLOCKED_DEPENDENCY`
+**State:** `CLOSED_CANONICAL`
 
 **Depends on:** CW-002, CW-003, CW-011, CW-017.
+
+**Activation:** Issue #520 — CW-018 activation. Its dependencies are `CLOSED_CANONICAL`; activation conferred no acceptance and no authority beyond this bounded unit.
+
+**Closeout evidence:** [cw-018-closeout.md](cw-018-closeout.md) — implementation PR #521 merged at `ebb87c7a2389a796fd415df28f0fe62b9d0e06c5` (tree `9d6977b929b0f2fa35148d74ce881d16ba08952c`) after exact-head qualification of `f6699adb0111681dd3befae311bbff91251239ed`, followed by fresh-main CI, CodeQL, Optional Extras/Backends and HF Publication qualification. The operational procedures are in [recovery_runbook.md](recovery_runbook.md). Recorded limitation carried to CW-019: journal state, store role and tombstone reasons are plaintext metadata (ADR-0039 A1.10), so a writer of the store file can edit them.
 
 **Purpose:** prove lifecycle protection across primary and derived state, including the contract in [migration_recovery.md](migration_recovery.md).
 
@@ -515,9 +539,13 @@ license record is [cw-002-dependency-license-review.md](cw-002-dependency-licens
 
 ## CW-019 — Security and privacy closure
 
-**State:** `BLOCKED_DEPENDENCY`
+**State:** `CLOSED_CANONICAL`
 
 **Depends on:** CW-010, CW-012, CW-014, CW-015, CW-016, CW-018.
+
+**Activation:** Issue #523 — CW-019 activation. Its dependencies are `CLOSED_CANONICAL`; activation conferred no acceptance and no authority beyond this bounded unit.
+
+**Closeout evidence:** [cw-019-closeout.md](cw-019-closeout.md) — implementation PR #524 merged at `ef1d6f7272eeb961af6ed65b537da99291f554fd` (tree `6f8256462d846378deb019054af83500fcff881d`) after exact-head qualification of `f706155f627b8c8a618ec5cfdb2106c58a173c50`, followed by fresh-main CI, CodeQL, Optional Extras/Backends and HF Publication qualification. No exact-head merge approval is provable before that merge; the closeout records this forward-only. The findings register, residual risks and threat-model reconciliation are in [cw-019-security-review.md](cw-019-security-review.md). Residual risks carried to CW-020: whole-store rollback to an older valid sealed copy is undetected (R1); no platform key provider, so production is architecture-blocked (R2); unsealed legacy state (R3); lexical export containment (R4); readable plaintext metadata (R5); O(n) seal cost per write (R6); no human independent security review (R7); and the pure-read window between a mid-session tamper and the next verified operation (R8).
 
 **Purpose:** independently attack the synthetic/local implementation before any PHI proposal.
 
@@ -543,9 +571,19 @@ license record is [cw-002-dependency-license-review.md](cw-002-dependency-licens
 
 ## CW-020 — PHI-readiness evidence packet
 
-**State:** `BLOCKED_DEPENDENCY`
+**State:** `CLOSED_CANONICAL`
 
 **Depends on:** CW-019.
+
+**Activation:** Issue #526 — CW-020 activation. Its dependency is `CLOSED_CANONICAL`; activation conferred no acceptance and no authority beyond this bounded unit.
+
+**Closeout evidence:** [cw-020-closeout.md](cw-020-closeout.md) — implementation PR #527 merged at `548df35c94feaa1f180dce6252c45918960bbf45` (tree `30f5a753037fad7c6b280b3ecc70494c397ed3d0`) after exact-head qualification of `141e4d46dc580ac077d204db1ef4dfb532a6db74`, followed by fresh-main CI, CodeQL, Optional Extras/Backends and HF Publication qualification. No exact-head merge approval is provable before that merge; the closeout records this forward-only. The [evidence packet](cw-020-phi-readiness-evidence-packet.md) verdict is NOT_READY. It records open PHI-readiness gaps: no authentication or patient/encounter access control (G1), unaudited reads (G2), unaudited login and workspace open/close (G3), unaudited security failures (G4), no PHI-scope ADR (G5), no real-data privacy or retention policy (G6), an undrilled [incident response](incident_response.md) (G7), and untested, inconsistent export audit (G8). It carries the CW-019 residual risks R1-R8 open, including undetected whole-store rollback (R1), no platform key provider (R2) and no human independent security review (R7); F11 is mitigated, not fixed. It assessed the Clinical Workspace package only, not Research Core, MRL, model/training or publication paths.
+
+```text
+PHI_READINESS = NOT_READY
+PRODUCTION_READINESS = NOT_READY
+CW-021 = NOT AUTHORIZED
+```
 
 **Purpose:** assemble evidence showing the architecture could be considered for a later bounded real-data pilot.
 
@@ -573,6 +611,8 @@ This task cannot ingest PHI.
 **State:** `BLOCKED_DEPENDENCY`
 
 **Depends on:** CW-020 plus a new explicit Founder/governance authorization.
+
+**Dependency state:** CW-020 is `CLOSED_CANONICAL` with verdict `PHI_READINESS = NOT_READY`. The remaining dependency, a new explicit Founder/governance authorization, does not exist, so CW-021 is **NOT AUTHORIZED**. The Founder's standing activation authority ended at CW-020, and closing CW-020 grants no CW-021 authority.
 
 A valid authorization must name at minimum:
 
@@ -675,7 +715,7 @@ Research Core capabilities may later be consumed only at canonically qualified i
 
 ## Canonical closeout status
 
-CW-000, CW-001, CW-002, CW-003, CW-004, CW-005, CW-006, CW-007, CW-008 and CW-009 are `CLOSED_CANONICAL`. ADR-0038 is canonically effective, ADR-0039 is accepted by the Founder under R6 as amended by A1, and ADR-0040 is accepted by the Founder under R6 with no amendment. Exact closure evidence is recorded in [cw-000-closeout.md](cw-000-closeout.md), [cw-001-closeout.md](cw-001-closeout.md), [cw-002-closeout.md](cw-002-closeout.md), [cw-003-closeout.md](cw-003-closeout.md) and [cw-004-closeout.md](cw-004-closeout.md), [cw-005-closeout.md](cw-005-closeout.md), [cw-006-closeout.md](cw-006-closeout.md), [cw-007-closeout.md](cw-007-closeout.md), [cw-008-closeout.md](cw-008-closeout.md), [cw-009-closeout.md](cw-009-closeout.md), and the ADR-0039 decision is recorded in [adr-0039-founder-ratification.md](adr-0039-founder-ratification.md) with the ADR-0040 decision recorded in [adr-0040-founder-ratification.md](adr-0040-founder-ratification.md).
+CW-000, CW-001, CW-002, CW-003, CW-004, CW-005, CW-006, CW-007, CW-008, CW-009, CW-010, CW-011, CW-012, CW-013, CW-014, CW-015, CW-016, CW-017, CW-018, CW-019 and CW-020 are `CLOSED_CANONICAL`. ADR-0038 is canonically effective, ADR-0039 is accepted by the Founder under R6 as amended by A1, and ADR-0040 is accepted by the Founder under R6 with no amendment. Exact closure evidence is recorded in [cw-000-closeout.md](cw-000-closeout.md), [cw-001-closeout.md](cw-001-closeout.md), [cw-002-closeout.md](cw-002-closeout.md), [cw-003-closeout.md](cw-003-closeout.md) and [cw-004-closeout.md](cw-004-closeout.md), [cw-005-closeout.md](cw-005-closeout.md), [cw-006-closeout.md](cw-006-closeout.md), [cw-007-closeout.md](cw-007-closeout.md), [cw-008-closeout.md](cw-008-closeout.md), [cw-009-closeout.md](cw-009-closeout.md), [cw-010-closeout.md](cw-010-closeout.md), [cw-011-closeout.md](cw-011-closeout.md), [cw-012-closeout.md](cw-012-closeout.md), [cw-013-closeout.md](cw-013-closeout.md), [cw-014-closeout.md](cw-014-closeout.md), [cw-015-closeout.md](cw-015-closeout.md), [cw-016-closeout.md](cw-016-closeout.md), [cw-017-closeout.md](cw-017-closeout.md), [cw-018-closeout.md](cw-018-closeout.md), [cw-019-closeout.md](cw-019-closeout.md), [cw-020-closeout.md](cw-020-closeout.md), and the ADR-0039 decision is recorded in [adr-0039-founder-ratification.md](adr-0039-founder-ratification.md) with the ADR-0040 decision recorded in [adr-0040-founder-ratification.md](adr-0040-founder-ratification.md).
 
 Current frontier:
 
@@ -687,8 +727,18 @@ Current frontier:
 6. CW-006 is `CLOSED_CANONICAL`: activated under Issue #480, implementation PR #482 merged at `e040c9f68146435f48a548d89fbe1c1c5158a2d9` with fresh-main qualification, and closure evidence is recorded in [cw-006-closeout.md](cw-006-closeout.md); CW-009, CW-011, CW-013, CW-016 and CW-017 are `ELIGIBLE` because their declared dependencies are `CLOSED_CANONICAL`, but each is **not activated** and no implementation authority exists for any of them;
 7. CW-007 is `CLOSED_CANONICAL`: activated under Issue #484, implementation PR #485 merged at `68d1999c2f05f4ad8d81ad05f4b08760cc2fdcf4` with fresh-main qualification, and closure evidence is recorded in [cw-007-closeout.md](cw-007-closeout.md); CW-008, CW-009, CW-011, CW-013, CW-016 and CW-017 are `ELIGIBLE` because their declared dependencies are `CLOSED_CANONICAL`, but each is **not activated** and no implementation authority exists for any of them;
 8. CW-008 is `CLOSED_CANONICAL`: activated under Issue #487, implementation PR #488 merged at `be6240009cf3dd03efee47222e908d356ce58b93` with fresh-main qualification, and closure evidence is recorded in [cw-008-closeout.md](cw-008-closeout.md); CW-009, CW-011, CW-013, CW-015, CW-016 and CW-017 are `ELIGIBLE` because their declared dependencies are `CLOSED_CANONICAL`, but each is **not activated** and no implementation authority exists for any of them;
-9. CW-009 is `CLOSED_CANONICAL`: activated under Issue #490, implementation PR #491 merged at `e1e55c1a5989ca1bbdf9730c9ea0f55605e05dd7` with fresh-main qualification, and closure evidence is recorded in [cw-009-closeout.md](cw-009-closeout.md); CW-010, CW-011, CW-013, CW-015, CW-016 and CW-017 are `ELIGIBLE` because their declared dependencies are `CLOSED_CANONICAL`, but each is **not activated** and no implementation authority exists for any of them;
-10. CW-012, CW-014, CW-018, CW-019 and CW-020 remain `BLOCKED_DEPENDENCY` until their declared predecessors close canonically;
-11. CW-021 additionally requires the bounded explicit Founder/governance clinical-pilot authorization defined in its task contract.
+9. CW-009 is `CLOSED_CANONICAL`: activated under Issue #490, implementation PR #491 merged at `e1e55c1a5989ca1bbdf9730c9ea0f55605e05dd7` with fresh-main qualification, and closure evidence is recorded in [cw-009-closeout.md](cw-009-closeout.md); CW-011, CW-013, CW-015, CW-016 and CW-017 are `ELIGIBLE` because their declared dependencies are `CLOSED_CANONICAL`, but each is **not activated** and no implementation authority exists for any of them;
+10. CW-010 is `CLOSED_CANONICAL`: activated under Issue #495, implementation PR #496 merged at `be113e5ea37e197a777344e8bf6ca731fb82671f` with fresh-main qualification, and closure evidence is recorded in [cw-010-closeout.md](cw-010-closeout.md); CW-011, CW-013, CW-015, CW-016 and CW-017 are `ELIGIBLE` because their declared dependencies are `CLOSED_CANONICAL`, but each is **not activated** and no implementation authority exists for any of them;
+11. CW-011 is `CLOSED_CANONICAL`: activated under Issue #498, implementation PR #499 merged at `198cbc1ccc67d00bf06b748c382223e340338fa0` with fresh-main qualification, and closure evidence is recorded in [cw-011-closeout.md](cw-011-closeout.md); CW-012, CW-013, CW-015, CW-016 and CW-017 are `ELIGIBLE` because their declared dependencies are `CLOSED_CANONICAL`, but each is **not activated** and no implementation authority exists for any of them;
+12. CW-012 is `CLOSED_CANONICAL`: activated under Issue #501, implementation PR #502 merged at `e0bee7cdecaa0506b03e8bc03635b0316de0bf75` with fresh-main qualification, and closure evidence is recorded in [cw-012-closeout.md](cw-012-closeout.md); CW-013, CW-015, CW-016 and CW-017 are `ELIGIBLE` because their declared dependencies are `CLOSED_CANONICAL`, but each is **not activated** and no implementation authority exists for any of them;
+13. CW-013 is `CLOSED_CANONICAL`: activated under Issue #504, implementation PR #505 merged at `235df781f9372d6479cd00bfc7ab60ce7449743b` with fresh-main qualification, and closure evidence is recorded in [cw-013-closeout.md](cw-013-closeout.md); CW-014, CW-015, CW-016 and CW-017 are `ELIGIBLE` because their declared dependencies are `CLOSED_CANONICAL`, but each is **not activated** and no implementation authority exists for any of them;
+14. CW-014 is `CLOSED_CANONICAL`: activated under Issue #507, implementation PR #508 merged at `5ee3a52de8e2f8d30477e089edc6b112be62a160` with fresh-main qualification, and closure evidence is recorded in [cw-014-closeout.md](cw-014-closeout.md); CW-015, CW-016 and CW-017 are `ELIGIBLE` because their declared dependencies are `CLOSED_CANONICAL`, but each is **not activated** and no implementation authority exists for any of them;
+15. CW-015 is `CLOSED_CANONICAL`: activated under Issue #510, implementation PR #511 merged at `6383cf48579cc4b233e8dd9c66b6f7b17dae6680` with fresh-main qualification, and closure evidence is recorded in [cw-015-closeout.md](cw-015-closeout.md); CW-016 and CW-017 are `ELIGIBLE` because their declared dependencies are `CLOSED_CANONICAL`, but each is **not activated** and no implementation authority exists for any of them;
+16. CW-016 is `CLOSED_CANONICAL`: activated under Issue #513, implementation PR #514 merged at `2c81795ec75e1b8291f39cc7641bfc63b80e723d` with fresh-main qualification, and closure evidence is recorded in [cw-016-closeout.md](cw-016-closeout.md); CW-017 is `ELIGIBLE` because its declared dependencies are `CLOSED_CANONICAL`, but it is **not activated** and no implementation authority exists for it;
+17. CW-017 is `CLOSED_CANONICAL`: activated under Issue #516, implementation PR #517 merged at `a58d537de606dadcadbb165f1dc5981bd244f9a1` and forward-only repair PR #518 merged at `6a18b317a384749431146a8f3f7c1747e6e0f3bb`, each with fresh-main qualification, and closure evidence is recorded in [cw-017-closeout.md](cw-017-closeout.md); CW-018 is `ELIGIBLE` because its declared dependencies are `CLOSED_CANONICAL`, but it is **not activated** and no implementation authority exists for it;
+18. CW-018 is `CLOSED_CANONICAL`: activated under Issue #520, implementation PR #521 merged at `ebb87c7a2389a796fd415df28f0fe62b9d0e06c5` with fresh-main qualification, and closure evidence is recorded in [cw-018-closeout.md](cw-018-closeout.md);
+19. CW-019 is `CLOSED_CANONICAL`: activated under Issue #523, implementation PR #524 merged at `ef1d6f7272eeb961af6ed65b537da99291f554fd` with fresh-main qualification, and closure evidence is recorded in [cw-019-closeout.md](cw-019-closeout.md);
+20. CW-020 is `CLOSED_CANONICAL`: activated under Issue #526, implementation PR #527 merged at `548df35c94feaa1f180dce6252c45918960bbf45` with fresh-main qualification, and closure evidence is recorded in [cw-020-closeout.md](cw-020-closeout.md); its evidence packet verdict is `PHI_READINESS = NOT_READY` and confers no PHI authority;
+21. CW-021 is **NOT AUTHORIZED**: it requires the bounded explicit Founder/governance clinical-pilot authorization defined in its task contract, and no standing activation authority covers it.
 
 No closeout or eligibility statement grants PHI, clinical production, EHR write, Workspace-data training/evaluation, publication, paid-compute, MRL-contract, or Stage-4 authority.

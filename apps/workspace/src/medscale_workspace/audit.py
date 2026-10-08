@@ -77,6 +77,10 @@ class AuditEventType(StrEnum):
     TRANSCRIPT_DELETE = "transcript_delete"
     AI_GENERATION = "ai_generation"
     EVIDENCE_QUERY = "evidence_query"
+    # CW-010 (Issue #495) admits the assessment event so a recorded strength
+    # verdict is an explicit chained audit event carrying the verdict and the
+    # evidence method, never the assessed clinical text.
+    EVIDENCE_ASSESSMENT = "evidence_assessment"
     EXPORT = "export"
     CONNECTOR_READ = "connector_read"
     CONNECTOR_WRITE = "connector_write"
@@ -89,6 +93,10 @@ class AuditEventType(StrEnum):
     OBJECT_DELETE = "object_delete"
     POLICY_CHANGE = "policy_change"
     KEY_ROTATION = "key_rotation"
+    # CW-018 (Issue #520) admits the migration event so every state-changing
+    # migration is a chained audit event carrying identities, counts and digests,
+    # never payload content.
+    MIGRATION = "migration"
     SECURITY_FAILURE = "security_failure"
 
 
@@ -374,8 +382,29 @@ class AuditTrail:
     ) -> AuditEvent:
         """Append one event to the chain, or refuse if it would not append cleanly."""
 
+        event = self._prepare_event(
+            event_type=event_type,
+            actor_id=actor_id,
+            occurred_at=occurred_at,
+            object_refs=object_refs,
+            metadata=metadata,
+        )
+        self._store_event(event)
+        return event
+
+    def _prepare_event(
+        self,
+        *,
+        event_type: AuditEventType,
+        actor_id: str,
+        occurred_at: str,
+        object_refs: tuple[AuditObjectRef, ...] = (),
+        metadata: tuple[tuple[str, str], ...] = (),
+    ) -> AuditEvent:
+        """Build, without storing, the event that would append next to the chain."""
+
         head = self.head()
-        event = _build_event(
+        return _build_event(
             sequence=1 if head is None else head.sequence + 1,
             previous_event_digest=GENESIS_EVENT_DIGEST if head is None else head.event_digest,
             event_type=event_type,
@@ -385,8 +414,6 @@ class AuditTrail:
             object_refs=object_refs,
             metadata=metadata,
         )
-        self._store_event(event)
-        return event
 
     def record_object_write(
         self,
@@ -526,6 +553,92 @@ class AuditTrail:
             seen.add(event.event_digest)
             previous = event.event_digest
             expected_sequence += 1
+
+
+def prepare_next_event(
+    trail: AuditTrail,
+    *,
+    event_type: AuditEventType,
+    actor_id: str,
+    occurred_at: str,
+    object_refs: tuple[AuditObjectRef, ...] = (),
+    metadata: tuple[tuple[str, str], ...] = (),
+) -> AuditEvent:
+    """Build, without storing, the event that would append next to ``trail``.
+
+    CW-018 commits the returned event in the same store transaction as the state
+    change it describes, so a crash can never leave the change without its event.
+    The store is single-writer, so the chain position stays valid until that commit;
+    a stale position is refused by the store as a conflict. This is a module-level
+    function so the audit trail itself keeps no update or delete surface.
+    """
+
+    if not isinstance(trail, AuditTrail):
+        raise AuditError("an audit trail is required")
+    return trail._prepare_event(
+        event_type=event_type,
+        actor_id=actor_id,
+        occurred_at=occurred_at,
+        object_refs=object_refs,
+        metadata=metadata,
+    )
+
+
+def prepare_event_following(
+    head: AuditEvent | None,
+    *,
+    workspace_id: UUID,
+    event_type: AuditEventType,
+    actor_id: str,
+    occurred_at: str,
+    object_refs: tuple[AuditObjectRef, ...] = (),
+    metadata: tuple[tuple[str, str], ...] = (),
+) -> AuditEvent:
+    """Build the event that follows an explicit, already-verified chain head.
+
+    CW-018 promotion restores a verified chain suffix and appends its own event in
+    the same transaction, so the new event must follow the restored head rather
+    than the head currently stored.
+    """
+
+    if head is not None and not isinstance(head, AuditEvent):
+        raise AuditError("a chain head must be an audit event")
+    if head is not None and head.workspace_id != workspace_id:
+        raise AuditError("a chain head from another workspace cannot be followed")
+    return _build_event(
+        sequence=1 if head is None else head.sequence + 1,
+        previous_event_digest=GENESIS_EVENT_DIGEST if head is None else head.event_digest,
+        event_type=event_type,
+        workspace_id=workspace_id,
+        actor_id=actor_id,
+        occurred_at=occurred_at,
+        object_refs=object_refs,
+        metadata=metadata,
+    )
+
+
+def verified_chain_from_objects(
+    objects: tuple[tuple[ObjectBinding, bytes], ...],
+) -> tuple[AuditEvent, ...]:
+    """Parse and verify an audit chain held as raw objects outside a live trail.
+
+    CW-018 uses this for a backup or quarantine snapshot: every payload must decode
+    to an event whose identity matches its object binding, and the events must form
+    one contiguous, digest-linked chain from genesis.
+    """
+
+    events: list[AuditEvent] = []
+    for binding, payload in objects:
+        if binding.object_type is not WorkspaceObjectType.AUDIT_EVENT:
+            raise AuditChainError("only audit event objects can form an audit chain")
+        event = _event_from_bytes(payload)
+        if event.binding() != binding:
+            raise AuditChainError("stored audit event identity does not match its object")
+        events.append(event)
+    events.sort(key=lambda event: event.sequence)
+    ordered = tuple(events)
+    AuditTrail._verify(ordered)
+    return ordered
 
 
 def _event_digest(canonical_payload: bytes) -> str:

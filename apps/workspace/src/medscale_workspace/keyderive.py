@@ -20,6 +20,8 @@ DERIVED_KEY_SIZE_BYTES = 32
 ROOT_SECRET_MINIMUM_BYTES = 32
 SALT_SIZE_BYTES = 16
 KEY_DERIVATION_LABEL = "mesc-clinical-workspace-dek-hkdf-sha256/1"
+BACKUP_KEY_DERIVATION_LABEL = "mesc-clinical-workspace-backup-hkdf-sha256/1"
+SEAL_KEY_DERIVATION_LABEL = "mesc-clinical-workspace-store-seal-hkdf-sha256/1"
 _HASH = hashlib.sha256
 _HASH_SIZE_BYTES = 32
 _MAXIMUM_EXPAND_BLOCKS = 255
@@ -94,6 +96,67 @@ def derive_workspace_key(
     info = (f"{KEY_DERIVATION_LABEL}|workspace={workspace_id}|key_version={key_version}").encode(
         "ascii"
     )
+    return hkdf_sha256(
+        salt=salt,
+        input_key_material=root_secret,
+        info=info,
+        length=DERIVED_KEY_SIZE_BYTES,
+    )
+
+
+def derive_backup_key(
+    *,
+    root_secret: bytes,
+    workspace_id: UUID,
+    backup_id: UUID,
+    salt: bytes,
+) -> bytes:
+    """Derive the CW-018 backup key for one workspace and one backup.
+
+    The backup key is separated from every store data-encryption key by a distinct
+    HKDF label, the backup identity, and a fresh per-backup random salt, so no store
+    key ever encrypts a backup and no backup key ever encrypts store rows.
+    """
+
+    if not isinstance(root_secret, bytes) or len(root_secret) < ROOT_SECRET_MINIMUM_BYTES:
+        raise ValueError("root secret must be at least 32 high-entropy bytes")
+    if not isinstance(salt, bytes) or len(salt) != SALT_SIZE_BYTES:
+        raise ValueError("per-backup salt must be exactly 16 bytes")
+    if not isinstance(workspace_id, UUID):
+        raise ValueError("workspace id must be a UUID value")
+    if not isinstance(backup_id, UUID):
+        raise ValueError("backup id must be a UUID value")
+    info = (f"{BACKUP_KEY_DERIVATION_LABEL}|workspace={workspace_id}|backup={backup_id}").encode(
+        "ascii"
+    )
+    return hkdf_sha256(
+        salt=salt,
+        input_key_material=root_secret,
+        info=info,
+        length=DERIVED_KEY_SIZE_BYTES,
+    )
+
+
+def derive_seal_key(
+    *,
+    root_secret: bytes,
+    workspace_id: UUID,
+    salt: bytes,
+) -> bytes:
+    """Derive the CW-019 store integrity-seal key for one workspace store.
+
+    The seal key authenticates store metadata and the object inventory with HMAC. It is
+    separated from every data-encryption and backup key by a distinct HKDF label and a
+    per-store random salt, and it never encrypts anything.
+    """
+
+    if not isinstance(root_secret, bytes) or len(root_secret) < ROOT_SECRET_MINIMUM_BYTES:
+        raise ValueError("root secret must be at least 32 high-entropy bytes")
+    if not isinstance(salt, bytes) or len(salt) != SALT_SIZE_BYTES:
+        raise ValueError("per-store seal salt must be exactly 16 bytes")
+    if not isinstance(workspace_id, UUID):
+        raise ValueError("workspace id must be a UUID value")
+    info = f"{SEAL_KEY_DERIVATION_LABEL}|workspace={workspace_id}".encode("ascii")
     return hkdf_sha256(
         salt=salt,
         input_key_material=root_secret,

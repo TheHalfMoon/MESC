@@ -302,3 +302,267 @@ class RetrievalReplayError(RetrievalError):
 
 class RetrievalConflictError(RetrievalError):
     """A query or result identity already exists and cannot be overwritten."""
+
+
+class ClaimError(WorkspaceStoreError):
+    """Base class for every CW-010 claim-set decomposition failure."""
+
+
+class ClaimInputError(ClaimError):
+    """A claim-set identity, answer field, claim field, or citation was refused."""
+
+
+class ClaimRevisionError(ClaimInputError):
+    """A claim-set revision identity or lineage precondition was refused."""
+
+
+class ClaimConflictError(ClaimError):
+    """A claim-set identity already exists and cannot be overwritten."""
+
+
+class LinkError(WorkspaceStoreError):
+    """Base class for every CW-010 claim-source link failure."""
+
+
+class LinkInputError(LinkError):
+    """A link identity, binding, stance, range, actor, or timestamp was refused."""
+
+
+class LinkRevisionError(LinkInputError):
+    """A linked source, snapshot, query, or result revision precondition was refused."""
+
+
+class LinkConflictError(LinkError):
+    """A claim-source link identity already exists and cannot be overwritten."""
+
+
+class StrengthError(WorkspaceStoreError):
+    """Base class for every CW-010 evidence-strength assessment failure."""
+
+
+class StrengthInputError(StrengthError):
+    """An assessment identity, method, date, limit, reason, or parameter was refused."""
+
+
+class StrengthVerdictError(StrengthError):
+    """A verdict contradicted its linked evidence stances or freshness state."""
+
+
+class StrengthReplayError(StrengthError):
+    """A stored assessment no longer verifies against its linked evidence."""
+
+
+class StrengthConflictError(StrengthError):
+    """An assessment identity already exists and cannot be overwritten."""
+
+
+class GraphError(WorkspaceStoreError):
+    """Base class for every CW-011 longitudinal patient graph failure."""
+
+
+class GraphInputError(GraphError):
+    """A graph node, edge, view, relationship, epistemic, or parameter was refused."""
+
+
+class GraphRevisionError(GraphInputError):
+    """A graph identity, lineage, source revision, or digest precondition was refused."""
+
+
+class GraphConflictError(GraphError):
+    """A graph node, edge, or view identity already exists and cannot be overwritten."""
+
+
+class GraphStaleError(GraphError):
+    """Derived graph state no longer matches its authoritative sources and was refused."""
+
+
+class GraphPathError(GraphError):
+    """A graph path/explain request could not be satisfied fail-closed."""
+
+
+class LinkedError(WorkspaceStoreError):
+    """Base class for every CW-012 linked workspace object failure."""
+
+
+class LinkedInputError(LinkedError):
+    """A linked document, table, link, member, or parameter was refused."""
+
+
+class LinkedRevisionError(LinkedInputError):
+    """A linked identity, lineage, member, source revision, or digest precondition was refused."""
+
+
+class LinkedConflictError(LinkedError):
+    """A linked document, table, or link identity already exists and cannot be overwritten."""
+
+
+class LinkedStaleError(LinkedError):
+    """A linked member or source is no longer current and was refused."""
+
+
+class FhirError(WorkspaceStoreError):
+    """Base class for every CW-013 bounded FHIR R4 import/export failure."""
+
+
+class FhirInputError(FhirError):
+    """A FHIR resource identity, payload, field, reference, or parameter was refused."""
+
+
+class FhirRevisionError(FhirInputError):
+    """A FHIR identity, lineage, binding, reference, or version precondition was refused."""
+
+
+class FhirConflictError(FhirError):
+    """A FHIR resource identity already exists and cannot be overwritten."""
+
+
+class FhirStaleError(FhirError):
+    """An admitted FHIR resource, binding, or reference is no longer current and was refused."""
+
+
+class ConnectorError(WorkspaceStoreError):
+    """Base class for every CW-014 read-only connector framework failure."""
+
+
+class ConnectorInputError(ConnectorError):
+    """A connector manifest, destination, query, capability, response, or parameter was refused."""
+
+
+class ConnectorRevisionError(ConnectorInputError):
+    """A connector identity, version, retry, or transport precondition was refused."""
+
+
+class ConnectorConflictError(ConnectorError):
+    """A connector envelope identity already exists and cannot be overwritten."""
+
+
+class ConnectorStaleError(ConnectorError):
+    """An admitted connector envelope is no longer current and was refused."""
+
+
+class ConnectorOfflineError(ConnectorError):
+    """A connector fetch was refused because the connector declares offline state."""
+
+
+class TransportTemporaryError(ConnectorError):
+    """A fixture transport reports a retryable failure; raised by transports only."""
+
+
+class TransportPermanentError(ConnectorError):
+    """A fixture transport reports a non-retryable failure; raised by transports only."""
+
+
+class AnalyticsError(WorkspaceStoreError):
+    """Base class for every CW-015 local workspace analytics failure."""
+
+
+class AnalyticsInputError(AnalyticsError):
+    """A metric name, version, review identity, actor, timestamp, or parameter was refused."""
+
+
+class AnalyticsRevisionError(AnalyticsInputError):
+    """An analytics identity, lineage, metric-version, or input precondition was refused."""
+
+
+class AnalyticsConflictError(AnalyticsError):
+    """An analytics result identity already exists and cannot be overwritten."""
+
+
+class AnalyticsStaleError(AnalyticsError):
+    """An admitted analytics input or result is no longer current and was refused."""
+
+
+class ResearchViewError(WorkspaceStoreError):
+    """Base class for every CW-016 research workspace view failure."""
+
+
+class ResearchViewInputError(ResearchViewError):
+    """A view descriptor, artifact identity, actor, timestamp, or parameter was refused."""
+
+
+class ResearchViewRevisionError(ResearchViewInputError):
+    """A view identity, lineage, interface-version, or revision precondition was refused."""
+
+
+class ResearchViewConflictError(ResearchViewError):
+    """A research view identity already exists and cannot be overwritten."""
+
+
+class ResearchViewStaleError(ResearchViewError):
+    """An admitted research view is no longer current and was refused."""
+
+
+class DatasetCollectionError(WorkspaceStoreError):
+    """Base class for every CW-017 dataset collection failure."""
+
+
+class DatasetCollectionInputError(DatasetCollectionError):
+    """A collection name, view identity, actor, timestamp, or parameter was refused."""
+
+
+class DatasetCollectionRevisionError(DatasetCollectionInputError):
+    """A collection identity, lineage, interface-version, or revision precondition was refused."""
+
+
+class DatasetCollectionConflictError(DatasetCollectionError):
+    """A dataset collection identity already exists and cannot be overwritten."""
+
+
+class DatasetCollectionStaleError(DatasetCollectionError):
+    """An admitted dataset collection is no longer current and was refused."""
+
+
+class ExportStagingError(WorkspaceStoreError):
+    """Base class for every CW-017 export staging failure."""
+
+
+class ExportStagingInputError(ExportStagingError):
+    """An export source, path, consent, rights, actor, timestamp, or parameter was refused."""
+
+
+class ExportStagingConflictError(ExportStagingError):
+    """An export manifest identity already exists and cannot be overwritten."""
+
+
+class ExportStagingStaleError(ExportStagingError):
+    """An admitted export manifest is no longer current and was refused."""
+
+
+class StoreMigrationRequiredError(StoreVersionError):
+    """The store needs a migration, or holds an unfinished one, and cannot open normally."""
+
+
+class StoreRoleError(StoreIntegrityError):
+    """A live store was used as a quarantine store, or the reverse."""
+
+
+class LifecycleError(WorkspaceStoreError):
+    """Base class for CW-018 backup, restore, migration and deletion lifecycle failures."""
+
+
+class BackupFormatError(LifecycleError):
+    """Backup bytes are not a supported, well-formed CW-018 backup."""
+
+
+class BackupIntegrityError(LifecycleError):
+    """A backup failed authentication, digest reconciliation, or binding checks."""
+
+
+class RestoreConflictError(LifecycleError):
+    """A restore, promotion, or rollback would overwrite newer or divergent state."""
+
+
+class MigrationError(LifecycleError):
+    """A migration manifest, journal, or step was refused."""
+
+
+class MigrationPreflightError(MigrationError):
+    """A migration prerequisite failed before any mutation."""
+
+
+class MigrationValidationError(MigrationError):
+    """A migration postcondition failed; the migration was not activated."""
+
+
+class StoreSealError(StoreIntegrityError):
+    """The store integrity seal is missing or does not match the store contents."""
