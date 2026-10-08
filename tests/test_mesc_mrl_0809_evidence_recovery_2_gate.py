@@ -28,7 +28,7 @@ def test_current_revision_has_exact_evidence_recovery_2_authority() -> None:
         "878c98f53600e299b34510d4ca1d4a355dd5ca7ee4104a6eba60aaad56380d5e"
     )
     assert identity.static_manifest_sha256 == (
-        "99c5274e8f6a64d499aaead7c82b642fc8c545fb8a3022b257b8ec0ae9afb7a8"
+        "b41503d403d459238bf495dfc33202812edbe841b39b948c77522d8901281b28"
     )
     assert identity.predecessor_failure_sha256 == (
         "4bb9e9c5bfd85e7315bc788cad3f92d0ab1e7736ee57d8d620093acfca13a23b"

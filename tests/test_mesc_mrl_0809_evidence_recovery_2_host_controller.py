@@ -266,6 +266,42 @@ def test_corrupted_local_artifact_prevents_ack(
         HOST._verify_bundle_and_build_manifest(evidence)
 
 
+@pytest.mark.parametrize(
+    ("source", "field", "value", "error"),
+    [
+        ("bundle", "canonical_revision", "f" * 40, "canonical identity mismatch"),
+        ("bundle", "canonical_tree", "f" * 40, "canonical identity mismatch"),
+        ("bundle", "purpose", "UNAUTHORIZED", "bundle purpose drifted"),
+        ("ready", "bundle_path", "other.json", "bundle path mismatch"),
+        ("ready", "required_artifact_count", 0, "artifact count mismatch"),
+    ],
+)
+def test_remote_metadata_tampering_prevents_ack(
+    tmp_path: Path,
+    source: str,
+    field: str,
+    value: str | int,
+    error: str,
+) -> None:
+    evidence = tmp_path / "evidence"
+    evidence.mkdir()
+    _write_valid_host_receipt(evidence)
+    remote = _remote_fixture()
+    name = HOST._REMOTE_BUNDLE if source == "bundle" else HOST._REMOTE_READY
+    document = json.loads(remote[name].decode("utf-8"))
+    document[field] = value
+    remote[name] = HOST._canonical_json_bytes(document)
+    if source == "bundle":
+        ready = json.loads(remote[HOST._REMOTE_READY].decode("utf-8"))
+        ready["bundle_sha256"] = hashlib.sha256(remote[name]).hexdigest()
+        ready["bundle_byte_count"] = len(remote[name])
+        remote[HOST._REMOTE_READY] = HOST._canonical_json_bytes(ready)
+    for artifact, raw in remote.items():
+        (evidence / artifact).write_bytes(raw)
+    with pytest.raises(HOST.EvidenceRecovery2HostError, match=error):
+        HOST._verify_bundle_and_build_manifest(evidence)
+
+
 def test_run_requires_host_launch_consumption(tmp_path: Path) -> None:
     with pytest.raises(HOST.EvidenceRecovery2HostError, match="launch-consumption"):
         HOST.run_with_continuous_retention(

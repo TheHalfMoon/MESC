@@ -240,6 +240,8 @@ def _verify_bundle_and_build_manifest(local_dir: Path) -> bytes:
     bundle = _load_canonical_object(bundle_path, label="Recovery-2 bundle")
     if bundle.get("schema_version") != _BUNDLE_SCHEMA:
         raise EvidenceRecovery2HostError("Recovery-2 bundle schema drifted")
+    if bundle.get("purpose") != "EVIDENCE_RECOVERY_ONLY":
+        raise EvidenceRecovery2HostError("Recovery-2 bundle purpose drifted")
     artifacts_value = bundle.get("artifacts")
     if type(artifacts_value) is not list:
         raise EvidenceRecovery2HostError("Recovery-2 bundle artifacts are malformed")
@@ -274,10 +276,20 @@ def _verify_bundle_and_build_manifest(local_dir: Path) -> bytes:
         raise EvidenceRecovery2HostError("ready marker bundle hash mismatch")
     if ready.get("bundle_byte_count") != len(bundle_raw):
         raise EvidenceRecovery2HostError("ready marker bundle size mismatch")
+    if ready.get("bundle_path") != _REMOTE_BUNDLE:
+        raise EvidenceRecovery2HostError("ready marker bundle path mismatch")
+    if ready.get("required_artifact_count") != len(expected_names):
+        raise EvidenceRecovery2HostError("ready marker artifact count mismatch")
 
     host_receipt = local_dir / _HOST_LAUNCH_RECEIPT
     if not host_receipt.is_file():
         raise EvidenceRecovery2HostError("host launch-consumption receipt is missing")
+    host_identity = _load_canonical_object(host_receipt, label="host launch-consumption receipt")
+    if (bundle.get("canonical_revision"), bundle.get("canonical_tree")) != (
+        host_identity.get("canonical_revision"),
+        host_identity.get("canonical_tree"),
+    ):
+        raise EvidenceRecovery2HostError("Recovery-2 bundle canonical identity mismatch")
     local_rows.extend(
         [
             {
