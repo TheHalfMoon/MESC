@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import subprocess
 from pathlib import Path
@@ -32,8 +33,9 @@ def test_accepted_implementation_is_tied_to_canonical_recovery2_failure() -> Non
     assert identity.authorization_sha256 == (
         "2ce48b1c824881dac0500a8b1051c758ab17ff0119e9db2487da3a758184d1f9"
     )
-    assert identity.static_manifest_sha256 == (
-        "521d4281bc2dec5ebbb393729cb7203715efd2eca757b5a63bae5bf752a548ba"
+    assert (
+        identity.static_manifest_sha256
+        == hashlib.sha256((ROOT / gate.STATIC_MANIFEST).read_bytes()).hexdigest()
     )
 
 
@@ -64,5 +66,28 @@ def test_paid_unit_purchase_is_not_reclassified_as_free() -> None:
     raw = (ROOT / gate.PREDECESSOR_FAILURE).read_bytes()
     data = json.loads(raw)
     data["billing_observations"]["paid_unit_purchase_commands"] = 1
+    with pytest.raises(gate.MRL0809EvidenceRecovery3GateError, match="paid-unit purchase"):
+        gate._check_failure(gate._historical_json_bytes(data))
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "allocation_invocations",
+        "recovery_driver_invocations",
+        "model_staging_invocations",
+        "candidate_probe_invocations",
+    ],
+)
+def test_boolean_cannot_replace_predecessor_execution_counter(field: str) -> None:
+    data = json.loads((ROOT / gate.PREDECESSOR_FAILURE).read_bytes())
+    data["execution"][field] = bool(data["execution"][field])
+    with pytest.raises(gate.MRL0809EvidenceRecovery3GateError, match="exact integers"):
+        gate._check_failure(gate._historical_json_bytes(data))
+
+
+def test_boolean_cannot_replace_zero_paid_purchase_count() -> None:
+    data = json.loads((ROOT / gate.PREDECESSOR_FAILURE).read_bytes())
+    data["billing_observations"]["paid_unit_purchase_commands"] = False
     with pytest.raises(gate.MRL0809EvidenceRecovery3GateError, match="paid-unit purchase"):
         gate._check_failure(gate._historical_json_bytes(data))

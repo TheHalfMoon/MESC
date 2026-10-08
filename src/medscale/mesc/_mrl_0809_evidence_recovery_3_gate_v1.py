@@ -10,13 +10,19 @@ import json
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Final, Never, cast
+from typing import TYPE_CHECKING, Final, Never, cast
 
 from medscale.mesc._canonical_json_v1 import canonical_json_bytes
 from medscale.mesc._mrl_0809_evidence_recovery_2_gate_v1 import (
     MRL0809EvidenceRecovery2GateError,
     validate_evidence_recovery_2_authority,
 )
+
+if TYPE_CHECKING:
+    from medscale.mesc._mrl_0809_evidence_recovery_3_effectiveness_v1 import (
+        Recovery3EffectiveIdentity,
+    )
+
 
 _PREFIX: Final = "specs/mesc-experiment-0"
 AUTHORIZATION: Final = f"{_PREFIX}/mrl-0809-successor-v2-evidence-recovery-3-authorization.json"
@@ -172,6 +178,16 @@ def _check_failure(raw: bytes) -> None:
     if authority.get("launch_authorization_consumed") is not True:
         _fail("Recovery-2 launch is not consumed")
     execution = _mapping(failure.get("execution"), label="predecessor execution")
+    if any(
+        type(execution.get(key)) is not int
+        for key in (
+            "allocation_invocations",
+            "recovery_driver_invocations",
+            "model_staging_invocations",
+            "candidate_probe_invocations",
+        )
+    ):
+        _fail("Recovery-2 execution counters must be exact integers")
     if (
         execution.get("allocation_invocations") != 1
         or execution.get("recovery_driver_invocations") != 0
@@ -181,7 +197,10 @@ def _check_failure(raw: bytes) -> None:
     ):
         _fail("Recovery-2 consumed/pre-runtime outcome drifted")
     billing = _mapping(failure.get("billing_observations"), label="predecessor billing")
-    if billing.get("paid_unit_purchase_commands") != 0:
+    if (
+        type(billing.get("paid_unit_purchase_commands")) is not int
+        or billing.get("paid_unit_purchase_commands") != 0
+    ):
         _fail("Recovery-2 paid-unit purchase observations drifted")
     trust = _mapping(failure.get("trust_admission"), label="predecessor trust")
     if trust != {"eligible": False, "state": "NOT_ADMITTED"}:
@@ -218,6 +237,12 @@ def _check_authorization(raw: bytes) -> None:
         "recovery_2_launch_consumed": True,
     }:
         _fail("Recovery-3 predecessor binding drifted")
+    grant = _mapping(doc.get("grant"), label="Recovery-3 bounded grant")
+    if any(
+        type(grant.get(key)) is not int
+        for key in ("launches_authorized", "monetary_cost_microunits")
+    ):
+        _fail("Recovery-3 grant counters must be exact integers")
     if doc.get("grant") != {
         "gpu_class": "STANDARD_T4",
         "input": "SYNTHETIC_ONLY",
@@ -237,6 +262,8 @@ def _check_authorization(raw: bytes) -> None:
     ]:
         _fail("Recovery-3 frozen candidate roster drifted")
     preflight = _mapping(doc.get("preflight"), label="Recovery-3 preflight")
+    if any(type(value) is not bool for value in preflight.values()):
+        _fail("Recovery-3 preflight flags must be exact booleans")
     if preflight != {
         "active_nominal_rate_must_be_zero": False,
         "positive_paid_units_forbidden": True,
@@ -319,6 +346,7 @@ def validate_evidence_recovery_3_authority(
         previous = path
         seen.add(path)
     required = {
+        "src/medscale/mesc/_mrl_0809_evidence_recovery_3_effectiveness_v1.py",
         "src/medscale/mesc/_mrl_0809_evidence_recovery_3_gate_v1.py",
         "src/medscale/mesc/_mrl_0809_evidence_recovery_3_control_plane_v1.py",
         "scripts/mesc_mrl_0809_evidence_recovery_3_control_plane.py",
@@ -337,13 +365,16 @@ def validate_evidence_recovery_3_authority(
     )
 
 
-def require_recovery_3_launch_effectiveness(root: Path, revision: str) -> None:
-    """Reject all launch attempts until a separately approved final-head grant exists.
+def require_recovery_3_launch_effectiveness(
+    root: Path, revision: str
+) -> Recovery3EffectiveIdentity:
+    """Require separate Founder approval and exact live-main qualification.
 
-    This implementation-only change deliberately cannot arm itself.
-    A successor authorized by the Founder must add a separate effective
-    admission artifact, implement independent fresh-main workflow checks,
-    and then explicitly replace this fail-closed function.
+    This verifier never writes approval or consumes provider capacity.
+    Missing, revoked or mismatched approval remains fail-closed.
     """
-    validate_evidence_recovery_3_authority(root, revision)
-    _fail("Recovery-3 launch NOT_EFFECTIVE: missing final-head approval and main qualification")
+    from medscale.mesc._mrl_0809_evidence_recovery_3_effectiveness_v1 import (
+        validate_recovery_3_effectiveness,
+    )
+
+    return validate_recovery_3_effectiveness(root, revision)

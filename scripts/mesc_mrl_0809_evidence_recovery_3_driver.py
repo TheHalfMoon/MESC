@@ -9,6 +9,7 @@ import json
 import os
 import re
 import subprocess
+import sys
 import time
 from pathlib import Path
 from typing import Final, cast
@@ -102,7 +103,7 @@ def _require_clean(root: Path) -> None:
 
 def _require_predecessor(root: Path) -> None:
     if not (root / _PREDECESSOR_FAILURE).is_file():
-        raise EvidenceRecovery3LaunchError("canonical Recovery-1 failure record is missing")
+        raise EvidenceRecovery3LaunchError("canonical Recovery-2 failure record is missing")
 
 
 def _require_unconsumed(root: Path) -> None:
@@ -136,6 +137,44 @@ def _write_new(path: Path, raw: bytes) -> None:
 
 def _write_json(path: Path, document: dict[str, object]) -> None:
     _write_new(path, _canonical_json_bytes(document))
+
+
+def _driver_consumption_path() -> Path:
+    # The actual Colab driver is POSIX. Do not derive this namespace from
+    # HOME/TMPDIR, the checkout, the implementation SHA, or a custody argument.
+    if sys.platform == "linux":
+        return Path("/tmp") / f"mesc-evidence-recovery-3-driver-{os.getuid()}.json"
+    raise EvidenceRecovery3LaunchError("Recovery-3 hosted driver requires a Linux runtime")
+
+
+def _fsync_driver_guard_directory(path: Path) -> None:
+    descriptor = os.open(path, os.O_RDONLY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def _consume_driver_execution(*, revision: str, tree: str, custody: Path) -> None:
+    guard = _driver_consumption_path()
+    try:
+        _write_json(
+            guard,
+            {
+                "schema_version": "MESC-MRL-0809-EVIDENCE-RECOVERY-3-DRIVER-CONSUMPTION-V1",
+                "decision_id": "FD-MRL-0809-SUCCESSOR-V2-EVIDENCE-RECOVERY-3",
+                "canonical_revision": revision,
+                "canonical_tree": tree,
+                "custody": str(custody.resolve()),
+                "execution_consumed": True,
+                "automatic_retry_authorized": False,
+            },
+        )
+        _fsync_driver_guard_directory(guard.parent)
+    except FileExistsError as exc:
+        raise EvidenceRecovery3LaunchError(
+            "Recovery-3 driver execution already consumed; alternate custody is not a retry grant"
+        ) from exc
 
 
 def _write_authority_receipt(
@@ -310,6 +349,7 @@ def run_authorized_evidence_recovery_3(
 
     authority = validate_evidence_recovery_3_authority(root, current_head)
     current_tree = _tree(root)
+    _consume_driver_execution(revision=current_head, tree=current_tree, custody=custody)
     custody.mkdir(parents=True, exist_ok=False)
     _write_authority_receipt(
         custody,

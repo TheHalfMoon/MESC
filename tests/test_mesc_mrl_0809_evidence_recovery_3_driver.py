@@ -36,7 +36,12 @@ DRIVER = _load()
 @pytest.fixture(autouse=True)
 def _mock_effective_authority_for_synthetic_driver_tests(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
+    monkeypatch.setattr(
+        DRIVER, "_driver_consumption_path", lambda: tmp_path / "driver-consumed.json"
+    )
+    monkeypatch.setattr(DRIVER, "_fsync_driver_guard_directory", lambda _path: None)
     # Only synthetic tests bypass the otherwise always-blocking launch gate.
     monkeypatch.setattr(DRIVER, "require_recovery_3_launch_effectiveness", lambda *_: None)
 
@@ -237,3 +242,36 @@ def test_wrong_revision_fails_before_authority(
             python_executable=tmp_path / "python",
             expected_canonical_revision="0" * 40,
         )
+
+
+def test_second_driver_invocation_cannot_use_alternate_custody(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "repo"
+    root.mkdir()
+    _patch_prelaunch(monkeypatch)
+    calls: list[str] = []
+
+    def runtime(**kwargs: object) -> None:
+        calls.append("runtime")
+        target = kwargs["custody"]
+        assert isinstance(target, Path)
+        _populate_runtime_artifacts(target)
+
+    monkeypatch.setattr(DRIVER, "_run_bmm_stage4", runtime)
+    monkeypatch.setattr(DRIVER, "_wait_for_host_ack", lambda *_args, **_kwargs: None)
+    DRIVER.run_authorized_evidence_recovery_3(
+        repository_root=root,
+        custody=tmp_path / "first",
+        python_executable=tmp_path / "python",
+        expected_canonical_revision=REVISION,
+    )
+    with pytest.raises(DRIVER.EvidenceRecovery3LaunchError, match="already consumed"):
+        DRIVER.run_authorized_evidence_recovery_3(
+            repository_root=root,
+            custody=tmp_path / "second",
+            python_executable=tmp_path / "python",
+            expected_canonical_revision=REVISION,
+        )
+    assert calls == ["runtime"]
