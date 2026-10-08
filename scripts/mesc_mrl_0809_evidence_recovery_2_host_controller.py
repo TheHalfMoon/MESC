@@ -290,6 +290,21 @@ def _verify_bundle_and_build_manifest(local_dir: Path) -> bytes:
         host_identity.get("canonical_tree"),
     ):
         raise EvidenceRecovery2HostError("Recovery-2 bundle canonical identity mismatch")
+    authority = _load_canonical_object(
+        local_dir / _REMOTE_AUTHORITY, label="Recovery-2 remote authority receipt"
+    )
+    if authority.get("schema_version") != (
+        "MESC-MRL-0809-EVIDENCE-RECOVERY-2-AUTHORITY-RECEIPT-V1"
+    ):
+        raise EvidenceRecovery2HostError("Recovery-2 authority receipt schema drifted")
+    for field in (
+        "authorization_sha256",
+        "decision_sha256",
+        "canonical_revision",
+        "canonical_tree",
+    ):
+        if authority.get(field) != host_identity.get(field):
+            raise EvidenceRecovery2HostError(f"Recovery-2 authority receipt mismatch: {field}")
     local_rows.extend(
         [
             {

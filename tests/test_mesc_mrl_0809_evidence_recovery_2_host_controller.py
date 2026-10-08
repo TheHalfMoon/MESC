@@ -120,11 +120,22 @@ def test_failed_allocation_remains_consumed_and_does_not_retry(
     assert (evidence / HOST._HOST_LAUNCH_RECEIPT).is_file()
 
 
-def _remote_fixture() -> dict[str, bytes]:
+def _remote_fixture(*, authority_override: tuple[str, str] | None = None) -> dict[str, bytes]:
     payloads: dict[str, bytes] = {}
     individual = set(HOST._REQUIRED_REMOTE_FILES) - {HOST._REMOTE_BUNDLE, HOST._REMOTE_READY}
     for name in sorted(individual):
         payloads[name] = f"artifact:{name}\n".encode()
+    authority = {
+        "authorization_sha256": "c" * 64,
+        "decision_sha256": "d" * 64,
+        "canonical_revision": "a" * 40,
+        "canonical_tree": "b" * 40,
+        "schema_version": "MESC-MRL-0809-EVIDENCE-RECOVERY-2-AUTHORITY-RECEIPT-V1",
+    }
+    if authority_override is not None:
+        field, value = authority_override
+        authority[field] = value
+    payloads[HOST._REMOTE_AUTHORITY] = HOST._canonical_json_bytes(authority)
     rows = [
         {
             "byte_count": len(payloads[name]),
@@ -298,6 +309,28 @@ def test_remote_metadata_tampering_prevents_ack(
         remote[HOST._REMOTE_READY] = HOST._canonical_json_bytes(ready)
     for artifact, raw in remote.items():
         (evidence / artifact).write_bytes(raw)
+    with pytest.raises(HOST.EvidenceRecovery2HostError, match=error):
+        HOST._verify_bundle_and_build_manifest(evidence)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("authorization_sha256", "f" * 64),
+        ("decision_sha256", "f" * 64),
+        ("canonical_revision", "f" * 40),
+        ("canonical_tree", "f" * 40),
+        ("schema_version", "UNAUTHORIZED"),
+    ],
+)
+def test_remote_authority_drift_prevents_ack(tmp_path: Path, field: str, value: str) -> None:
+    evidence = tmp_path / "evidence"
+    evidence.mkdir()
+    _write_valid_host_receipt(evidence)
+    remote = _remote_fixture(authority_override=(field, value))
+    for name, raw in remote.items():
+        (evidence / name).write_bytes(raw)
+    error = "schema drifted" if field == "schema_version" else f"mismatch: {field}"
     with pytest.raises(HOST.EvidenceRecovery2HostError, match=error):
         HOST._verify_bundle_and_build_manifest(evidence)
 
