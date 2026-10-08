@@ -1,0 +1,1 @@
+{"assignments":1,"balance":0.0,"launch_consumed":true,"outcome":"POST_ALLOCATION_CONTROL_PLANE_PREFLIGHT_FAILED","runtime_driver_invocations":0,"scientific_evidence":false,"server_assignments":1,"server_hardware":[{"accelerator":"T4","endpoint_disclosure":"REDACTED_STOPPED_PROVIDER_ENDPOINT","machine_shape":"STANDARD","variant":"GPU"}],"setup_invocations":0,"usage_rate":1.07}
