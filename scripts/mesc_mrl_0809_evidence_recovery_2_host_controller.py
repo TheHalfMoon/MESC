@@ -491,7 +491,25 @@ def run_with_continuous_retention(
     finally:
         stop.set()
         thread.join(timeout=10.0)
+        # A failing remote driver may have produced its last evidence after the
+        # watcher's final poll. Preserve the bytes without granting success.
+        if not ack_complete.is_set() and not thread.is_alive():
+            for name in _REQUIRED_REMOTE_FILES:
+                try:
+                    _download_once(
+                        colab_bin=colab_bin,
+                        session_name=session_name,
+                        remote_custody=remote_custody,
+                        local_dir=local_dir,
+                        name=name,
+                        force=True,
+                    )
+                except (OSError, subprocess.SubprocessError):
+                    # This is best-effort failure evidence, never an ACK path.
+                    continue
 
+    if thread.is_alive():
+        raise EvidenceRecovery2HostError("continuous-retention watcher did not stop")
     if watcher_error:
         raise EvidenceRecovery2HostError("continuous-retention watcher failed") from watcher_error[
             0

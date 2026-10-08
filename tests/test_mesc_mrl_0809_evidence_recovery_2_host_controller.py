@@ -223,6 +223,55 @@ def test_continuous_retention_verifies_bytes_before_ack(
     assert manifest["complete_local_evidence_verified"] is True
 
 
+def test_failed_remote_driver_drains_last_evidence_without_ack(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    evidence = tmp_path / "evidence"
+    evidence.mkdir()
+    _write_valid_host_receipt(evidence)
+    last_artifact = "runtime-feasibility-v2-bmm-repair-1.json"
+    retained = b"last-runtime-evidence-after-final-poll\n"
+    forced: list[str] = []
+
+    def download(**kwargs: object) -> bool:
+        if kwargs.get("force") is not True:
+            return False
+        name = kwargs["name"]
+        local_dir = kwargs["local_dir"]
+        assert isinstance(name, str)
+        assert isinstance(local_dir, Path)
+        forced.append(name)
+        if name == last_artifact:
+            (local_dir / name).write_bytes(retained)
+            return True
+        return False
+
+    def run(args: tuple[str, ...]) -> object:
+        assert "exec" in args
+        return _completed(args, returncode=1)
+
+    monkeypatch.setattr(HOST, "_download_once", download)
+    monkeypatch.setattr(HOST, "_run_colab", run)
+
+    with pytest.raises(HOST.EvidenceRecovery2HostError, match="remote Recovery-2 driver failed"):
+        HOST.run_with_continuous_retention(
+            colab_bin="colab",
+            session_name="mesc-evidence-recovery-2",
+            local_evidence_dir=evidence,
+            remote_repository_root="/content/MESC",
+            remote_custody="/content/mesc-evidence-recovery-2-custody",
+            remote_python="/content/MESC/.venv/bin/python",
+            expected_canonical_revision="a" * 40,
+            poll_seconds=0.01,
+        )
+
+    assert set(forced) == set(HOST._REQUIRED_REMOTE_FILES)
+    assert (evidence / last_artifact).read_bytes() == retained
+    assert not (evidence / HOST._LOCAL_MANIFEST).exists()
+    assert not (evidence / HOST._REMOTE_ACK).exists()
+
+
 def test_force_refresh_replaces_early_partial_copy(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
