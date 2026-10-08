@@ -140,9 +140,7 @@ def _validate_host_launch_receipt(
         "monetary_cost_microunits": 0,
         "provider_class": "GOOGLE_COLAB_FREE",
         "purpose": "EVIDENCE_RECOVERY_ONLY",
-        "schema_version": (
-            "MESC-MRL-0809-EVIDENCE-RECOVERY-2-HOST-LAUNCH-CONSUMPTION-V1"
-        ),
+        "schema_version": ("MESC-MRL-0809-EVIDENCE-RECOVERY-2-HOST-LAUNCH-CONSUMPTION-V1"),
         "session_name": session_name,
     }
     for key, value in expected.items():

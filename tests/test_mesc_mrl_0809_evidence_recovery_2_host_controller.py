@@ -4,6 +4,7 @@ import hashlib
 import importlib.util
 import json
 import sys
+import threading
 from pathlib import Path
 from types import ModuleType
 
@@ -35,7 +36,6 @@ def _completed(args: tuple[str, ...], returncode: int = 0) -> object:
     return subprocess.CompletedProcess(args, returncode, stdout="", stderr="")
 
 
-
 def _write_valid_host_receipt(
     evidence: Path,
     *,
@@ -56,13 +56,12 @@ def _write_valid_host_receipt(
                 "monetary_cost_microunits": 0,
                 "provider_class": "GOOGLE_COLAB_FREE",
                 "purpose": "EVIDENCE_RECOVERY_ONLY",
-                "schema_version": (
-                    "MESC-MRL-0809-EVIDENCE-RECOVERY-2-HOST-LAUNCH-CONSUMPTION-V1"
-                ),
+                "schema_version": ("MESC-MRL-0809-EVIDENCE-RECOVERY-2-HOST-LAUNCH-CONSUMPTION-V1"),
                 "session_name": session_name,
             }
         )
     )
+
 
 def test_allocate_persists_consumption_before_colab_new(
     tmp_path: Path,
@@ -165,6 +164,7 @@ def test_continuous_retention_verifies_bytes_before_ack(
     _write_valid_host_receipt(evidence)
     remote = _remote_fixture()
     upload_attempts = 0
+    upload_confirmed = threading.Event()
 
     def download(**kwargs: object) -> bool:
         name = kwargs["name"]
@@ -187,6 +187,9 @@ def test_continuous_retention_verifies_bytes_before_ack(
             assert (evidence / HOST._LOCAL_MANIFEST).is_file()
             if upload_attempts == 1:
                 return _completed(args, returncode=1)
+            upload_confirmed.set()
+        if "exec" in args and not upload_confirmed.wait(timeout=5.0):
+            return _completed(args, returncode=1)
         return _completed(args)
 
     monkeypatch.setattr(HOST, "_download_once", download)
