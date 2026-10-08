@@ -9,12 +9,16 @@ import json
 import os
 import subprocess
 import threading
+import time
 from collections.abc import Sequence
-from dataclasses import dataclass
+from contextlib import suppress
 from pathlib import Path
 from typing import Final, cast
 
 _HOST_LAUNCH_RECEIPT: Final = "evidence-recovery-2-host-launch-consumption.json"
+_ALLOCATION_OUTCOME: Final = "evidence-recovery-2-colab-allocation-outcome.json"
+_COPY_JOURNAL: Final = "evidence-recovery-2-local-copy-journal.jsonl"
+_EXEC_WAIT_SECONDS: Final = 14400.0
 _REMOTE_AUTHORITY: Final = "evidence-recovery-2-authority.json"
 _REMOTE_LAUNCH: Final = "evidence-recovery-2-launch-consumption.json"
 _REMOTE_BUNDLE: Final = "evidence-recovery-2-bundle.json"
@@ -43,13 +47,6 @@ _REQUIRED_REMOTE_FILES: Final = (
 
 class EvidenceRecovery2HostError(RuntimeError):
     """Host-side Recovery-2 retention failed closed."""
-
-
-@dataclass(frozen=True, slots=True)
-class LocalArtifact:
-    path: str
-    byte_count: int
-    sha256: str
 
 
 def _canonical_json_bytes(document: dict[str, object]) -> bytes:
@@ -93,9 +90,60 @@ def _replace_fsync(temp_path: Path, final_path: Path) -> None:
     _fsync_directory(final_path.parent)
 
 
+def _record_provisional_copy(path: Path) -> None:
+    raw = path.read_bytes()
+    entry = _canonical_json_bytes(
+        {
+            "byte_count": len(raw),
+            "path": path.name,
+            "sha256": hashlib.sha256(raw).hexdigest(),
+            "state": "PROVISIONAL_COPY_ONLY",
+        }
+    )
+    descriptor = os.open(path.parent / _COPY_JOURNAL, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+    with os.fdopen(descriptor, "ab") as handle:
+        handle.write(entry)
+        handle.flush()
+        os.fsync(handle.fileno())
+    _fsync_directory(path.parent)
+
+
 def _run_colab(
-    args: Sequence[str], *, timeout_seconds: float | None = None
+    args: Sequence[str],
+    *,
+    timeout_seconds: float | None = None,
+    abort_event: threading.Event | None = None,
 ) -> subprocess.CompletedProcess[str]:
+    if abort_event is not None:
+        if timeout_seconds is None:
+            raise ValueError("supervised execution requires a finite client timeout")
+        deadline = time.monotonic() + timeout_seconds
+        with subprocess.Popen(
+            tuple(args), text=True, encoding="utf-8", stdout=subprocess.PIPE, stderr=subprocess.PIPE
+        ) as process:
+            while True:
+                try:
+                    stdout, stderr = process.communicate(timeout=0.2)
+                    return subprocess.CompletedProcess(args, process.returncode, stdout, stderr)
+                except subprocess.TimeoutExpired as exc:
+                    expired = time.monotonic() >= deadline
+                    if not abort_event.is_set() and not expired:
+                        continue
+                    # This cancels only the local client. The watcher separately
+                    # attempts provider shutdown; never infer remote termination.
+                    process.terminate()
+                    try:
+                        stdout, stderr = process.communicate(timeout=2.0)
+                    except subprocess.TimeoutExpired:
+                        process.kill()
+                        stdout, stderr = process.communicate(timeout=2.0)
+                    if expired:
+                        raise subprocess.TimeoutExpired(
+                            args, timeout_seconds, stdout, stderr
+                        ) from exc
+                    return subprocess.CompletedProcess(
+                        args, process.returncode or 1, stdout, stderr
+                    )
     return subprocess.run(
         tuple(args),
         check=False,
@@ -104,6 +152,35 @@ def _run_colab(
         capture_output=True,
         timeout=timeout_seconds,
     )
+
+
+def _diagnostic_text(value: str | bytes | None) -> str:
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    return value or ""
+
+
+def _stop_failed_session(*, colab_bin: str, session_name: str, local_dir: Path) -> bool:
+    document: dict[str, object] = {
+        "schema_version": "MESC-MRL-0809-EVIDENCE-RECOVERY-2-HOST-STOP-OUTCOME-V1",
+        "session_name": session_name,
+    }
+    try:
+        result = _run_colab((colab_bin, "stop", "--session", session_name), timeout_seconds=20.0)
+        document.update(returncode=result.returncode, stdout=result.stdout, stderr=result.stderr)
+        succeeded = result.returncode == 0
+    except (OSError, subprocess.SubprocessError) as exc:
+        document.update(returncode=None, error_type=type(exc).__name__, error=str(exc))
+        if isinstance(exc, subprocess.TimeoutExpired):
+            document.update(
+                stdout=_diagnostic_text(exc.stdout), stderr=_diagnostic_text(exc.stderr)
+            )
+        succeeded = False
+    document["termination_state"] = "STOP_COMMAND_SUCCEEDED" if succeeded else "UNPROVEN"
+    _write_new_fsync(
+        local_dir / "evidence-recovery-2-colab-stop-outcome.json", _canonical_json_bytes(document)
+    )
+    return succeeded
 
 
 def _sha256(path: Path) -> str:
@@ -151,6 +228,17 @@ def _validate_host_launch_receipt(
             raise EvidenceRecovery2HostError(
                 f"host launch-consumption receipt binding mismatch: {key}"
             )
+    outcome = _load_canonical_object(
+        local_dir / _ALLOCATION_OUTCOME, label="host allocation outcome"
+    )
+    if (
+        outcome.get("schema_version") != "MESC-MRL-0809-EVIDENCE-RECOVERY-2-HOST-ALLOC-OUTCOME-V1"
+        or type(outcome.get("returncode")) is not int
+        or outcome.get("returncode") != 0
+        or outcome.get("session_name") != session_name
+        or outcome.get("host_launch_receipt_sha256") != _sha256(local_dir / _HOST_LAUNCH_RECEIPT)
+    ):
+        raise EvidenceRecovery2HostError("successful bound host allocation outcome is required")
 
 
 def allocate_single_t4_session(
@@ -190,10 +278,12 @@ def allocate_single_t4_session(
     )
     result = _run_colab((colab_bin, "new", "--session", session_name, "--gpu", "T4"))
     _write_new_fsync(
-        evidence_dir / "evidence-recovery-2-colab-allocation-outcome.json",
+        evidence_dir / _ALLOCATION_OUTCOME,
         _canonical_json_bytes(
             {
+                "host_launch_receipt_sha256": _sha256(receipt),
                 "returncode": result.returncode,
+                "session_name": session_name,
                 "stdout": result.stdout,
                 "stderr": result.stderr,
                 "schema_version": "MESC-MRL-0809-EVIDENCE-RECOVERY-2-HOST-ALLOC-OUTCOME-V1",
@@ -246,6 +336,7 @@ def _download_once(
         temp_path.unlink(missing_ok=True)
         return False
     _replace_fsync(temp_path, final_path)
+    _record_provisional_copy(final_path)
     return True
 
 
@@ -449,9 +540,31 @@ def run_with_continuous_retention(
     stop = threading.Event()
     ack_complete = threading.Event()
     watcher_error: list[BaseException] = []
+    termination_unproven = threading.Event()
+    stop_requested = threading.Event()
+    stop_lock = threading.Lock()
+
+    def request_session_stop() -> None:
+        with stop_lock:
+            if stop_requested.is_set():
+                return
+            stop_requested.set()
+        try:
+            if not _stop_failed_session(
+                colab_bin=colab_bin, session_name=session_name, local_dir=local_dir
+            ):
+                termination_unproven.set()
+        except (OSError, subprocess.SubprocessError):
+            termination_unproven.set()
+
+    def failure_message(message: str) -> str:
+        if termination_unproven.is_set():
+            message += (
+                "; remote termination UNPROVEN; operator intervention required for this session"
+            )
+        return message
 
     def watcher() -> None:
-        ack_path: Path | None = None
         try:
             while not stop.is_set():
                 for name in _REQUIRED_REMOTE_FILES:
@@ -468,7 +581,6 @@ def run_with_continuous_retention(
                 if stop.is_set():
                     return
                 if (local_dir / _REMOTE_READY).is_file():
-                    refresh_complete = True
                     for name in _REQUIRED_REMOTE_FILES:
                         if stop.is_set():
                             return
@@ -480,27 +592,27 @@ def run_with_continuous_retention(
                             name=name,
                             force=True,
                         ):
-                            refresh_complete = False
-                    if refresh_complete:
-                        try:
-                            manifest_raw = _verify_bundle_and_build_manifest(local_dir)
-                        except EvidenceRecovery2HostError:
-                            stop.wait(poll_seconds)
-                            continue
-                        if ack_path is None:
-                            ack_path = _write_ack(local_dir, manifest_raw)
-                        if _upload_ack(
-                            colab_bin=colab_bin,
-                            session_name=session_name,
-                            remote_custody=remote_custody,
-                            ack_path=ack_path,
-                        ):
-                            ack_complete.set()
-                            return
+                            raise EvidenceRecovery2HostError(
+                                f"final evidence copy-out failed: {name}"
+                            )
+                    manifest_raw = _verify_bundle_and_build_manifest(local_dir)
+                    ack_path = _write_ack(local_dir, manifest_raw)
+                    if not _upload_ack(
+                        colab_bin=colab_bin,
+                        session_name=session_name,
+                        remote_custody=remote_custody,
+                        ack_path=ack_path,
+                    ):
+                        raise EvidenceRecovery2HostError("host acknowledgement upload failed")
+                    ack_complete.set()
+                    return
                 stop.wait(poll_seconds)
         except BaseException as exc:
             watcher_error.append(exc)
             stop.set()
+            # Killing the local exec client does not stop remote model work.
+            # Stop this consumed session at the provider, without a relaunch.
+            request_session_stop()
 
     runner_path = local_dir / "evidence-recovery-2-colab-runner.py"
     _write_runner(
@@ -512,10 +624,26 @@ def run_with_continuous_retention(
     )
     thread = threading.Thread(target=watcher, name="mesc-recovery2-retention", daemon=True)
     thread.start()
-    if not thread.is_alive():
-        raise EvidenceRecovery2HostError("continuous-retention watcher did not start")
+    execution_error: BaseException | None = None
     try:
-        result = _run_colab((colab_bin, "exec", "--session", session_name, "-f", str(runner_path)))
+        if not thread.is_alive():
+            raise EvidenceRecovery2HostError("continuous-retention watcher did not start")
+        if stop.is_set():
+            raise EvidenceRecovery2HostError("continuous-retention watcher failed before execution")
+        result = _run_colab(
+            (
+                colab_bin,
+                "exec",
+                "--session",
+                session_name,
+                "-f",
+                str(runner_path),
+                "--timeout",
+                str(_EXEC_WAIT_SECONDS),
+            ),
+            timeout_seconds=_EXEC_WAIT_SECONDS + 20.0,
+            abort_event=stop,
+        )
         # Preserve early driver errors locally even when custody does not exist.
         # This receipt is diagnostic only, never a verified-evidence manifest.
         _write_new_fsync(
@@ -529,6 +657,27 @@ def run_with_continuous_retention(
                 }
             ),
         )
+    except BaseException as exc:
+        execution_error = exc
+        stop.set()
+        request_session_stop()
+        # Keep client-level failure diagnostics when the evidence disk permits.
+        document: dict[str, object] = {
+            "returncode": None,
+            "error_type": type(exc).__name__,
+            "error": str(exc),
+            "schema_version": "MESC-MRL-0809-EVIDENCE-RECOVERY-2-HOST-EXEC-OUTCOME-V1",
+        }
+        if isinstance(exc, subprocess.TimeoutExpired):
+            document.update(
+                stdout=_diagnostic_text(exc.stdout), stderr=_diagnostic_text(exc.stderr)
+            )
+        # Disk failure cannot be repaired by a second runtime invocation.
+        with suppress(OSError):
+            _write_new_fsync(
+                local_dir / "evidence-recovery-2-colab-exec-outcome.json",
+                _canonical_json_bytes(document),
+            )
     finally:
         stop.set()
         thread.join(timeout=25.0)
@@ -550,18 +699,30 @@ def run_with_continuous_retention(
                     continue
 
     if thread.is_alive():
-        raise EvidenceRecovery2HostError("continuous-retention watcher did not stop")
+        termination_unproven.set()
+        request_session_stop()
+        raise EvidenceRecovery2HostError(
+            failure_message("continuous-retention watcher did not stop")
+        )
+    if execution_error is not None:
+        raise EvidenceRecovery2HostError(
+            failure_message("remote execution or local outcome retention failed; launch consumed")
+        ) from execution_error
+    if watcher_error or result.returncode != 0 or not ack_complete.is_set():
+        request_session_stop()
     if watcher_error:
-        raise EvidenceRecovery2HostError("continuous-retention watcher failed") from watcher_error[
-            0
-        ]
+        raise EvidenceRecovery2HostError(
+            failure_message("continuous-retention watcher failed")
+        ) from watcher_error[0]
     if result.returncode != 0:
         raise EvidenceRecovery2HostError(
-            "remote Recovery-2 driver failed; launch is consumed and no retry is authorized"
+            failure_message(
+                "remote Recovery-2 driver failed; launch is consumed and no retry is authorized"
+            )
         )
     if not ack_complete.is_set():
         raise EvidenceRecovery2HostError(
-            "remote driver returned without complete locally verified evidence"
+            failure_message("remote driver returned without complete locally verified evidence")
         )
 
 

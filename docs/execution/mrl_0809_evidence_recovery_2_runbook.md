@@ -65,6 +65,9 @@ colab new --session mesc-evidence-recovery-2 --gpu T4
 ```
 
 If the allocation fails, the launch remains consumed. Do not invoke `allocate` again.
+The `run` command requires a canonical successful allocation outcome bound to the exact
+host consumption receipt and session. A missing, failed, or mismatched allocation outcome
+prevents remote execution even if a session with that name exists.
 
 Before allocation, independently verify:
 
@@ -84,6 +87,10 @@ The controller must start its local watcher before invoking the remote Recovery-
 The watcher continuously downloads each required custody artifact as soon as it appears.
 Every local copy uses a temporary path, fsync, atomic replacement, and recorded SHA-256 plus
 byte count.
+Each published copy also appends and fsyncs its byte count and SHA-256 in
+`evidence-recovery-2-local-copy-journal.jsonl`. Every journal entry is explicitly
+`PROVISIONAL_COPY_ONLY`; the journal is custody diagnostics and cannot establish a
+scientific PASS or substitute for the final verified manifest.
 
 The remote entrypoint is:
 
@@ -130,6 +137,22 @@ they never establish successful model execution, verified evidence, or launch au
 If an uploaded host ACK is observed before all bytes become visible, the remote driver
 retries unreadable or non-canonical JSON only until the fixed acknowledgement deadline.
 A structurally valid but wrong ACK still fails immediately and never admits recovery success.
+The host makes one ACK upload attempt after verification. A failed or timed-out upload,
+final bundle verification error, or local watcher exception is terminal. The watcher
+attempts one bounded `colab stop --session` to halt the consumed remote session rather than
+merely terminating the local CLI client. Its provider result is retained in
+`evidence-recovery-2-colab-stop-outcome.json` when the local disk remains writable.
+If the provider stop fails or times out, remote termination is not proven: preserve that
+failure, stop all further execution, and require operator intervention for that same
+session. Never allocate or relaunch a replacement. Provider session shutdown may make
+remaining remote artifacts unavailable; already retained copies remain provisional.
+Stop timeouts and client-launch errors are also recorded with termination `UNPROVEN`
+when the local disk is writable, and the host error explicitly requires intervention.
+The host supervises the local exec client and cancels it promptly on watcher failure;
+this cancellation is not proof of remote termination. The client execution wait is
+explicitly bounded to four hours (plus 20 seconds for local-client shutdown), replacing
+the CLI's unsuitable 30-second default. This is a client wait ceiling, not a change to
+the frozen scientific, candidate, generation, resource, or single-launch contract.
 
 ### Failure-path custody preservation
 

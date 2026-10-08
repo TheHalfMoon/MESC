@@ -63,6 +63,16 @@ def _write_valid_host_receipt(
             }
         )
     )
+    (evidence / HOST._ALLOCATION_OUTCOME).write_bytes(
+        HOST._canonical_json_bytes(
+            {
+                "host_launch_receipt_sha256": HOST._sha256(evidence / HOST._HOST_LAUNCH_RECEIPT),
+                "returncode": 0,
+                "session_name": session_name,
+                "schema_version": "MESC-MRL-0809-EVIDENCE-RECOVERY-2-HOST-ALLOC-OUTCOME-V1",
+            }
+        )
+    )
 
 
 def test_allocate_persists_consumption_before_colab_new(
@@ -72,7 +82,12 @@ def test_allocate_persists_consumption_before_colab_new(
     evidence = tmp_path / "evidence"
     seen: list[tuple[str, ...]] = []
 
-    def run(args: tuple[str, ...]) -> object:
+    def run(
+        args: tuple[str, ...],
+        *,
+        timeout_seconds: float | None = None,
+        abort_event: threading.Event | None = None,
+    ) -> object:
         receipt = evidence / HOST._HOST_LAUNCH_RECEIPT
         assert receipt.is_file()
         document = json.loads(receipt.read_text(encoding="utf-8"))
@@ -106,7 +121,12 @@ def test_failed_allocation_remains_consumed_and_does_not_retry(
     evidence = tmp_path / "evidence"
     calls = 0
 
-    def run(args: tuple[str, ...]) -> object:
+    def run(
+        args: tuple[str, ...],
+        *,
+        timeout_seconds: float | None = None,
+        abort_event: threading.Event | None = None,
+    ) -> object:
         nonlocal calls
         calls += 1
         return _completed(args, returncode=1)
@@ -193,7 +213,12 @@ def test_continuous_retention_verifies_bytes_before_ack(
         path.write_bytes(remote[name])
         return True
 
-    def run(args: tuple[str, ...], *, timeout_seconds: float | None = None) -> object:
+    def run(
+        args: tuple[str, ...],
+        *,
+        timeout_seconds: float | None = None,
+        abort_event: threading.Event | None = None,
+    ) -> object:
         nonlocal upload_attempts
         if "upload" in args:
             assert timeout_seconds == 20.0
@@ -203,8 +228,6 @@ def test_continuous_retention_verifies_bytes_before_ack(
             ack = json.loads(ack_path.read_text(encoding="utf-8"))
             assert ack["complete_local_evidence_verified"] is True
             assert (evidence / HOST._LOCAL_MANIFEST).is_file()
-            if upload_attempts == 1:
-                return _completed(args, returncode=1)
             upload_confirmed.set()
         if "exec" in args and not upload_confirmed.wait(timeout=5.0):
             return _completed(args, returncode=1)
@@ -224,7 +247,7 @@ def test_continuous_retention_verifies_bytes_before_ack(
         poll_seconds=0.01,
     )
 
-    assert upload_attempts == 2
+    assert upload_attempts == 1
     assert all((evidence / name).is_file() for name in HOST._REQUIRED_REMOTE_FILES)
     manifest = json.loads((evidence / HOST._LOCAL_MANIFEST).read_text(encoding="utf-8"))
     assert manifest["complete_local_evidence_verified"] is True
@@ -254,7 +277,14 @@ def test_failed_remote_driver_drains_last_evidence_without_ack(
             return True
         return False
 
-    def run(args: tuple[str, ...]) -> object:
+    def run(
+        args: tuple[str, ...],
+        *,
+        timeout_seconds: float | None = None,
+        abort_event: threading.Event | None = None,
+    ) -> object:
+        if "stop" in args:
+            return _completed(args)
         assert "exec" in args
         return _completed(args, returncode=1)
 
@@ -305,7 +335,14 @@ def test_failed_driver_interrupts_watcher_scan_before_final_drain(
         time.sleep(0.1)
         return False
 
-    def run(args: tuple[str, ...]) -> object:
+    def run(
+        args: tuple[str, ...],
+        *,
+        timeout_seconds: float | None = None,
+        abort_event: threading.Event | None = None,
+    ) -> object:
+        if "stop" in args:
+            return _completed(args)
         assert "exec" in args
         assert first_download_started.wait(timeout=2.0)
         return _completed(args, returncode=1)
@@ -334,7 +371,12 @@ def test_download_timeout_does_not_replace_existing_evidence(
     target = tmp_path / "gemma-observation.json"
     target.write_bytes(b"prior-retained-evidence")
 
-    def run(args: tuple[str, ...], *, timeout_seconds: float | None = None) -> object:
+    def run(
+        args: tuple[str, ...],
+        *,
+        timeout_seconds: float | None = None,
+        abort_event: threading.Event | None = None,
+    ) -> object:
         assert timeout_seconds == 20.0
         Path(args[-1]).write_bytes(b"partial-new-evidence")
         raise subprocess.TimeoutExpired(args, timeout_seconds)
@@ -361,7 +403,12 @@ def test_force_refresh_replaces_early_partial_copy(
     target = evidence / "gemma-observation.json"
     target.write_bytes(b"partial")
 
-    def run(args: tuple[str, ...], *, timeout_seconds: float | None = None) -> object:
+    def run(
+        args: tuple[str, ...],
+        *,
+        timeout_seconds: float | None = None,
+        abort_event: threading.Event | None = None,
+    ) -> object:
         assert timeout_seconds == 20.0
         Path(args[-1]).write_bytes(b"complete-evidence")
         return _completed(args)
@@ -376,6 +423,15 @@ def test_force_refresh_replaces_early_partial_copy(
         force=True,
     )
     assert target.read_bytes() == b"complete-evidence"
+    journal = (evidence / HOST._COPY_JOURNAL).read_bytes()
+    entry = json.loads(journal)
+    assert entry == {
+        "byte_count": len(b"complete-evidence"),
+        "path": target.name,
+        "sha256": hashlib.sha256(b"complete-evidence").hexdigest(),
+        "state": "PROVISIONAL_COPY_ONLY",
+    }
+    assert journal == HOST._canonical_json_bytes(entry)
 
 
 def test_run_rejects_host_receipt_for_different_session(tmp_path: Path) -> None:
@@ -476,3 +532,317 @@ def test_run_requires_host_launch_consumption(tmp_path: Path) -> None:
             remote_python="/content/MESC/.venv/bin/python",
             expected_canonical_revision="a" * 40,
         )
+
+
+@pytest.mark.parametrize("outcome", ["missing", "failed", "wrong-session", "wrong-receipt", "bool"])
+def test_run_requires_successful_bound_allocation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, outcome: str
+) -> None:
+    _write_valid_host_receipt(tmp_path)
+    path = tmp_path / HOST._ALLOCATION_OUTCOME
+    if outcome == "missing":
+        path.unlink()
+    else:
+        document = json.loads(path.read_bytes())
+        if outcome == "failed":
+            document["returncode"] = 1
+        elif outcome == "wrong-session":
+            document["session_name"] = "other-session"
+        elif outcome == "wrong-receipt":
+            document["host_launch_receipt_sha256"] = "f" * 64
+        else:
+            document["returncode"] = False
+        path.write_bytes(HOST._canonical_json_bytes(document))
+
+    def forbidden(*args: object, **kwargs: object) -> None:
+        pytest.fail("allocation failure must prevent every Colab command")
+
+    monkeypatch.setattr(HOST, "_run_colab", forbidden)
+    with pytest.raises(HOST.EvidenceRecovery2HostError, match="allocation outcome"):
+        HOST.run_with_continuous_retention(
+            colab_bin="colab",
+            session_name="mesc-evidence-recovery-2",
+            local_evidence_dir=tmp_path,
+            remote_repository_root="/content/MESC",
+            remote_custody="/content/custody",
+            remote_python="/content/MESC/.venv/bin/python",
+            expected_canonical_revision="a" * 40,
+        )
+    assert not (tmp_path / "evidence-recovery-2-colab-runner.py").exists()
+
+
+@pytest.mark.parametrize("failure", ["watcher", "copy-out", "integrity", "ack"])
+def test_terminal_retention_failure_stops_consumed_session_without_retry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failure: str
+) -> None:
+    _write_valid_host_receipt(tmp_path)
+    remote = _remote_fixture()
+    if failure == "integrity":
+        remote["gemma-observation.json"] = b"corrupted-final-evidence"
+    exec_started = threading.Event()
+    session_stopped = threading.Event()
+    commands: list[str] = []
+    uploads = 0
+
+    def download(**kwargs: object) -> bool:
+        if session_stopped.is_set():
+            return False
+        assert exec_started.wait(timeout=2.0)
+        if failure == "watcher":
+            raise OSError("local evidence disk unavailable")
+        if failure == "copy-out" and kwargs.get("force") is True:
+            return False
+        name = kwargs["name"]
+        assert isinstance(name, str)
+        (tmp_path / name).write_bytes(remote[name])
+        return True
+
+    def run(
+        args: tuple[str, ...],
+        *,
+        timeout_seconds: float | None = None,
+        abort_event: threading.Event | None = None,
+    ) -> object:
+        nonlocal uploads
+        command = args[1]
+        commands.append(command)
+        if command == "exec":
+            exec_started.set()
+            assert session_stopped.wait(timeout=3.0), "remote execution was not stopped"
+            return _completed(args, returncode=1)
+        if command == "upload":
+            uploads += 1
+            return _completed(args, returncode=1)
+        assert command == "stop"
+        assert timeout_seconds == 20.0
+        assert args[2:] == ("--session", "mesc-evidence-recovery-2")
+        session_stopped.set()
+        return _completed(args)
+
+    monkeypatch.setattr(HOST, "_download_once", download)
+    monkeypatch.setattr(HOST, "_run_colab", run)
+    with pytest.raises(HOST.EvidenceRecovery2HostError, match="watcher failed"):
+        HOST.run_with_continuous_retention(
+            colab_bin="colab",
+            session_name="mesc-evidence-recovery-2",
+            local_evidence_dir=tmp_path,
+            remote_repository_root="/content/MESC",
+            remote_custody="/content/custody",
+            remote_python="/content/MESC/.venv/bin/python",
+            expected_canonical_revision="a" * 40,
+            poll_seconds=0.01,
+        )
+    assert commands.count("exec") == 1
+    assert commands.count("stop") == 1
+    assert "new" not in commands
+    assert uploads == (1 if failure == "ack" else 0)
+    if failure != "ack":
+        assert not (tmp_path / HOST._LOCAL_MANIFEST).exists()
+        assert not (tmp_path / HOST._REMOTE_ACK).exists()
+    stop_outcome = json.loads(
+        (tmp_path / "evidence-recovery-2-colab-stop-outcome.json").read_bytes()
+    )
+    assert stop_outcome["returncode"] == 0
+
+
+def test_immediate_watcher_failure_exposes_unproven_stop_before_exec(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _write_valid_host_receipt(tmp_path)
+    commands: list[str] = []
+
+    class FastFailureThread(threading.Thread):
+        def start(self) -> None:
+            super().start()
+            self.join(timeout=2.0)
+
+    def download(**kwargs: object) -> bool:
+        raise OSError("immediate evidence-disk failure")
+
+    def run(
+        args: tuple[str, ...],
+        *,
+        timeout_seconds: float | None = None,
+        abort_event: threading.Event | None = None,
+    ) -> object:
+        commands.append(args[1])
+        assert args[1] == "stop"
+        return _completed(args, returncode=1)
+
+    monkeypatch.setattr(HOST.threading, "Thread", FastFailureThread)
+    monkeypatch.setattr(HOST, "_download_once", download)
+    monkeypatch.setattr(HOST, "_run_colab", run)
+    with pytest.raises(HOST.EvidenceRecovery2HostError, match="UNPROVEN; operator intervention"):
+        HOST.run_with_continuous_retention(
+            colab_bin="colab",
+            session_name="mesc-evidence-recovery-2",
+            local_evidence_dir=tmp_path,
+            remote_repository_root="/content/MESC",
+            remote_custody="/content/custody",
+            remote_python="/content/MESC/.venv/bin/python",
+            expected_canonical_revision="a" * 40,
+        )
+    assert commands == ["stop"]
+
+
+def test_provisional_copy_journal_preserves_each_copy_identity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    copies = iter((b"early-partial", b"final-evidence"))
+
+    def run(
+        args: tuple[str, ...],
+        *,
+        timeout_seconds: float | None = None,
+        abort_event: threading.Event | None = None,
+    ) -> object:
+        Path(args[-1]).write_bytes(next(copies))
+        return _completed(args)
+
+    monkeypatch.setattr(HOST, "_run_colab", run)
+    for _ in range(2):
+        assert HOST._download_once(
+            colab_bin="colab",
+            session_name="mesc-evidence-recovery-2",
+            remote_custody="/content/custody",
+            local_dir=tmp_path,
+            name="gemma-observation.json",
+            force=True,
+        )
+    rows = [json.loads(line) for line in (tmp_path / HOST._COPY_JOURNAL).read_bytes().splitlines()]
+    assert [row["sha256"] for row in rows] == [
+        hashlib.sha256(raw).hexdigest() for raw in (b"early-partial", b"final-evidence")
+    ]
+    assert [row["byte_count"] for row in rows] == [len(b"early-partial"), len(b"final-evidence")]
+    assert all(row["state"] == "PROVISIONAL_COPY_ONLY" for row in rows)
+    assert not (tmp_path / HOST._LOCAL_MANIFEST).exists()
+
+
+@pytest.mark.parametrize("failure", ["timeout", "launch", "nonzero"])
+def test_failed_provider_stop_is_retained_and_reported(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failure: str
+) -> None:
+    _write_valid_host_receipt(tmp_path)
+    exec_started = threading.Event()
+    stop_attempted = threading.Event()
+
+    def download(**kwargs: object) -> bool:
+        if stop_attempted.is_set():
+            return False
+        assert exec_started.wait(timeout=2.0)
+        raise OSError("local-copy failure")
+
+    def run(
+        args: tuple[str, ...],
+        *,
+        timeout_seconds: float | None = None,
+        abort_event: threading.Event | None = None,
+    ) -> object:
+        if args[1] == "exec":
+            assert "--timeout" in args
+            assert timeout_seconds == HOST._EXEC_WAIT_SECONDS + 20.0
+            assert abort_event is not None
+            exec_started.set()
+            assert abort_event.wait(timeout=2.0)
+            return _completed(args, returncode=1)
+        assert args[1] == "stop"
+        stop_attempted.set()
+        if failure == "timeout":
+            raise subprocess.TimeoutExpired(args, 20.0, output=b"partial-stop", stderr=b"network")
+        if failure == "launch":
+            raise OSError("stop client unavailable")
+        return _completed(args, returncode=1)
+
+    monkeypatch.setattr(HOST, "_download_once", download)
+    monkeypatch.setattr(HOST, "_run_colab", run)
+    with pytest.raises(HOST.EvidenceRecovery2HostError, match="UNPROVEN; operator intervention"):
+        HOST.run_with_continuous_retention(
+            colab_bin="colab",
+            session_name="mesc-evidence-recovery-2",
+            local_evidence_dir=tmp_path,
+            remote_repository_root="/content/MESC",
+            remote_custody="/content/custody",
+            remote_python="/content/MESC/.venv/bin/python",
+            expected_canonical_revision="a" * 40,
+            poll_seconds=0.01,
+        )
+    outcome = json.loads((tmp_path / "evidence-recovery-2-colab-stop-outcome.json").read_bytes())
+    assert outcome["termination_state"] == "UNPROVEN"
+    assert outcome["session_name"] == "mesc-evidence-recovery-2"
+    if failure == "timeout":
+        assert outcome["stdout"] == "partial-stop"
+        assert outcome["stderr"] == "network"
+        assert outcome["error_type"] == "TimeoutExpired"
+    assert not (tmp_path / HOST._REMOTE_ACK).exists()
+
+
+def test_supervised_local_client_cancels_without_waiting_for_remote_completion() -> None:
+    abort = threading.Event()
+    timer = threading.Timer(0.5, abort.set)
+    timer.start()
+    started = time.monotonic()
+    try:
+        result = HOST._run_colab(
+            (sys.executable, "-u", "-c", "import time; print('started'); time.sleep(30)"),
+            timeout_seconds=10.0,
+            abort_event=abort,
+        )
+    finally:
+        timer.cancel()
+    assert time.monotonic() - started < 8.0
+    assert result.returncode != 0
+    assert "started" in result.stdout
+
+
+def test_supervised_local_client_timeout_preserves_captured_output() -> None:
+    with pytest.raises(subprocess.TimeoutExpired) as raised:
+        HOST._run_colab(
+            (sys.executable, "-u", "-c", "import time; print('started'); time.sleep(30)"),
+            timeout_seconds=0.5,
+            abort_event=threading.Event(),
+        )
+    assert "started" in str(raised.value.stdout)
+
+
+def test_exec_client_timeout_is_retained_and_stops_the_consumed_session(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _write_valid_host_receipt(tmp_path)
+    commands: list[str] = []
+
+    def download(**kwargs: object) -> bool:
+        return False
+
+    def run(
+        args: tuple[str, ...],
+        *,
+        timeout_seconds: float | None = None,
+        abort_event: threading.Event | None = None,
+    ) -> object:
+        commands.append(args[1])
+        if args[1] == "exec":
+            raise subprocess.TimeoutExpired(
+                args, timeout_seconds or 1.0, output="early diagnostics"
+            )
+        assert args[1] == "stop"
+        return _completed(args)
+
+    monkeypatch.setattr(HOST, "_download_once", download)
+    monkeypatch.setattr(HOST, "_run_colab", run)
+    with pytest.raises(HOST.EvidenceRecovery2HostError, match="launch consumed"):
+        HOST.run_with_continuous_retention(
+            colab_bin="colab",
+            session_name="mesc-evidence-recovery-2",
+            local_evidence_dir=tmp_path,
+            remote_repository_root="/content/MESC",
+            remote_custody="/content/custody",
+            remote_python="/content/MESC/.venv/bin/python",
+            expected_canonical_revision="a" * 40,
+            poll_seconds=0.01,
+        )
+    assert commands == ["exec", "stop"]
+    outcome = json.loads((tmp_path / "evidence-recovery-2-colab-exec-outcome.json").read_bytes())
+    assert outcome["error_type"] == "TimeoutExpired"
+    assert outcome["stdout"] == "early diagnostics"
+    assert outcome["returncode"] is None
+    assert not (tmp_path / HOST._REMOTE_ACK).exists()
