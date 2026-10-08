@@ -1,0 +1,27 @@
+VALIDATE_BEGIN
+HEAD=ac29a73e688da39485f7a5a4ab707944e18542c9
+TREE=e991b506d8a4eeb432cecd3b4bc27e351c779cab
+LIVE_MAIN=ac29a73e688da39485f7a5a4ab707944e18542c9
+TRACKED_CLEAN=True
+CUSTODY_EXISTS=False
+FAILURE_RECORD_EXISTS=False
+RESULT_RECORD_EXISTS=False
+BWRAP=/usr/bin/bwrap
+PYTHON_VERSION=Python 3.11.17
+CONTENT_FREE_BYTES=64779390976
+HF_TOKEN=UNSET
+HUGGING_FACE_HUB_TOKEN=UNSET
+NVIDIA=Tesla T4, GPU-9daf1c7c-209d-5ced-f3d1-4401cb179368, 15360
+COLAB_RELEASE_TAG=release-colab-external-images_20261001-060042_RC00
+BOOT_ID=9f707aa9-7d70-4bb6-b9f5-44dd7fdd3897
+PACKAGES={"accelerate": "1.14.0", "bitsandbytes": "0.50.2", "huggingface-hub": "1.23.0", "pillow": "12.3.0", "torch": "2.13.0", "torchvision": "0.28.0", "transformers": "5.16.1", "xgrammar": "0.2.7"}
+AUTHORITY_PASS
+authorization_sha256=673407d170cc3c43e9d162d1b71d62ef9732397be971efd7f8414ea03bb75e72
+decision_sha256=a2e51e5042398bcdd164e770bf3a85f87077aba16f9eb76cf83339244c9a6b45
+static_manifest_sha256=501c4af9141a561564c95c5d80dc35be8f614b614f42f7f49cac37ce025afe93
+bmm_repair_merge_sha=07a20c8a01a6b3562b98fa48fbd19ed11be7a8eb
+bmm_repair_merge_tree=0ae92820f266bf17a23507e3286ae33f968a2972
+SHA256 scripts/mesc_mrl_0809_stage4_v2_retry_2_driver.py ac4d619ed6b656c49d024cd4094443287c7ef573fec5ce44d73129b95ac5d543
+SHA256 src/medscale/mesc/_mrl_0809_stage4_retry_2_gate_v1.py 2bf497a8a068c8d2a3c9699fb1a7b29e751ec046189ca9020584150219a69666
+SHA256 specs/mesc-experiment-0/mrl-0809-stage4-retry-2-static-prerequisites-v1.json 501c4af9141a561564c95c5d80dc35be8f614b614f42f7f49cac37ce025afe93
+VALIDATE_PASS

@@ -1,0 +1,8 @@
+RECOVERY_DRIVER_INVOCATION_BEGIN
+/content/MESC/.venv/bin/python /content/MESC/scripts/mesc_mrl_0809_evidence_recovery_1_driver.py --repository-root /content/MESC --custody /content/mrl0809-evidence-recovery-1-custody --python-executable /content/MESC/.venv/bin/python --expected-canonical-revision fd1c72f216886e6bb6b708ffd6bb3a335606e6ce
+DRIVER_RC=0
+An exception has occurred, use %tb to see the full traceback.
+[0;31mSystemExit[0m[0;31m:[0m 0
+
+/usr/local/lib/python3.13/dist-packages/IPython/core/interactiveshell.py:3561: UserWarning: To exit: use 'exit', 'quit', or Ctrl-D.
+  warn("To exit: use 'exit', 'quit', or Ctrl-D.", stacklevel=1)
