@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 from medscale.mesc import _mrl_0809_evidence_recovery_3_gate_v1 as gate
+from medscale.mesc._canonical_json_v1 import canonical_json_bytes
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -48,7 +49,7 @@ def test_unsupported_nominal_rate_zero_requirement_is_rejected() -> None:
     with pytest.raises(
         gate.MRL0809EvidenceRecovery3GateError, match="paid-unit preflight weakened"
     ):
-        gate._check_authorization(gate.canonical_json_bytes(data))
+        gate._check_authorization(canonical_json_bytes(data))
 
 
 def test_recovery2_unconsumed_claim_is_rejected() -> None:
