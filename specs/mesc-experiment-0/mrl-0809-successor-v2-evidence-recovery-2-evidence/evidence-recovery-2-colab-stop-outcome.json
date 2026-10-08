@@ -1,0 +1,1 @@
+{"returncode":0,"schema_version":"MESC-MRL-0809-EVIDENCE-RECOVERY-2-HOST-STOP-OUTCOME-V1","session_name":"mesc-evidence-recovery-2","stderr":"","stdout":"[colab] Stopping session 'mesc-evidence-recovery-2'...\n[colab] Session terminated.\n","termination_state":"STOP_COMMAND_SUCCEEDED"}
