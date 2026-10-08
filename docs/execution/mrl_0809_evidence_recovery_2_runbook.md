@@ -122,6 +122,14 @@ The host acknowledgement is permitted only after the complete local evidence set
 and every individual artifact matches the bundle's byte count and SHA-256 identity.
 
 Standard-output history is not a sufficient retention path for Recovery-2.
+The host fsyncs the Colab allocation and remote-exec return codes, stdout and stderr in
+local `evidence-recovery-2-colab-allocation-outcome.json` and
+`evidence-recovery-2-colab-exec-outcome.json`, respectively. These diagnostic-only receipts
+preserve early failure causes even when the remote driver exits before creating custody;
+they never establish successful model execution, verified evidence, or launch authority.
+If an uploaded host ACK is observed before all bytes become visible, the remote driver
+retries unreadable or non-canonical JSON only until the fixed acknowledgement deadline.
+A structurally valid but wrong ACK still fails immediately and never admits recovery success.
 
 ### Failure-path custody preservation
 

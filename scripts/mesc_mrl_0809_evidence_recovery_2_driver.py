@@ -249,7 +249,18 @@ def _wait_for_host_ack(
     while time.monotonic() < deadline:
         ack_path = custody / _HOST_ACK
         if ack_path.is_file():
-            ack = _load_ack(ack_path)
+            try:
+                ack = _load_ack(ack_path)
+            except EvidenceRecovery2LaunchError as exc:
+                # An upload may be visible before its final bytes land. Retry
+                # only transient read/canonicalization failures until deadline.
+                if str(exc) not in (
+                    "host acknowledgement is unreadable",
+                    "host acknowledgement is not canonical JSON",
+                ):
+                    raise
+                time.sleep(poll_seconds)
+                continue
             if ack.get("schema_version") != _ACK_SCHEMA:
                 raise EvidenceRecovery2LaunchError("host acknowledgement schema drifted")
             if ack.get("bundle_sha256") != expected_sha:

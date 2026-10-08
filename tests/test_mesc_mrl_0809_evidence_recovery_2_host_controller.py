@@ -93,6 +93,10 @@ def test_allocate_persists_consumption_before_colab_new(
         decision_sha256="d" * 64,
     )
     assert seen == [("colab", "new", "--session", "mesc-evidence-recovery-2", "--gpu", "T4")]
+    outcome = json.loads(
+        (evidence / "evidence-recovery-2-colab-allocation-outcome.json").read_text(encoding="utf-8")
+    )
+    assert outcome["returncode"] == 0
 
 
 def test_failed_allocation_remains_consumed_and_does_not_retry(
@@ -273,6 +277,12 @@ def test_failed_remote_driver_drains_last_evidence_without_ack(
     assert (evidence / last_artifact).read_bytes() == retained
     assert not (evidence / HOST._LOCAL_MANIFEST).exists()
     assert not (evidence / HOST._REMOTE_ACK).exists()
+    outcome = json.loads(
+        (evidence / "evidence-recovery-2-colab-exec-outcome.json").read_text(encoding="utf-8")
+    )
+    assert outcome["returncode"] == 1
+    assert outcome["stdout"] == ""
+    assert outcome["stderr"] == ""
 
 
 def test_failed_driver_interrupts_watcher_scan_before_final_drain(

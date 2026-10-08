@@ -189,6 +189,17 @@ def allocate_single_t4_session(
         ),
     )
     result = _run_colab((colab_bin, "new", "--session", session_name, "--gpu", "T4"))
+    _write_new_fsync(
+        evidence_dir / "evidence-recovery-2-colab-allocation-outcome.json",
+        _canonical_json_bytes(
+            {
+                "returncode": result.returncode,
+                "stdout": result.stdout,
+                "stderr": result.stderr,
+                "schema_version": "MESC-MRL-0809-EVIDENCE-RECOVERY-2-HOST-ALLOC-OUTCOME-V1",
+            }
+        ),
+    )
     if result.returncode != 0:
         raise EvidenceRecovery2HostError(
             "single authorized Colab allocation failed after launch consumption"
@@ -505,6 +516,19 @@ def run_with_continuous_retention(
         raise EvidenceRecovery2HostError("continuous-retention watcher did not start")
     try:
         result = _run_colab((colab_bin, "exec", "--session", session_name, "-f", str(runner_path)))
+        # Preserve early driver errors locally even when custody does not exist.
+        # This receipt is diagnostic only, never a verified-evidence manifest.
+        _write_new_fsync(
+            local_dir / "evidence-recovery-2-colab-exec-outcome.json",
+            _canonical_json_bytes(
+                {
+                    "returncode": result.returncode,
+                    "stdout": result.stdout,
+                    "stderr": result.stderr,
+                    "schema_version": "MESC-MRL-0809-EVIDENCE-RECOVERY-2-HOST-EXEC-OUTCOME-V1",
+                }
+            ),
+        )
     finally:
         stop.set()
         thread.join(timeout=25.0)

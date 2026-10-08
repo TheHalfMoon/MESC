@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 import sys
+import threading
+import time
 from pathlib import Path
 from types import ModuleType
 
@@ -158,6 +161,45 @@ def test_ack_must_bind_bundle_and_verified_local_manifest(tmp_path: Path) -> Non
             bundle=bundle,
             timeout_seconds=0.1,
             poll_seconds=0.01,
+        )
+
+
+def test_partial_ack_is_retried_until_complete_and_verified(tmp_path: Path) -> None:
+    custody = tmp_path / "custody"
+    custody.mkdir()
+    bundle = b'{"schema_version":"synthetic"}\n'
+    ack_path = custody / DRIVER._HOST_ACK
+    ack_path.write_bytes(b'{"incomplete":')
+    valid_ack = DRIVER._canonical_json_bytes(
+        {
+            "bundle_byte_count": len(bundle),
+            "bundle_sha256": hashlib.sha256(bundle).hexdigest(),
+            "complete_local_evidence_verified": True,
+            "local_manifest_sha256": "1" * 64,
+            "schema_version": DRIVER._ACK_SCHEMA,
+        }
+    )
+
+    def complete_upload() -> None:
+        time.sleep(0.04)
+        ack_path.write_bytes(valid_ack)
+
+    thread = threading.Thread(target=complete_upload)
+    thread.start()
+    try:
+        DRIVER._wait_for_host_ack(custody, bundle=bundle, timeout_seconds=1.0, poll_seconds=0.01)
+    finally:
+        thread.join(timeout=2.0)
+    assert not thread.is_alive()
+
+
+def test_permanently_partial_ack_never_returns_success(tmp_path: Path) -> None:
+    custody = tmp_path / "custody"
+    custody.mkdir()
+    (custody / DRIVER._HOST_ACK).write_bytes(b'{"incomplete":')
+    with pytest.raises(DRIVER.EvidenceRecovery2LaunchError, match="timed out"):
+        DRIVER._wait_for_host_ack(
+            custody, bundle=b"synthetic", timeout_seconds=0.05, poll_seconds=0.01
         )
 
 
