@@ -3,8 +3,10 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import json
+import subprocess
 import sys
 import threading
+import time
 from pathlib import Path
 from types import ModuleType
 
@@ -187,9 +189,10 @@ def test_continuous_retention_verifies_bytes_before_ack(
         path.write_bytes(remote[name])
         return True
 
-    def run(args: tuple[str, ...]) -> object:
+    def run(args: tuple[str, ...], *, timeout_seconds: float | None = None) -> object:
         nonlocal upload_attempts
         if "upload" in args:
+            assert timeout_seconds == 20.0
             upload_attempts += 1
             ack_path = Path(args[-2])
             assert ack_path.is_file()
@@ -272,6 +275,73 @@ def test_failed_remote_driver_drains_last_evidence_without_ack(
     assert not (evidence / HOST._REMOTE_ACK).exists()
 
 
+def test_failed_driver_interrupts_watcher_scan_before_final_drain(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    evidence = tmp_path / "evidence"
+    evidence.mkdir()
+    _write_valid_host_receipt(evidence)
+    first_download_started = threading.Event()
+    initial_requests: list[str] = []
+
+    def download(**kwargs: object) -> bool:
+        if kwargs.get("force") is True:
+            return False
+        name = kwargs["name"]
+        assert isinstance(name, str)
+        initial_requests.append(name)
+        first_download_started.set()
+        time.sleep(0.1)
+        return False
+
+    def run(args: tuple[str, ...]) -> object:
+        assert "exec" in args
+        assert first_download_started.wait(timeout=2.0)
+        return _completed(args, returncode=1)
+
+    monkeypatch.setattr(HOST, "_download_once", download)
+    monkeypatch.setattr(HOST, "_run_colab", run)
+    with pytest.raises(HOST.EvidenceRecovery2HostError, match="remote Recovery-2 driver failed"):
+        HOST.run_with_continuous_retention(
+            colab_bin="colab",
+            session_name="mesc-evidence-recovery-2",
+            local_evidence_dir=evidence,
+            remote_repository_root="/content/MESC",
+            remote_custody="/content/custody",
+            remote_python="/content/MESC/.venv/bin/python",
+            expected_canonical_revision="a" * 40,
+            poll_seconds=0.01,
+        )
+    assert initial_requests == [HOST._REQUIRED_REMOTE_FILES[0]]
+    assert not (evidence / HOST._REMOTE_ACK).exists()
+
+
+def test_download_timeout_does_not_replace_existing_evidence(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    target = tmp_path / "gemma-observation.json"
+    target.write_bytes(b"prior-retained-evidence")
+
+    def run(args: tuple[str, ...], *, timeout_seconds: float | None = None) -> object:
+        assert timeout_seconds == 20.0
+        Path(args[-1]).write_bytes(b"partial-new-evidence")
+        raise subprocess.TimeoutExpired(args, timeout_seconds)
+
+    monkeypatch.setattr(HOST, "_run_colab", run)
+    assert not HOST._download_once(
+        colab_bin="colab",
+        session_name="mesc-evidence-recovery-2",
+        remote_custody="/content/custody",
+        local_dir=tmp_path,
+        name="gemma-observation.json",
+        force=True,
+    )
+    assert target.read_bytes() == b"prior-retained-evidence"
+    assert not (tmp_path / ".partial" / "gemma-observation.json.partial").exists()
+
+
 def test_force_refresh_replaces_early_partial_copy(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -281,7 +351,8 @@ def test_force_refresh_replaces_early_partial_copy(
     target = evidence / "gemma-observation.json"
     target.write_bytes(b"partial")
 
-    def run(args: tuple[str, ...]) -> object:
+    def run(args: tuple[str, ...], *, timeout_seconds: float | None = None) -> object:
+        assert timeout_seconds == 20.0
         Path(args[-1]).write_bytes(b"complete-evidence")
         return _completed(args)
 

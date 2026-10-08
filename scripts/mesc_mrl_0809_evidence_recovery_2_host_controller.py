@@ -93,13 +93,16 @@ def _replace_fsync(temp_path: Path, final_path: Path) -> None:
     _fsync_directory(final_path.parent)
 
 
-def _run_colab(args: Sequence[str]) -> subprocess.CompletedProcess[str]:
+def _run_colab(
+    args: Sequence[str], *, timeout_seconds: float | None = None
+) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         tuple(args),
         check=False,
         text=True,
         encoding="utf-8",
         capture_output=True,
+        timeout=timeout_seconds,
     )
 
 
@@ -210,16 +213,21 @@ def _download_once(
     temp_path = partial_dir / f"{name}.partial"
     temp_path.unlink(missing_ok=True)
     remote_path = f"{remote_custody.rstrip('/')}/{name}"
-    result = _run_colab(
-        (
-            colab_bin,
-            "download",
-            "--session",
-            session_name,
-            remote_path,
-            str(temp_path),
+    try:
+        result = _run_colab(
+            (
+                colab_bin,
+                "download",
+                "--session",
+                session_name,
+                remote_path,
+                str(temp_path),
+            ),
+            timeout_seconds=20.0,
         )
-    )
+    except subprocess.TimeoutExpired:
+        temp_path.unlink(missing_ok=True)
+        return False
     if result.returncode != 0 or not temp_path.is_file():
         temp_path.unlink(missing_ok=True)
         return False
@@ -363,16 +371,20 @@ def _upload_ack(
     ack_path: Path,
 ) -> bool:
     remote_path = f"{remote_custody.rstrip('/')}/{_REMOTE_ACK}"
-    result = _run_colab(
-        (
-            colab_bin,
-            "upload",
-            "--session",
-            session_name,
-            str(ack_path),
-            remote_path,
+    try:
+        result = _run_colab(
+            (
+                colab_bin,
+                "upload",
+                "--session",
+                session_name,
+                str(ack_path),
+                remote_path,
+            ),
+            timeout_seconds=20.0,
         )
-    )
+    except subprocess.TimeoutExpired:
+        return False
     return result.returncode == 0
 
 
@@ -432,6 +444,8 @@ def run_with_continuous_retention(
         try:
             while not stop.is_set():
                 for name in _REQUIRED_REMOTE_FILES:
+                    if stop.is_set():
+                        return
                     _download_once(
                         colab_bin=colab_bin,
                         session_name=session_name,
@@ -440,9 +454,13 @@ def run_with_continuous_retention(
                         name=name,
                     )
 
+                if stop.is_set():
+                    return
                 if (local_dir / _REMOTE_READY).is_file():
                     refresh_complete = True
                     for name in _REQUIRED_REMOTE_FILES:
+                        if stop.is_set():
+                            return
                         if not _download_once(
                             colab_bin=colab_bin,
                             session_name=session_name,
@@ -473,11 +491,6 @@ def run_with_continuous_retention(
             watcher_error.append(exc)
             stop.set()
 
-    thread = threading.Thread(target=watcher, name="mesc-recovery2-retention", daemon=True)
-    thread.start()
-    if not thread.is_alive():
-        raise EvidenceRecovery2HostError("continuous-retention watcher did not start")
-
     runner_path = local_dir / "evidence-recovery-2-colab-runner.py"
     _write_runner(
         runner_path,
@@ -486,11 +499,15 @@ def run_with_continuous_retention(
         remote_python=remote_python,
         expected_canonical_revision=expected_canonical_revision,
     )
+    thread = threading.Thread(target=watcher, name="mesc-recovery2-retention", daemon=True)
+    thread.start()
+    if not thread.is_alive():
+        raise EvidenceRecovery2HostError("continuous-retention watcher did not start")
     try:
         result = _run_colab((colab_bin, "exec", "--session", session_name, "-f", str(runner_path)))
     finally:
         stop.set()
-        thread.join(timeout=10.0)
+        thread.join(timeout=25.0)
         # A failing remote driver may have produced its last evidence after the
         # watcher's final poll. Preserve the bytes without granting success.
         if not ack_complete.is_set() and not thread.is_alive():

@@ -123,6 +123,20 @@ and every individual artifact matches the bundle's byte count and SHA-256 identi
 
 Standard-output history is not a sufficient retention path for Recovery-2.
 
+### Failure-path custody preservation
+
+If the remote driver exits without an acknowledged, completely verified evidence set, the host
+stops the watcher and performs one best-effort final copy-out sweep of the frozen custody
+filename list. Each host download and ACK upload attempt has a 20-second subprocess timeout;
+the watcher is given a bounded 25-second shutdown after the stop signal. No automatic
+reallocation or relaunch is permitted. Files copied before the ready marker, and all files
+retained after a failed run, remain **provisional failure evidence**, not a verification PASS.
+This last sweep cannot create the local success manifest or upload an ACK, and failure to
+complete it does not change the fail-closed runtime disposition. The controller uses a local
+`.partial/` directory for temporary downloads and a local
+`evidence-recovery-2-colab-runner.py` to invoke the frozen remote driver. Neither is
+independently admitted as scientific evidence.
+
 ## Session preflight
 
 Inside the one allocated session, establish before runtime execution:
