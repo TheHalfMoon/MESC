@@ -18,12 +18,14 @@ sys.path.insert(0, str(WORKSPACE_SRC))
 
 import medscale_workspace  # noqa: E402 runtime import
 from medscale_workspace import (  # noqa: E402 runtime import
+    AuditEventType,
     AuditTrail,
     DataClass,
     TrustDomain,
     WorkspaceStore,
     classify,
     classify_object,
+    content_digest_of,
     guard_object_handoff,
 )
 from medscale_workspace import corpus as corpus_mod  # noqa: E402 runtime import
@@ -376,6 +378,7 @@ def test_export_stages_domain_x_envelope(tmp_path: Path) -> None:
                 ).object_id
             )
         )
+        before_export = trail.events()
         envelope, manifest = fhir_mod.stage_fhir_export(
             store,
             trail,
@@ -388,11 +391,25 @@ def test_export_stages_domain_x_envelope(tmp_path: Path) -> None:
             T2,
         )
         assert envelope.entry_count == 2
-        assert envelope.manifest_digest.startswith("sha256:")
+        assert envelope.manifest_digest == content_digest_of(manifest)
         document = json.loads(manifest.decode("ascii"))
         assert document["bundle_type"] == "transaction"
         assert document["entry_count"] == 2
-        assert trail.head() is not None
+        after_export = trail.events()
+        assert len(after_export) == len(before_export) + 1
+        assert after_export[:-1] == before_export
+        event = after_export[-1]
+        assert event.event_type is AuditEventType.EXPORT
+        assert event.actor_id == ACTOR
+        assert event.occurred_at == T2
+        assert event.workspace_id == WORKSPACE_ALPHA
+        assert event.previous_event_digest == before_export[-1].event_digest
+        assert tuple(ref.object_id for ref in event.object_refs) == (patient_id, observation_id)
+        assert dict(event.metadata) == {
+            "target_path": envelope.target_path,
+            "manifest_digest": envelope.manifest_digest,
+            "entry_count": "2",
+        }
         with pytest.raises(FhirInputError):
             fhir_mod.stage_fhir_export(
                 store,
@@ -405,6 +422,7 @@ def test_export_stages_domain_x_envelope(tmp_path: Path) -> None:
                 ACTOR,
                 T2,
             )
+        assert trail.events() == after_export
         classified = classify_object(
             binding=fhir_mod.resource_binding(WORKSPACE_ALPHA, patient_id),
             classification=classify(DataClass.SYNTHETIC),
