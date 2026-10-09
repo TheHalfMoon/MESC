@@ -2,11 +2,21 @@
 
 from __future__ import annotations
 
+import importlib.util
+from collections.abc import Callable
 from datetime import timedelta
+from pathlib import Path
 from types import SimpleNamespace
+from typing import cast
 
 import pytest
-from mesc_kaggle_readonly import observe
+
+SCRIPT = Path(__file__).resolve().parents[1] / "scripts/mesc_kaggle_readonly.py"
+SPEC = importlib.util.spec_from_file_location("mesc_kaggle_readonly_test", SCRIPT)
+assert SPEC is not None and SPEC.loader is not None
+MODULE = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(MODULE)
+observe = cast(Callable[[object], dict[str, object]], MODULE.observe)
 
 
 class FakeApi:
