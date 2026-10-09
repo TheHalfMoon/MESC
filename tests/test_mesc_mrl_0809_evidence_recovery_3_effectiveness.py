@@ -29,7 +29,7 @@ def _decision(*, state: str = "APPROVED") -> dict[str, object]:
         "state": state,
         "implementation_sha": APPROVED,
         "static_manifest_sha256": DIGEST,
-        "pull_request": 543,
+        "pull_request": 547,
         "allocations_authorized": 1,
         "provider_class": "GOOGLE_COLAB_FREE",
         "gpu_class": "STANDARD_T4",
@@ -68,6 +68,7 @@ def test_exact_separate_approval_is_bound_to_its_body_and_comment() -> None:
         ("paid_compute_authorized", True),
         ("automatic_retry_authorized", True),
         ("pull_request", 541),
+        ("pull_request", 543),
         ("provider_class", "PAID"),
         ("gpu_class", "A100"),
     ],
@@ -209,7 +210,7 @@ def _admission_fixture(
     }
     api: dict[str, object] = {
         "/repos/TheHalfMoon/MESC/commits/main": main,
-        "/repos/TheHalfMoon/MESC/pulls/543": pr,
+        "/repos/TheHalfMoon/MESC/pulls/547": pr,
     }
     authority = EvidenceRecovery3AuthorityIdentity(DIGEST, DIGEST, DIGEST, DIGEST, HEAD, TREE)
     monkeypatch.setattr(effectiveness, "__file__", str(source))
@@ -348,7 +349,7 @@ def test_missing_or_non_utc_merge_timestamp_blocks_admission(
     value: object,
 ) -> None:
     _, api = _admission_fixture(monkeypatch, tmp_path)
-    pr = api["/repos/TheHalfMoon/MESC/pulls/543"]
+    pr = api["/repos/TheHalfMoon/MESC/pulls/547"]
     assert isinstance(pr, dict)
     pr["merged_at"] = value
     with pytest.raises(MRL0809EvidenceRecovery3GateError, match="timestamp"):

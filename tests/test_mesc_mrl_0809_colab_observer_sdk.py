@@ -2,11 +2,20 @@
 
 from __future__ import annotations
 
+import importlib.util
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
-import mesc_mrl_0809_evidence_recovery_3_control_plane as observer
+SCRIPT = (
+    Path(__file__).resolve().parents[1]
+    / "scripts/mesc_mrl_0809_evidence_recovery_3_control_plane.py"
+)
+SPEC = importlib.util.spec_from_file_location("mesc_colab_observer_sdk_test", SCRIPT)
+assert SPEC is not None and SPEC.loader is not None
+observer = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(observer)
 
 SESSION = "mesc-evidence-recovery-3"
 

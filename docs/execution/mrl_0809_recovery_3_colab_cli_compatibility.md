@@ -33,7 +33,7 @@ manifest. The previous final-SHA approval of PR #543 cannot authorize the
 changed implementation. A new immutable Founder decision must bind the
 qualified final repair head, its exact manifest digest and the repair PR,
 before its normal merge. The effectiveness verifier must target that repair
-PR and retain all approval-timing, normal-merge, source-identity and workflow
+PR #547 and retain all approval-timing, normal-merge, source-identity and workflow
 requirements. Its source digest is also included in the updated manifest.
 
 This is an amendment of the same still-unconsumed Recovery-3 grant, not a
@@ -43,6 +43,18 @@ driver, retention/ACK process and one-shot/no-retry limits are unchanged.
 Existing receipts, if any appear, always block allocation; this repair never
 removes or replaces them. The original PR #543 and its approval history are
 preserved.
+
+Use the immutable structured decision header
+`MESC_RECOVERY_3_FINAL_SHA_APPROVAL_V1` with this exact closed envelope after
+the Founder approves the fully qualified final identities:
+
+```json
+{"decision_id":"FD-MRL-0809-SUCCESSOR-V2-EVIDENCE-RECOVERY-3","state":"APPROVED","implementation_sha":"<EXACT_FINAL_40_HEX_SHA>","static_manifest_sha256":"<EXACT_FINAL_MANIFEST_64_HEX_SHA256>","pull_request":547,"allocations_authorized":1,"provider_class":"GOOGLE_COLAB_FREE","gpu_class":"STANDARD_T4","paid_compute_authorized":false,"automatic_retry_authorized":false}
+```
+
+The original activation runbook's PR #543 example remains historical; it
+does not activate this amended source. Do not post this template as an
+approval or substitute placeholders for real source identities.
 
 The Founder separately permitted the single allocation to act as the
 capacity test because CLI 0.7.4 has no supported read-only capacity query.
