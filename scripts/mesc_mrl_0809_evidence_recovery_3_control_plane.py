@@ -22,7 +22,7 @@ from medscale.mesc._mrl_0809_evidence_recovery_3_control_plane_v1 import (
 def observe(phase: str, session_name: str) -> dict[str, object]:
     # Import in the function so static qualification never needs colab-cli.
     colab_client = importlib.import_module("colab_cli.client")
-    state = importlib.import_module("colab_cli.common.state")
+    state = importlib.import_module("colab_cli.common").state
 
     info = state.client.get_consumption_user_info()
     assignments = state.client.list_assignments()
