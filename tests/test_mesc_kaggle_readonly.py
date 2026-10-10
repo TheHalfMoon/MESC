@@ -129,7 +129,17 @@ def test_running_session_reservations_reduce_observed_remaining_quota() -> None:
     assert api.calls == ["authenticate", "personal_list"]
 
 
-@pytest.mark.parametrize("reserved", [None, timedelta(seconds=-1), timedelta(seconds=19)])
+@pytest.mark.parametrize(
+    "reserved",
+    [
+        None,
+        timedelta(seconds=-1),
+        timedelta(seconds=19),
+        SimpleNamespace(days=False, seconds=0, microseconds=0),
+        SimpleNamespace(days=0, seconds=0, microseconds=0.5),
+        SimpleNamespace(days=0, seconds=86400, microseconds=0),
+    ],
+)
 def test_missing_or_inconsistent_reservation_cannot_supply_remaining_budget(
     reserved: object,
 ) -> None:
@@ -150,6 +160,22 @@ def test_missing_or_inconsistent_reservation_cannot_supply_remaining_budget(
         assert result["quota_state"] == "OBSERVED_COMPONENTS_RESERVATION_UNKNOWN"
     else:
         assert result["quota_state"] == "UNKNOWN"
+
+
+def test_exactly_exhausted_unreserved_quota_is_observed_zero() -> None:
+    api = FakeApi()
+    api.quota_view = lambda: SimpleNamespace(  # type: ignore[method-assign]
+        gpu_quota=SimpleNamespace(
+            total_time_allowed=timedelta(seconds=20),
+            time_used=timedelta(seconds=2),
+            time_reserved=timedelta(seconds=18),
+            is_pay_to_scale_enabled=False,
+        )
+    )
+    result = observe(api)
+    assert result["quota_state"] == "OBSERVED_NOT_CAPACITY_GUARANTEE"
+    assert result["gpu_remaining_seconds"] == 0
+    assert result["zero_paid_compute_proven"] is False
 
 
 @pytest.mark.parametrize(
