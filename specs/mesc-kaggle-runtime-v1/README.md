@@ -21,6 +21,17 @@ notebook names, account names, endpoints or exception text. Its output is privat
 account status and must stay off public GitHub. An SDK quota observation does not
 establish free billing, currently available GPUs, session isolation or fit.
 
+The private observer now emits `MESC-KAGGLE-PRIVATE-READONLY-OBSERVATION-V2`.
+Observed remaining whole seconds subtract both consumed and currently reserved
+quota using exact integer microseconds. Missing reservations leave remaining
+budget unknown; negative, malformed or overcommitted durations reject quota.
+V1 observations remain historical and must not be relabeled with V2 semantics.
+The official SDK defaults an omitted pay-to-scale field to false, so its false
+value is `SDK_DEFAULT_OR_REPORTED_FALSE`, true is `SDK_REPORTED_TRUE`, and a
+missing/non-boolean value is UNKNOWN. `zero_paid_compute_proven` remains false
+in every case. These private telemetry labels establish no billing guarantee,
+GPU capacity or execution authority. See [ADR-0042](../../docs/adr/0042-kaggle-reservation-and-billing-telemetry.md).
+
 ## Frozen environment candidate
 
 The strict field envelope rejects extra fields, boolean-as-integer budgets,
