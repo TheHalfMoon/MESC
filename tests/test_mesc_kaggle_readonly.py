@@ -35,7 +35,10 @@ class FakeApi:
         self.calls.append("quota_read")
         return SimpleNamespace(
             gpu_quota=SimpleNamespace(
-                total_time_allowed=timedelta(hours=30), time_used=timedelta(hours=12)
+                total_time_allowed=timedelta(hours=30),
+                time_used=timedelta(hours=12),
+                time_reserved=timedelta(0),
+                is_pay_to_scale_enabled=False,
             )
         )
 
@@ -95,13 +98,86 @@ def test_fractional_provider_usage_kept_exact_and_remaining_seconds_conservative
         kernels_list=api.kernels_list,
         quota_view=lambda: SimpleNamespace(
             gpu_quota=SimpleNamespace(
-                total_time_allowed=timedelta(seconds=10), time_used=timedelta(seconds=0.5)
+                total_time_allowed=timedelta(seconds=10),
+                time_used=timedelta(seconds=0.5),
+                time_reserved=timedelta(0),
+                is_pay_to_scale_enabled=False,
             )
         ),
     )
     result = observe(replacement)
     assert result["gpu_used_microseconds"] == 500000
     assert result["gpu_remaining_seconds"] == 9
+
+
+def test_running_session_reservations_reduce_observed_remaining_quota() -> None:
+    api = FakeApi()
+    api.quota_view = lambda: SimpleNamespace(  # type: ignore[method-assign]
+        gpu_quota=SimpleNamespace(
+            total_time_allowed=timedelta(seconds=10),
+            time_used=timedelta(seconds=0.5),
+            time_reserved=timedelta(seconds=2.6),
+            is_pay_to_scale_enabled=False,
+        )
+    )
+    result = observe(api)
+    assert result["schema_version"] == "MESC-KAGGLE-PRIVATE-READONLY-OBSERVATION-V2"
+    assert result["gpu_reserved_microseconds"] == 2600000
+    assert result["gpu_remaining_seconds"] == 6
+    assert result["gpu_pay_to_scale_state"] == "SDK_DEFAULT_OR_REPORTED_FALSE"
+    assert result["zero_paid_compute_proven"] is False
+    assert api.calls == ["authenticate", "personal_list"]
+
+
+@pytest.mark.parametrize("reserved", [None, timedelta(seconds=-1), timedelta(seconds=19)])
+def test_missing_or_inconsistent_reservation_cannot_supply_remaining_budget(
+    reserved: object,
+) -> None:
+    api = FakeApi()
+    api.quota_view = lambda: SimpleNamespace(  # type: ignore[method-assign]
+        gpu_quota=SimpleNamespace(
+            total_time_allowed=timedelta(seconds=20),
+            time_used=timedelta(seconds=2),
+            time_reserved=reserved,
+            is_pay_to_scale_enabled=False,
+        )
+    )
+    result = observe(api)
+    assert "gpu_remaining_seconds" not in result
+    assert result["zero_paid_compute_proven"] is False
+    assert result["allocation_performed"] is False
+    if reserved is None:
+        assert result["quota_state"] == "OBSERVED_COMPONENTS_RESERVATION_UNKNOWN"
+    else:
+        assert result["quota_state"] == "UNKNOWN"
+
+
+@pytest.mark.parametrize(
+    ("flag", "state"),
+    [
+        (False, "SDK_DEFAULT_OR_REPORTED_FALSE"),
+        (True, "SDK_REPORTED_TRUE"),
+        (None, "UNKNOWN"),
+        (0, "UNKNOWN"),
+        (1, "UNKNOWN"),
+        ("false", "UNKNOWN"),
+    ],
+)
+def test_billing_telemetry_never_certifies_zero_paid_access(flag: object, state: str) -> None:
+    api = FakeApi()
+    api.quota_view = lambda: SimpleNamespace(  # type: ignore[method-assign]
+        gpu_quota=SimpleNamespace(
+            total_time_allowed=timedelta(seconds=20),
+            time_used=timedelta(0),
+            time_reserved=timedelta(0),
+            is_pay_to_scale_enabled=flag,
+        )
+    )
+    result = observe(api)
+    assert result["gpu_pay_to_scale_state"] == state
+    assert result["zero_paid_compute_proven"] is False
+    assert result["paid_compute_requested"] is False
+    assert result["scientific_execution_authorized"] is False
 
 
 def test_remote_personal_list_failure_does_not_claim_authentication() -> None:

@@ -37,7 +37,7 @@ def observe(api: Any) -> dict[str, object]:
     if type(notebooks) is not list:
         raise ValueError("personal notebook observation unavailable")
     result: dict[str, object] = {
-        "schema_version": "MESC-KAGGLE-PRIVATE-READONLY-OBSERVATION-V1",
+        "schema_version": "MESC-KAGGLE-PRIVATE-READONLY-OBSERVATION-V2",
         "authenticated_personal_listing_succeeded": True,
         "sample_notebook_count": len(notebooks),
         "quota_state": "UNKNOWN",
@@ -45,6 +45,8 @@ def observe(api: Any) -> dict[str, object]:
         "allocation_performed": False,
         "scientific_execution_authorized": False,
         "paid_compute_requested": False,
+        "gpu_pay_to_scale_state": "UNKNOWN",
+        "zero_paid_compute_proven": False,
     }
     quota_view = getattr(api, "quota_view", None)
     if not callable(quota_view):
@@ -56,14 +58,33 @@ def observe(api: Any) -> dict[str, object]:
         if gpu is None:
             result["quota_limitation"] = "PROVIDER_RETURNED_NO_GPU_QUOTA"
             return result
+        # Official SDK decoding defaults this non-optional field to False when
+        # omitted. False cannot distinguish omission from a reported value.
+        pay_to_scale = getattr(gpu, "is_pay_to_scale_enabled", None)
+        if type(pay_to_scale) is bool:
+            result["gpu_pay_to_scale_state"] = (
+                "SDK_REPORTED_TRUE" if pay_to_scale else "SDK_DEFAULT_OR_REPORTED_FALSE"
+            )
         total, used = _microseconds(gpu.total_time_allowed), _microseconds(gpu.time_used)
         if used > total:
             raise ValueError("quota used exceeds observed total")
+        reservation = getattr(gpu, "time_reserved", None)
+        if reservation is None:
+            result.update(
+                quota_state="OBSERVED_COMPONENTS_RESERVATION_UNKNOWN",
+                gpu_total_microseconds=total,
+                gpu_used_microseconds=used,
+            )
+            return result
+        reserved = _microseconds(reservation)
+        if used + reserved > total:
+            raise ValueError("quota consumption and reservations exceed observed total")
         result.update(
             quota_state="OBSERVED_NOT_CAPACITY_GUARANTEE",
             gpu_total_microseconds=total,
             gpu_used_microseconds=used,
-            gpu_remaining_seconds=(total - used) // 1000000,
+            gpu_reserved_microseconds=reserved,
+            gpu_remaining_seconds=(total - used - reserved) // 1000000,
         )
     except Exception as exc:
         # Exception text can contain credential/account identifiers. Retain only type.
