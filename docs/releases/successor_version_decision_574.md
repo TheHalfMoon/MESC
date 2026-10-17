@@ -45,6 +45,8 @@ The current root `pyproject.toml` points its `Homepage`, `Repository`, `Document
 
 ## 4. Other affected sources and compatibility gates
 
+The separate [historical-compatibility preflight](historical_compatibility_preflight_574.md) found static public-facade stability but a meaningful `dataset freeze` persisted-byte/order correction and 187 changed source paths. This is preliminary evidence only, not complete source-to-source behavioral compatibility.
+
 1. **Source-of-truth version:** `src/medscale/__about__.py` feeds installed metadata and `medscale --version`; test wheel/sdist, clean installed CLI, and exact new `vX.Y.Z` match. A version bump is not merely a string change.
 2. **Historical citation:** `CITATION.cff` currently records MedOrigin with historical version `0.2.0` and released date `2026-07-13`. `tests/test_medorigin_public_identity.py` intentionally asserts those values. Preserve the historical citation until an independently approved successor version/date exists; then update the citation and regression contract in the same authorized release change, without backdating.
 3. **Change reporting:** propose the applicable `CHANGELOG.md` section and source-accurate `RELEASES.md` successor entry; never overwrite the historical `v0.2.0` narrative or invent dates, model-performance claims or release receipts.
